@@ -1,0 +1,152 @@
+\documentclass[12pt]{article}
+\usepackage{graphicx}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{natbib}
+\usepackage{setspace}
+\usepackage{indentfirst} 
+\usepackage{listings}
+\usepackage{url} 
+\doublespacing
+
+\textwidth = 6.5 in
+\textheight = 9 in
+\oddsidemargin = 0.0 in
+\evensidemargin = 0.0 in
+\topmargin = 0.0 in
+\headheight = 0.0 in
+\headsep = 0.0 in
+\parskip = 0.0in
+\parindent = 0.2in
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}{Definition}
+\bibliographystyle{plain}  
+
+\begin{document}
+%\bibliographystyle{plainnat}
+\title{\textbf{\texttt{discoal}}-- a coalescent simulator with selection}
+\author{Andrew D. Kern \\
+\texttt{kern@biology.rutgers.edu}\\
+}
+
+
+\maketitle
+
+This file serves as the documentation for \texttt{discoal}, a program aimed at generating samples 
+under a coalescent model with recombination, step-wise changes in population size, and selection. 
+For users familiar with Richard Hudson's \texttt{ms}, the usage of \texttt{discoal} will be quite
+familiar, and indeed was meant to ``play nice'' with programs the user, or others, may have written 
+for analyzing \texttt{ms} style output. \texttt{discoal} is not meant to take the place of \texttt{ms},
+indeed in comparison it is quite limited in what it can do, but instead is meant to add a few models
+not covered by other simulation programs. In particular, \texttt{discoal} can quickly generate samples 
+from models with single selective sweeps in the history of the sample along with stepwise population size
+changes. 
+
+\texttt{discoal} gets is name from the contraction of ``discrete'' and ``coalescent'', because it 
+handles recombination along the chromosome, and its associated programatic bookkeeping, by modeling 
+a discrete number of ancestral sites. This leads to a trade off favoring speed over memory usage. For larger samples
+and sites modeled, do not be surprised if \texttt{discoal} eats up a lot of available RAM, but it will
+do so to increase the speed at which samples can be generated. This is particularly noticeable for larger 
+recombination rates.  
+
+\section*{Download and Compile}
+The source code for \texttt{discoal} is available for download from \url{http://kernlab.rutgers.edu/downloads/index.html} and
+download the tarball. To unpack and compile this you can use the following commands at a terminal:
+
+\begin{verbatim}
+$ tar zxvf discoal_distrb.tar.gz
+$ cd discoal_distrb
+$ make
+\end{verbatim}
+
+\texttt{discoal} should build on most systems without a problem. We have built it on numerous linux systems as
+well as OS X machines.  
+
+\section*{Basic usage}
+As we said above, using \texttt{discoal} is very familiar for people used to \texttt{ms} style commands. At its
+most basic a \texttt{discoal} command line looks like the following
+\begin{verbatim}
+$ ./discoal sampleSize sampleNumber nSites -t theta
+\end{verbatim}
+Here there are four arguments we are passing to \texttt{discoal}: sampleSize -- the size of each sample, sampleNumber -- the
+number of independent samples to generate, nSites-- the number of sites in the sequence to be modeled, and then following the \texttt{-t}
+flag $\theta = 4N_0u$, the mutation rate where $N_0$ is the population size currently and $u$ is the mutation rate. This is identical to 
+the command lines handed to \texttt{ms} with the addition of the nSites parameter. A representative run with its associated output might look like the following:
+\begin{verbatim}
+$ ./discoal 3 2 100 -t 2
+./discoal 3 2 100 -t 2
+1665047201 686400060
+
+//
+segsites: 4
+positions: 0.01835 0.09557 0.46556 0.72880
+1000
+0110
+0111
+
+//
+segsites: 1
+positions: 0.07594
+0
+1
+0
+\end{verbatim}
+Again, we are following Hudson's lead here with output formatted just as \texttt{ms} does. This should mean that any secondary analysis software
+used for \texttt{ms} output should work for \texttt{discoal} output as well. One note about the seeding of the random number generator (seeds are given
+on the second line of the output)-- seeds are taken from \texttt{/dev/urandom}, a special file on most $\star$nix systems that creates pseudorandom numbers
+from collecting thermal noise from the devices on the machine. This makes \texttt{discoal} suitable out of the box for large scale cluster computing 
+where multiple jobs will be launch simultaneously without having to worry about random number generator seeds.
+
+\section*{Recombination and Gene Conversion}
+Recombination (crossing over) is handled by \texttt{discoal} by adding the \texttt{-r} flag. \texttt{-r} takes one parameter, $\rho=4Nr$ the population recombination rate where $r$ is the probability of a cross over per basepair of sequence being modeled and $N$ is the current population size. Recombination can occur between any of the discrete nSites being modeled. A representative call with recombination would be:
+\begin{verbatim}
+$ ./discoal 3 2 100 -t 2 -r 2.4
+\end{verbatim}
+
+Gene conversion (recombination without exchange of flanking markers; sometimes called a non-crossover) within the modeled chromosome segment is also simulated by \texttt{discoal} by using the \texttt{-g} flag. The \texttt{-g} option takes two parameters, $\gamma=4Ng$ the population gene conversion rate where $g$ is the probability of initiating an NCO event per basepair. The second parameter needed is the mean gene conversion tract length, as once a gene conversion (NCO) is initiated it is extended for a geometrically distributed length. For instance:
+\begin{verbatim}
+$ ./discoal 3 2 100 -t 2 -r 2.4 -g 2.4 10
+\end{verbatim}
+would specify $\gamma=2.4$ with a mean gene conversion tract length of 10bp. 
+
+
+\section*{Population size changes}
+\texttt{discoal} can simulate an arbitrary number of step-wise, instantaneous population size changes. Each population size
+change in the sample history is set with a \texttt{-e} flag which specifies the time of the population size change and the ratio of the new population size to the current population size, $N_0$. At this point its worth noting that \texttt{discoal} measures time in units of $2N_0$ generations, rather that $4N_0$ as in \texttt{ms}. If you forget this point, don't worry it says as much in the usage line of the program if one runs \texttt{discoal} with no arguments. Multiple changes in population size can be specified by adding additional \texttt{-e} statements to the command line. By way of example, the following command line specifies a bottleneck population history where at time 0.5 the population crashes to 10\% of its initial size and then at time 1.2 it rebounds to 80\% of its initial size. 
+\begin{verbatim}
+$ ./discoal 3 2 100 -t 2 -r 2.4 -e 0.5 0.1 -e 1.2 0.8
+\end{verbatim}
+
+\section*{Selection}
+\texttt{discoal} can simulate samples with single selective sweeps in the history of a sample, requiring the site under selection to be within the bounds of the modeled locus. This is done using the now conventional technique of altering the genealogy of a sample to be conditional upon the trajectory of an allele moving through the population to eventual fixation (forward in time) \cite{Bravermanetal1995,Kim:2002wd}. \texttt{discoal} can simulate both deterministic sweep trajectories \cite{Bravermanetal1995,Kim:2002wd} and stochastic trajectories \cite{Coop:2004pj,Przeworskietal2005}. In addition coalescent simulations can be generated conditional upon the fixation of a neutral mutation in the population \cite{Tajima:1990fx}. All of these cases are easily handled by \texttt{discoal} using the group of \texttt{-w} flags. \texttt{-wd} generates deterministic selective sweeps, \texttt{-ws} stochastic selective sweeps, and \texttt{-wn} performs neutral fixations. Each \texttt{-w} flag takes one parameter, $\tau$ the time of fixation looking backward in time. Thus if $\tau = 0$ the fixation of the focal site has occurred immediately prior to sampling. Two other parameters are necessary when specifying sweeps. 1) the location of the site that has fixed using the \texttt{-x} flag. \texttt{-x} for convenience takes a floating point number between 0 and 1, thus translating the discrete sites modeled to the real line (defaults to $0.5$). 2) The strength of selection given as $\alpha=2Ns$ specified via the \texttt{-a} flag.
+
+ Building on our previous example then, lets generate a sample with a single selective sweep at position 50 (the middle) in our locus with $\alpha=1000$ and $\tau=0.05$ using stochastic sweep trajectories
+\begin{verbatim}
+$ ./discoal 3 2 100 -t 2 -r 2.4 -ws 0.05 -a 1000 -x 0.5
+\end{verbatim}
+
+This can also be combined with  populations size changes to generate samples with stepwise constant population size and selective sweeps
+\begin{verbatim}
+$ ./discoal 3 2 100 -t 2 -r 2.4 -ws 0.05 -a 1000 -x 0.5 -e 0.5 0.1 -e 1.2 0.8
+\end{verbatim}
+
+Another feature of \texttt{discoal} is its ability to generate what are now being called soft selective sweeps \cite{HermissonPennings2005,Przeworskietal2005}. To generate sweeps from standing variation the user can specify $f_0$, the frequency at which a previously neutral allele became beneficial. This is done using \texttt{-f} flag. For such situations, conditional allele frequency trajectories for the sweep site are generated as per Przeworski \emph{et al.}. If one is instead interested in a soft sweep model with recurrent mutation towards a beneficial allele the \texttt{-uA} flag generates sweeps where one of the possible moves is a change in selective class through mutation for alleles not originally linked to the beneficial mutation \cite{PenningsHermisson2006}. 
+
+As an example, we can take our previous hard sweep command line and adjust it so that the mutation drifts until frequency 0.1 where it then becomes beneficial
+
+\begin{verbatim}
+$ ./discoal 3 2 100 -t 2 -r 2.4 -ws 0.05 -a 1000 -x 0.5 -f 0.1
+\end{verbatim}
+
+\section*{Priors on parameters}
+Sometimes when generating simulations one is interested in simulating over a range of parameter values. \texttt{discoal} allows uniform priors to be set on all of its parameters with the \texttt{-P} family of flags. It can generate priors on population size changes as well, but at present can only be used for up to two size changes.
+
+
+\section*{Further support}
+If you are having trouble compiling or running the software don't hesitate to contact me via email or phone. Also please please report all bugs that you might find. 
+
+
+\bibliography{../../doc/refs/texrefs}
+
+\end{document}
