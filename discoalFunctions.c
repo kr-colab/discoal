@@ -61,12 +61,14 @@ void initialize(){
           uA = genunf(pUALow,pUAUp);
 	if(priorTheta==1)
 	  theta = genunf(pThetaLow,pThetaUp);
-	if(priorRho==1)
+	if(priorRho==1){
           rho = genunf(pRhoLow,pRhoUp);
-        else if(priorRho==2)
+	}
+        else if(priorRho==2){
 	  rho = genexp(pRhoMean);
           if (rho > pRhoUp)
               rho = pRhoUp;
+        }
         if(gammaCoRatioMode==1)
             my_gamma = rho*gammaCoRatio;
 	if(priorAlpha==1)
