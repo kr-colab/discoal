@@ -692,8 +692,8 @@ double sweepPhaseEvents(int *bpArray, double startTime, double endTime, double s
 	
 	N = (double) floor(N * sizeRatio);
 	ttau = 0.0;
-	x = 1.0 - (1.0/(2.*N));
-	//x = initialFreq;
+	
+	x = initialFreq;
 
 
 
@@ -848,8 +848,8 @@ double sizeRatio, char sweepMode,double f0, double uA)
 
 	N = (double) floor(N * sizeRatio);
 	ttau = 0.0;
-	x = 1.0 - (1.0/(2.*N));
-	//x = initialFreq;
+
+	x = initialFreq;
 
 
 
@@ -1041,8 +1041,8 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 
 	N = (double) floor(N * sizeRatio[0]);
 	ttau = 0.0;
-	x = 1.0 - (1.0/(2.*N));
-	//x = initialFreq;
+	
+	x = initialFreq;
 	minF = f0;
 	if(minF < 1.0/(2.*N))
 		minF = 1.0/(2.*N);
