@@ -4,8 +4,8 @@ discoal is a coalescent simulation program capable of simulating models with rec
 To install discoal, clone this repository, cd into the directory, then assuming you have gcc and make installed on your system, simply type `make discoal`.
 
 typing `./discoal` will then bring up the usage statement.
-
-`$ ./discoal
+```
+$ ./discoal
 usage: discoal_multipop sampleSize sampleNumber nSites -ws tau
 parameters:
 	 -t theta
@@ -37,4 +37,4 @@ parameters:
 	 -Pf low high (prior on F0; sweep models only)
 	 -Pe1 lowTime highTime lowSize highSize (priors on first demographic move time and size)
 	 -Pe2 lowTime highTime lowSize highSize (priors on second demographic move time and size)
-	 Note: all time units are 2N_0 generations!!!`
+	 Note: all time units are 2N_0 generations!!! ```
