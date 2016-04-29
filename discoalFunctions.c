@@ -428,17 +428,14 @@ int recombineAtTimePopn(double cTime, int popn){
 				rParent->lLim=MIN(rParent->lLim,i);
 			}
 		}
-	//	if(lParent->lLim <= lParent->rLim && rParent->lLim <= rParent->rLim){
+	//	if(lParent->lLim < lParent->rLim)
 			addNode(lParent);
-			addNode(rParent);
-	//	}
-	//	else{
+	//	else
 	//		free(lParent);
-	//		free(rParent);
-	//		aNode->leftParent = NULL;
-	//		aNode->rightParent = NULL;
-	//		aNode->branchLength = 0.0;
-	//	}	
+	//	if(rParent->lLim < rParent->rLim)
+			addNode(rParent);
+	//	else
+	//		free(rParent)
 //		printf("here\n");
 		return xOver;
 	}
@@ -1651,7 +1648,6 @@ void dropMutations(){
 	//get time and set probs
 	coaltime = totalTimeInTree();
 	//printf("%f\n",coaltime);
-	//printf("%d\n",totNodeNumber);
 	tm=0;
 	for(i=0;i<totNodeNumber;i++){
 		//add Mutations
