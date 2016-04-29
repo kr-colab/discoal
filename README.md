@@ -3,7 +3,7 @@ discoal is a coalescent simulation program capable of simulating models with rec
 
 To install discoal, clone this repository, cd into the directory, then assuming you have gcc and make installed on your system, simply type `make discoal`.
 
-typing `./discoal` will then bring up the usage statement.
+typing `./discoal` will then bring up the usage statement:
 ```
 $ ./discoal
 usage: discoal_multipop sampleSize sampleNumber nSites -ws tau
