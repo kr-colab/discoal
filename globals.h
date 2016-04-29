@@ -1,26 +1,34 @@
-// discoal.h
-// defs, headers, etc for discoal.c
-
-#ifndef __DISCOAL_GLOBALS__
-#define __DISCOAL_GLOBALS__
+#ifndef __COAL_GLOBALS__
+#define __COAL_GLOBALS__
 
 /******************************************************************************/
 /* here are just some defines to allocate initial global arrays and stuff     */
 /* like that                                                                  */
 
-#define MAXNODES 20000000
-#define MAXSITES 110020
+#define MAXNODES 1000000
+#define MAXCHUNKS 1000000
 #define SMALLCHUNKS 100000
 #define MAXBREAKS 1000000
-#define MAXMUTS 100000
-#define MAXTIME 100000.0
-#define MAXPOPS 6
-//#define EFFECTIVE_POPN_SIZE 1000000
-#define EFFECTIVE_POPN_SIZE 2226458
+#define MAXMUTS 50000
+#define MAXTIME 1000.0
+#define MAXPOPS 2
+#define EFFECTIVE_POPN_SIZE 1000000
 #define MAX(a, b)  (((a) > (b)) ? (a) : (b))
 #define MIN(a, b)  (((a) > (b)) ? (b) : (a))
-#define MAXEVENTS 100
-#define MAXLEAFS 200
+
+/******************************************************************************/
+
+/******************************************************************************/
+/* A "chunk" is a piece of contiguous ancestral DNA material, with a left and */
+/* a right end, with 0 <= leftEnd < rightEnd <= 1                             */
+/*                                                                            */
+/* chunks are used to keep track of portions of recombining DNA               */
+
+typedef struct chunk
+{
+	double leftEnd, rightEnd;
+}
+chunk; 
 
 /******************************************************************************/
 
@@ -28,23 +36,18 @@
 /* A "rootedNode" is just a node in a coalescent graph. Since recombination   */
 /* is possible, each node has a left and a right parent as well as 2 children */
 /* Nodes also keep track of their time in the tree and their mutations (which */
-/* they pass on to their children) as well as the number of descendents       */
-/* at each site                                                               */
+/* they pass on to their children in the infinite alleles model) as well as   */
+/* which "chunks" of ancestral DNA they contain                               */
+/*                                                                            */
 /* Nodes are used to build the coalescent tree and place mutations            */
 
 typedef struct rootedNode
 {
 	struct rootedNode *leftParent, *rightParent, *leftChild, *rightChild;
-	double time, branchLength, blProb;
-	float muts[MAXMUTS];
-	#ifdef BIG
-	uint16_t ancSites[MAXSITES];
-	#else
-	uint8_t ancSites[MAXSITES];
-	#endif
-	int nancSites, lLim, rLim;
-	int id, mutationNumber, population, sweepPopn;
-	int ndes[2],*leafs;
+	double time, *muts;
+	struct chunk **chunks;
+	int id, chunkNumber, mutationNumber, population, descNumber;
+	int ndes[2];
 	double times[2];
 
 }
@@ -54,7 +57,6 @@ rootedNode;
 
 /******************************************************************************/
 /* Here is the event object used to keep track of demographic changes         */
-
 
 typedef struct event
 {
@@ -78,44 +80,30 @@ event;
 
 rootedNode  *nodes[MAXNODES], *allNodes[MAXNODES];
 
-int activeMaterial[MAXSITES];
+chunk *allChunks[MAXCHUNKS], *activeMaterial[MAXCHUNKS];
 
 int sampleSize, sampleNumber, breakNumber, segSites,alleleNumber, \
-	totNodeNumber, totChunkNumber, npops, eventFlag, nSites, activeSites,\
-	mask, finiteOutputFlag, outputStyle, effectiveSampleSize, runMode, gcMean,\
-	breakPoints[MAXBREAKS],sampleSizes[MAXPOPS];
+	totNodeNumber, totChunkNumber, npops, eventFlag, nSites,activeChunks,\
+	mask, finiteOutputFlag, outputStyle, effectiveSampleSize, runMode;
 
-double  leftRho, rho, theta, tDiv, alpha, sweepSite, tau, my_gamma, \
+double breakPoints[MAXBREAKS], rho, theta, tDiv, alpha, sweepSite, tau, \
  	lambda, timeRecovery,bottleNeckRatio, bottleNeckDuration, \
- 	ancestralSizeRatio, sweepLeft, sweepRight, thetas[MAXPOPS];
-double mig[MAXPOPS];
+ 	ancestralSizeRatio, sweepLeft, sweepRight ;
 
 int sampleS, sampleFD, sampleHaps, rejectCount, sampleRMin, offset, winNumber, \
-	popnSizes[MAXPOPS],sweepPopnSizes[MAXPOPS];
+	popnSizes[MAXPOPS];
 
+double samplePi, tolerance, sampleTajD, winSize, *samplePiWins;
 
 const char *mFile;
 
 char sweepMode, windowMode;
 
 double coaltime, currentTime, pAccept;
-int mn, eventNumber, migFlag;
+int mn;
 
+double SweepStartingFrequency;
 
-double SweepStartingFrequency, f0;
-
-double uA;
-
-double gammaCoRatio, gammaCoRatioMode;
-int priorTheta, priorRho, priorAlpha, priorTau, priorX, priorF0, priorE1, priorE2, priorUA;
-double gammaCoRatioMode, gammaCoRatio;
-double pThetaUp, pThetaLow,pRhoMean,pRhoUp,pRhoLow,pAlphaUp,pAlphaLow,pTauUp,pTauLow,pXUp,pXLow,pF0Up,pF0Low,pUALow,pUAUp;
-double pE2TLow,pE1TLow, pE2THigh, pE1THigh, pE1SLow, pE1SHigh, pE2SLow,pE2SHigh;
-double migMat[MAXPOPS][MAXPOPS], migMatConst[MAXPOPS][MAXPOPS];
-
-struct event events[MAXEVENTS];
-
-int lSpot, rSpot, condRecMode;
-int condRecMet;
+/******************************************************************************/
 
 #endif

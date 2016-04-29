@@ -10,6 +10,7 @@ void migrateAtTime(double cTime,int srcPopn, int destPopn);
 void migrateExceptSite(double site, double scalar, int srcPopn, int destPopn);
 
 int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, double popnFreq);
+int recombineToLeftPopnSweep(int popn, int sp, double popnFreq);
 void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, double popnFreq);
 
 

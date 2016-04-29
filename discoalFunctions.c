@@ -17,6 +17,92 @@
 void initialize(){
 	int i,j,p, count=0;
 	int leafID=0;
+	/* Initialize the arrays */
+	totChunkNumber = 0;
+	breakPoints[0] = 666;
+	for(p=0;p<npops;p++){
+		popnSizes[p]=sampleSizes[p];
+		for( i = 0; i < sampleSizes[p]; i++){
+			nodes[count] = newRootedNode(0,p);
+			nodes[count]->nancSites = nSites;
+			nodes[count]->lLim=0;
+			nodes[count]->rLim=nSites-1;
+			for(j=0;j<nSites;j++)nodes[count]->ancSites[j]=1;
+			if(p>0)nodes[count]->sweepPopn = 0;
+			nodes[count]->id=leafID++;
+			allNodes[count] = nodes[count];
+			count += 1;
+		}
+	}
+	
+	breakNumber = 0;
+	//setup active material array
+	for(i=0;i<nSites;i++) activeMaterial[i] = 1;
+	
+	//set initial counts
+	alleleNumber = sampleSize;
+	totNodeNumber = sampleSize;
+	activeSites = nSites;
+	if (npops>1){
+		if(tDiv==666 && migFlag == 0){
+			fprintf(stderr,"tDiv or migration not set in population split model\n");
+			exit(1);
+		}
+		//initialize migration matrix
+		for(i=0;i<npops;i++){
+			for(j=0;j<npops;j++){
+				migMat[i][j]=migMatConst[i][j];
+			}
+		}
+		eventFlag = 0;
+	}
+	//mask mode?
+	if (mask){
+//		getMasking(mFile);
+	}
+	
+	//priors on parameters?
+        if(priorUA==1)
+          uA = genunf(pUALow,pUAUp);
+	if(priorTheta==1)
+	  theta = genunf(pThetaLow,pThetaUp);
+	if(priorRho==1){
+          rho = genunf(pRhoLow,pRhoUp);
+        }
+        else if(priorRho==2){
+	  rho = genexp(pRhoMean);
+          if (rho > pRhoUp)
+              rho = pRhoUp;
+        }
+        if(gammaCoRatioMode==1)
+            my_gamma = rho*gammaCoRatio;
+	if(priorAlpha==1)
+	  alpha = genunf(pAlphaLow,pAlphaUp);
+	if(priorX==1)
+	  sweepSite = genunf(pXLow,pXUp);
+	if(priorF0==1)
+	  f0 = genunf(pF0Low,pF0Up);
+	if(priorTau==1){
+	  tau = genunf(pTauLow,pTauUp);
+	  for(i=0;i<eventNumber;i++){
+	    if(events[i].type=='s')
+	      events[i].time=tau;
+	  }
+	}
+	if(priorE1==1){
+		events[1].time = genunf(pE1TLow,pE1THigh);
+		events[1].popnSize = genunf(pE1SLow,pE1SHigh);
+	}
+	if(priorE2==1){
+		events[2].time = genunf(pE2TLow,pE2THigh);
+		events[2].popnSize = genunf(pE2SLow,pE2SHigh);
+	}
+	sortEventArray(events,eventNumber);
+}
+
+void initializeTwoSite(){
+	int i,j,p, count=0;
+	int leafID=0;
 	/* initialize the arrays */
 	totChunkNumber = 0;
 	breakPoints[0] = 666;
@@ -30,6 +116,9 @@ void initialize(){
 			for(j=0;j<nSites;j++)nodes[count]->ancSites[j]=1;
 			if(p>0)nodes[count]->sweepPopn = 0;
 			nodes[count]->id=leafID++;
+			//do stuff for leafs containers
+			//nodes->leafs = calloc(sizeof(int) * sampleSize);
+			//nodes->leafs[nodes[count]->id] = 1;
 			allNodes[count] = nodes[count];
 			count += 1;
 		}
@@ -61,14 +150,13 @@ void initialize(){
           uA = genunf(pUALow,pUAUp);
 	if(priorTheta==1)
 	  theta = genunf(pThetaLow,pThetaUp);
-	if(priorRho==1){
+	if(priorRho==1)
           rho = genunf(pRhoLow,pRhoUp);
-	}
         else if(priorRho==2){
 	  rho = genexp(pRhoMean);
-          if (rho > pRhoUp)
-              rho = pRhoUp;
-        }
+	  if (rho > pRhoUp)
+	    rho = pRhoUp;
+	}
         if(gammaCoRatioMode==1)
             my_gamma = rho*gammaCoRatio;
 	if(priorAlpha==1)
@@ -130,6 +218,7 @@ void migrateAtTime(double cTime,int srcPopn, int destPopn){
 	popnSizes[destPopn]+=1;
 	if (srcPopn==0)
 		sweepPopnSizes[temp->sweepPopn]-=1;
+
 }
 
 //recurrentMutAtTime -- this adds a non-sweeping node to the sweep or vice-versa
@@ -147,7 +236,7 @@ void recurrentMutAtTime(double cTime,int srcPopn, int sp){
 // migrateExceptSite -- does migration unless specific site is present in allele picked
 void migrateExceptSite(double site, double scalar, int srcPopn, int destPopn){
 	rootedNode *temp;
-	int doMig;
+	int doMig=0;
 	temp = pickNodePopn(srcPopn);
 	
 	if(isAncestralHere(temp,site) == 0 || ranf() < scalar) doMig = 1; //migration of site is 10% rate of other sites
@@ -203,6 +292,51 @@ void coalesceAtTimePopn(double cTime, int popn){
 	updateActiveMaterial(temp);
 	//popnSizes[popn]--; //decrese popnSize	
 }
+
+/*
+void coalesceAtTimePopnTrackLeafs(double cTime, int popn){
+	rootedNode *temp, *lChild, *rChild;
+	int i;
+
+	temp = newRootedNode(cTime,popn);
+	temp->leafs = calloc(sizeof(int) * sampleSize);
+	lChild = pickNodePopn(popn);
+	temp->leftChild = lChild;
+	lChild->leftParent = temp;
+	lChild->branchLength = cTime - lChild->time;
+	removeNode(lChild);
+
+	rChild =  pickNodePopn(popn);
+	temp->rightChild = rChild;
+	rChild->leftParent = temp;
+	rChild->branchLength = cTime - rChild->time;
+	removeNode(rChild);
+	
+	//deal with ancMaterial
+	temp->nancSites = 0;
+	temp->lLim = nSites;
+	temp->rLim = 0;
+	for(i=0;i<nSites;i++){
+		temp->ancSites[i] = lChild->ancSites[i] + rChild->ancSites[i];
+		if(temp->ancSites[i] > 0 && temp->ancSites[i] < sampleSize){
+			temp->nancSites += 1;
+			temp->rLim=i;
+			temp->lLim=MIN(temp->lLim,i);
+			
+		}
+	}
+	//deal with leafs
+	for(i=0;i<sampleSize;i++){
+		temp->leafs[i] =  lChild->leafs[i] + rChild->leafs[i];
+	}
+	
+	//printNode(temp);
+	addNode(temp);
+	//update active anc. material
+	updateActiveMaterial(temp);
+	//popnSizes[popn]--; //decrese popnSize	
+}*/
+
 
 /*updateActiveMaterial- does bookkeeping on the material that has found it's MRCA-- added for efficiency */
 void updateActiveMaterial(rootedNode *aNode){
@@ -294,14 +428,17 @@ int recombineAtTimePopn(double cTime, int popn){
 				rParent->lLim=MIN(rParent->lLim,i);
 			}
 		}
-	//	if(lParent->lLim < lParent->rLim)
+	//	if(lParent->lLim <= lParent->rLim && rParent->lLim <= rParent->rLim){
 			addNode(lParent);
-	//	else
-	//		free(lParent);
-	//	if(rParent->lLim < rParent->rLim)
 			addNode(rParent);
-	//	else
-	//		free(rParent)
+	//	}
+	//	else{
+	//		free(lParent);
+	//		free(rParent);
+	//		aNode->leftParent = NULL;
+	//		aNode->rightParent = NULL;
+	//		aNode->branchLength = 0.0;
+	//	}	
 //		printf("here\n");
 		return xOver;
 	}
@@ -591,9 +728,9 @@ double neutralPhaseMigExclude(int *bpArray,double startTime, double endTime, dou
 /*neutralPhaseGeneralPopNumber--coalescent, recombination, gc events until
 specified time. returns endTime. can handle multiple popns*/
 double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *sizeRatio){
-	double cTime, cRate[npops], rRate[npops], gcRate[npops], totRate, waitTime, bp,r, r2;
-	double totCRate, totRRate, totGCRate, eSum;
-	int  i;
+	double cTime, cRate[npops], rRate[npops], gcRate[npops], mRate[npops],totRate, waitTime, bp,r, r2;
+	double totCRate, totRRate, totGCRate,totMRate, eSum;
+	int  i,j;
 
 	if(startTime == endTime){
 		return(endTime);
@@ -607,17 +744,24 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 		totCRate = 0.0;
 		totRRate = 0.0;
 		totGCRate = 0.0;
+		totMRate = 0.0;
+		for(i=0;i<npops;i++){
+			mRate[i]=0.0;
+		}
 	//	printf("currPopSize[0]: %d currPopSize[1]: %d alleleNumber: %d totNodeNumber: %d activeSites: %d cTime: %f\n",popnSizes[0],popnSizes[1],alleleNumber,totNodeNumber, activeSites, cTime);
 		for(i=0;i<npops;i++){
 			cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 / sizeRatio[i];
 			rRate[i] = rho * popnSizes[i] * 0.5;// * ((float)activeSites/nSites);
 			gcRate[i] = my_gamma * popnSizes[i] * 0.5 ;
+			
+			for(j=0;j<npops;j++) mRate[i]+=migMat[i][j];
+			mRate[i] *= popnSizes[i] * 0.5;
 			totCRate += cRate[i];
 			totRRate += rRate[i];
+			totMRate += mRate[i];
 			totGCRate += gcRate[i];
-			totRate += cRate[i] + rRate[i] + gcRate[i];
+			totRate += cRate[i] + rRate[i] + mRate[i] + gcRate[i];
 		}
-		//printf("%f\n",rRate);
 
 		//find time of next event
 		waitTime = genexp(1.0)  * (1.0/ totRate);
@@ -650,18 +794,40 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 					geneConversionAtTimePopn(cTime,i);
 				}
 				else{
-					//coalesce 
-					//pick popn
-					eSum = cRate[0];
-				//	printf("esum= %f\n",eSum);
-					i = 0;
-					r2 = ranf();
-					while(eSum/totCRate < r2){
-						 eSum += cRate[++i];
-						}
-					coalesceAtTimePopn(cTime,i);
+					if(r < ((totMRate+totRRate + totGCRate)/totRate)){
+						//pick source popn
+						eSum = mRate[0];
+						i = 0;
+						j = 0;
+						r2 = ranf();
+						while(eSum/totMRate < r2) eSum += mRate[++i];
+						//printf("outer totMRate: %f eSum: %f i:%d\n",totMRate,eSum,i);
+						//pick dest popn
+						eSum = migMat[i][0]* popnSizes[i] * 0.5;
+						//printf("outer eSumNew:%f mRate[%d]:%f\n",eSum,i,mRate[i]);
+						r2 = ranf();
+						while(eSum/mRate[i] < r2){
+						//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
+							eSum += migMat[i][++j] * popnSizes[i] * 0.5;
+						//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
+							
+						} 
+						migrateAtTime(cTime,i,j);
+					}
+				
+					else{
+						//coalesce 
+						//pick popn
+						eSum = cRate[0];
+						i = 0;
+						r2 = ranf();
+						while(eSum/totCRate < r2){
+							 eSum += cRate[++i];
+							}
+						coalesceAtTimePopn(cTime,i);
 					
 					
+					}
 				}
 			}
 		}
@@ -692,7 +858,6 @@ double sweepPhaseEvents(int *bpArray, double startTime, double endTime, double s
 	
 	N = (double) floor(N * sizeRatio);
 	ttau = 0.0;
-	
 	x = initialFreq;
 
 
@@ -709,7 +874,7 @@ double sweepPhaseEvents(int *bpArray, double startTime, double endTime, double s
 	//set time increment
 	
 	//if(sweepMode == 'N')
-		tInc = 1.0 / (4 * N);
+		tInc = 1.0 / (40 * N);
 	//else
 	//	tInc = 1.0 / (100* (alpha*sizeRatio));
 
@@ -747,7 +912,7 @@ double sweepPhaseEvents(int *bpArray, double startTime, double endTime, double s
 			}
 			else{
 				insweepphase = 0;
-				tInc = 1.0 / (4 * N);
+				tInc = 1.0 / (40 * N);
 				x = neutralStochastic(tInc, x);
 			}
 
@@ -755,8 +920,8 @@ double sweepPhaseEvents(int *bpArray, double startTime, double endTime, double s
 			//first 4 events are probs of events in population 0
 			pCoalB = ((sweepPopnSizes[1] * (sweepPopnSizes[1] - 1) ) * 0.5)/x*tInc / sizeRatio;
 			pCoalb = ((sweepPopnSizes[0] * (sweepPopnSizes[0] - 1) ) * 0.5)/(1-x)*tInc / sizeRatio;
-			pRecB = rho * sweepPopnSizes[1]*0.5 *tInc ;
-			pRecb = rho * sweepPopnSizes[0]*0.5 *tInc  ;
+			pRecB = rho * sweepPopnSizes[1]*0.5 *tInc;
+			pRecb = rho * sweepPopnSizes[0]*0.5 *tInc;
                         //printf("nB: %d; x: %g; pRecBb: %g; tInc: %g\n",sweepPopnSizes[1],x,rho*sweepPopnSizes[1]*tInc*0.5*(1-x),tInc);
 			//now two events in population 1
 			pCoal1 = (popnSizes[1] * (popnSizes[1] - 1))*0.5  *tInc ;
@@ -803,7 +968,7 @@ double sweepPhaseEvents(int *bpArray, double startTime, double endTime, double s
 						sum+=pCoal1;
 						if(r < sum / totRate){
 							coalesceAtTimePopn(cTime+(ttau), 1);
-							}
+						}
 						else{
 							bp = recombineAtTimePopn(cTime + (ttau),1);
 							bpArray[breakNumber] = bp;
@@ -848,7 +1013,6 @@ double sizeRatio, char sweepMode,double f0, double uA)
 
 	N = (double) floor(N * sizeRatio);
 	ttau = 0.0;
-
 	x = initialFreq;
 
 
@@ -1027,7 +1191,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 
 	double totRate,bp;
 	double  ttau, x, tInc;
-	double pCoalB, pCoalb, pRecB, pRecb, r, sum,eventRand,eventProb;
+	double pCoalB, pCoalb, pRecB, pRecb, r, sum,eventRand,eventProb, pLeftRecB, pLeftRecb;
 	double pRecurMut, pGCB, pGCb;
 	double sweepPopTotRate,cRate[npops], rRate[npops], gcRate[npops];
 	double totCRate, totRRate, totGCRate, eSum, r2;
@@ -1037,11 +1201,10 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	int insweepphase, i;
 
 	//initialize stuff
-	pCoalB = pCoalb = pRecB = pRecb = totRate = pRecurMut = 0;
+	pCoalB = pCoalb = pRecB = pRecb = totRate = pRecurMut = pLeftRecB = pLeftRecb = 0;
 
 	N = (double) floor(N * sizeRatio[0]);
 	ttau = 0.0;
-	
 	x = initialFreq;
 	minF = f0;
 	if(minF < 1.0/(2.*N))
@@ -1101,7 +1264,11 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 			pGCB = my_gamma * sweepPopnSizes[1]*0.5 *tInc;// / sizeRatio[0];
 			pGCb = my_gamma * sweepPopnSizes[0]*0.5 *tInc;/// sizeRatio[0];
 			pRecurMut = (uA * sweepPopnSizes[1]*0.5 *tInc)/x;///sizeRatio[0];
-			sweepPopTotRate = pCoalB + pCoalb + pRecB + pRecb + pGCB + pGCb + pRecurMut;
+			if (sweepSite < 0.0){
+				pLeftRecB = leftRho * sweepPopnSizes[1]*0.5 * tInc * (1-x);
+				pLeftRecb = leftRho * sweepPopnSizes[0]*0.5 * tInc * x;
+                        }
+			sweepPopTotRate = pCoalB + pCoalb + pRecB + pRecb + pGCB + pGCb + pRecurMut + pLeftRecB + pLeftRecb;
 			//printf("nB: %d; x: %g; pCoalB: %g; tInc: %g cTime+ttau: %g popnSizes[0]:%d\n",sweepPopnSizes[1],x,pCoalB,tInc,cTime+ttau,  popnSizes[0]);
 			//now two events in population 1
 			totRate = 0.0;
@@ -1179,11 +1346,23 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 									geneConversionAtTimePopnSweep(cTime + (ttau),0, 0, sweepSite, x);
 								}
 								else{
-									//recurrent adaptive mutation:
-									//node in pop zero's sweep group exits sweep
-									//fprintf(stderr,"recurrent mutation at time %f; freq=%f\n", cTime+(ttau),x);
-									//fprintf(stderr,"recurMut prob: %g; uA: %f, sweepPopnSizes[1]:%d; x:%f; tInc: %g; sizeRatio: %f\npopnSizes[0]: %d; popnSizes[1]: %d\n", pRecurMut,uA,sweepPopnSizes[1],x,tInc,sizeRatio,popnSizes[0],popnSizes[1]);
-									recurrentMutAtTime(cTime+(ttau),0, 1);
+									sum += pLeftRecb;
+									if ( r < sum / totRate){
+									        recombineToLeftPopnSweep(0, 0, x);
+									}
+									else{
+										sum += pLeftRecB;
+										if ( r < sum / totRate){
+										recombineToLeftPopnSweep(0, 1, x);
+										}
+										else{
+											//recurrent adaptive mutation:
+											//node in pop zero's sweep group exits sweep
+											//fprintf(stderr,"recurrent mutation at time %f; freq=%f\n", cTime+(ttau),x);
+											//fprintf(stderr,"recurMut prob: %g; uA: %f, sweepPopnSizes[1]:%d; x:%f; tInc: %g; sizeRatio: %f\npopnSizes[0]: %d; popnSizes[1]: %d\n", pRecurMut,uA,sweepPopnSizes[1],x,tInc,sizeRatio,popnSizes[0],popnSizes[1]);
+											recurrentMutAtTime(cTime+(ttau),0, 1);
+										}
+									}
 								}
 							}
 						}
@@ -1328,6 +1507,17 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 		return 666; //debuging
 }
 
+int recombineToLeftPopnSweep(int popn, int sp, double popnFreq){
+	rootedNode *aNode;
+
+	aNode = pickNodePopnSweep(popn, sp);
+	sweepPopnSizes[aNode->sweepPopn]--;
+
+	aNode->sweepPopn = (sp == 0) ? 1:0;
+	sweepPopnSizes[aNode->sweepPopn]++;
+	return 0;
+}
+
 /*geneConversionAtTimePopnSweep-- preforms gene conversion on
 an individual drawn from a popn and assigns parental
 	popn based on sweep site and frequency of popn / 
@@ -1461,6 +1651,7 @@ void dropMutations(){
 	//get time and set probs
 	coaltime = totalTimeInTree();
 	//printf("%f\n",coaltime);
+	//printf("%d\n",totNodeNumber);
 	tm=0;
 	for(i=0;i<totNodeNumber;i++){
 		//add Mutations
@@ -1684,6 +1875,10 @@ void mergePopns(int popnSrc, int popnDest){
 			
 		}
 	}
+	//set migration rates to zero
+	migMat[popnSrc][popnDest] = 0.0;
+	migMat[popnDest][popnSrc] = 0.0;
+	
 }
 
 void admixPopns(int popnSrc, int popnDest1, int popnDest2, double admixProp){
