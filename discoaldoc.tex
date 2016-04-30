@@ -56,7 +56,7 @@ download the zip'ed file. Unpack this as you would any zip file and to compile t
 
 \begin{verbatim}
 $ cd <PATH TO DISCOAL>
-$ make
+$ make discoal
 \end{verbatim}
 
 \texttt{discoal} should build on most systems without a problem. We have built it on numerous linux systems as
@@ -138,14 +138,18 @@ As an example, we can take our previous hard sweep command line and adjust it so
 $ ./discoal 3 2 100 -t 2 -r 2.4 -ws 0.05 -a 1000 -x 0.5 -f 0.1
 \end{verbatim}
 
+\subsection*{Simulating selective sweeps, beyond the sampled locus}
+Often we are interested in examining the effects of linked selection on a neutral locus, rather than examining the site of selection itself. To facilitate this \texttt{discoal} will perform simulations with sweeps where the sweep occurs at a specified genetic distance to the left of the locus sampled. This occurs if the user specifies the \texttt{-ls}, \texttt{-ld}, or \texttt{-ln} options corresponding to a stochastic selective sweep, a deterministic selective sweep, or a neutral fixation respectively. In this case the coalescent simulation is carried out according to the Braverman \emph{et al.} (1995) model, in which distance between the selected and neutral locus is scaled as the expected number of recombination events (i.e. $2Nr$). This is important to keep in mind for the user as recombination distances within the sampled locus with be in units of $4Nr$.
+
+   
 \section*{Priors on parameters}
 Sometimes when generating simulations one is interested in simulating over a range of parameter values. \texttt{discoal} allows uniform priors to be set on all of its parameters with the \texttt{-P} family of flags. It can generate priors on population size changes as well, but at present can only be used for up to two size changes.
 
 
 \section*{Further support}
-If you are having trouble compiling or running the software don't hesitate to contact me via email or phone. Also please please report all bugs that you might find. 
+If you are having trouble compiling or running the software don't hesitate to contact me via email or phone. Also please please report all bugs that you might find!
 
 
-\bibliography{../../doc/refs/texrefs}
+\bibliography{texrefs}
 
 \end{document}
