@@ -40,7 +40,7 @@ familiar, and indeed was meant to ``play nice'' with programs the user, or other
 for analyzing \texttt{ms} style output. \texttt{discoal} is not meant to take the place of \texttt{ms},
 indeed in comparison it is quite limited in what it can do, but instead is meant to add a few models
 not covered by other simulation programs. In particular, \texttt{discoal} can quickly generate samples 
-from models with single selective sweeps in the history of the sample along with stepwise population size
+from models with selective sweeps in the history of the sample along with stepwise population size
 changes. 
 
 \texttt{discoal} gets is name from the contraction of ``discrete'' and ``coalescent'', because it 
@@ -51,8 +51,7 @@ do so to increase the speed at which samples can be generated. This is particula
 recombination rates.  
 
 \section*{Download and Compile}
-The source code for \texttt{discoal} is available for download from \url{https://github.com/kern-lab} and
-download the zip'ed file. Unpack this as you would any zip file and to compile this you can use the following commands at a terminal:
+The source code for \texttt{discoal} is available for download from \url{https://github.com/kern-lab}. Unpack the archive as you would any zip file and to compile you can use the following commands at a terminal:
 
 \begin{verbatim}
 $ cd <PATH TO DISCOAL>
@@ -112,10 +111,30 @@ would specify $\gamma=2.4$ with a mean gene conversion tract length of 10bp.
 
 \section*{Population size changes}
 \texttt{discoal} can simulate an arbitrary number of step-wise, instantaneous population size changes. Each population size
-change in the sample history is set with a \texttt{-e} flag which specifies the time of the population size change and the ratio of the new population size to the current population size, $N_0$. At this point its worth noting that \texttt{discoal} measures time in units of $2N_0$ generations, rather that $4N_0$ as in \texttt{ms}. If you forget this point, don't worry it says as much in the usage line of the program if one runs \texttt{discoal} with no arguments. Multiple changes in population size can be specified by adding additional \texttt{-e} statements to the command line. By way of example, the following command line specifies a bottleneck population history where at time 0.5 the population crashes to 10\% of its initial size and then at time 1.2 it rebounds to 80\% of its initial size. 
+change in the sample history is set with a \texttt{-en} flag which specifies the time of the population size change, the ID of the population to change (zero indexed), and the ratio of the new population size to the current population size, $N_0$. At this point its worth noting that \texttt{discoal} measures time in units of $2N_0$ generations, rather that $4N_0$ as in \texttt{ms}. If you forget this point, don't worry it says as much in the usage line of the program if one runs \texttt{discoal} with no arguments. Multiple changes in population size can be specified by adding additional \texttt{-en} statements to the command line. By way of example, the following command line specifies a bottleneck population history where at time 0.5 the population crashes to 10\% of its initial size and then at time 1.2 it rebounds to 80\% of its initial size. 
 \begin{verbatim}
-$ ./discoal 3 2 100 -t 2 -r 2.4 -e 0.5 0.1 -e 1.2 0.8
+$ ./discoal 3 2 100 -t 2 -r 2.4 -en 0.5 0 0.1 -en 1.2 0 0.8
 \end{verbatim}
+
+\section*{Multiple populations}
+\texttt{discoal} can simulate the coalescent for multiple populations under models with both continuous gene flow and pulse admixture events. The \texttt{-p} flag establishes the number of populations and the respective sample sizes from each population. Note that the sample size of a population can be zero, indicating no sampled individuals came from that population. The \texttt{-M} flag sets all migration rates between populations to a specific value (scaled in units of $4N_0$). The \texttt{-m} flag allows individual migration rates between populations to be set separately. Here is an example of a 3 population island model where 2 alleles have been sampled from each population and where there is symmetric migration at rate $4N_0m = 0.05$
+\begin{verbatim}
+$ ./discoal 6 2 100 -t 2 -r 2.4 -p 3 2 2 2 -M 0.05
+\end{verbatim}
+
+Population splitting events (forward in time) can use modeled using the \texttt{-ed} flag. As above, its important to note that \texttt{discoal} uses zero indexing for populations. Let's imagine we have three populations that diverge from one another such that two are sister taxa and one is an outgroup. Call $p_0$ the $0th$ population, then our tree might be (($p_0$,$p_1$),$p_2$). We can specify this topology and its associated divergence times (1.0 and 5.0) as
+\begin{verbatim}
+$ ./discoal 6 2 100 -t 2 -r 2.4 -p 3 2 2 2 -ed 1.0 0 1 -ed 5.0 1 2
+\end{verbatim}
+Note the command above doesn't have migration and is thus pure isolation. You can add that back in using the \texttt{-m} or \texttt{-M} flag.
+We might want to imagine that at there was an admixture between $p_0$ and $p_2$ recently, say $0.02$ time units in the past, and that $15\%$ of individuals $p_0$ came from $p_2$ at that time. We could add this to our model using the \texttt{-ea} flag
+
+\begin{verbatim}
+$ ./discoal 6 2 100 -t 2 -r 2.4 -p 3 2 2 2 -ed 1.0 0 1 -ed 5.0 1 2 -ea 0.02 0 1 0 0.15
+\end{verbatim}
+The \texttt{-ea} flag takes as its arguments a time for the event, the ID of the admixed population, the IDs of the two founding populations (one can be the same as the admixed population), and the proportion of ancestry that comes from the first founding population ID listed. 
+
+One important note about using multiple population together with selection: \texttt{discoal} only models selective sweeps in population zero ($p_0$). When the simulation enters into a sweep phase we do not allow for migration. If we were to, we would need to model the allele trajectory in two or more populations concurrently, and we have not implemented this possibility. Also, we have not yet implemented an event that would allow migration rates to change over time, this is planned and should be available soon. 
 
 \section*{Selection}
 \texttt{discoal} can simulate samples with single selective sweeps in the history of a sample, requiring the site under selection to be within the bounds of the modeled locus. This is done using the now conventional technique of altering the genealogy of a sample to be conditional upon the trajectory of an allele moving through the population to eventual fixation (forward in time) \cite{Bravermanetal1995,Kim:2002wd}. \texttt{discoal} can simulate both deterministic sweep trajectories \cite{Bravermanetal1995,Kim:2002wd} and stochastic trajectories \cite{Coop:2004pj,Przeworskietal2005}. In addition coalescent simulations can be generated conditional upon the fixation of a neutral mutation in the population \cite{Tajima:1990fx}. All of these cases are easily handled by \texttt{discoal} using the group of \texttt{-w} flags. \texttt{-wd} generates deterministic selective sweeps, \texttt{-ws} stochastic selective sweeps, and \texttt{-wn} performs neutral fixations. Each \texttt{-w} flag takes one parameter, $\tau$ the time of fixation looking backward in time. Thus if $\tau = 0$ the fixation of the focal site has occurred immediately prior to sampling. Two other parameters are necessary when specifying sweeps. 1) the location of the site that has fixed using the \texttt{-x} flag. \texttt{-x} for convenience takes a floating point number between 0 and 1, thus translating the discrete sites modeled to the real line (defaults to $0.5$). 2) The strength of selection given as $\alpha=2Ns$ specified via the \texttt{-a} flag.
@@ -127,10 +146,10 @@ $ ./discoal 3 2 100 -t 2 -r 2.4 -ws 0.05 -a 1000 -x 0.5
 
 This can also be combined with  populations size changes to generate samples with stepwise constant population size and selective sweeps
 \begin{verbatim}
-$ ./discoal 3 2 100 -t 2 -r 2.4 -ws 0.05 -a 1000 -x 0.5 -e 0.5 0.1 -e 1.2 0.8
+$ ./discoal 3 2 100 -t 2 -r 2.4 -ws 0.05 -a 1000 -x 0.5 -en 0.5 0 0.1 -en 1.2 0 0.8
 \end{verbatim}
 
-Another feature of \texttt{discoal} is its ability to generate what are now being called soft selective sweeps \cite{HermissonPennings2005,Przeworskietal2005}. To generate sweeps from standing variation the user can specify $f_0$, the frequency at which a previously neutral allele became beneficial. This is done using \texttt{-f} flag. For such situations, conditional allele frequency trajectories for the sweep site are generated as per Przeworski \emph{et al.}. If one is instead interested in a soft sweep model with recurrent mutation towards a beneficial allele the \texttt{-uA} flag generates sweeps where one of the possible moves is a change in selective class through mutation for alleles not originally linked to the beneficial mutation \cite{PenningsHermisson2006}. 
+Another feature of \texttt{discoal} is its ability to generate what are now being called soft selective sweeps \cite{HermissonPennings2005,Przeworskietal2005}. To generate sweeps from standing variation the user can specify $f_0$, the frequency at which a previously neutral allele became beneficial. This is done using \texttt{-f} flag. For such situations, conditional allele frequency trajectories for the sweep site are generated as per \cite{Przeworskietal2005}. If one is instead interested in a soft sweep model with recurrent mutation towards a beneficial allele the \texttt{-uA} flag generates sweeps where one of the possible moves is a change in selective class through mutation for alleles not originally linked to the beneficial mutation \cite{PenningsHermisson2006}. 
 
 As an example, we can take our previous hard sweep command line and adjust it so that the mutation drifts until frequency 0.1 where it then becomes beneficial
 
@@ -139,7 +158,7 @@ $ ./discoal 3 2 100 -t 2 -r 2.4 -ws 0.05 -a 1000 -x 0.5 -f 0.1
 \end{verbatim}
 
 \subsection*{Simulating selective sweeps, beyond the sampled locus}
-Often we are interested in examining the effects of linked selection on a neutral locus, rather than examining the site of selection itself. To facilitate this \texttt{discoal} will perform simulations with sweeps where the sweep occurs at a specified genetic distance to the left of the locus sampled. This occurs if the user specifies the \texttt{-ls}, \texttt{-ld}, or \texttt{-ln} options corresponding to a stochastic selective sweep, a deterministic selective sweep, or a neutral fixation respectively. In this case the coalescent simulation is carried out according to the Braverman \emph{et al.} (1995) model, in which distance between the selected and neutral locus is scaled as the expected number of recombination events (i.e. $2Nr$). This is important to keep in mind for the user as recombination distances within the sampled locus with be in units of $4Nr$.
+Often we are interested in examining the effects of linked selection on a neutral locus, rather than examining the site of selection itself. To facilitate this \texttt{discoal} will perform simulations with sweeps where the sweep occurs at a specified genetic distance to the left of the locus sampled as well as the time of the sweep. This occurs if the user specifies the \texttt{-ls}, \texttt{-ld}, or \texttt{-ln} options corresponding to a stochastic selective sweep, a deterministic selective sweep, or a neutral fixation respectively. In this case the coalescent simulation is carried out according to the Braverman \emph{et al.} (1995) model, in which distance between the selected and neutral locus is scaled as the expected number of recombination events (i.e. $2Nr$). This is important to keep in mind for the user as recombination distances within the sampled locus will be in units of $4Nr$.
 
    
 \section*{Priors on parameters}
