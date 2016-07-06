@@ -43,7 +43,7 @@ not covered by other simulation programs. In particular, \texttt{discoal} can qu
 from models with selective sweeps in the history of the sample along with stepwise population size
 changes. 
 
-\texttt{discoal} gets is name from the contraction of ``discrete'' and ``coalescent'', because it 
+\texttt{discoal} gets its name from the contraction of ``discrete'' and ``coalescent'', because it 
 handles recombination along the chromosome, and its associated programatic bookkeeping, by modeling 
 a discrete number of ancestral sites. This leads to a trade off favoring speed over memory usage. For larger samples
 and sites modeled, do not be surprised if \texttt{discoal} eats up a lot of available RAM, but it will
@@ -58,18 +58,18 @@ $ cd <PATH TO DISCOAL>
 $ make discoal
 \end{verbatim}
 
-\texttt{discoal} should build on most systems without a problem. We have built it on numerous linux systems as
+\texttt{discoal} should build on most unix-like systems without a problem. We have built it on numerous linux systems as
 well as OS X machines.  
 
 \section*{Basic usage}
 As we said above, using \texttt{discoal} is very familiar for people used to \texttt{ms} style commands. At its
 most basic a \texttt{discoal} command line looks like the following
 \begin{verbatim}
-$ ./discoal sampleSize sampleNumber nSites -t theta
+$ ./discoal sampleSize numReplicates nSites -t theta
 \end{verbatim}
-Here there are four arguments we are passing to \texttt{discoal}: sampleSize -- the size of each sample, sampleNumber -- the
+Here there are four arguments we are passing to \texttt{discoal}: sampleSize -- the size of each sample, numReplicates -- the
 number of independent samples to generate, nSites-- the number of sites in the sequence to be modeled, and then following the \texttt{-t}
-flag $\theta = 4N_0u$, the mutation rate where $N_0$ is the population size currently and $u$ is the mutation rate. This is identical to 
+flag $\theta = 4N_0u$, the population mutation rate where $N_0$ is the population size currently and $u$ is the mutation rate per generation for the entire locus. This is identical to 
 the command lines handed to \texttt{ms} with the addition of the nSites parameter. A representative run with its associated output might look like the following:
 \begin{verbatim}
 $ ./discoal 3 2 100 -t 2
@@ -94,7 +94,7 @@ Again, we are following Hudson's lead here with output formatted just as \texttt
 used for \texttt{ms} output should work for \texttt{discoal} output as well. One note about the seeding of the random number generator (seeds are given
 on the second line of the output)-- seeds are taken from \texttt{/dev/urandom}, a special file on most $\star$nix systems that creates pseudorandom numbers
 from collecting thermal noise from the devices on the machine. This makes \texttt{discoal} suitable out of the box for large scale cluster computing 
-where multiple jobs will be launch simultaneously without having to worry about random number generator seeds.
+where multiple jobs will be launched simultaneously without having to worry about random number generator seeds.
 
 \section*{Recombination and Gene Conversion}
 Recombination (crossing over) is handled by \texttt{discoal} by adding the \texttt{-r} flag. \texttt{-r} takes one parameter, $\rho=4Nr$ the population recombination rate where $r$ is the probability of a cross over per basepair of sequence being modeled and $N$ is the current population size. Recombination can occur between any of the discrete nSites being modeled. A representative call with recombination would be:
@@ -111,7 +111,7 @@ would specify $\gamma=2.4$ with a mean gene conversion tract length of 10bp.
 
 \section*{Population size changes}
 \texttt{discoal} can simulate an arbitrary number of step-wise, instantaneous population size changes. Each population size
-change in the sample history is set with a \texttt{-en} flag which specifies the time of the population size change, the ID of the population to change (zero indexed), and the ratio of the new population size to the current population size, $N_0$. At this point its worth noting that \texttt{discoal} measures time in units of $2N_0$ generations, rather that $4N_0$ as in \texttt{ms}. If you forget this point, don't worry it says as much in the usage line of the program if one runs \texttt{discoal} with no arguments. Multiple changes in population size can be specified by adding additional \texttt{-en} statements to the command line. By way of example, the following command line specifies a bottleneck population history where at time 0.5 the population crashes to 10\% of its initial size and then at time 1.2 it rebounds to 80\% of its initial size. 
+change in the sample history is set with a \texttt{-en} flag which specifies the time of the population size change, the ID of the population to change (zero indexed), and the ratio of the new population size to the current population size, $N_0$. \texttt{discoal} measures time in units of $4N_0$ generations, as in \texttt{ms}, thus existing \texttt{ms} commands specifying instantaneous population size change can used directly in \texttt{discoal}. Multiple changes in population size can be specified by adding additional \texttt{-en} statements to the command line. By way of example, the following command line specifies a bottleneck population history where at time 0.5 the population crashes to 10\% of its initial size and then at time 1.2 it rebounds to 80\% of its initial size. 
 \begin{verbatim}
 $ ./discoal 3 2 100 -t 2 -r 2.4 -en 0.5 0 0.1 -en 1.2 0 0.8
 \end{verbatim}
@@ -122,7 +122,7 @@ $ ./discoal 3 2 100 -t 2 -r 2.4 -en 0.5 0 0.1 -en 1.2 0 0.8
 $ ./discoal 6 2 100 -t 2 -r 2.4 -p 3 2 2 2 -M 0.05
 \end{verbatim}
 
-Population splitting events (forward in time) can use modeled using the \texttt{-ed} flag. As above, its important to note that \texttt{discoal} uses zero indexing for populations. Let's imagine we have three populations that diverge from one another such that two are sister taxa and one is an outgroup. Call $p_0$ the $0th$ population, then our tree might be (($p_0$,$p_1$),$p_2$). We can specify this topology and its associated divergence times (1.0 and 5.0) as
+Population splitting events (forward in time) can be modeled using the \texttt{-ed} flag. As above, it is important to note that \texttt{discoal} uses zero indexing for populations. Let's imagine we have three populations that diverge from one another such that two are sister taxa and one is an outgroup. Call $p_0$ the $0th$ population, then our tree might be (($p_0$,$p_1$),$p_2$). We can specify this topology and its associated divergence times (1.0 and 5.0) as
 \begin{verbatim}
 $ ./discoal 6 2 100 -t 2 -r 2.4 -p 3 2 2 2 -ed 1.0 0 1 -ed 5.0 1 2
 \end{verbatim}
@@ -137,9 +137,9 @@ The \texttt{-ea} flag takes as its arguments a time for the event, the ID of the
 One important note about using multiple population together with selection: \texttt{discoal} only models selective sweeps in population zero ($p_0$). When the simulation enters into a sweep phase we do not allow for migration. If we were to, we would need to model the allele trajectory in two or more populations concurrently, and we have not implemented this possibility. Also, we have not yet implemented an event that would allow migration rates to change over time, this is planned and should be available soon. 
 
 \section*{Selection}
-\texttt{discoal} can simulate samples with single selective sweeps in the history of a sample, requiring the site under selection to be within the bounds of the modeled locus. This is done using the now conventional technique of altering the genealogy of a sample to be conditional upon the trajectory of an allele moving through the population to eventual fixation (forward in time) \cite{Bravermanetal1995,Kim:2002wd}. \texttt{discoal} can simulate both deterministic sweep trajectories \cite{Bravermanetal1995,Kim:2002wd} and stochastic trajectories \cite{Coop:2004pj,Przeworskietal2005}. In addition coalescent simulations can be generated conditional upon the fixation of a neutral mutation in the population \cite{Tajima:1990fx}. All of these cases are easily handled by \texttt{discoal} using the group of \texttt{-w} flags. \texttt{-wd} generates deterministic selective sweeps, \texttt{-ws} stochastic selective sweeps, and \texttt{-wn} performs neutral fixations. Each \texttt{-w} flag takes one parameter, $\tau$ the time of fixation looking backward in time. Thus if $\tau = 0$ the fixation of the focal site has occurred immediately prior to sampling. Two other parameters are necessary when specifying sweeps. 1) the location of the site that has fixed using the \texttt{-x} flag. \texttt{-x} for convenience takes a floating point number between 0 and 1, thus translating the discrete sites modeled to the real line (defaults to $0.5$). 2) The strength of selection given as $\alpha=2Ns$ specified via the \texttt{-a} flag.
+\texttt{discoal} can simulate samples with single selective sweeps in the history of a sample, requiring the site under selection to be within the bounds of the modeled locus. This is done using the now conventional technique of altering the genealogy of a sample to be conditional upon the trajectory of an allele moving through the population to eventual fixation (forward in time) \cite{Bravermanetal1995,Kim:2002wd}. \texttt{discoal} can simulate both deterministic sweep trajectories \cite{Bravermanetal1995,Kim:2002wd} and stochastic trajectories \cite{Coop:2004pj,Przeworskietal2005}. In addition coalescent simulations can be generated conditional upon the fixation of a neutral mutation in the population \cite{Tajima:1990fx}. All of these cases are easily handled by \texttt{discoal} using the group of \texttt{-w} flags. \texttt{-wd} generates deterministic selective sweeps, \texttt{-ws} stochastic selective sweeps, and \texttt{-wn} performs neutral fixations. Each \texttt{-w} flag takes one parameter, $\tau$ the time of fixation looking backward in time. Thus if $\tau = 0$ the fixation of the focal site has occurred immediately prior to sampling; if $\tau > 0$ the fixation has occured tau units of $4N_0$ generations in the past. Two other parameters are necessary when specifying sweeps. 1) the location of the site that has fixed using the \texttt{-x} flag. \texttt{-x} for convenience takes a floating point number between 0 and 1, thus translating the discrete sites modeled to the real line (defaults to $0.5$). 2) The strength of selection given as $\alpha=2Ns$ specified via the \texttt{-a} flag.
 
- Building on our previous example then, lets generate a sample with a single selective sweep at position 50 (the middle) in our locus with $\alpha=1000$ and $\tau=0.05$ using stochastic sweep trajectories
+ Building on our previous example then, let's generate a sample with a single selective sweep at position 50 (the middle) in our locus with $\alpha=1000$ and $\tau=0.05$ using stochastic sweep trajectories
 \begin{verbatim}
 $ ./discoal 3 2 100 -t 2 -r 2.4 -ws 0.05 -a 1000 -x 0.5
 \end{verbatim}
@@ -158,15 +158,44 @@ $ ./discoal 3 2 100 -t 2 -r 2.4 -ws 0.05 -a 1000 -x 0.5 -f 0.1
 \end{verbatim}
 
 \subsection*{Simulating selective sweeps, beyond the sampled locus}
-Often we are interested in examining the effects of linked selection on a neutral locus, rather than examining the site of selection itself. To facilitate this \texttt{discoal} will perform simulations with sweeps where the sweep occurs at a specified genetic distance to the left of the locus sampled as well as the time of the sweep. This occurs if the user specifies the \texttt{-ls}, \texttt{-ld}, or \texttt{-ln} options corresponding to a stochastic selective sweep, a deterministic selective sweep, or a neutral fixation respectively. In this case the coalescent simulation is carried out according to the Braverman \emph{et al.} (1995) model, in which distance between the selected and neutral locus is scaled as the expected number of recombination events (i.e. $2Nr$). This is important to keep in mind for the user as recombination distances within the sampled locus will be in units of $4Nr$.
+Often we are interested in examining the effects of linked selection on a neutral locus, rather than examining the site of selection itself. To facilitate this \texttt{discoal} will perform simulations with sweeps where the sweep occurs at a specified genetic distance to the left of the locus sampled as well as the time of the sweep. This occurs if the user specifies the \texttt{-ls}, \texttt{-ld}, or \texttt{-ln} options corresponding to a stochastic selective sweep, a deterministic selective sweep, or a neutral fixation respectively. In this case the coalescent simulation is carried out according to the Braverman \emph{et al.} (1995) model, in which distance between the selected and neutral locus is scaled in units of $4Nr$.
 
    
 \section*{Priors on parameters}
-Sometimes when generating simulations one is interested in simulating over a range of parameter values. \texttt{discoal} allows uniform priors to be set on all of its parameters with the \texttt{-P} family of flags. It can generate priors on population size changes as well, but at present can only be used for up to two size changes.
+Sometimes when generating simulations one is interested in simulating over a range of parameter values. \texttt{discoal} allows uniform priors to be set on all of its parameters with the \texttt{-P} family of flags. For each \texttt{-P} option the user specifies a lower bound and an upper bound for the parameter of interest. The exception to this are the \texttt{-Pe1} and \texttt{-Pe2} flags which specify a prior on population size changes and their associated times. Table 1. shown below gives the usage for each
+
+
+\begin{table}[hb]
+\centering
+\caption{Command line options for specifying parameter prior distributions}
+\label{priortable}
+\begin{tabular}{|l|l|l|l|}
+\hline
+-Pt  & low  & high       & uniform distribution of $\theta$ drawn from the range [low, high]     \\ \hline
+-Pr  & low  & high       & uniform distribution of $\rho$ (recombination rate for the entire locus)     \\ \hline
+-Pre & mean & upperBound & exponential distribution of $\rho$, truncated at upperbound \\ \hline
+-Pa  & low  & high       & uniform distribution of $\alpha$ (selection coefficient)              \\ \hline
+-Pu  & low  & high       & uniform distribution of $\tau$  (time since fixation)                  \\ \hline
+-PuA & low  & high       & uniform distribution of uA- recurrent adaptive mutation rate          \\ \hline
+-Px  & low  & high       & uniform distribution of sweep position                                \\ \hline
+-Pf  & low  & high       & uniform distribution of $f_0$  (initial selected frequency)            \\ \hline
+\end{tabular}
+\end{table}
+
+\section*{Some caveats}
+
+\begin{itemize}
+
+	\item Currently \texttt{discoal} uses static memory allocations for vectors that encode ancestry information for nodes during simulation. This means that we have hard coded a limit on the number of sites allowed to be simulated to 220020. If the user wishes to simulate larger regions they will need to change the \texttt{MAXSITES} define in \texttt{discoal.h} and recompile. 
+
+
+	\item \texttt{discoal} models sweep trajectories during population size changes with a stochastic jump process. If you ask for deterministic sweeps with population size changes it will throw an error.
+
+\end{itemize}
 
 
 \section*{Further support}
-If you are having trouble compiling or running the software don't hesitate to contact me via email or phone. Also please please report all bugs that you might find!
+If you are having trouble compiling or running the software don't hesitate to contact me via email (kern@biology.rutgers.edu)
 
 
 \bibliography{texrefs}
