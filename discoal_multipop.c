@@ -578,7 +578,7 @@ void getParameters(int argc,const char **argv){
 
 
 void usage(){
-	fprintf(stderr,"usage: discoal_multipop sampleSize numReplicates nSites -ws tau\n");
+	fprintf(stderr,"usage: discoal sampleSize numReplicates nSites -ws tau\n");
 	fprintf(stderr,"parameters: \n");
 
 	fprintf(stderr,"\t -t theta \n");
@@ -615,7 +615,7 @@ void usage(){
 	fprintf(stderr,"\t -Pf low high (prior on F0; sweep models only)\n");
 	fprintf(stderr,"\t -Pe1 lowTime highTime lowSize highSize (priors on first demographic move time and size)\n");
 	fprintf(stderr,"\t -Pe2 lowTime highTime lowSize highSize (priors on second demographic move time and size)\n");
-	fprintf(stderr,"\t -U time (only record mutations back to specified time)\n");
+	//fprintf(stderr,"\t -U time (only record mutations back to specified time)\n");
 	fprintf(stderr,"\t -R rhhRate (recurrent hitch hiking mode at the locus; rhh is rate per 2N individuals / generation)\n");
 	fprintf(stderr,"\t -L rhhRate (recurrent hitch hiking mode to the side of locus; leftRho is ~Unif(0,4Ns); rhh is rate per 2N individuals / generation)\n");
 	fprintf(stderr,"\t -T (tree output mode)\n");
