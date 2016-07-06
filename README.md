@@ -7,7 +7,7 @@ To install discoal, clone this repository, cd into the directory, then assuming 
 By all means read the documentation in `discoaldoc.pdf`, but for the impatient, typing `./discoal` will bring up a verbose usage statement:
 ```
 $ ./discoal
-usage: discoal_multipop sampleSize sampleNumber nSites -ws tau
+usage: discoal sampleSize numReplicates nSites -ws tau
 parameters:
 	 -t theta
 	 -r rho (=zero if not specified)
@@ -20,17 +20,19 @@ parameters:
 	 -ws tau (sweep happend tau generations ago- stochastic sweep)
 	 -wd tau (sweep happend tau generations ago- deterministic sweep)
 	 -wn tau (sweep happend tau generations ago- neutral sweep)
-	 -ls tau leftRho (stochastic sweep some genetic distance to the left of the simulated window--specified by leftRho)
-		 similarly, ld and ln simulate deterministic and neutral sweeps to the left of the window, respectively
+	 -ls tau leftRho (stochastic sweep some genetic distance to the left of the simulated window--specified by leftRho=4Nr)
+		 similarly, ld and ls simulate deterministic and neutral sweeps to the left of the window, respectively
 	 -f first frequency at which selection acts on allele (F0; sweep models only)
 	 -uA rate at which adaptive mutation recurs during the sweep phase (sweep models only)
+	 -N sweepEffectivePopnSize (sweep models only)
 	 -a alpha (=2Ns)
 	 -x sweepSite (0-1)
+	 -i dt (sweep time increment scalar; default 400 -> 1/400N)
 	 -M migRate (sets all rates to migRate)
 	 -m popnID1 popnID2 migRate (sets migRate from popnID1 to popnID2)
 	 -Pt low high (prior on theta)
 	 -Pr low high (prior on rho)
-	 -Pre mean uppreBound (prior on rho -- exponentially distributed but truncated at an upper bound)
+	 -Pre mean upperBound (prior on rho -- exponentially distributed but truncated at an upper bound)
 	 -Pa low high (prior on alpha)
 	 -Pu low high (prior on tau; sweep models only)
 	 -PuA low high (prior on uA; sweep models only)
@@ -38,4 +40,8 @@ parameters:
 	 -Pf low high (prior on F0; sweep models only)
 	 -Pe1 lowTime highTime lowSize highSize (priors on first demographic move time and size)
 	 -Pe2 lowTime highTime lowSize highSize (priors on second demographic move time and size)
-	 Note: all time units are 2N_0 generations!!! ```
+	 -R rhhRate (recurrent hitch hiking mode at the locus; rhh is rate per 2N individuals / generation)
+	 -L rhhRate (recurrent hitch hiking mode to the side of locus; leftRho is ~Unif(0,4Ns); rhh is rate per 2N individuals / generation)
+	 -T (tree output mode)
+	 -d seed1 seed2 (set random number generator seeds)
+```
