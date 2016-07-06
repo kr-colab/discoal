@@ -621,6 +621,5 @@ void usage(){
 	fprintf(stderr,"\t -T (tree output mode)\n");
 	fprintf(stderr,"\t -d seed1 seed2 (set random number generator seeds)\n");
 	
-	//fprintf(stderr,"\t Note: all time units are 2N_0 generations!!!\n");
 	exit(1);
 }
