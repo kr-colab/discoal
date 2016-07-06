@@ -160,6 +160,13 @@ $ ./discoal 3 2 100 -t 2 -r 2.4 -ws 0.05 -a 1000 -x 0.5 -f 0.1
 \subsection*{Simulating selective sweeps, beyond the sampled locus}
 Often we are interested in examining the effects of linked selection on a neutral locus, rather than examining the site of selection itself. To facilitate this \texttt{discoal} will perform simulations with sweeps where the sweep occurs at a specified genetic distance to the left of the locus sampled as well as the time of the sweep. This occurs if the user specifies the \texttt{-ls}, \texttt{-ld}, or \texttt{-ln} options corresponding to a stochastic selective sweep, a deterministic selective sweep, or a neutral fixation respectively. In this case the coalescent simulation is carried out according to the Braverman \emph{et al.} (1995) model, in which distance between the selected and neutral locus is scaled in units of $4Nr$.
 
+\subsection*{Simulating recurrent selective sweep models}
+\texttt{discoal} can coalescent samples that have undergone multiple selective sweeps in their history under a model of recurrent hitch hiking \cite{Bravermanetal1995}. The use can specify either the \texttt{-R} or \texttt{-L} flags which simulate recurrent hitch hiking either at the locus (\texttt{-R}) or to the side of the locus (\texttt{-L}) at a rate specified per 2N individuals per generation.
+
+\subsection*{More options with selection}
+Because of the way the structured coalescent proceeds during a sweep, time is tracking in small increments ($\delta t$) during a sweep. Throughout the literature on coalescent simulations with sweeps the actual value of $\delta t$ has varied considerably. We have given the user the option to change $\delta t$ as a function of a scalar of population size. By default $\delta t = 1/\sigma N$ with $\sigma=400$. The user can specify another value for $\sigma$ using the \texttt{-i} flag. Higher values of sigma lead to longer run times of the simulations. In our hands we have found very little difference between simulations run with $\sigma$ in the range $(4,400)$.
+
+Again due to scaling of time during the sweep phase of the simulation, there is a notion of an effective population size during the sweep that is separate from the other dynamics of the coalescent simulation (i.e. the $N$ in the $\delta t$ calculations above). We have chosen to allow the user to varying this sweep effective population size using the \texttt{-N} flag whose default value is $10^6$. Again in practice we have seen minimal differences between runs with different sweep effective population sizes. 
    
 \section*{Priors on parameters}
 Sometimes when generating simulations one is interested in simulating over a range of parameter values. \texttt{discoal} allows uniform priors to be set on all of its parameters with the \texttt{-P} family of flags. For each \texttt{-P} option the user specifies a lower bound and an upper bound for the parameter of interest. The exception to this are the \texttt{-Pe1} and \texttt{-Pe2} flags which specify a prior on population size changes and their associated times. Table 1. shown below gives the usage for each
@@ -181,6 +188,25 @@ Sometimes when generating simulations one is interested in simulating over a ran
 -Pf  & low  & high       & uniform distribution of $f_0$  (initial selected frequency)            \\ \hline
 \end{tabular}
 \end{table}
+
+\section*{Outputting trees}
+Rather than output haplotype samples from the coalescent, \texttt{discoal} can also output the marginal trees associated with the ARG that has been simulated along the sequence. This can be done using the \texttt{-T} option. Each marginal tree is Newick formatted on an individual line with a number in brackets specifying the number of sites that have that tree. For instance:
+\begin{verbatim}
+	$ ./discoal 3 1 10 -t 1 -r 5 -T
+	./discoal 3 1 10 -t 1 -r 5 -T
+	1491027497 1579365069
+
+	//
+	[1](1:2.437097,(2:1.727308,0:1.727308):0.709789);
+	[1]((0:0.633478,1:0.633478):1.191596,2:1.825074);
+	[1](2:1.953495,(0:0.761898,1:0.761898):1.191596);
+	[2](2:1.889839,(0:0.698243,1:0.698243):1.191596);
+	[1]((0:1.692594,1:1.692594):1.191596,2:2.884190);
+	[1]((0:2.655055,1:2.655055):1.191596,2:3.846651);
+	[3](0:0.210377,(2:0.177475,1:0.177475):0.032902);
+\end{verbatim}
+Here there were seven marginal trees produced in the ARG. Each of the first three marginal trees are only for a single site, where as the the fourth tree pertains to two sites. Individual samples are proceeded by `//' as before.
+
 
 \section*{Some caveats}
 

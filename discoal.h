@@ -9,14 +9,13 @@
 /* like that                                                                  */
 
 #define MAXNODES 20000000
-#define MAXSITES 110020
+#define MAXSITES 220020
 #define SMALLCHUNKS 100000
 #define MAXBREAKS 1000000
-#define MAXMUTS 100000
+#define MAXMUTS 40000
 #define MAXTIME 100000.0
 #define MAXPOPS 6
-//#define EFFECTIVE_POPN_SIZE 1000000
-#define EFFECTIVE_POPN_SIZE 2226458
+
 #define MAX(a, b)  (((a) > (b)) ? (a) : (b))
 #define MIN(a, b)  (((a) > (b)) ? (b) : (a))
 #define MAXEVENTS 100
@@ -112,10 +111,20 @@ double gammaCoRatioMode, gammaCoRatio;
 double pThetaUp, pThetaLow,pRhoMean,pRhoUp,pRhoLow,pAlphaUp,pAlphaLow,pTauUp,pTauLow,pXUp,pXLow,pF0Up,pF0Low,pUALow,pUAUp;
 double pE2TLow,pE1TLow, pE2THigh, pE1THigh, pE1SLow, pE1SHigh, pE2SLow,pE2SHigh;
 double migMat[MAXPOPS][MAXPOPS], migMatConst[MAXPOPS][MAXPOPS];
+double recurSweepRate;
+
+int EFFECTIVE_POPN_SIZE;
+
 
 struct event events[MAXEVENTS];
 
 int lSpot, rSpot, condRecMode;
 int condRecMet;
+int activeSweepFlag;
+int recurSweepMode;
+
+double deltaTMod;
+int treeOutputMode;
+
 
 #endif

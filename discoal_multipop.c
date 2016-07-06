@@ -24,28 +24,29 @@
 
 
 int locusNumber; 
+int leftRhoFlag=0;
 int untilMode = 0;
 const char *fileName;
 double uTime;
 double *currentSize;
+long seed1, seed2;
 
 
 void getParameters(int argc,const char **argv);
 void usage();
 
 int main(int argc, const char * argv[]){
-	int i,j,activeSweepFlag, totalSimCount;
+	int i,j,k, totalSimCount;
+	float tempSite;
+	int lastBreak;
 	double nextTime, currentFreq;
-	long seed1, seed2;
+	
 	
 	
 	getParameters(argc,argv);
 	double N = EFFECTIVE_POPN_SIZE; // effective population size
-	
-	seed1 = (long) (devrand() % 2147483399);
-	seed2 = (long) (devrand() % 2147483399);
 	setall(seed1, seed2 );
-	
+
 	//Hudson style header
 	for(i=0;i<argc;i++)printf("%s ",argv[i]);
 	printf("\n%ld %ld\n", seed1, seed2);
@@ -58,6 +59,7 @@ int main(int argc, const char * argv[]){
 		currentTime=0;
 		nextTime=999;
 		currentSize[0]=1.0;
+		currentFreq = 1.0 - (1.0 / (2.0 * N * currentSize[0])); //just to initialize the value
 		initialize();
 		j=0;
 		activeSweepFlag = 0;
@@ -77,15 +79,28 @@ int main(int argc, const char * argv[]){
 				//for(i=0;i<npops;i++)
 				//	for(j=0;j<npops;j++) printf("%f\n",migMat[i][j]);
 				if(activeSweepFlag == 0){
-					currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+					if(recurSweepMode ==0){
+						currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+					}
 				}
 				else{
-					currentTime = sweepPhaseEventsGeneralPopNumber(&breakPoints[0], currentTime, nextTime, sweepSite, \
-						 currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
-					if (currentTime < nextTime)
-                                                currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+					if(recurSweepMode ==0){
+						currentTime = sweepPhaseEventsGeneralPopNumber(&breakPoints[0], currentTime, nextTime, sweepSite, \
+					 		currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+                                               		currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = sweepPhaseEventsGeneralPopNumber(&breakPoints[0], currentTime, nextTime, sweepSite, \
+					 		currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+					}
 				}
-			//	printf("pn0:%d pn1:%d alleleNumber: %d sp1: %d sp2: %d \n", popnSizes[0],popnSizes[1], alleleNumber,sweepPopnSizes[1],\
+			//	printf("pn0:%d pn1:%d alleleNumber: %d sp1: %d sp2: %d \n", popnSizes[0],popnSizes[1], alleleNumber,sweepPopnSizes[1],
 			//							sweepPopnSizes[0]);
 				break;
 				case 's':
@@ -97,47 +112,64 @@ int main(int argc, const char * argv[]){
 				currentTime = sweepPhaseEventsGeneralPopNumber(&breakPoints[0], currentTime, nextTime, sweepSite, \
 					 currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
 			//	printf("currentFreqAfter: %f alleleNumber:%d\n",currentFreq,alleleNumber);
-			//	printf("pn0:%d pn1:%d alleleNumber: %d sp1: %d sp2: %d \n", popnSizes[0],popnSizes[1], alleleNumber,sweepPopnSizes[1],\
+			//	printf("pn0:%d pn1:%d alleleNumber: %d sp1: %d sp2: %d \n", popnSizes[0],popnSizes[1], alleleNumber,sweepPopnSizes[1],
 			//				sweepPopnSizes[0]);
 				if (currentTime < nextTime)
                                         currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
 						
 				break;
-				case 'p':
+				case 'p': //merging populations
 				currentTime = events[j].time;
 				//printf("here at P flag time=%f\n",currentTime);
 				mergePopns(events[j].popID, events[j].popID2);
 
 				if(activeSweepFlag == 0){
-			//		printf("pn0:%d pn1:%d alleleNumber: %d sp1: %d sp2: %d \n", popnSizes[0],popnSizes[1], alleleNumber,sweepPopnSizes[1],\
-			//			sweepPopnSizes[0]);
-					currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
-				//		printf("pn0:%d pn1:%d alleleNumber: %d sp1: %d sp2: %d \n", popnSizes[0],popnSizes[1], alleleNumber,sweepPopnSizes[1],\
-				//			sweepPopnSizes[0]);
+					if(recurSweepMode ==0){
+						currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+					}
 				}
 				else{
-					currentTime = sweepPhaseEventsGeneralPopNumber(&breakPoints[0], currentTime, nextTime, sweepSite, \
-						 currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
-					if (currentTime < nextTime)
-                                        	currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+					if(recurSweepMode ==0){
+						currentTime = sweepPhaseEventsGeneralPopNumber(&breakPoints[0], currentTime, nextTime, sweepSite, \
+						 	currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+                                        		currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = sweepPhaseEventsGeneralPopNumber(&breakPoints[0], currentTime, nextTime, sweepSite, \
+					 		currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+					}
 				}
 				break;
 				case 'a':
 				currentTime = events[j].time;
 				admixPopns(events[j].popID, events[j].popID2, events[j].popID3, events[j].admixProp);
 				if(activeSweepFlag == 0){
-			//		printf("pn0:%d pn1:%d alleleNumber: %d sp1: %d sp2: %d \n", popnSizes[0],popnSizes[1], alleleNumber,sweepPopnSizes[1],\
-			//			sweepPopnSizes[0]);
-					currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
-				//		printf("pn0:%d pn1:%d alleleNumber: %d sp1: %d sp2: %d \n", popnSizes[0],popnSizes[1], alleleNumber,sweepPopnSizes[1],\
-				//			sweepPopnSizes[0]);
+					if(recurSweepMode ==0){
+						currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
+					}
 				}
 				else{
-				//	printf("here!\n");
-					currentTime = sweepPhaseEventsGeneralPopNumber(&breakPoints[0], currentTime, nextTime, sweepSite, \
-						 currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
-					if (currentTime < nextTime)
-	                                        currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+					if(recurSweepMode ==0){
+						currentTime = sweepPhaseEventsGeneralPopNumber(&breakPoints[0], currentTime, nextTime, sweepSite, \
+						 	currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+	                                        	currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = sweepPhaseEventsGeneralPopNumber(&breakPoints[0], currentTime, nextTime, sweepSite, \
+					 		currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
+					}
 				}
 				break;
 			}
@@ -156,8 +188,28 @@ int main(int argc, const char * argv[]){
 			dropMutationsUntilTime(uTime);	
 
 		if(condRecMode == 0){
-			//Hudson style output
-			makeGametesMS(argc,argv);
+			if(treeOutputMode == 1){
+				//output newick trees
+				qsort(breakPoints, breakNumber, sizeof(breakPoints[0]), compare_floats);
+				lastBreak = 0;
+				printf("\n//\n");
+				for(k=0;k<breakNumber;k++){
+					tempSite = ((float) breakPoints[k] / nSites) - (0.5/nSites) ; //padding
+
+					if(breakPoints[k] - lastBreak > 0){
+						printf("[%d]",breakPoints[k] - lastBreak);
+						printTreeAtSite(tempSite); 
+						lastBreak = breakPoints[k];
+					}
+				}
+				printf("[%d]",nSites- lastBreak);
+				printTreeAtSite(1.0 - (1.0/nSites)); 
+
+			}
+			else{
+				//Hudson style output
+				makeGametesMS(argc,argv);
+			}
                         i++;
 		}
 		else{
@@ -184,6 +236,7 @@ void getParameters(int argc,const char **argv){
 	int args;
 	int i,j;
 	double migR;
+	int selCheck,nChangeCheck;
 	
 	if( argc < 3){
 		usage();
@@ -192,6 +245,10 @@ void getParameters(int argc,const char **argv){
 	sampleSize = atoi(argv[1]);
 	sampleNumber = atoi(argv[2]);
 	nSites = atoi(argv[3]);
+	if(nSites>MAXSITES){
+		printf("Error: number of sites set higher than current compilation limit. Please reduce the number of sites or change the MAXSITES define and recompile\n");
+		exit(666);
+	}
 	args = 4;
 
 	npops = 1;
@@ -210,6 +267,12 @@ void getParameters(int argc,const char **argv){
 	ancestralSizeRatio = 1.0;
 	f0=0.0;
         uA=0.0;
+
+	seed1 = (long) (devrand() % 2147483399);
+	seed2 = (long) (devrand() % 2147483399);
+	
+
+	EFFECTIVE_POPN_SIZE = 1000000;
 	sweepSite = 0.5;
 	tDiv=666;
         gammaCoRatioMode = 0;
@@ -221,7 +284,9 @@ void getParameters(int argc,const char **argv){
 	outputStyle = 'h';
 	mask = 0;
 	migFlag = 0;
-	
+	deltaTMod = 400;
+	recurSweepMode = 0;
+	treeOutputMode= 0;
 	
 	//set up first bogus event
 	eventNumber = 0;
@@ -244,6 +309,9 @@ void getParameters(int argc,const char **argv){
 			break;
 			case 't' :
 			theta = atof(argv[++args]);
+			break;
+			case 'i' :
+			deltaTMod = atof(argv[++args]);
 			break;
 			case 'r' :
 			rho = atof (argv[++args]);
@@ -269,7 +337,7 @@ void getParameters(int argc,const char **argv){
 			break;
 			case 'M' :
 			if(npops==1){
-				fprintf(stderr,"attempting to set migration but only one population! Be sure that 'm' flags are specified after 'p' flag\n");
+				fprintf(stderr,"Error: attempting to set migration but only one population! Be sure that 'm' flags are specified after 'p' flag\n");
 				exit(1);
 			}
 			migR = atof(argv[++args]);
@@ -287,7 +355,7 @@ void getParameters(int argc,const char **argv){
 			break;
 			case 'm' :
 			if(npops==1){
-				fprintf(stderr,"attempting to set migration but only one population! Be sure that 'm' flags are specified after 'p' flag\n");
+				fprintf(stderr,"Error: attempting to set migration but only one population! Be sure that 'm' flags are specified after 'p' flag\n");
 				exit(1);
 			}
 			i = atoi(argv[++args]);
@@ -307,7 +375,7 @@ void getParameters(int argc,const char **argv){
 			case 'e' :
 				switch(argv[args][2]){
 					case 'n':
-					events[eventNumber].time = atof(argv[++args]);
+					events[eventNumber].time = atof(argv[++args]) * 2.0;
 					events[eventNumber].popID = atoi(argv[++args]);
 					events[eventNumber].popnSize = atof(argv[++args]);
 					events[eventNumber].type = 'n'; //size change
@@ -315,14 +383,14 @@ void getParameters(int argc,const char **argv){
 					break;
 					case 'd' :
 					tDiv =  atof(argv[++args]);
-					events[eventNumber].time = tDiv;
+					events[eventNumber].time = tDiv * 2.0;
 					events[eventNumber].popID = atoi(argv[++args]);
 					events[eventNumber].popID2 = atoi(argv[++args]);
 					events[eventNumber].type = 'p'; //pop split
 					eventNumber++;
 					break;
 					case 'a' :
-					events[eventNumber].time = atof(argv[++args]);
+					events[eventNumber].time = atof(argv[++args]) * 2.0;
 					events[eventNumber].popID = atoi(argv[++args]);
 					events[eventNumber].popID2 = atoi(argv[++args]);
 					events[eventNumber].popID3 = atoi(argv[++args]);
@@ -344,7 +412,7 @@ void getParameters(int argc,const char **argv){
 					sweepMode = 'N';
 					break;
 					}
-				tau = atof(argv[++args]);
+				tau = atof(argv[++args]) * 2.0;
 				events[eventNumber].time = tau;
 				events[eventNumber].type = 's'; //sweep event
 				eventNumber++;
@@ -362,8 +430,9 @@ void getParameters(int argc,const char **argv){
                                 	break;
 				}
 				sweepSite = -1.0;
-				tau = atof(argv[++args]);
+				tau = atof(argv[++args]) * 2.0;
 				leftRho = atof(argv[++args]);
+				leftRhoFlag=1;
 				events[eventNumber].time = tau;
 				events[eventNumber].type = 's'; //sweep event
 				eventNumber++;
@@ -406,8 +475,8 @@ void getParameters(int argc,const char **argv){
 					}
                                 	else{
 					  priorTau = 1;
-					  pTauLow=atof(argv[++args]);
-					  pTauUp=atof(argv[++args]);
+					  pTauLow=atof(argv[++args]) * 2.0;
+					  pTauUp=atof(argv[++args]) * 2.0;
 					}
 				break;
 				case 'x':
@@ -424,8 +493,8 @@ void getParameters(int argc,const char **argv){
 				switch(argv[args][3]){
 					case '1':
 					priorE1 = 1;
-					pE1TLow=atof(argv[++args]);
-					pE1THigh=atof(argv[++args]);
+					pE1TLow=atof(argv[++args])*2.0;
+					pE1THigh=atof(argv[++args])*2.0;
 					pE1SLow=atof(argv[++args]);
 					pE1SHigh=atof(argv[++args]);
 					events[eventNumber].type = 'n';
@@ -433,8 +502,8 @@ void getParameters(int argc,const char **argv){
 					break;
 					case '2':
 					priorE2 = 1;
-					pE2TLow=atof(argv[++args]);
-					pE2THigh=atof(argv[++args]);
+					pE2TLow=atof(argv[++args])*2.0;
+					pE2THigh=atof(argv[++args])*2.0;
 					pE2SLow=atof(argv[++args]);
 					pE2SHigh=atof(argv[++args]);
 					events[eventNumber].type = 'n';
@@ -446,31 +515,70 @@ void getParameters(int argc,const char **argv){
                         break;
 			case 'U' :
 			untilMode= 1;
-			uTime=atof(argv[++args]);
+			uTime=atof(argv[++args])*2.0;
 			break; 
+			case 'd' :
+			seed1=atoi(argv[++args]);
+			seed2=atoi(argv[++args]);
+			break;
+			case 'N' :
+			EFFECTIVE_POPN_SIZE=atoi(argv[++args]);
+			break;
+			case 'T' :
+			treeOutputMode= 1;
+			break;
 			case 'C' :
 			condRecMode= 1;
 			condRecMet = 0;
 			lSpot=atoi(argv[++args]);
 			rSpot=atoi(argv[++args]);
+			break;
+			case 'R' :
+			recurSweepMode = 1;
+			sweepMode = 's';
+			recurSweepRate = atof(argv[++args]);
+			break;
+			case 'L' :
+			recurSweepMode = 1;
+			sweepMode = 's';
+			recurSweepRate = atof(argv[++args]);
 			break;	  
 		}
 		args++;
 	}
 	sortEventArray(events,eventNumber);
 
-	// for(i=0;i<eventNumber;i++){
-	// 		if(events[i].type == 's'){
-	// 			events[i].popnSize = events[i-1].popnSize;
-	// 		}
-	// 		printf("event %d type: %c time: %f popnSize: %f\n",i,events[i].type,events[i].time,events[i].popnSize);
-	// 	}
-//	printf("%s %f %f\n",&sweepMode,tau,f0);
+	//make sure events are kosher
+	selCheck = 0;
+	nChangeCheck=0;
+	for(i=0;i<eventNumber;i++){
+	 		if(events[i].type == 's'){
+				selCheck = 1;
+	 		}
+			if(events[i].type == 'n'){
+				nChangeCheck = 1;
+	 		}
+	}
+	if(selCheck == 1){
+		if(recurSweepMode == 1){
+			printf("Error with event specification: a single sweep event has been found but recurrentSweep mode has been specified\n");
+			exit(666);
+		}
+		if(nChangeCheck==1 && sweepMode=='d'){
+			printf("Error with event specification: you chose 1 or more population size changes with a determinstic sweep. Please us -ws flag instead\n");
+			exit(666);
+		}
+	}
+	if(leftRhoFlag && sweepSite >= 0.0){
+		printf("Error with event specification: you chose leftRho mode but the sweep site is within the locus\n");
+		exit(666);
+	}
 }
+		
 
 
 void usage(){
-	fprintf(stderr,"usage: discoal_multipop sampleSize sampleNumber nSites -ws tau\n");
+	fprintf(stderr,"usage: discoal_multipop sampleSize numReplicates nSites -ws tau\n");
 	fprintf(stderr,"parameters: \n");
 
 	fprintf(stderr,"\t -t theta \n");
@@ -485,18 +593,21 @@ void usage(){
 	fprintf(stderr,"\t -ws tau (sweep happend tau generations ago- stochastic sweep)\n");  
 	fprintf(stderr,"\t -wd tau (sweep happend tau generations ago- deterministic sweep)\n"); 
 	fprintf(stderr,"\t -wn tau (sweep happend tau generations ago- neutral sweep)\n");
-	fprintf(stderr,"\t -ls tau leftRho (stochastic sweep some genetic distance to the left of the simulated window--specified by leftRho)\n");
-	fprintf(stderr,"\t\t similarly, ld and ln simulate deterministic and neutral sweeps to the left of the window, respectively\n");
+	fprintf(stderr,"\t -ls tau leftRho (stochastic sweep some genetic distance to the left of the simulated window--specified by leftRho=4Nr)\n");
+	fprintf(stderr,"\t\t similarly, ld and ls simulate deterministic and neutral sweeps to the left of the window, respectively\n");
 	fprintf(stderr,"\t -f first frequency at which selection acts on allele (F0; sweep models only)\n");
 	fprintf(stderr,"\t -uA rate at which adaptive mutation recurs during the sweep phase (sweep models only)\n");
+	fprintf(stderr,"\t -N sweepEffectivePopnSize (sweep models only)\n");	
 	fprintf(stderr,"\t -a alpha (=2Ns)\n");
 	fprintf(stderr,"\t -x sweepSite (0-1)\n");	
+	fprintf(stderr,"\t -i dt (sweep time increment scalar; default 400 -> 1/400N)\n");
+	
 	fprintf(stderr,"\t -M migRate (sets all rates to migRate)\n");
 	fprintf(stderr,"\t -m popnID1 popnID2 migRate (sets migRate from popnID1 to popnID2)\n");
 	
 	fprintf(stderr,"\t -Pt low high (prior on theta)\n");
 	fprintf(stderr,"\t -Pr low high (prior on rho)\n");
-        fprintf(stderr,"\t -Pre mean uppreBound (prior on rho -- exponentially distributed but truncated at an upper bound)\n");
+        fprintf(stderr,"\t -Pre mean upperBound (prior on rho -- exponentially distributed but truncated at an upper bound)\n");
 	fprintf(stderr,"\t -Pa low high (prior on alpha)\n");
 	fprintf(stderr,"\t -Pu low high (prior on tau; sweep models only)\n");
 	fprintf(stderr,"\t -PuA low high (prior on uA; sweep models only)\n");
@@ -504,9 +615,12 @@ void usage(){
 	fprintf(stderr,"\t -Pf low high (prior on F0; sweep models only)\n");
 	fprintf(stderr,"\t -Pe1 lowTime highTime lowSize highSize (priors on first demographic move time and size)\n");
 	fprintf(stderr,"\t -Pe2 lowTime highTime lowSize highSize (priors on second demographic move time and size)\n");
-	//fprintf(stderr,"\t -U time (only record mutations back to specified time)\n");
+	fprintf(stderr,"\t -U time (only record mutations back to specified time)\n");
+	fprintf(stderr,"\t -R rhhRate (recurrent hitch hiking mode at the locus; rhh is rate per 2N individuals / generation)\n");
+	fprintf(stderr,"\t -L rhhRate (recurrent hitch hiking mode to the side of locus; leftRho is ~Unif(0,4Ns); rhh is rate per 2N individuals / generation)\n");
+	fprintf(stderr,"\t -T (tree output mode)\n");
+	fprintf(stderr,"\t -d seed1 seed2 (set random number generator seeds)\n");
 	
-	
-	fprintf(stderr,"\t Note: all time units are 2N_0 generations!!!\n");
+	//fprintf(stderr,"\t Note: all time units are 2N_0 generations!!!\n");
 	exit(1);
 }

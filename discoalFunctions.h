@@ -17,6 +17,8 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 void updateActiveMaterial(rootedNode *aNode);
 int isActive(int site);
 int isAncestralHere(rootedNode *aNode, float site);
+int nAncestorsHere(rootedNode *aNode, float site);
+
 int siteBetweenChunks(rootedNode *aNode, int xOverSite);
 void dropMutations();
 void addMutation(rootedNode *aNode, float site);
@@ -28,16 +30,15 @@ void admixPopns(int popnSrc, int popnDest1, int popnDest2, double admixProp);
 
 
 void recurrentMutAtTime(double cTime,int srcPopn, int sp);
-double sweepPhaseEvents(int *bpArray, double startTime, double endTime, double sweepSite,\
-				  double initialFreq, double *finalFreq, int *stillSweeping, double alpha,\
-				double sizeRatio, char sweepMode,double f0);
-double sweepPhaseEventsWithRecurrentMut(int *bpArray, double startTime, double endTime, double sweepSite,\
-                                  double initialFreq, double *finalFreq, int *stillSweeping, double alpha,\
-                                double sizeRatio, char sweepMode,double f0,double uA);
+
 double sweepPhaseEventsGeneralPopNumber(int *bpArray, double startTime, double endTime, double sweepSite,\
 			double initialFreq, double *finalFreq, int *stillSweeping, double alpha,\
 			double *sizeRatio, char sweepMode,double f0, double uA);
 			
+			
+double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *finalFreq, double alpha, char sweepMode, double *sizeRatio);
+		
+		
 double totalTimeInTree();
 void dropMutationsUntilTime(double t);
 double totalTimeInTreeUntilTime(double t);
@@ -64,6 +65,14 @@ rootedNode *pickNodePopnSweep(int popn,int sp);
 
 int compare_events(const void *a,const void *b);
 void sortEventArray(struct event *eArray, int eNumber);
+
+int findRootAtSite(float site);
+int hasMaterialHere(rootedNode *aNode, float site);
+int isLeaf(rootedNode *aNode);
+int isCoalNode(rootedNode *aNode);
+void newickRecurse(rootedNode *aNode, float site,float tempTime);
+void printTreeAtSite(float site);
+
 
 unsigned int devrand(void);
 int compare_doubles(const void *a,const void *b);

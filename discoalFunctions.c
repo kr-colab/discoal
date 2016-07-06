@@ -200,6 +200,7 @@ rootedNode *newRootedNode(double cTime, int popn) {
 	temp->mutationNumber = 0;
 	temp->population = popn;
 	temp->sweepPopn =1;
+//	temp->leafs = malloc(sizeof(int) * sampleSize);
 //	for(i=0;i<nSites;i++)temp->ancSites[i]=1;
 
 	return temp;
@@ -287,6 +288,7 @@ void coalesceAtTimePopn(double cTime, int popn){
 		}
 	}
 	//printNode(temp);
+	//printf("coal-> lChild: %u rChild: %u parent: %u time: %f\n",lChild,rChild,temp,cTime);
 	addNode(temp);
 	//update active anc. material
 	updateActiveMaterial(temp);
@@ -375,6 +377,36 @@ int isAncestralHere(rootedNode *aNode, float site){
 	else
 		return(0);
 }
+
+int hasMaterialHere(rootedNode *aNode, float site){
+	int bp;
+	bp = floor(site * nSites);
+	if(aNode->ancSites[bp] > 0)
+		return(1);
+	else
+		return(0);
+}
+
+int nAncestorsHere(rootedNode *aNode, float site){
+	int bp;
+	bp = floor(site * nSites);
+	return(aNode->ancSites[bp]);
+}
+
+int isLeaf(rootedNode *aNode){
+	if(aNode->leftChild == NULL && aNode->rightChild == NULL)
+		return(1);
+	else
+		return(0);
+}
+
+int isCoalNode(rootedNode *aNode){
+	if(aNode->leftChild != NULL && aNode->rightChild != NULL)
+		return(1);
+	else
+		return(0);
+}
+
 int recombineAtTimePopn(double cTime, int popn){
 	rootedNode *aNode, *lParent, *rParent;
 	int i;
@@ -436,7 +468,8 @@ int recombineAtTimePopn(double cTime, int popn){
 			addNode(rParent);
 	//	else
 	//		free(rParent)
-//		printf("here\n");
+	//	printf("reco-> lParent: %u rParent:%u child: %u time:%f xover:%d\n",lParent,rParent,aNode,cTime,xOver);
+		//printNode(aNode);
 		return xOver;
 	}
 	return 666;
@@ -833,352 +866,8 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 }
 
 
-/*sweepPhaseEvents-- this does the compressed time sweep thing. 
-  generalized to account for popnSize changes
-	returns the time after the sweep */
-double sweepPhaseEvents(int *bpArray, double startTime, double endTime, double sweepSite,\
-				  double initialFreq, double *finalFreq, int *stillSweeping, double alpha,\
-				double sizeRatio, char sweepMode,double f0)
-{
-					
-	double totRate,bp;
-	double  ttau, x, tInc;
-	double pCoalB, pCoalb, pRecB, pRecb, r, sum,eventRand,eventProb;
-	double pCoal1,pRec1;
-	double N = EFFECTIVE_POPN_SIZE;
-	double minF;
-	double cTime = startTime;
-	int insweepphase;
-	
-	//initialize stuff
-	pCoalB = pCoalb = pRecB = pRecb = totRate = 0;
-	
-	N = (double) floor(N * sizeRatio);
-	ttau = 0.0;
-	x = initialFreq;
 
-
-
-	minF = f0;
-	if(minF < 1.0/(2.*N))
-		minF = 1.0/(2.*N);
-
-	//assume that sweep always happens in popn 0!!!
-	
-	//using popnSize global to manage bookkeeping
-	sweepPopnSizes[1] = nodePopnSweepSize(0,1);
-	sweepPopnSizes[0] = nodePopnSweepSize(0,0);
-	//set time increment
-	
-	//if(sweepMode == 'N')
-		tInc = 1.0 / (40 * N);
-	//else
-	//	tInc = 1.0 / (100* (alpha*sizeRatio));
-
-	insweepphase = 1;
-	//fixed tInc?
-
-	//go for sweep length, or root
-	while(  sweepPopnSizes[1]>1 && x > 1.0/(2.*N) && (cTime+ttau) < endTime){ 
-		//rejection algorithm of Braverman et al. 1995
-		eventRand = ranf();
-		eventProb = 1.0;
-		//wait for something
-		while(eventProb > eventRand && x > (1.0 / (2*N))){
-	
-			ttau += tInc;
-
-			if(x > minF && insweepphase)
-			{
-				//get next sweep allele freq
-				switch(sweepMode){
-					case 'd':
-					x = detSweepFreq(ttau, alpha * sizeRatio);
-				//	printf("x here:%f ttau: %f alpha*sizeRatio: %f\n",x,ttau,alpha*sizeRatio);
-					
-					break;
-					case 's':
-					x = 1.0 - genicSelectionStochasticForwards(tInc, (1.0 - x), alpha * sizeRatio);
-					break;
-					case 'N':
-				//	printf("here\n");
-					x = neutralStochastic(tInc, x);
-					break;
-					}
-				//	printf("x here:%f ttau: %f\n",x,ttau );
-			}
-			else{
-				insweepphase = 0;
-				tInc = 1.0 / (40 * N);
-				x = neutralStochastic(tInc, x);
-			}
-
-			//calculate event probs
-			//first 4 events are probs of events in population 0
-			pCoalB = ((sweepPopnSizes[1] * (sweepPopnSizes[1] - 1) ) * 0.5)/x*tInc / sizeRatio;
-			pCoalb = ((sweepPopnSizes[0] * (sweepPopnSizes[0] - 1) ) * 0.5)/(1-x)*tInc / sizeRatio;
-			pRecB = rho * sweepPopnSizes[1]*0.5 *tInc;
-			pRecb = rho * sweepPopnSizes[0]*0.5 *tInc;
-                        //printf("nB: %d; x: %g; pRecBb: %g; tInc: %g\n",sweepPopnSizes[1],x,rho*sweepPopnSizes[1]*tInc*0.5*(1-x),tInc);
-			//now two events in population 1
-			pCoal1 = (popnSizes[1] * (popnSizes[1] - 1))*0.5  *tInc ;
-			pRec1 = rho * popnSizes[1] * 0.5 * tInc  ;
-			totRate = pCoalB + pCoalb + pRecB + pRecb + pCoal1 + pRec1;
-
-			eventProb *= 1-totRate;
-		//	printf("x(t): %g t: %g tinc: %g eventProb: %g eventRand: %g totRate: %g swPopnSize1: %d swPopnSize2: %d\n",x,ttau,tInc, eventProb,
-		//		eventRand,totRate,sweepPopnSizes[0],sweepPopnSizes[1]);	
-			
-
-		}
-
-		r = ranf();
-		sum = pCoalB;
-		//coalescent in B?
-		if(r < sum / totRate){
-			coalesceAtTimePopnSweep(cTime+(ttau), 0,1);
-		}
-		else{
-			sum += pCoalb;
-			//coalescent in b?
-			if(r < sum / totRate){
-				coalesceAtTimePopnSweep(cTime+(ttau),0, 0);
-			}
-			else{
-				sum += pRecb;
-				//recombination in b, also need bookkeeping
-				if(r < sum / totRate){
-					bp = recombineAtTimePopnSweep(cTime + (ttau),0, 0, sweepSite, (1.0-x));
-					bpArray[breakNumber] = bp;
-					breakNumber += 1; 
-				}
-				else{
-					sum += pRecB;
-				//	sum = totRate;
-					if( r < sum / totRate){
-						//recombination in B and bookkeeping
-						bp = recombineAtTimePopnSweep(cTime + (ttau),0, 1, sweepSite, x);
-						bpArray[breakNumber] = bp;
-						breakNumber += 1; 
-					}
-					else{
-						sum+=pCoal1;
-						if(r < sum / totRate){
-							coalesceAtTimePopn(cTime+(ttau), 1);
-						}
-						else{
-							bp = recombineAtTimePopn(cTime + (ttau),1);
-							bpArray[breakNumber] = bp;
-							breakNumber += 1; 	
-						}
-					}
-				}
-			}
-		}
-
-	}
-	if((cTime+ttau) >= endTime){
-		*stillSweeping = 1; 
-	}
-	else{
-		*stillSweeping = 0; 
-	}
-	*finalFreq = x;
-//	printf("sp: %d %d\n",	sweepPopnSizes[0], 	sweepPopnSizes[1]);
-	return(cTime+(ttau));
-}
-
-/*sweepPhaseEventsWithRecurrentMut-- this does the compressed time sweep thing. 
-  generalized to account for popnSize changes returns the time after the sweep.
-  Same as sweepPhaseEvents but includes recurrent adaptive mutation */
-double sweepPhaseEventsWithRecurrentMut(int *bpArray, double startTime, double endTime, double sweepSite,\
-double initialFreq, double *finalFreq, int *stillSweeping, double alpha,\
-double sizeRatio, char sweepMode,double f0, double uA)
-{
-
-	double totRate,bp;
-	double  ttau, x, tInc;
-	double pCoalB, pCoalb, pRecB, pRecb, r, sum,eventRand,eventProb;
-	double pCoal1,pRec1, pRecurMut, pGCB, pGCb, pGC1;
-	double N = EFFECTIVE_POPN_SIZE;
-	double minF;
-	double cTime = startTime;
-	int insweepphase;
-
-	//initialize stuff
-	pCoalB = pCoalb = pRecB = pRecb = totRate = pRecurMut = 0;
-
-	N = (double) floor(N * sizeRatio);
-	ttau = 0.0;
-	x = initialFreq;
-
-
-
-	minF = f0;
-	if(minF < 1.0/(2.*N))
-		minF = 1.0/(2.*N);
-
-	//assume that sweep always happens in popn 0!!!
-
-	//using popnSize global to manage bookkeeping
-	sweepPopnSizes[1] = nodePopnSweepSize(0,1);
-	sweepPopnSizes[0] = nodePopnSweepSize(0,0);
-	//set time increment
-
-	//if(sweepMode == 'N')
-	tInc = 1.0 / (4 * N);
-	//else
-	//	tInc = 1.0 / (100* (alpha*sizeRatio));
-
-	insweepphase = 1;
-	//fixed tInc?
-
-	//go for sweep length, or root
-	while(  sweepPopnSizes[1]>1 && x > 1.0/(2.*N) && (cTime+ttau) < endTime){ 
-		//rejection algorithm of Braverman et al. 1995
-		eventRand = ranf();
-		eventProb = 1.0;
-		//wait for something
-		while(eventProb > eventRand && x > (1.0 / (2*N))){
-
-			ttau += tInc;
-
-			if(x > minF && insweepphase)
-			{
-				//get next sweep allele freq
-				switch(sweepMode){
-					case 'd':
-					x = detSweepFreq(ttau, alpha * sizeRatio);
-				//	printf("x here:%f ttau: %f alpha*sizeRatio: %f\n",x,ttau,alpha*sizeRatio);
-
-					break;
-					case 's':
-					x = 1.0 - genicSelectionStochasticForwards(tInc, (1.0 - x), alpha * sizeRatio);
-					break;
-					case 'N':
-				//	printf("here\n");
-					x = neutralStochastic(tInc, x);
-					break;
-				}
-				//	printf("x here:%f ttau: %f\n",x,ttau );
-			}
-			else{
-				insweepphase = 0;
-				tInc = 1.0 / (4 * N);
-				x = neutralStochastic(tInc, x);
-			}
-
-			//calculate event probs
-			//first 4 events are probs of events in population 0
-			pCoalB = ((sweepPopnSizes[1] * (sweepPopnSizes[1] - 1) ) * 0.5)/x*tInc / sizeRatio;
-			pCoalb = ((sweepPopnSizes[0] * (sweepPopnSizes[0] - 1) ) * 0.5)/(1-x)*tInc / sizeRatio;
-			pRecB = rho * sweepPopnSizes[1]*0.5 *tInc;
-			pRecb = rho * sweepPopnSizes[0]*0.5 *tInc;
-			pGCB = my_gamma * sweepPopnSizes[1]*0.5 *tInc;
-			pGCb = my_gamma * sweepPopnSizes[0]*0.5 *tInc;
-			pRecurMut = (uA * sweepPopnSizes[1]*0.5 *tInc)/x;///sizeRatio;
-			//printf("nB: %d; x: %g; pRecBb: %g; tInc: %g\n",sweepPopnSizes[1],x,rho*sweepPopnSizes[1]*tInc*0.5*(1-x),tInc);
-			//now two events in population 1
-			pCoal1 = (popnSizes[1] * (popnSizes[1] - 1))*0.5  *tInc ;
-			pRec1 = rho * popnSizes[1] * 0.5 * tInc  ;
-			pGC1 = my_gamma * popnSizes[1] * 0.5 * tInc  ;
-			totRate = pCoalB + pCoalb + pRecB + pRecb + pCoal1 + pRec1 + pRecurMut + pGCB + pGCb + pGC1;
-
-			eventProb *= 1-totRate;
-		//	printf("x(t): %g t: %g tinc: %g eventProb: %g eventRand: %g totRate: %g swPopnSize1: %d swPopnSize2: %d\n",x,ttau,tInc, eventProb,
-		//		eventRand,totRate,sweepPopnSizes[0],sweepPopnSizes[1]);	
-
-
-		}
-
-		r = ranf();
-		sum = pCoalB;
-		//coalescent in B?
-		if(r < sum / totRate){
-			coalesceAtTimePopnSweep(cTime+(ttau), 0,1);
-		}
-		else{
-			sum += pCoalb;
-			//coalescent in b?
-			if(r < sum / totRate){
-				coalesceAtTimePopnSweep(cTime+(ttau),0, 0);
-			}
-			else{
-				sum += pRecb;
-				//recombination in b, also need bookkeeping
-				if(r < sum / totRate){
-					bp = recombineAtTimePopnSweep(cTime + (ttau),0, 0, sweepSite, (1.0-x));
-					bpArray[breakNumber] = bp;
-					breakNumber += 1; 
-					if(bp >= lSpot && bp < rSpot){
-						condRecMet = 1;
-					}
-				}
-				else{
-					sum += pRecB;
-				//	sum = totRate;
-					if( r < sum / totRate){
-						//recombination in B and bookkeeping
-						bp = recombineAtTimePopnSweep(cTime + (ttau),0, 1, sweepSite, x);
-						bpArray[breakNumber] = bp;
-						breakNumber += 1; 
-						if(bp >= lSpot && bp < rSpot){
-							condRecMet = 1;
-						}
-
-					}
-					else{
-						sum+= pGCB;
-						if( r < sum / totRate){
-							geneConversionAtTimePopnSweep(cTime + (ttau),0, 1, sweepSite, x);
-						}
-						else{
-							sum+= pGCb;
-							if( r < sum / totRate){
-								geneConversionAtTimePopnSweep(cTime + (ttau),0, 0, sweepSite, x);
-							}
-							else{
-
-
-								sum+=pCoal1;
-								if(r < sum / totRate){
-									coalesceAtTimePopn(cTime+(ttau), 1);
-								}
-								else{
-									sum+=pRecurMut;
-									if(r < sum / totRate){
-										//recurrent adaptive mutation:
-										//node in pop zero's sweep group exits sweep
-										//fprintf(stderr,"recurrent mutation at time %f; freq=%f\n", cTime+(ttau),x);
-										//fprintf(stderr,"recurMut prob: %g; uA: %f, sweepPopnSizes[1]:%d; x:%f; tInc: %g; sizeRatio: %f\npopnSizes[0]: %d; popnSizes[1]: %d\n", pRecurMut,uA,sweepPopnSizes[1],x,tInc,sizeRatio,popnSizes[0],popnSizes[1]);
-										recurrentMutAtTime(cTime+(ttau),0, 1);
-									}
-									else{
-										bp = recombineAtTimePopn(cTime + (ttau),1);
-										bpArray[breakNumber] = bp;
-										breakNumber += 1; 	
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-
-	}
-	if((cTime+ttau) >= endTime){
-		*stillSweeping = 1; 
-	}
-	else{
-		*stillSweeping = 0; 
-	}
-	*finalFreq = x;
-//	printf("sp: %d %d\n",	sweepPopnSizes[0], 	sweepPopnSizes[1]);
-	return(cTime+(ttau));
-}
-
-/*sweepPhaseEventsWithRecurrentMut-- this does the compressed time sweep thing. 
+/*sweepPhaseEventsGeneralPopNumber-- this does the compressed time sweep thing. 
   generalized to account for popnSize changes returns the time after the sweep.
   Same as sweepPhaseEvents but includes recurrent adaptive mutation */
 double sweepPhaseEventsGeneralPopNumber(int *bpArray, double startTime, double endTime, double sweepSite,\
@@ -1187,18 +876,19 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 {
 
 	double totRate,bp;
-	double  ttau, x, tInc;
+	double  ttau, x, tInc, tIncOrig;
 	double pCoalB, pCoalb, pRecB, pRecb, r, sum,eventRand,eventProb, pLeftRecB, pLeftRecb;
 	double pRecurMut, pGCB, pGCb;
 	double sweepPopTotRate,cRate[npops], rRate[npops], gcRate[npops];
 	double totCRate, totRRate, totGCRate, eSum, r2;
-	double N = EFFECTIVE_POPN_SIZE;
+	double N = (double) EFFECTIVE_POPN_SIZE;
 	double minF;
 	double cTime = startTime;
 	int insweepphase, i;
 
 	//initialize stuff
-	pCoalB = pCoalb = pRecB = pRecb = totRate = pRecurMut = pLeftRecB = pLeftRecb = 0;
+	pCoalB = pCoalb = pRecB = pRecb = totRate = pRecurMut = pLeftRecB = pLeftRecb = totGCRate = totCRate = totRRate = 0;
+	sweepPopTotRate = pGCB = pGCb = 0;
 
 	N = (double) floor(N * sizeRatio[0]);
 	ttau = 0.0;
@@ -1215,17 +905,18 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	//set time increment
 
 	//if(sweepMode == 'N')
-	tInc = 1.0 / (400 * N);
-
+	tInc = 1.0 / (deltaTMod * N);
+	tIncOrig = 1.0 / (deltaTMod * EFFECTIVE_POPN_SIZE);
 	insweepphase = 1;
 	//go for sweep length, or root
-	while(  sweepPopnSizes[1]>1 && x > 1.0/(2.*N) && (cTime+ttau) < endTime){ 
+
+	while( x > 1.0/(2.*N) && (cTime+ttau) < endTime){ 
 		//rejection algorithm of Braverman et al. 1995
 		eventRand = ranf();
 		eventProb = 1.0;
 		//wait for something
 		while(eventProb > eventRand && x > (1.0 / (2*N)) && (cTime+ttau) < endTime){
-			ttau += tInc;
+			ttau += tIncOrig;
 
 			if(x > minF && insweepphase)
 			{
@@ -1238,6 +929,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 					break;
 					case 's':
 					x = 1.0 - genicSelectionStochasticForwards(tInc, (1.0 - x), alpha * sizeRatio[0]);
+				//	printf("x here:%f ttau: %f alpha*sizeRatio: %f\n",x,ttau,alpha*sizeRatio[0]);
 					break;
 					case 'N':
 				//	printf("here\n");
@@ -1248,22 +940,22 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 			}
 			else{
 				insweepphase = 0;
-				tInc = 1.0 / (400 * N );
+				tInc = 1.0 / (deltaTMod * N );
 				x = neutralStochastic(tInc, x);
 			}
 
 			//calculate event probs
 			//first 4 events are probs of events in population 0
-			pCoalB = ((sweepPopnSizes[1] * (sweepPopnSizes[1] - 1) ) * 0.5)/x*tInc / sizeRatio[0];
-			pCoalb = ((sweepPopnSizes[0] * (sweepPopnSizes[0] - 1) ) * 0.5)/(1-x)*tInc / sizeRatio[0];
-			pRecB = rho * sweepPopnSizes[1]*0.5 *tInc; // / sizeRatio[0];
-			pRecb = rho * sweepPopnSizes[0]*0.5 *tInc;// / sizeRatio[0];
-			pGCB = my_gamma * sweepPopnSizes[1]*0.5 *tInc;// / sizeRatio[0];
-			pGCb = my_gamma * sweepPopnSizes[0]*0.5 *tInc;/// sizeRatio[0];
-			pRecurMut = (uA * sweepPopnSizes[1]*0.5 *tInc)/x;///sizeRatio[0];
+			pCoalB = ((sweepPopnSizes[1] * (sweepPopnSizes[1] - 1) ) * 0.5)/x*tIncOrig / sizeRatio[0];
+			pCoalb = ((sweepPopnSizes[0] * (sweepPopnSizes[0] - 1) ) * 0.5)/(1-x)*tIncOrig / sizeRatio[0];
+			pRecB = rho * sweepPopnSizes[1]*0.5 *tIncOrig; // / sizeRatio[0];
+			pRecb = rho * sweepPopnSizes[0]*0.5 *tIncOrig;// / sizeRatio[0];
+			pGCB = my_gamma * sweepPopnSizes[1]*0.5 *tIncOrig;// / sizeRatio[0];
+			pGCb = my_gamma * sweepPopnSizes[0]*0.5 *tIncOrig;/// sizeRatio[0];
+			pRecurMut = (uA * sweepPopnSizes[1]*0.5 *tIncOrig)/x;///sizeRatio[0];
 			if (sweepSite < 0.0){
-				pLeftRecB = leftRho * sweepPopnSizes[1]*0.5 * tInc * (1-x);
-				pLeftRecb = leftRho * sweepPopnSizes[0]*0.5 * tInc * x;
+				pLeftRecB = leftRho * sweepPopnSizes[1]*0.5 * tIncOrig * (1-x);
+				pLeftRecb = leftRho * sweepPopnSizes[0]*0.5 * tIncOrig * x;
                         }
 			sweepPopTotRate = pCoalB + pCoalb + pRecB + pRecb + pGCB + pGCb + pRecurMut + pLeftRecB + pLeftRecb;
 			//printf("nB: %d; x: %g; pCoalB: %g; tInc: %g cTime+ttau: %g popnSizes[0]:%d\n",sweepPopnSizes[1],x,pCoalB,tInc,cTime+ttau,  popnSizes[0]);
@@ -1276,9 +968,9 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 			
 			//printf("currPopSize[0]: %d currPopSize[1]: %d\n",popnSizes[0],popnSizes[1]);
 			for(i=1;i<npops;i++){
-				cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 * tInc / sizeRatio[i];
-				rRate[i] = rho * popnSizes[i] * 0.5 * tInc;// / sizeRatio[i];
-				gcRate[i] = my_gamma * popnSizes[i] * 0.5 * tInc;// / sizeRatio[i];
+				cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 * tIncOrig / sizeRatio[i];
+				rRate[i] = rho * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
+				gcRate[i] = my_gamma * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
 				totCRate += cRate[i];
 				totRRate += rRate[i];
 				totGCRate += gcRate[i];
@@ -1314,10 +1006,12 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 					//recombination in b, also need bookkeeping
 					if(r < sum / sweepPopTotRate){
 						bp = recombineAtTimePopnSweep(cTime + (ttau),0, 0, sweepSite, (1.0-x));
-						bpArray[breakNumber] = bp;
-						breakNumber += 1; 
-						if(bp >= lSpot && bp < rSpot){
-							condRecMet = 1;
+						if(bp != 666){
+							bpArray[breakNumber] = bp;
+							breakNumber += 1; 
+							if(bp >= lSpot && bp < rSpot){
+								condRecMet = 1;
+							}
 						}
 					}
 					else{
@@ -1325,10 +1019,12 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 						if( r < sum / sweepPopTotRate){
 							//recombination in B and bookkeeping
 							bp = recombineAtTimePopnSweep(cTime + (ttau),0, 1, sweepSite, x);
-							bpArray[breakNumber] = bp;
-							breakNumber += 1; 
-							if(bp >= lSpot && bp < rSpot){
-								condRecMet = 1;
+							if(bp != 666){
+								bpArray[breakNumber] = bp;
+								breakNumber += 1; 
+								if(bp >= lSpot && bp < rSpot){
+									condRecMet = 1;
+								}
 							}
 
 						}
@@ -1416,10 +1112,139 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 		*stillSweeping = 0; 
 	}
 	if(sweepPopnSizes[1]==0) *stillSweeping = 0; 
+	if(!*stillSweeping){
+		for(i=0;i<alleleNumber;i++){
+			if(nodes[i]->population==0) nodes[i]->sweepPopn=1; //reset the nodes in population 0 to be linked to bene allele
+		}
+	}
 	*finalFreq = x;
 //	printf("sp: %d %d\n",	sweepPopnSizes[0], 	sweepPopnSizes[1]);
 	return(cTime+(ttau));
 }
+
+/*recurrentSweepPhaseGeneralPopNumber--coalescent, recombination, gc events, and sweeps! until
+specified time. returns endTime. can handle multiple popns*/
+double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *finalFreq, double alpha, char sweepMode, double *sizeRatio){
+	double cTime, cRate[npops], rRate[npops], gcRate[npops], mRate[npops],totRate, waitTime, bp,r, r2;
+	double totCRate, totRRate, totGCRate,totMRate, eSum,curSweepSite;
+	int  i,j;
+
+	if(startTime == endTime){
+		return(endTime);
+	}
+	cTime = 0.0;
+	cTime += startTime;
+	waitTime = 0.0;
+
+	while (activeSites > 0){
+		totRate = 0.0;
+		totCRate = 0.0;
+		totRRate = 0.0;
+		totGCRate = 0.0;
+		totMRate = 0.0;
+		for(i=0;i<npops;i++){
+			mRate[i]=0.0;
+		}
+	//	printf("currPopSize[0]: %d currPopSize[1]: %d alleleNumber: %d totNodeNumber: %d activeSites: %d cTime: %f\n",popnSizes[0],popnSizes[1],alleleNumber,totNodeNumber, activeSites, cTime);
+		for(i=0;i<npops;i++){
+			cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 / sizeRatio[i];
+			rRate[i] = rho * popnSizes[i] * 0.5;// * ((float)activeSites/nSites);
+			gcRate[i] = my_gamma * popnSizes[i] * 0.5 ;
+			
+			for(j=0;j<npops;j++) mRate[i]+=migMat[i][j];
+			mRate[i] *= popnSizes[i] * 0.5;
+			totCRate += cRate[i];
+			totRRate += rRate[i];
+			totMRate += mRate[i];
+			totGCRate += gcRate[i];
+			totRate += cRate[i] + rRate[i] + mRate[i] + gcRate[i];
+		}
+		//add the recurrent sweep probability
+		totRate += recurSweepRate;
+
+		//find time of next event
+		waitTime = genexp(1.0)  * (1.0/ totRate);
+		cTime += waitTime;
+		if (cTime >= endTime){
+			return(endTime);
+		}
+		//find event type
+		else{ 
+			r =ranf();
+			if (r < (totRRate/ totRate)){
+				//pick popn
+				eSum = rRate[0];
+				i = 0;
+				r2 = ranf();
+				while(eSum/totRRate < r2) eSum += rRate[++i];
+				bp = recombineAtTimePopn(cTime,i);
+				if (bp != 666){
+					bpArray[breakNumber] = bp;
+					breakNumber += 1; 
+				}
+			}
+			else{
+				if(r < ((totRRate + totGCRate)/totRate)){
+					//pick popn
+					eSum = gcRate[0];
+					i = 0;
+					r2 = ranf();
+					while(eSum/totGCRate < r2) eSum += gcRate[++i];
+					geneConversionAtTimePopn(cTime,i);
+				}
+				else{
+					if(r < ((totMRate+totRRate + totGCRate)/totRate)){
+						//pick source popn
+						eSum = mRate[0];
+						i = 0;
+						j = 0;
+						r2 = ranf();
+						while(eSum/totMRate < r2) eSum += mRate[++i];
+						//printf("outer totMRate: %f eSum: %f i:%d\n",totMRate,eSum,i);
+						//pick dest popn
+						eSum = migMat[i][0]* popnSizes[i] * 0.5;
+						//printf("outer eSumNew:%f mRate[%d]:%f\n",eSum,i,mRate[i]);
+						r2 = ranf();
+						while(eSum/mRate[i] < r2){
+						//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
+							eSum += migMat[i][++j] * popnSizes[i] * 0.5;
+						//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
+							
+						} 
+						migrateAtTime(cTime,i,j);
+					}
+				
+					else{
+						if(r < ((totCRate + totMRate + totRRate + totGCRate)/totRate)){
+							//coalesce 
+							//pick popn
+							eSum = cRate[0];
+							i = 0;
+							r2 = ranf();
+							while(eSum/totCRate < r2){
+							 	eSum += cRate[++i];
+							}
+							coalesceAtTimePopn(cTime,i);
+						}
+						else{
+							if(sweepSite<0)
+								curSweepSite = -1.0;
+							else
+								curSweepSite = ranf();
+							cTime= sweepPhaseEventsGeneralPopNumber(bpArray, cTime, endTime, curSweepSite,\
+								1.0-(1.0/(2*sizeRatio[0]*EFFECTIVE_POPN_SIZE)), finalFreq, &activeSweepFlag, alpha,\
+								sizeRatio, sweepMode,0, 0);
+						}
+					
+					}
+				}
+			}
+		}
+	}
+	return(cTime);
+}
+
+
 
 /*recombineAtTimePopnSweep-- preforms recombination on
 an individual drawn from a popn and assigns parental
@@ -1641,14 +1466,13 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 
 /*******************************************************/
 void dropMutations(){
-	int i, j, m, tm;
+	int i, j, m;
 	double p;
 	float mutSite;
 	
 	//get time and set probs
 	coaltime = totalTimeInTree();
 	//printf("%f\n",coaltime);
-	tm=0;
 	for(i=0;i<totNodeNumber;i++){
 		//add Mutations
 		p = allNodes[i]->blProb * theta * 0.5;
@@ -1715,6 +1539,57 @@ int hasMutation(rootedNode *aNode, float site){
 	return 0;
 }
 
+//findRootAtSite-- returns the index of the node that is the root at a given site
+int findRootAtSite(float site){
+	int j;
+	j = 0;
+	while(nAncestorsHere(allNodes[j], site) != sampleSize){
+		j++;
+	}
+	return(j);
+}
+
+//printTreeAtSite-- prints a newick tree at a given site
+void printTreeAtSite(float site){
+	int rootIdx;
+	
+
+	rootIdx = findRootAtSite(site);
+	newickRecurse(allNodes[rootIdx],site,0);
+	printf(";\n");
+
+}
+
+void newickRecurse(rootedNode *aNode, float site, float tempTime){
+	
+	if(isCoalNode(aNode)){
+		
+		if(hasMaterialHere(aNode->leftChild,site) && hasMaterialHere(aNode->rightChild,site)){	
+			printf("(");
+			newickRecurse(aNode->leftChild,site,tempTime);
+			printf(",");
+			newickRecurse(aNode->rightChild,site,tempTime);
+			printf(")");
+			if(nAncestorsHere(aNode, site) != sampleSize){
+				printf(":%f",(aNode->leftParent->time - aNode->time));
+			}
+			
+		}
+		else{
+			if(hasMaterialHere(aNode->leftChild,site)) newickRecurse(aNode->leftChild,site,tempTime+(aNode->leftParent->time - aNode->time));
+			else if(hasMaterialHere(aNode->rightChild,site)) newickRecurse(aNode->rightChild,site,tempTime+(aNode->leftParent->time - aNode->time));
+		}
+	}
+	else{
+		if(isLeaf(aNode)){
+			printf("%d:%f",aNode->id,aNode->leftParent->time + tempTime);
+		}
+		else{ //recombination node
+			if(hasMaterialHere(aNode->leftChild,site)) newickRecurse(aNode->leftChild,site, tempTime + (aNode->leftParent->time - aNode->time));
+		}
+	}
+}
+
 /*makeGametesMS-- MS style sample output */
 void makeGametesMS(int argc,const char *argv[]){
 	int i,j, size, count, k, mutNumber;
@@ -1769,12 +1644,11 @@ void makeGametesMS(int argc,const char *argv[]){
 //dropMutationsUntilTime-- places mutationson the tree iff they occur before time t
 //this will not return the "correct" number of mutations conditional on theta
 void dropMutationsUntilTime(double t){
-	int i, j, m, tm;
+	int i, j, m;
 	double mutSite,p;
 	//get time and set probs
 	coaltime = totalTimeInTreeUntilTime(t);
 	//printf("%f\n",coaltime);
-	tm=0;
 	for(i=0;i<totNodeNumber;i++){
 		//add Mutations
 		p = allNodes[i]->blProb * theta * 0.5;
