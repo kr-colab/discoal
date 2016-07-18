@@ -431,7 +431,7 @@ void getParameters(int argc,const char **argv){
 				}
 				sweepSite = -1.0;
 				tau = atof(argv[++args]) * 2.0;
-				leftRho = atof(argv[++args]);
+				leftRho = atof(argv[++args]) * 2.0;
 				leftRhoFlag=1;
 				events[eventNumber].time = tau;
 				events[eventNumber].type = 's'; //sweep event
