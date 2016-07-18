@@ -1227,10 +1227,13 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 							coalesceAtTimePopn(cTime,i);
 						}
 						else{
-							if(sweepSite<0)
+							if(sweepSite<0){
 								curSweepSite = -1.0;
-							else
+								leftRho = genunf(0.0,2.0*alpha);
+							}
+							else{
 								curSweepSite = ranf();
+							}
 							cTime= sweepPhaseEventsGeneralPopNumber(bpArray, cTime, endTime, curSweepSite,\
 								1.0-(1.0/(2*sizeRatio[0]*EFFECTIVE_POPN_SIZE)), finalFreq, &activeSweepFlag, alpha,\
 								sizeRatio, sweepMode,0, 0);

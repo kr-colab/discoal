@@ -541,6 +541,7 @@ void getParameters(int argc,const char **argv){
 			case 'L' :
 			recurSweepMode = 1;
 			sweepMode = 's';
+			sweepSite = -1.0;
 			recurSweepRate = atof(argv[++args]);
 			break;	  
 		}
