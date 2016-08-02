@@ -108,8 +108,7 @@ int main(int argc, const char * argv[]){
 				activeSweepFlag = 1;
 				currentTime = events[j].time;
 				if (partialSweepMode == 1){
-					//currentFreq = MIN(partialSweepFinalFreq,1.0 - (1.0 / (2.0 * N * currentSize[0])));
-					currentFreq = partialSweepFinalFreq;
+					currentFreq = MIN(partialSweepFinalFreq,1.0 - (1.0 / (2.0 * N * currentSize[0])));
 				}
 				else{
 					currentFreq = 1.0 - (1.0 / (2.0 * N * currentSize[0]));
