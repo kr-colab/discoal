@@ -107,7 +107,13 @@ int main(int argc, const char * argv[]){
 				assert(activeSweepFlag == 0);
 				activeSweepFlag = 1;
 				currentTime = events[j].time;
-				currentFreq = 1.0 - (1.0 / (2.0 * N * currentSize[0]));
+				if (partialSweepMode == 1){
+					//currentFreq = MIN(partialSweepFinalFreq,1.0 - (1.0 / (2.0 * N * currentSize[0])));
+					currentFreq = partialSweepFinalFreq;
+				}
+				else{
+					currentFreq = 1.0 - (1.0 / (2.0 * N * currentSize[0]));
+				}
 			//	printf("event%d currentTime: %f nextTime: %f popnSize: %f\n",j,currentTime,nextTime,currentSize);
 				currentTime = sweepPhaseEventsGeneralPopNumber(&breakPoints[0], currentTime, nextTime, sweepSite, \
 					 currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
@@ -287,6 +293,7 @@ void getParameters(int argc,const char **argv){
 	deltaTMod = 400;
 	recurSweepMode = 0;
 	treeOutputMode= 0;
+	partialSweepMode = 0;
 	
 	//set up first bogus event
 	eventNumber = 0;
@@ -543,6 +550,11 @@ void getParameters(int argc,const char **argv){
 			sweepMode = 's';
 			sweepSite = -1.0;
 			recurSweepRate = atof(argv[++args]);
+			break;
+			case 'c' :
+			partialSweepMode = 1;
+			sweepMode = 's';
+			partialSweepFinalFreq = atof(argv[++args]);
 			break;	  
 		}
 		args++;
@@ -600,7 +612,8 @@ void usage(){
 	fprintf(stderr,"\t -uA rate at which adaptive mutation recurs during the sweep phase (sweep models only)\n");
 	fprintf(stderr,"\t -N sweepEffectivePopnSize (sweep models only)\n");	
 	fprintf(stderr,"\t -a alpha (=2Ns)\n");
-	fprintf(stderr,"\t -x sweepSite (0-1)\n");	
+	fprintf(stderr,"\t -x sweepSite (0-1)\n");
+	fprintf(stderr,"\t -c partialSweepFinalFrequency (partial sweeps)\n");	
 	fprintf(stderr,"\t -i dt (sweep time increment scalar; default 400 -> 1/400N)\n");
 	
 	fprintf(stderr,"\t -M migRate (sets all rates to migRate)\n");

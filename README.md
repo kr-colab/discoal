@@ -27,6 +27,7 @@ parameters:
 	 -N sweepEffectivePopnSize (sweep models only)
 	 -a alpha (=2Ns)
 	 -x sweepSite (0-1)
+	 -c partialSweepFinalFrequency (partial sweeps)
 	 -i dt (sweep time increment scalar; default 400 -> 1/400N)
 	 -M migRate (sets all rates to migRate)
 	 -m popnID1 popnID2 migRate (sets migRate from popnID1 to popnID2)

@@ -122,6 +122,8 @@ int lSpot, rSpot, condRecMode;
 int condRecMet;
 int activeSweepFlag;
 int recurSweepMode;
+int partialSweepMode;
+double partialSweepFinalFreq;
 
 double deltaTMod;
 int treeOutputMode;

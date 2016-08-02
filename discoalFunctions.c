@@ -28,6 +28,9 @@ void initialize(){
 			nodes[count]->lLim=0;
 			nodes[count]->rLim=nSites-1;
 			for(j=0;j<nSites;j++)nodes[count]->ancSites[j]=1;
+			if(p==0 && partialSweepMode == 1){
+				if(ranf()>partialSweepFinalFreq) nodes[count]->sweepPopn = 0;
+			}
 			if(p>0)nodes[count]->sweepPopn = 0;
 			nodes[count]->id=leafID++;
 			allNodes[count] = nodes[count];
@@ -936,7 +939,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 					x = neutralStochastic(tInc, x);
 					break;
 				}
-				//	printf("x here:%f ttau: %f\n",x,ttau );
+					//printf("x:%g ttau: %f\n",x,ttau );
 			}
 			else{
 				insweepphase = 0;
