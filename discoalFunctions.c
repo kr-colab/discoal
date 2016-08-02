@@ -1117,7 +1117,19 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	if(sweepPopnSizes[1]==0) *stillSweeping = 0; 
 	if(!*stillSweeping){
 		for(i=0;i<alleleNumber;i++){
-			if(nodes[i]->population==0) nodes[i]->sweepPopn=1; //reset the nodes in population 0 to be linked to bene allele
+			if(nodes[i]->population==0){
+				if(partialSweepMode == 1){
+					if(ranf()>partialSweepFinalFreq){
+						nodes[i]->sweepPopn = 0;
+					}
+					else{
+						nodes[i]->sweepPopn = 1;
+					}
+				}
+				else{
+			 		nodes[i]->sweepPopn=1; //reset the nodes in population 0 to be linked to bene allele
+				}
+			}
 		}
 	}
 	*finalFreq = x;

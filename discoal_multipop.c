@@ -293,6 +293,7 @@ void getParameters(int argc,const char **argv){
 	recurSweepMode = 0;
 	treeOutputMode= 0;
 	partialSweepMode = 0;
+	softSweepMode = 0;
 	
 	//set up first bogus event
 	eventNumber = 0;
@@ -445,6 +446,7 @@ void getParameters(int argc,const char **argv){
 				break;
 			case 'f':
 			f0 = atof(argv[++args]);
+			softSweepMode = 1;
 			break;
                         case 'u':
                         uA = atof(argv[++args]);
@@ -579,6 +581,12 @@ void getParameters(int argc,const char **argv){
 		if(nChangeCheck==1 && sweepMode=='d'){
 			printf("Error with event specification: you chose 1 or more population size changes with a determinstic sweep. Please us -ws flag instead\n");
 			exit(666);
+		}
+		if(softSweepMode == 1 && partialSweepMode == 1){
+			if(f0 >= partialSweepFinalFreq){
+				printf("Error with event specification: you specified a partial soft sweep but final frequency of partial sweep <= f_0\n");
+				exit(666);
+			}
 		}
 	}
 	if(leftRhoFlag && sweepSite >= 0.0){

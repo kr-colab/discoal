@@ -122,7 +122,7 @@ int lSpot, rSpot, condRecMode;
 int condRecMet;
 int activeSweepFlag;
 int recurSweepMode;
-int partialSweepMode;
+int partialSweepMode,softSweepMode;
 double partialSweepFinalFreq;
 
 double deltaTMod;
