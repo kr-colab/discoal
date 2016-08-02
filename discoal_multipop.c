@@ -105,7 +105,6 @@ int main(int argc, const char * argv[]){
 				break;
 				case 's':
 				assert(activeSweepFlag == 0);
-				activeSweepFlag = 1;
 				currentTime = events[j].time;
 				if (partialSweepMode == 1){
 					currentFreq = MIN(partialSweepFinalFreq,1.0 - (1.0 / (2.0 * N * currentSize[0])));
@@ -593,6 +592,11 @@ void getParameters(int argc,const char **argv){
 		printf("Error with event specification: you chose leftRho mode but the sweep site is within the locus\n");
 		exit(666);
 	}
+	if(softSweepMode == 1 && recurSweepMode == 1){
+		printf("Error with event specification: currently recurrent soft sweeps are not implemented. this will be a future addition\n");
+		exit(666);
+	}
+	
 }
 		
 
@@ -614,7 +618,7 @@ void usage(){
 	fprintf(stderr,"\t -wd tau (sweep happend tau generations ago- deterministic sweep)\n"); 
 	fprintf(stderr,"\t -wn tau (sweep happend tau generations ago- neutral sweep)\n");
 	fprintf(stderr,"\t -ls tau leftRho (stochastic sweep some genetic distance to the left of the simulated window--specified by leftRho=4Nr)\n");
-	fprintf(stderr,"\t\t similarly, ld and ls simulate deterministic and neutral sweeps to the left of the window, respectively\n");
+	fprintf(stderr,"\t\t similarly, ld and ln simulate deterministic and neutral sweeps to the left of the window, respectively\n");
 	fprintf(stderr,"\t -f first frequency at which selection acts on allele (F0; sweep models only)\n");
 	fprintf(stderr,"\t -uA rate at which adaptive mutation recurs during the sweep phase (sweep models only)\n");
 	fprintf(stderr,"\t -N sweepEffectivePopnSize (sweep models only)\n");	

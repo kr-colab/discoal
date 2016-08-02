@@ -28,9 +28,7 @@ void initialize(){
 			nodes[count]->lLim=0;
 			nodes[count]->rLim=nSites-1;
 			for(j=0;j<nSites;j++)nodes[count]->ancSites[j]=1;
-			if(p==0 && partialSweepMode == 1){
-				if(ranf()>partialSweepFinalFreq) nodes[count]->sweepPopn = 0;
-			}
+
 			if(p>0)nodes[count]->sweepPopn = 0;
 			nodes[count]->id=leafID++;
 			allNodes[count] = nodes[count];
@@ -202,7 +200,7 @@ rootedNode *newRootedNode(double cTime, int popn) {
 	temp->branchLength=0.0;
 	temp->mutationNumber = 0;
 	temp->population = popn;
-	temp->sweepPopn =1;
+//	temp->sweepPopn =1;
 //	temp->leafs = malloc(sizeof(int) * sampleSize);
 //	for(i=0;i<nSites;i++)temp->ancSites[i]=1;
 
@@ -900,19 +898,39 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	if(minF < 1.0/(2.*N))
 		minF = 1.0/(2.*N);
 
+	//if new sweep then reset sweepPopnIDs; only popn 0 sweeps, sweepPopn==1 is the beneficial class
+	if(!*stillSweeping){
+		for(i=0;i<alleleNumber;i++){
+			if(nodes[i]->population==0){
+				if(partialSweepMode == 1){
+					//for partial sweeps choose randomly acccording to final sweep freq
+					if(ranf()>partialSweepFinalFreq){
+						nodes[i]->sweepPopn = 0;						
+					}
+					else{
+						nodes[i]->sweepPopn = 1;
+					}
+				}
+				else{
+			 		nodes[i]->sweepPopn=1;
+				}
+			}
+		}
+	*stillSweeping = 1;
+	}
+	
 	//assume that sweep always happens in popn 0!!!
 	//using popnSize global to manage bookkeeping
 	sweepPopnSizes[1] = nodePopnSweepSize(0,1);
 	sweepPopnSizes[0] = nodePopnSweepSize(0,0);
-//	printf("sweepPopnSizes: %d %d \n",sweepPopnSizes[1],sweepPopnSizes[0]);
-	//set time increment
+	//  printf("sweepPopnSizes: %d %d \n",sweepPopnSizes[1],sweepPopnSizes[0]);
 
-	//if(sweepMode == 'N')
+	//set time increment
 	tInc = 1.0 / (deltaTMod * N);
 	tIncOrig = 1.0 / (deltaTMod * EFFECTIVE_POPN_SIZE);
 	insweepphase = 1;
-	//go for sweep length, or root
-
+	
+	//go for epoch time, sweep freq, or root
 	while( x > 1.0/(2.*N) && (cTime+ttau) < endTime){ 
 		//rejection algorithm of Braverman et al. 1995
 		eventRand = ranf();
@@ -939,7 +957,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 					x = neutralStochastic(tInc, x);
 					break;
 				}
-					//printf("x:%g ttau: %f\n",x,ttau );
+				//	printf("x:%g ttau: %f\n",x,ttau );
 			}
 			else{
 				insweepphase = 0;
@@ -982,8 +1000,8 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 			
 
 			eventProb *= 1-totRate;
-		//	printf("x(t): %g t: %g tinc: %g eventProb: %g eventRand: %g totRate: %g swPopnSize1: %d swPopnSize2: %d\n",x,ttau,tInc, eventProb,
-		//		eventRand,totRate,sweepPopnSizes[0],sweepPopnSizes[1]);	
+			//printf("x(t): %g t: %g tinc: %g eventProb: %g eventRand: %g totRate: %g swPopnSize1: %d swPopnSize2: %d\n",x,ttau,tInc, eventProb,
+			//	eventRand,totRate,sweepPopnSizes[0],sweepPopnSizes[1]);	
 
 
 		}
@@ -1115,23 +1133,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 		*stillSweeping = 0; 
 	}
 	if(sweepPopnSizes[1]==0) *stillSweeping = 0; 
-	if(!*stillSweeping){
-		for(i=0;i<alleleNumber;i++){
-			if(nodes[i]->population==0){
-				if(partialSweepMode == 1){
-					if(ranf()>partialSweepFinalFreq){
-						nodes[i]->sweepPopn = 0;
-					}
-					else{
-						nodes[i]->sweepPopn = 1;
-					}
-				}
-				else{
-			 		nodes[i]->sweepPopn=1; //reset the nodes in population 0 to be linked to bene allele
-				}
-			}
-		}
-	}
+
 	*finalFreq = x;
 //	printf("sp: %d %d\n",	sweepPopnSizes[0], 	sweepPopnSizes[1]);
 	return(cTime+(ttau));
@@ -1141,7 +1143,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 specified time. returns endTime. can handle multiple popns*/
 double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *finalFreq, double alpha, char sweepMode, double *sizeRatio){
 	double cTime, cRate[npops], rRate[npops], gcRate[npops], mRate[npops],totRate, waitTime, bp,r, r2;
-	double totCRate, totRRate, totGCRate,totMRate, eSum,curSweepSite;
+	double totCRate, totRRate, totGCRate,totMRate, eSum,curSweepSite, initFreq;
 	int  i,j;
 
 	if(startTime == endTime){
@@ -1244,14 +1246,21 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 						else{
 							if(sweepSite<0){
 								curSweepSite = -1.0;
-								leftRho = genunf(0.0,2.0*alpha);
+								leftRho = genunf(0.0,2.0 * alpha);
 							}
 							else{
 								curSweepSite = ranf();
 							}
+							if(partialSweepMode==1){
+								initFreq=MIN(partialSweepFinalFreq,1.0-(1.0/(2*sizeRatio[0]*EFFECTIVE_POPN_SIZE)));
+							}
+							else{
+								initFreq=1.0-(1.0/(2*sizeRatio[0]*EFFECTIVE_POPN_SIZE));
+							}
 							cTime= sweepPhaseEventsGeneralPopNumber(bpArray, cTime, endTime, curSweepSite,\
-								1.0-(1.0/(2*sizeRatio[0]*EFFECTIVE_POPN_SIZE)), finalFreq, &activeSweepFlag, alpha,\
+								initFreq, finalFreq, &activeSweepFlag, alpha,\
 								sizeRatio, sweepMode,0, 0);
+							
 						}
 					
 					}

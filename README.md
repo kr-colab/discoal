@@ -21,7 +21,7 @@ parameters:
 	 -wd tau (sweep happend tau generations ago- deterministic sweep)
 	 -wn tau (sweep happend tau generations ago- neutral sweep)
 	 -ls tau leftRho (stochastic sweep some genetic distance to the left of the simulated window--specified by leftRho=4Nr)
-		 similarly, ld and ls simulate deterministic and neutral sweeps to the left of the window, respectively
+		 similarly, ld and ln simulate deterministic and neutral sweeps to the left of the window, respectively
 	 -f first frequency at which selection acts on allele (F0; sweep models only)
 	 -uA rate at which adaptive mutation recurs during the sweep phase (sweep models only)
 	 -N sweepEffectivePopnSize (sweep models only)
