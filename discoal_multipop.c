@@ -457,6 +457,11 @@ void getParameters(int argc,const char **argv){
 				  pThetaLow=atof(argv[++args]);
 				  pThetaUp=atof(argv[++args]);
 				break;
+				case 'c':
+				  priorC = 1;
+				  pCLow=atof(argv[++args]);
+				  pCUp=atof(argv[++args]);
+				break;
                                 case 'r':
                                   if (strlen(argv[args]) == 4 && argv[args][3] == 'e'){
                                         priorRho = 2;
@@ -638,6 +643,7 @@ void usage(){
 	fprintf(stderr,"\t -PuA low high (prior on uA; sweep models only)\n");
 	fprintf(stderr,"\t -Px low high (prior on sweepSite; sweep models only)\n");
 	fprintf(stderr,"\t -Pf low high (prior on F0; sweep models only)\n");
+	fprintf(stderr,"\t -Pc low high (prior on partialSweepFinalFreq; sweep models only)\n");
 	fprintf(stderr,"\t -Pe1 lowTime highTime lowSize highSize (priors on first demographic move time and size)\n");
 	fprintf(stderr,"\t -Pe2 lowTime highTime lowSize highSize (priors on second demographic move time and size)\n");
 	//fprintf(stderr,"\t -U time (only record mutations back to specified time)\n");

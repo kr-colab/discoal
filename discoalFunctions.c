@@ -67,6 +67,8 @@ void initialize(){
           uA = genunf(pUALow,pUAUp);
 	if(priorTheta==1)
 	  theta = genunf(pThetaLow,pThetaUp);
+	if(priorC==1)
+	  partialSweepFinalFreq = genunf(pCLow,pCUp);
 	if(priorRho==1){
           rho = genunf(pRhoLow,pRhoUp);
         }
