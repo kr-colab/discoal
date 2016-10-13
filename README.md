@@ -38,6 +38,7 @@ parameters:
 	 -PuA low high (prior on uA; sweep models only)
 	 -Px low high (prior on sweepSite; sweep models only)
 	 -Pf low high (prior on F0; sweep models only)
+	 -Pc low high (prior on partialSweepFinalFreq; sweep models only)
 	 -Pe1 lowTime highTime lowSize highSize (priors on first demographic move time and size)
 	 -Pe2 lowTime highTime lowSize highSize (priors on second demographic move time and size)
 	 -R rhhRate (recurrent hitch hiking mode at the locus; rhh is rate per 2N individuals / generation)
