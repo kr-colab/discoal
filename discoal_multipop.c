@@ -280,7 +280,7 @@ void getParameters(int argc,const char **argv){
 	sweepSite = 0.5;
 	tDiv=666;
         gammaCoRatioMode = 0;
-	priorTheta=priorRho=priorAlpha=priorTau=priorX=priorF0=priorUA=0;
+	priorTheta=priorRho=priorAlpha=priorTau=priorX=priorF0=priorUA=priorC=0;
 
 	eventFlag = 1;
 	effectiveSampleSize = sampleSize;
@@ -459,6 +459,7 @@ void getParameters(int argc,const char **argv){
 				break;
 				case 'c':
 				  priorC = 1;
+			          partialSweepMode = 1;
 				  pCLow=atof(argv[++args]);
 				  pCUp=atof(argv[++args]);
 				break;
