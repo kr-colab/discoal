@@ -18,7 +18,7 @@
 
 #define MAX(a, b)  (((a) > (b)) ? (a) : (b))
 #define MIN(a, b)  (((a) > (b)) ? (b) : (a))
-#define MAXEVENTS 100
+#define MAXEVENTS 200
 #define MAXLEAFS 200
 
 /******************************************************************************/
