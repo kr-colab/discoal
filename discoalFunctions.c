@@ -1497,7 +1497,7 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 void dropMutations(){
 	int i, j, m;
 	double p;
-	float mutSite;
+	float mutSite, error;
 	
 	//get time and set probs
 	coaltime = totalTimeInTree();
@@ -1511,8 +1511,12 @@ void dropMutations(){
 		  mutSite = genunf((float)allNodes[i]->lLim / nSites, (float) allNodes[i]->rLim / nSites);
 		  while(isAncestralHere(allNodes[i],mutSite) != 1){
 				  if (allNodes[i]->lLim == allNodes[i]->rLim){
+		  		    if (mutSite*nSites < (float)allNodes[i]->lLim)
+					  error = (float)allNodes[i]->lLim-(mutSite*nSites);
+		  		    else
+					  error = 0.0;
 				    p = allNodes[i]->rLim + (1.0/nSites);
-				    mutSite = genunf((float)allNodes[i]->lLim / nSites, p / nSites);
+				    mutSite = genunf(((float)allNodes[i]->lLim + error) / nSites, (p + error) / nSites);
 				  }
 				  else
 				    mutSite = genunf((float)allNodes[i]->lLim / nSites, (float) allNodes[i]->rLim / nSites);
