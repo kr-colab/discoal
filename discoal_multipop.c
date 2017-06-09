@@ -640,7 +640,7 @@ void usage(){
 	fprintf(stderr,"\t -Pr low high (prior on rho)\n");
         fprintf(stderr,"\t -Pre mean upperBound (prior on rho -- exponentially distributed but truncated at an upper bound)\n");
 	fprintf(stderr,"\t -Pa low high (prior on alpha)\n");
-	fprintf(stderr,"\t -Pu low high (prior on tau; sweep models only)\n");
+	fprintf(stderr,"\t -Pu low high (prior on tau; sweep models only; still must use \"-ws tau\" and \"tau\" will be ignored)\n");
 	fprintf(stderr,"\t -PuA low high (prior on uA; sweep models only)\n");
 	fprintf(stderr,"\t -Px low high (prior on sweepSite; sweep models only)\n");
 	fprintf(stderr,"\t -Pf low high (prior on F0; sweep models only)\n");

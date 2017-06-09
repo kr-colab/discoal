@@ -34,7 +34,7 @@ parameters:
 	 -Pr low high (prior on rho)
 	 -Pre mean upperBound (prior on rho -- exponentially distributed but truncated at an upper bound)
 	 -Pa low high (prior on alpha)
-	 -Pu low high (prior on tau; sweep models only)
+	 -Pu low high (prior on tau; sweep models only; still must use "-ws tau" and "tau" will be ignored)
 	 -PuA low high (prior on uA; sweep models only)
 	 -Px low high (prior on sweepSite; sweep models only)
 	 -Pf low high (prior on F0; sweep models only)
