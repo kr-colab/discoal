@@ -60,6 +60,7 @@ typedef struct event
 	double time, popnSize;
 	char type;
 	int popID, popID2, popID3; //some events like splits involve two populations, admixture is 3
+	int lineageNumber; //some events involve a specified number of lineages, like ancient samples
 	double admixProp; // admixture proportion from population popID2
 }
 event;
@@ -127,6 +128,9 @@ double partialSweepFinalFreq;
 
 double deltaTMod;
 int treeOutputMode;
+
+int ancSampleSize, ancPopID, ancSampleFlag;
+int ancSampleTime;
 
 
 #endif

@@ -17,6 +17,8 @@
 void initialize(){
 	int i,j,p, count=0;
 	int leafID=0;
+	int popnStartIdx;
+
 	/* Initialize the arrays */
 	totChunkNumber = 0;
 	breakPoints[0] = 666;
@@ -35,7 +37,8 @@ void initialize(){
 			count += 1;
 		}
 	}
-	
+
+
 	breakNumber = 0;
 	//setup active material array
 	for(i=0;i<nSites;i++) activeMaterial[i] = 1;
@@ -43,6 +46,26 @@ void initialize(){
 	//set initial counts
 	alleleNumber = sampleSize;
 	totNodeNumber = sampleSize;
+	//ancient pop samples?
+	if(ancSampleFlag == 1){
+		//go through ancient sample events
+		for(i = 0; i < eventNumber; i++){
+			if (events[i].type == 'A'){
+				j=0;
+				while(nodes[j]->population != events[i].popID){
+					j++;
+				}
+				popnStartIdx = j;
+				for(j=0;j<events[i].lineageNumber;j++){			
+					nodes[j]->population = (events[i].popID + 1) * -1;
+					nodes[j]->time = events[i].time;
+					popnSizes[events[i].popID]--;
+				}
+			}
+		}
+
+	}
+	
 	activeSites = nSites;
 	if (npops>1){
 		if(tDiv==666 && migFlag == 0){
@@ -1804,6 +1827,22 @@ void admixPopns(int popnSrc, int popnDest1, int popnDest2, double admixProp){
 	}
 }
 
+//addAncientSample -- adds ancient samples by basically flipping population id of already alloced alleles and sets there time
+void addAncientSample(int lineageNumber, int popnDest, double addTime){
+	int i;
+	int count = 0;
+	
+	for(i=0; i < alleleNumber && count < lineageNumber; i++){
+		if(nodes[i]->population == (popnDest+1) * -1){
+			nodes[i]->population = popnDest;
+			nodes[i]->time = addTime;
+			popnSizes[popnDest]++;
+		}
+	}
+	
+}
+
+
 void addNode(rootedNode *aNode){
         assert(alleleNumber < MAXNODES);
         assert(totNodeNumber < MAXNODES);
@@ -1904,8 +1943,8 @@ rootedNode *pickNodePopnSweep(int popn,int sp){
 
 void printNode(rootedNode *aNode){
 	int i;
-	printf("node: %p time: %f lLim: %d rLim: %d nancSites: %d\nsites:\n",aNode, aNode->time,aNode->lLim,\
-		aNode->rLim, aNode->nancSites );
+	printf("node: %p time: %f lLim: %d rLim: %d nancSites: %d popn: %d\n nsites:\n",aNode, aNode->time,aNode->lLim,\
+		aNode->rLim, aNode->nancSites, aNode->population );
 	for(i=0;i<nSites;i++)printf("%d",aNode->ancSites[i]);
 	printf("\n");
 }
@@ -1946,6 +1985,13 @@ int nodePopnSweepSize(int popn, int sp){
 		}
 	}
 	return(popnSize);
+}
+
+void printAllNodes(){
+	int i;
+	for(i = 0 ; i < totNodeNumber; i++){
+		printNode(allNodes[i]);
+	}
 }
 
 /********** event stuff */

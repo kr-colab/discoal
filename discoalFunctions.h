@@ -27,6 +27,7 @@ void makeGametesMS(int argc,const char *argv[]);
 
 void mergePopns(int popnSrc, int popnDest);
 void admixPopns(int popnSrc, int popnDest1, int popnDest2, double admixProp);
+void addAncientSample(int lineageNumber, int popnDest, double addTime);
 
 
 void recurrentMutAtTime(double cTime,int srcPopn, int sp);
@@ -72,7 +73,7 @@ int isLeaf(rootedNode *aNode);
 int isCoalNode(rootedNode *aNode);
 void newickRecurse(rootedNode *aNode, float site,float tempTime);
 void printTreeAtSite(float site);
-
+void printAllNodes();
 
 unsigned int devrand(void);
 int compare_doubles(const void *a,const void *b);

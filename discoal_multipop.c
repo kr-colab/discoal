@@ -60,7 +60,9 @@ int main(int argc, const char * argv[]){
 		nextTime=999;
 		currentSize[0]=1.0;
 		currentFreq = 1.0 - (1.0 / (2.0 * N * currentSize[0])); //just to initialize the value
+		printf("popnsize[0]:%d",popnSizes[0]);
 		initialize();
+
 		j=0;
 		activeSweepFlag = 0;
 		for(j=0;j<eventNumber && alleleNumber > 1;j++){
@@ -153,6 +155,32 @@ int main(int argc, const char * argv[]){
 				case 'a':
 				currentTime = events[j].time;
 				admixPopns(events[j].popID, events[j].popID2, events[j].popID3, events[j].admixProp);
+				if(activeSweepFlag == 0){
+					if(recurSweepMode ==0){
+						currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
+					}
+				}
+				else{
+					if(recurSweepMode ==0){
+						currentTime = sweepPhaseEventsGeneralPopNumber(&breakPoints[0], currentTime, nextTime, sweepSite, \
+						 	currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+	                                        	currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = sweepPhaseEventsGeneralPopNumber(&breakPoints[0], currentTime, nextTime, sweepSite, \
+					 		currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
+					}
+				}
+				break;
+				case 'A':
+				currentTime = events[j].time;
+				addAncientSample(events[j].lineageNumber, events[j].popID, events[j].time);
 				if(activeSweepFlag == 0){
 					if(recurSweepMode ==0){
 						currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
@@ -293,6 +321,8 @@ void getParameters(int argc,const char **argv){
 	treeOutputMode= 0;
 	partialSweepMode = 0;
 	softSweepMode = 0;
+	ancSampleFlag = 0;
+	ancSampleSize = 0;
 	
 	//set up first bogus event
 	eventNumber = 0;
@@ -561,7 +591,17 @@ void getParameters(int argc,const char **argv){
 			partialSweepMode = 1;
 			sweepMode = 's';
 			partialSweepFinalFreq = atof(argv[++args]);
-			break;	  
+			break;
+			case 'A' :
+			events[eventNumber].lineageNumber = atoi(argv[++args]);
+			events[eventNumber].popID = atoi(argv[++args]);	 
+			events[eventNumber].time = atof(argv[++args]) * 2.0; 
+			ancSampleSize += events[eventNumber].lineageNumber;
+			events[eventNumber].type = 'A'; //ancient sample
+			ancSampleFlag = 1;
+			eventNumber++;
+			break;
+			 
 		}
 		args++;
 	}
@@ -635,6 +675,7 @@ void usage(){
 	
 	fprintf(stderr,"\t -M migRate (sets all rates to migRate)\n");
 	fprintf(stderr,"\t -m popnID1 popnID2 migRate (sets migRate from popnID1 to popnID2)\n");
+	fprintf(stderr,"\t -A sampleSize popnID time (ancient sample from popnID at specified time)\n");
 	
 	fprintf(stderr,"\t -Pt low high (prior on theta)\n");
 	fprintf(stderr,"\t -Pr low high (prior on rho)\n");
