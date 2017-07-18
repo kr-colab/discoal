@@ -17,7 +17,7 @@
 void initialize(){
 	int i,j,p, count=0;
 	int leafID=0;
-	int popnStartIdx;
+	
 
 	/* Initialize the arrays */
 	totChunkNumber = 0;
@@ -55,10 +55,8 @@ void initialize(){
 				while(nodes[j]->population != events[i].popID){
 					j++;
 				}
-				popnStartIdx = j;
-				for(j=0;j<events[i].lineageNumber;j++){			
+				for(;j<events[i].lineageNumber;j++){			
 					nodes[j]->population = (events[i].popID + 1) * -1;
-					nodes[j]->time = events[i].time;
 					popnSizes[events[i].popID]--;
 				}
 			}
@@ -1837,6 +1835,7 @@ void addAncientSample(int lineageNumber, int popnDest, double addTime){
 			nodes[i]->population = popnDest;
 			nodes[i]->time = addTime;
 			popnSizes[popnDest]++;
+			count++;
 		}
 	}
 	
