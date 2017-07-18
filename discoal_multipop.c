@@ -60,7 +60,7 @@ int main(int argc, const char * argv[]){
 		nextTime=999;
 		currentSize[0]=1.0;
 		currentFreq = 1.0 - (1.0 / (2.0 * N * currentSize[0])); //just to initialize the value
-		printf("popnsize[0]:%d",popnSizes[0]);
+//		printf("popnsize[0]:%d",popnSizes[0]);
 		initialize();
 
 		j=0;
@@ -600,6 +600,7 @@ void getParameters(int argc,const char **argv){
 			events[eventNumber].type = 'A'; //ancient sample
 			ancSampleFlag = 1;
 			eventNumber++;
+			assert(events[eventNumber].lineageNumber < sampleSize);
 			break;
 			 
 		}
