@@ -17,6 +17,7 @@
 void initialize(){
 	int i,j,p, count=0;
 	int leafID=0;
+	int tmpCount = 0;
 	
 
 	/* Initialize the arrays */
@@ -55,8 +56,8 @@ void initialize(){
 				while(nodes[j]->population != events[i].popID){
 					j++;
 				}
-				for(;j<events[i].lineageNumber;j++){			
-					nodes[j]->population = (events[i].popID + 1) * -1;
+				for(tmpCount=0;tmpCount<events[i].lineageNumber;tmpCount++){			
+					nodes[tmpCount+j]->population = (events[i].popID + 1) * -1;
 					popnSizes[events[i].popID]--;
 				}
 			}
@@ -1625,7 +1626,7 @@ void newickRecurse(rootedNode *aNode, float site, float tempTime){
 			newickRecurse(aNode->rightChild,site,tempTime);
 			printf(")");
 			if(nAncestorsHere(aNode, site) != sampleSize){
-				printf(":%f",(aNode->leftParent->time - aNode->time));
+				printf(":%f",(aNode->leftParent->time - aNode->time)*0.5);
 			}
 			
 		}
@@ -1636,7 +1637,7 @@ void newickRecurse(rootedNode *aNode, float site, float tempTime){
 	}
 	else{
 		if(isLeaf(aNode)){
-			printf("%d:%f",aNode->id,aNode->leftParent->time + tempTime);
+			printf("%d:%f",aNode->id,(aNode->leftParent->time + tempTime - aNode->time)*0.5);
 		}
 		else{ //recombination node
 			if(hasMaterialHere(aNode->leftChild,site)) newickRecurse(aNode->leftChild,site, tempTime + (aNode->leftParent->time - aNode->time));
@@ -1829,11 +1830,11 @@ void admixPopns(int popnSrc, int popnDest1, int popnDest2, double admixProp){
 void addAncientSample(int lineageNumber, int popnDest, double addTime){
 	int i;
 	int count = 0;
-	
 	for(i=0; i < alleleNumber && count < lineageNumber; i++){
 		if(nodes[i]->population == (popnDest+1) * -1){
 			nodes[i]->population = popnDest;
 			nodes[i]->time = addTime;
+			//printf("time for %d: %f\n", i, nodes[i]->time);
 			popnSizes[popnDest]++;
 			count++;
 		}

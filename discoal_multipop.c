@@ -612,6 +612,7 @@ void getParameters(int argc,const char **argv){
 	selCheck = 0;
 	nChangeCheck=0;
 	for(i=0;i<eventNumber;i++){
+		//printf("event %d: type is %c\n", i, events[i].type);
 	 		if(events[i].type == 's'){
 				selCheck = 1;
 	 		}
