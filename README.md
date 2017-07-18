@@ -30,6 +30,7 @@ parameters:
 	 -i dt (sweep time increment scalar; default 400 -> 1/400N)
 	 -M migRate (sets all rates to migRate)
 	 -m popnID1 popnID2 migRate (sets migRate from popnID1 to popnID2)
+	 -A sampleSize popnID time (ancient sample from popnID at specified time)
 	 -Pt low high (prior on theta)
 	 -Pr low high (prior on rho)
 	 -Pre mean upperBound (prior on rho -- exponentially distributed but truncated at an upper bound)
