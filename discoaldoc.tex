@@ -216,6 +216,8 @@ Rather than output haplotype samples from the coalescent, \texttt{discoal} can a
 \end{verbatim}
 Here there were seven marginal trees produced in the ARG. Each of the first three marginal trees are only for a single site, where as the the fourth tree pertains to two sites. Individual samples are proceeded by `//' as before.
 
+\section*{Ancient samples}
+We have added a feature into \texttt{discoal} that allows for a subset of the sampled chromosomes to be `ancient', i.e. sampled before the present time. This is done using the \texttt{-A} option which takes as arguments the number of ancient samples (must be smaller than the total sample size), the population they were taken from (must be population 0 unless the \texttt{-p} flag has been used to setup more than one population), and a time of sampling. More than one \texttt{-A} flag can be used to indicate multiple ancient samples at different times or from different populations. 
 
 \section*{Some caveats}
 
