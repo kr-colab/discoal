@@ -132,5 +132,7 @@ int treeOutputMode;
 int ancSampleSize, ancPopID, ancSampleFlag;
 int ancSampleTime;
 
+int hidePartialSNP;
+
 
 #endif

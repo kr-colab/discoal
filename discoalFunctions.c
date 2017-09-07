@@ -933,6 +933,8 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 					}
 					else{
 						nodes[i]->sweepPopn = 1;
+						if(isAncestralHere(nodes[i],sweepSite) && hidePartialSNP == 0)
+							addMutation(nodes[i],sweepSite);
 					}
 				}
 				else{

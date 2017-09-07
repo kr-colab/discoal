@@ -323,6 +323,7 @@ void getParameters(int argc,const char **argv){
 	softSweepMode = 0;
 	ancSampleFlag = 0;
 	ancSampleSize = 0;
+	hidePartialSNP = 0;
 	
 	//set up first bogus event
 	eventNumber = 0;
@@ -592,6 +593,9 @@ void getParameters(int argc,const char **argv){
 			sweepMode = 's';
 			partialSweepFinalFreq = atof(argv[++args]);
 			break;
+			case 'h' :
+			hidePartialSNP = 1;
+			break;
 			case 'A' :
 			events[eventNumber].lineageNumber = atoi(argv[++args]);
 			events[eventNumber].popID = atoi(argv[++args]);	 
@@ -693,6 +697,7 @@ void usage(){
 	//fprintf(stderr,"\t -U time (only record mutations back to specified time)\n");
 	fprintf(stderr,"\t -R rhhRate (recurrent hitch hiking mode at the locus; rhh is rate per 2N individuals / generation)\n");
 	fprintf(stderr,"\t -L rhhRate (recurrent hitch hiking mode to the side of locus; leftRho is ~Unif(0,4Ns); rhh is rate per 2N individuals / generation)\n");
+	fprintf(stderr,"\t -h (hide selected SNP in partial sweep mode)\n");
 	fprintf(stderr,"\t -T (tree output mode)\n");
 	fprintf(stderr,"\t -d seed1 seed2 (set random number generator seeds)\n");
 	
