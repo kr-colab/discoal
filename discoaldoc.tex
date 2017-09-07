@@ -171,6 +171,8 @@ $ ./discoal 3 2 100 -t 2 -r 2.4 -ws 0.05 -a 1000 -x 0.5 -f 0.1 -c 0.8
 
 The recurrent sweep flags from above can be used in conjunction with partial sweeps as well, simply by appending a \texttt{-c} flag with the appropriate final frequency. This case is modeled by assigning active gene copies to either selective background (beneficial vs. not) with probability determined by the final frequency of the partial sweep at the beginning of each sweep phase. 
 
+Upon output \texttt{discoal} by default will also output the selected SNP. Be careful about this behavior, because it will mean that estimates of $\theta$ will be incorrect. Moreover simulations with $\theta=0$ will contain one SNP- the selected SNP which is going through the population. Outputting this SNP can be depressed using the \texttt{-h} flag.
+
 
 \subsection*{More options with selection}
 Because of the way the structured coalescent proceeds during a sweep, time is tracking in small increments ($\delta t$) during a sweep. Throughout the literature on coalescent simulations with sweeps the actual value of $\delta t$ has varied considerably. We have given the user the option to change $\delta t$ as a function of a scalar of population size. By default $\delta t = 1/\sigma N$ with $\sigma=400$. The user can specify another value for $\sigma$ using the \texttt{-i} flag. Higher values of sigma lead to longer run times of the simulations. In our hands we have found very little difference between simulations run with $\sigma$ in the range $(4,400)$. We recommend proofing simulation parameter spaces with fast runs using \texttt{-i 4} and then for production using high values or the default.  
