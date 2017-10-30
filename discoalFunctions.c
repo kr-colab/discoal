@@ -890,7 +890,32 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 	return(cTime);
 }
 
-
+/*proposeTrajectory-- this function creates a sweep trajectory and deals with
+complications like changing population size, or soft sweeps, etc */
+void proposeTrajectory(int currentEventNumber, double *currentTrajectory, double *sizeRatio, char sweepMode, \
+double initialFreq, double *finalFreq, double alpha, double f0)
+{	
+	double x, tInc, tIncOrig, minF;
+	double N = (double) EFFECTIVE_POPN_SIZE;
+	double Nmax;
+	int i,j, insweepphase;
+	
+	j=0;
+	N = (double) floor(N * sizeRatio[0]);
+	x = initialFreq;
+	minF = f0;
+	if(minF < 1.0/(2.*N))
+		minF = 1.0/(2.*N);
+	
+	tInc = 1.0 / (deltaTMod * N);
+	tIncOrig = 1.0 / (deltaTMod * EFFECTIVE_POPN_SIZE);
+	insweepphase = 1;
+	
+	for(i=currentEventNumber;i<eventNumber;i++){
+		
+	}
+	
+}
 
 /*sweepPhaseEventsGeneralPopNumber-- this does the compressed time sweep thing. 
   generalized to account for popnSize changes returns the time after the sweep.
