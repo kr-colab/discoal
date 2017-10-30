@@ -403,6 +403,10 @@ void getParameters(int argc,const char **argv){
 			break;
 			case 'p' :
 			npops = atoi(argv[++args]);
+			if(npops > MAXPOPS){
+				fprintf(stderr,"Error: too many populations defined. Current maximum number = %d. Change MAXPOPS define in discoal.h and recompile... if you dare\n",MAXPOPS);
+				exit(1);
+			}
 			for(i=0;i<npops;i++){
 				sampleSizes[i]=atoi(argv[++args]);
 				currentSize[i] = 1.0;

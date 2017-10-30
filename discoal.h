@@ -14,7 +14,7 @@
 #define MAXBREAKS 1000000
 #define MAXMUTS 40000
 #define MAXTIME 100000.0
-#define MAXPOPS 6
+#define MAXPOPS 121
 
 #define MAX(a, b)  (((a) > (b)) ? (a) : (b))
 #define MIN(a, b)  (((a) > (b)) ? (b) : (a))
