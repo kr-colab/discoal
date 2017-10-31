@@ -99,7 +99,7 @@ const char *mFile;
 char sweepMode, windowMode;
 
 double coaltime, currentTime, pAccept;
-int mn, eventNumber, migFlag;
+int mn, eventNumber, migFlag, currentEventNumber;
 
 
 double SweepStartingFrequency, f0;
@@ -116,6 +116,10 @@ double recurSweepRate;
 
 int EFFECTIVE_POPN_SIZE;
 
+#define TRAJSTEPSTART 10000000
+size_t maxTrajSteps;
+float *currentTrajectory;
+int currentTrajectoryStep, totalTrajectorySteps;
 
 struct event events[MAXEVENTS];
 
