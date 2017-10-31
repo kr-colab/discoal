@@ -957,7 +957,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	insweepphase = 1;
 	
 	//go for epoch time, sweep freq, or root
-	while( x > 1.0/(2.*N) && (cTime+ttau) < endTime){ 
+	while( x > 1.0/(2.*N) && (cTime+ttau) < endTime && popnSizes[0] > 1){ 
 		//rejection algorithm of Braverman et al. 1995
 		eventRand = ranf();
 		eventProb = 1.0;
@@ -1781,6 +1781,7 @@ rootedNode *pickNodePopn(int popn){
 		}
 	}
 	if(popnSize == 0){
+		fprintf(stderr,"error encountered in pickNodePopn\n");
 		fprintf(stderr,"tried to pick allele from popn %d, but popnSize is %d! Rho=%f\n",popn,popnSize,rho);
 		exit(1);
 	}
@@ -1928,6 +1929,7 @@ rootedNode *pickNodePopnSweep(int popn,int sp){
 		}
 	}
 	if(popnSize == 0){
+		fprintf(stderr,"error encountered in pickNodePopnSweep\n");
 		fprintf(stderr,"tried to pick allele from popn %d, sweepPopn %d but popnSize is %d! Rho=%f\n",popn,sp,popnSize,rho);
 		printf("popnSizes[0]:%d popnSizes[1]:%d sweepPopnSizes[0]:%d sweepPopnSizes[1]:%d\n", popnSizes[0],popnSizes[1],\
 			sweepPopnSizes[0],sweepPopnSizes[1]);
