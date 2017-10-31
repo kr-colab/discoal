@@ -1301,12 +1301,12 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	insweepphase = 1;
 	
 	//go for epoch time, sweep freq, or root
-	while( x > 1.0/(2.*N) && (cTime+ttau) < endTime){ 
+	while( x > 1.0/(2.*N) && (cTime+ttau) < endTime && popnSizes[0] > 1){ 
 		//rejection algorithm of Braverman et al. 1995
 		eventRand = ranf();
 		eventProb = 1.0;
 		//wait for something
-		while(eventProb > eventRand && x > (1.0 / (2*N)) && (cTime+ttau) < endTime){
+		while(eventProb > eventRand && x > (1.0 / (2*N)) && (cTime+ttau) < endTime ){
 			ttau += tIncOrig;
 
 			x = currentTrajectory[currentTrajectoryStep++];
