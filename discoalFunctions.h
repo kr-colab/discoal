@@ -39,6 +39,12 @@ double sweepPhaseEventsGeneralPopNumber(int *bpArray, double startTime, double e
 			
 double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *finalFreq, double alpha, char sweepMode, double *sizeRatio);
 		
+double proposeTrajectory(int currentEventNumber, float *currentTrajectory, double *sizeRatio, char sweepMode, \
+	double initialFreq, double *finalFreq, double alpha, double f0, double currentTime);
+double sweepPhaseEventsConditionalTrajectory(int *bpArray, double startTime, double endTime, double sweepSite,\
+	double initialFreq, double *finalFreq, int *stillSweeping, double alpha,\
+	double *sizeRatio, char sweepMode,double f0, double uA);
+
 		
 double totalTimeInTree();
 void dropMutationsUntilTime(double t);
