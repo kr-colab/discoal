@@ -1325,7 +1325,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 				pLeftRecb = leftRho * sweepPopnSizes[0]*0.5 * tIncOrig * x;
                         }
 			sweepPopTotRate = pCoalB + pCoalb + pRecB + pRecb + pGCB + pGCb + pRecurMut + pLeftRecB + pLeftRecb;
-			printf("nB: %d; x: %g; pCoalB: %g; tInc: %g cTime+ttau: %g popnSizes[0]:%d\n",sweepPopnSizes[1],x,pCoalB,tInc,cTime+ttau,  popnSizes[0]);
+			//printf("nB: %d; x: %g; pCoalB: %g; tInc: %g cTime+ttau: %g popnSizes[0]:%d\n",sweepPopnSizes[1],x,pCoalB,tInc,cTime+ttau,  popnSizes[0]);
 			//now two events in population 1
 			totRate = 0.0;
 			totCRate = 0.0;

@@ -119,7 +119,7 @@ int main(int argc, const char * argv[]){
 				probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, currentSize, sweepMode, currentFreq, &currentFreq, alpha, f0, currentTime);
 				while(ranf()>probAccept){
 					probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, currentSize, sweepMode, currentFreq, &currentFreq, alpha, f0, currentTime);
-					printf("probAccept: %lf\n",probAccept);
+					//printf("probAccept: %lf\n",probAccept);
 				}
 				
 				currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
