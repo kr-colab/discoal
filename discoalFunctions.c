@@ -124,9 +124,6 @@ void initialize(){
 	}
 	sortEventArray(events,eventNumber);
 	
-	maxTrajSteps = TRAJSTEPSTART;
-	currentTrajectory = malloc(sizeof(float) * TRAJSTEPSTART);
-	
 }
 
 void initializeTwoSite(){
@@ -953,8 +950,8 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 				x = neutralStochastic(tInc, x);
 			}
 			if(j>=maxTrajSteps){
-				maxTrajSteps += 1000000;
-				currentTrajectory = (float *) realloc(currentTrajectory,sizeof(float)*maxTrajSteps);
+				printf("trajectory too bigly. killing myself gently\n");
+				exit(1);
 			}
 			currentTrajectory[j++]=x;
 		}

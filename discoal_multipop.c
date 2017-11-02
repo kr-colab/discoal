@@ -30,7 +30,7 @@ const char *fileName;
 double uTime;
 double *currentSize;
 long seed1, seed2;
-
+float *currentTrajectory;
 
 void getParameters(int argc,const char **argv);
 void usage();
@@ -53,12 +53,18 @@ int main(int argc, const char * argv[]){
 	
 	i = 0;
         totalSimCount = 0;
+	currentTrajectory = malloc(sizeof(float) * TRAJSTEPSTART);
+
 	while(i < sampleNumber){
 		currentTime=0;
 		nextTime=999;
 		currentSize[0]=1.0;
 		currentFreq = 1.0 - (1.0 / (2.0 * N * currentSize[0])); //just to initialize the value
 //		printf("popnsize[0]:%d",popnSizes[0]);
+		maxTrajSteps = TRAJSTEPSTART;
+		
+		
+		
 		initialize();
 
 		j=0;
@@ -259,7 +265,7 @@ int main(int argc, const char * argv[]){
 			}
 	
 		}
-		free(currentTrajectory);
+		
 		freeTree(nodes[0]);
                 totalSimCount += 1;
 	}
@@ -267,7 +273,7 @@ int main(int argc, const char * argv[]){
         {
             fprintf(stderr, "Needed run %d simulations to get %d with a recombination event within the specified bounds.\n", totalSimCount, i);
         }
-
+	free(currentTrajectory);
 	free(currentSize);
 	return(0);
 }
