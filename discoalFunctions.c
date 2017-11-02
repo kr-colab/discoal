@@ -228,7 +228,7 @@ rootedNode *newRootedNode(double cTime, int popn) {
 	temp->branchLength=0.0;
 	temp->mutationNumber = 0;
 	temp->population = popn;
-//	temp->sweepPopn =1;
+	temp->sweepPopn = -1;
 //	temp->leafs = malloc(sizeof(int) * sampleSize);
 //	for(i=0;i<nSites;i++)temp->ancSites[i]=1;
 
