@@ -316,7 +316,7 @@ void getParameters(int argc,const char **argv){
 	outputStyle = 'h';
 	mask = 0;
 	migFlag = 0;
-	deltaTMod = 400;
+	deltaTMod = 40;
 	recurSweepMode = 0;
 	treeOutputMode= 0;
 	partialSweepMode = 0;
