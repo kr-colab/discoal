@@ -1540,10 +1540,10 @@ void dropMutations(){
 		  		    else
 					  error = 0.0;
 				    p = allNodes[i]->rLim + (1.0/nSites);
-				    mutSite = genunf(((float)allNodes[i]->lLim + error) / nSites, (p + error) / nSites);
+				    mutSite = genunf(((double)allNodes[i]->lLim + error) / nSites, (p + error) / nSites);
 				  }
 				  else
-				    mutSite = genunf((float)allNodes[i]->lLim / nSites, (float) allNodes[i]->rLim / nSites);
+				    mutSite = genunf((double)allNodes[i]->lLim / nSites, (double) allNodes[i]->rLim / nSites);
 			  }
 		  //	printf("mut: %f\n",mutSite);
 			  addMutation(allNodes[i],mutSite);
