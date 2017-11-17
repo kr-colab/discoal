@@ -1864,6 +1864,7 @@ void dropMutations(){
 					  error = 0.0;
 				    p = allNodes[i]->rLim + (1.0/nSites);
 				    mutSite = genunf(((double)allNodes[i]->lLim + error) / nSites, (double)(p + error) / nSites);
+
 				  }
 				  else
 				    mutSite = genunf((double)allNodes[i]->lLim / nSites, (double) allNodes[i]->rLim / nSites);
@@ -2104,6 +2105,7 @@ rootedNode *pickNodePopn(int popn){
 		}
 	}
 	if(popnSize == 0){
+		fprintf(stderr,"error encountered in pickNodePopn\n");
 		fprintf(stderr,"tried to pick allele from popn %d, but popnSize is %d! Rho=%f\n",popn,popnSize,rho);
 		exit(1);
 	}
@@ -2251,6 +2253,7 @@ rootedNode *pickNodePopnSweep(int popn,int sp){
 		}
 	}
 	if(popnSize == 0){
+		fprintf(stderr,"error encountered in pickNodePopnSweep\n");
 		fprintf(stderr,"tried to pick allele from popn %d, sweepPopn %d but popnSize is %d! Rho=%f\n",popn,sp,popnSize,rho);
 		printf("popnSizes[0]:%d popnSizes[1]:%d sweepPopnSizes[0]:%d sweepPopnSizes[1]:%d\n", popnSizes[0],popnSizes[1],\
 			sweepPopnSizes[0],sweepPopnSizes[1]);
