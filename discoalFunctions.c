@@ -1427,43 +1427,48 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 				}
 			}
 		}
-		else{	//event is in another population
-			totRate -= sweepPopTotRate; //discount sweepPopnEvent probs from tot
-			r = ranf();
-			if (r < (totRRate/ totRate)){
-				//pick popn
-				eSum = rRate[1];
-				i = 1;
-				r2 = ranf();
-				while(eSum/totRRate < r2) eSum += rRate[++i];
-				bp = recombineAtTimePopn(cTime,i);
-				if (bp != 666){
-					bpArray[breakNumber] = bp;
-					breakNumber += 1; 
-				}
-			}
-			else{
-				if(r < ((totRRate + totGCRate)/totRate)){
-					//pick popn
-					eSum = gcRate[1];
-					i = 1;
-					r2 = ranf();
-					while(eSum/totGCRate < r2) eSum += gcRate[++i];
-					geneConversionAtTimePopn(cTime,i);
-				}
-				else{
-					//coalesce 
-					//pick popn
-					eSum = cRate[1];
-				//	printf("esum= %f\n",eSum);
-					i = 1;
-					r2 = ranf();
-					while(eSum/totCRate < r2){
-						 eSum += cRate[++i];
+		else{	
+			if(npops>1){
+				//event is in another population
+				totRate -= sweepPopTotRate; //discount sweepPopnEvent probs from tot
+				if(totRate > 0){ //need to catch cases without recombination here
+					r = ranf();
+					if (r < (totRRate/ totRate)){
+						//pick popn
+						eSum = rRate[1];
+						i = 1;
+						r2 = ranf();
+						while(eSum/totRRate < r2) eSum += rRate[++i];
+						bp = recombineAtTimePopn(cTime,i);
+						if (bp != 666){
+							bpArray[breakNumber] = bp;
+							breakNumber += 1; 
 						}
-					coalesceAtTimePopn(cTime,i);
+					}
+					else{
+						if(r < ((totRRate + totGCRate)/totRate)){
+							//pick popn
+							eSum = gcRate[1];
+							i = 1;
+							r2 = ranf();
+							while(eSum/totGCRate < r2) eSum += gcRate[++i];
+							geneConversionAtTimePopn(cTime,i);
+						}
+						else{
+							//coalesce 
+							//pick popn
+							eSum = cRate[1];
+						//	printf("esum= %f\n",eSum);
+							i = 1;
+							r2 = ranf();
+							while(eSum/totCRate < r2){
+								 eSum += cRate[++i];
+								}
+							coalesceAtTimePopn(cTime,i);
 					
 					
+						}
+					}
 				}
 			}
 		}
