@@ -253,8 +253,10 @@ int main(int argc, const char * argv[]){
 			}
 			else{
 				//Hudson style output
+				//errorCheckMutations();
 				makeGametesMS(argc,argv);
 			}
+			//printf("rep: %d\n",i);
                         i++;
 		}
 		else{

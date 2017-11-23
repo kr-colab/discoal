@@ -21,9 +21,12 @@ int nAncestorsHere(rootedNode *aNode, float site);
 
 int siteBetweenChunks(rootedNode *aNode, int xOverSite);
 void dropMutations();
-void addMutation(rootedNode *aNode, float site);
-int hasMutation(rootedNode *aNode, float site);
+void addMutation(rootedNode *aNode, double site);
+int hasMutation(rootedNode *aNode, double site);
 void makeGametesMS(int argc,const char *argv[]);
+void dropMutationsRecurse();
+void recurseTreePushMutation(rootedNode *aNode, float site);
+void errorCheckMutations();
 
 void mergePopns(int popnSrc, int popnDest);
 void admixPopns(int popnSrc, int popnDest1, int popnDest2, double admixProp);

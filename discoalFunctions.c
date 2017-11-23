@@ -439,7 +439,7 @@ int recombineAtTimePopn(double cTime, int popn){
 	int xOver;
 
 	aNode = pickNodePopn(popn);
-//	printf("picked: %p\n",aNode);
+//	printf("recombine\n");
 	xOver = ignuin(0,nSites-1);
 //	printf("xo: %d test1: %d test2: %d\n",xOver,siteBetweenChunks(aNode, xOver),isActive(xOver) );
 //	printNode(aNode);
@@ -508,7 +508,7 @@ void geneConversionAtTimePopn(double cTime, int popn){
 	int tractL;
 
 	aNode = pickNodePopn(popn);
-//	printf("picked: %p\n",aNode);
+//	printf("GC\n",aNode);
 	xOver = ignuin(0,nSites);
 	tractL = (int) ceil(log(genunf(0,1))/log(1.0-(1.0/gcMean)));
 //	printf("xo: %d test1: %d tractL: %d gcMean: %d\n",xOver,siteBetweenChunks(aNode, xOver),tractL,gcMean );
@@ -804,7 +804,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 		for(i=0;i<npops;i++){
 			mRate[i]=0.0;
 		}
-	//	printf("currPopSize[0]: %d currPopSize[1]: %d alleleNumber: %d totNodeNumber: %d activeSites: %d cTime: %f\n",popnSizes[0],popnSizes[1],alleleNumber,totNodeNumber, activeSites, cTime);
+		//printf("currPopSize[0]: %d currPopSize[1]: %d alleleNumber: %d totNodeNumber: %d activeSites: %d cTime: %f\n",popnSizes[0],popnSizes[1],alleleNumber,totNodeNumber, activeSites, cTime);
 		for(i=0;i<npops;i++){
 			cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 / sizeRatio[i];
 			rRate[i] = rho * popnSizes[i] * 0.5;// * ((float)activeSites/nSites);
@@ -818,6 +818,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 			totGCRate += gcRate[i];
 			totRate += cRate[i] + rRate[i] + mRate[i] + gcRate[i];
 		}
+		//printf("totRate: %f totCRate: %f totRRate: %f \n",totRate,totCRate,totRRate);
 
 		//find time of next event
 		waitTime = genexp(1.0)  * (1.0/ totRate);
@@ -1849,7 +1850,7 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 void dropMutations(){
 	int i, j, m;
 	double p;
-	float mutSite, error;
+	double mutSite, error;
 	
 	//get time and set probs
 	coaltime = totalTimeInTree();
@@ -1858,26 +1859,26 @@ void dropMutations(){
 		//add Mutations
 		p = allNodes[i]->blProb * theta * 0.5;
 		if(p>0.0){
-		  m = ignpoi(p);
-		  while(m>0){
-		  mutSite = genunf((float)allNodes[i]->lLim / nSites, (float) allNodes[i]->rLim / nSites);
-		  while(isAncestralHere(allNodes[i],mutSite) != 1){
-				  if (allNodes[i]->lLim == allNodes[i]->rLim){
-		  		    if (mutSite*nSites < (float)allNodes[i]->lLim)
-					  error = (float)allNodes[i]->lLim-(mutSite*nSites);
-		  		    else
-					  error = 0.0;
-				    p = allNodes[i]->rLim + (1.0/nSites);
-				    mutSite = genunf(((double)allNodes[i]->lLim + error) / nSites, (double)(p + error) / nSites);
-
-				  }
-				  else
-				    mutSite = genunf((double)allNodes[i]->lLim / nSites, (double) allNodes[i]->rLim / nSites);
-			  }
-		  //	printf("mut: %f\n",mutSite);
-			  addMutation(allNodes[i],mutSite);
-			  m--;
-		  }
+			m = ignpoi(p);
+			while(m>0){
+				mutSite = genunf((float)allNodes[i]->lLim / nSites, (float) allNodes[i]->rLim / nSites);
+				while(isAncestralHere(allNodes[i],mutSite) != 1){
+				//	printf("in here\n");
+					if (allNodes[i]->lLim == allNodes[i]->rLim){
+						if (mutSite*nSites < (float)allNodes[i]->lLim)
+							error = (float)allNodes[i]->lLim-(mutSite*nSites);
+						else
+							error = 0.0;
+						p = allNodes[i]->rLim + (1.0/nSites);
+						mutSite = genunf(((double)allNodes[i]->lLim + error) / nSites, (double)(p + error) / nSites);
+					}
+					else
+						mutSite = genunf((double)allNodes[i]->lLim / nSites, (double) allNodes[i]->rLim / nSites);
+				}
+				//printf("new mut allele: %d mut: %f\n",i,mutSite);
+				addMutation(allNodes[i],mutSite);
+				m--;
+			}
 		}
 	}
 //	printf("coaltime: %f totM: %d\n",coaltime,tm);
@@ -1894,6 +1895,49 @@ void dropMutations(){
 	}
 }
 
+void dropMutationsRecurse(){
+	int i, j, m;
+	double p;
+	float mutSite, error;
+	
+	//get time and set probs
+	coaltime = totalTimeInTree();
+	//printf("%f\n",coaltime);
+	for(i=0;i<totNodeNumber;i++){
+		//add Mutations
+		p = allNodes[i]->blProb * theta * 0.5;
+		if(p>0.0){
+			m = ignpoi(p);
+			while(m>0){
+				mutSite = genunf((float)allNodes[i]->lLim / nSites, (float) allNodes[i]->rLim / nSites);
+				while(isAncestralHere(allNodes[i],mutSite) != 1){
+				//	printf("in here\n");
+					if (allNodes[i]->lLim == allNodes[i]->rLim){
+						if (mutSite*nSites < (float)allNodes[i]->lLim)
+							error = (float)allNodes[i]->lLim-(mutSite*nSites);
+						else
+							error = 0.0;
+						p = allNodes[i]->rLim + (1.0/nSites);
+						mutSite = genunf(((double)allNodes[i]->lLim + error) / nSites, (double)(p + error) / nSites);
+					}
+					else
+						mutSite = genunf((double)allNodes[i]->lLim / nSites, (double) allNodes[i]->rLim / nSites);
+				}
+		//	printf("mut: %f\n",mutSite);
+				addMutation(allNodes[i],mutSite);
+				m--;
+			}
+		}
+	}
+//	printf("coaltime: %f totM: %d\n",coaltime,tm);
+	//push mutations down tree
+	for(i=totNodeNumber-1;i>=0;i--){
+		for(j=0;j<allNodes[i]->mutationNumber;j++){
+			mutSite = allNodes[i]->muts[j];
+			recurseTreePushMutation(allNodes[i],mutSite);
+		}
+	}
+}
 //calculates the total time in the tree, then set blProbs for each node
 double totalTimeInTree(){
 	double tTime, siteLength;
@@ -1910,14 +1954,22 @@ double totalTimeInTree(){
 	return tTime;
 }
 
-
-void addMutation(rootedNode *aNode, float site){
+void recurseTreePushMutation(rootedNode *aNode, float site){
+	if(aNode->leftChild != NULL && isAncestralHere(aNode->leftChild,site))
+		recurseTreePushMutation(aNode->leftChild,site);
+	if(aNode->rightChild != NULL && isAncestralHere(aNode->rightChild,site))
+		recurseTreePushMutation(aNode->rightChild,site);
+	if( isLeaf(aNode) && isAncestralHere(aNode,site)){
+		if(hasMutation(aNode,site)==0) addMutation(aNode, site);
+	}
+}
+void addMutation(rootedNode *aNode, double site){
 	aNode->muts[aNode->mutationNumber] = site;
 	aNode->mutationNumber += 1;
 
 }
 
-int hasMutation(rootedNode *aNode, float site){
+int hasMutation(rootedNode *aNode, double site){
 	int i;
 	for (i = 0; i < aNode->mutationNumber; i++){
 		if (aNode->muts[i] == site) return 1;
@@ -1979,7 +2031,7 @@ void newickRecurse(rootedNode *aNode, float site, float tempTime){
 /*makeGametesMS-- MS style sample output */
 void makeGametesMS(int argc,const char *argv[]){
 	int i,j, size, count, k, mutNumber;
-	float allMuts[MAXMUTS];
+	double allMuts[MAXMUTS];
 
 	/* get unique list of muts */
 	size = 0;
@@ -1987,6 +2039,7 @@ void makeGametesMS(int argc,const char *argv[]){
 		for (j = 0; j < allNodes[i]->mutationNumber; j++){
 			count = 0;
 			for( k = 0; k < size; k++){
+			//	printf("%f %f %d\n",allMuts[k],allNodes[i]->muts[j],allMuts[k] == allNodes[i]->muts[j]);
 				if (allMuts[k] == allNodes[i]->muts[j]){
 					count += 1;
 				}
@@ -2000,11 +2053,11 @@ void makeGametesMS(int argc,const char *argv[]){
 	}
 	
 	mutNumber = size;
-	qsort(allMuts, size, sizeof(allMuts[0]), compare_floats);
+	qsort(allMuts, size, sizeof(allMuts[0]), compare_doubles);
 	printf("\n//\nsegsites: %d",mutNumber);
 	if(mutNumber > 0) printf("\npositions: ");
 	for(i = 0; i < mutNumber; i++)
-		fprintf(stdout,"%7.5lf ",allMuts[i] );
+		fprintf(stdout,"%6.6lf ",allMuts[i] );
 	fprintf(stdout,"\n");
 
 /* go through sites, if there is a mut is allMuts print out segSite */
@@ -2026,6 +2079,16 @@ void makeGametesMS(int argc,const char *argv[]){
 	}  
 }
 
+void errorCheckMutations(){
+	int i,j;
+	
+	for (i = 0; i < sampleSize; i++){
+		printf("allNodes[%d]:\n",i);
+		for (j = 0; j < allNodes[i]->mutationNumber; j++){
+			printf("muts[%d]=%lf\n",j,allNodes[i]->muts[j]);
+		}
+	}
+}
 
 //dropMutationsUntilTime-- places mutationson the tree iff they occur before time t
 //this will not return the "correct" number of mutations conditional on theta
