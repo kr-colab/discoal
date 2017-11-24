@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -O0 -g -DBIG
+CFLAGS = -O3
 
 all: discoal
 #
