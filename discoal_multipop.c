@@ -256,7 +256,7 @@ int main(int argc, const char * argv[]){
 				//errorCheckMutations();
 				makeGametesMS(argc,argv);
 			}
-			//printf("rep: %d\n",i);
+			printf("rep: %d\n",i);
                         i++;
 		}
 		else{
