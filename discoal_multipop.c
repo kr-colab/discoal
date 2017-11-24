@@ -253,8 +253,10 @@ int main(int argc, const char * argv[]){
 			}
 			else{
 				//Hudson style output
+				//errorCheckMutations();
 				makeGametesMS(argc,argv);
 			}
+			//printf("rep: %d\n",i);
                         i++;
 		}
 		else{
@@ -289,8 +291,14 @@ void getParameters(int argc,const char **argv){
 	if( argc < 3){
 		usage();
 	}
-	//locusNumber = atoi(argv[1]);
+
 	sampleSize = atoi(argv[1]);
+	if(sampleSize > 254){
+		#ifndef BIG
+		printf("Error: sampleSize > 254. recompile discoal and set the -DBIG flag\n");
+		exit(666);
+		#endif
+	}
 	sampleNumber = atoi(argv[2]);
 	nSites = atoi(argv[3]);
 	if(nSites>MAXSITES){

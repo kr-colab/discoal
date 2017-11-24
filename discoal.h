@@ -35,7 +35,7 @@ typedef struct rootedNode
 {
 	struct rootedNode *leftParent, *rightParent, *leftChild, *rightChild;
 	double time, branchLength, blProb;
-	float muts[MAXMUTS];
+	double muts[MAXMUTS];
 	#ifdef BIG
 	uint16_t ancSites[MAXSITES];
 	#else
