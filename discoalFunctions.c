@@ -1875,7 +1875,7 @@ void dropMutations(){
 					else
 						mutSite = genunf((double)allNodes[i]->lLim / nSites, (double) allNodes[i]->rLim / nSites);
 				}
-				printf("new mut allele: %d mut: %f\n",i,mutSite);
+				//printf("new mut allele: %d mut: %f\n",i,mutSite);
 				addMutation(allNodes[i],mutSite);
 				m--;
 			}
