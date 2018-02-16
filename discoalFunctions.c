@@ -2187,6 +2187,7 @@ rootedNode *pickNodePopn(int popn){
 	return(nodes[index]);
 	*/
 	index = nodeIndexByPop[popn][ignuin(0, popnSizes[popn] - 1)];
+	//printf("%d\n",index);
 	return(nodes[index]);
 	
 }
@@ -2291,11 +2292,12 @@ void removeNode(rootedNode *aNode){
 	while(nodeIndexByPop[aNode->population][j] != i){
 		j++;
 	}
-	for (i = j ; i < popnSizes[aNode->population]; i++){
+	for (i = j ; i < popnSizes[aNode->population] - 1; i++){
 		temp =  nodeIndexByPop[aNode->population][i+1];
-		nodeIndexByPop[aNode->population][i] = temp;
+		nodeIndexByPop[aNode->population][i] = temp-1;
 	}
 	popnSizes[aNode->population]-=1;
+	
 }
 
 /* addNodeAtIndex - variation on the theme here. adds
