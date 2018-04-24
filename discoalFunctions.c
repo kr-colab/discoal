@@ -1610,7 +1610,7 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 							probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, sizeRatio, sweepMode, initFreq, finalFreq, alpha, f0, cTime);
 							while(ranf()>probAccept){
 								probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, sizeRatio, sweepMode, initFreq, finalFreq, alpha, f0, cTime);
-								printf("probAccept: %lf\n",probAccept);
+								//printf("probAccept: %lf\n",probAccept);
 							}
 							cTime= sweepPhaseEventsConditionalTrajectory(bpArray, cTime, endTime, curSweepSite,\
 								initFreq, finalFreq, &activeSweepFlag, alpha,\
