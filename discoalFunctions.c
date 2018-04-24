@@ -35,6 +35,7 @@ void initialize(){
 			if(p>0)nodes[count]->sweepPopn = 0;
 			nodes[count]->id=leafID++;
 			allNodes[count] = nodes[count];
+			nodeIndexByPop[p][i]=count;
 			count += 1;
 		}
 	}
@@ -2165,6 +2166,8 @@ rootedNode *pickNodePopn(int popn){
 	int i, popnSize, indexArray[alleleNumber], index;
 
 	//get popnSize -- may later decide to keep this is some sort of variable that is passed
+	
+	/*
 	popnSize = 0;
 	for(i = 0 ; i < alleleNumber; i++){
 		if(nodes[i]->population == popn){
@@ -2177,10 +2180,16 @@ rootedNode *pickNodePopn(int popn){
 		fprintf(stderr,"tried to pick allele from popn %d, but popnSize is %d! Rho=%f\n",popn,popnSize,rho);
 		exit(1);
 	}
+	
 	//choose random index
 	index = indexArray[ignuin(0, popnSize - 1)];
 
 	return(nodes[index]);
+	*/
+	index = nodeIndexByPop[popn][ignuin(0, popnSizes[popn] - 1)];
+	//printf("%d\n",index);
+	return(nodes[index]);
+	
 }
 
 void mergePopns(int popnSrc, int popnDest){
@@ -2248,6 +2257,7 @@ void addNode(rootedNode *aNode){
 	popnSizes[aNode->population]+=1;
 	if(aNode->population==0)
 		sweepPopnSizes[aNode->sweepPopn]+=1;
+	nodeIndexByPop[aNode->population][popnSizes[aNode->population]] = alleleNumber;
 }
 
 //removeNodeAt-- removes a node given an index   
@@ -2267,15 +2277,27 @@ void removeNodeAt(int index){
 //removeNode -- removes a given node, uses above routine
 void removeNode(rootedNode *aNode){
 	int i = 0;
+	int j,temp;
 
 //find node index
 	while(nodes[i] != aNode){
 		i++;
 	}
-	popnSizes[aNode->population]-=1;
+	
 	if (aNode->population==0)
 		sweepPopnSizes[aNode->sweepPopn]-=1;
 	removeNodeAt(i);
+	//deal with nodeIndexByPop array
+	j=0;
+	while(nodeIndexByPop[aNode->population][j] != i){
+		j++;
+	}
+	for (i = j ; i < popnSizes[aNode->population] - 1; i++){
+		temp =  nodeIndexByPop[aNode->population][i+1];
+		nodeIndexByPop[aNode->population][i] = temp-1;
+	}
+	popnSizes[aNode->population]-=1;
+	
 }
 
 /* addNodeAtIndex - variation on the theme here. adds
