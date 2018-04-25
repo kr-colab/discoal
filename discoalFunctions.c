@@ -951,6 +951,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 				tInc = 1.0 / (deltaTMod * N );
 				x = neutralStochastic(tInc, x);
 			}
+			//printf("j: %ld x: %f\n",j,x);
 			if(j>=maxTrajSteps){
 				printf("trajectory too bigly. step= %d freq = %f. killing myself gently\n",j, x);
 				exit(1);
