@@ -901,7 +901,8 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 	double tInc, tIncOrig, minF,ttau, N;
 	double N_0 = (double) EFFECTIVE_POPN_SIZE;
 	double Nmax, localNextTime,localCurrentTime, currentSizeRatio;
-	int i,j, insweepphase;
+	int i, insweepphase;
+	long int j;
 	float x;
 	
 	tIncOrig = 1.0 / (deltaTMod * EFFECTIVE_POPN_SIZE);
@@ -951,7 +952,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 				x = neutralStochastic(tInc, x);
 			}
 			if(j>=maxTrajSteps){
-				printf("trajectory too bigly. killing myself gently\n");
+				printf("trajectory too bigly. step= %d freq = %f. killing myself gently\n",j, x);
 				exit(1);
 			}
 			currentTrajectory[j++]=x;
