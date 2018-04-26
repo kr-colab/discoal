@@ -953,7 +953,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			}
 			//printf("j: %ld x: %f\n",j,x);
 			if(j>=maxTrajSteps){
-				printf("trajectory too bigly. step= %d freq = %f. killing myself gently\n",j, x);
+				printf("trajectory too bigly. step= %ld freq = %f. killing myself gently\n",j, x);
 				exit(1);
 			}
 			currentTrajectory[j++]=x;
