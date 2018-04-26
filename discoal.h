@@ -116,9 +116,9 @@ double recurSweepRate;
 
 int EFFECTIVE_POPN_SIZE;
 
-#define TRAJSTEPSTART 50000000000
+#define TRAJSTEPSTART 5000000000
 long int  maxTrajSteps;
-extern float *currentTrajectory;
+float *currentTrajectory;
 long int currentTrajectoryStep, totalTrajectorySteps;
 
 struct event events[MAXEVENTS];

@@ -30,7 +30,7 @@ const char *fileName;
 double uTime;
 double *currentSize;
 long seed1, seed2;
-float *currentTrajectory;
+//float *currentTrajectory;
 
 void getParameters(int argc,const char **argv);
 void usage();
@@ -54,6 +54,7 @@ int main(int argc, const char * argv[]){
 	i = 0;
         totalSimCount = 0;
 	currentTrajectory = malloc(sizeof(float) * TRAJSTEPSTART);
+	assert(currentTrajectory);
 
 	while(i < sampleNumber){
 		currentTime=0;
