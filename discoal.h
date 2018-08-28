@@ -4,6 +4,8 @@
 #ifndef __DISCOAL_GLOBALS__
 #define __DISCOAL_GLOBALS__
 
+#include <stdlib.h>
+
 /******************************************************************************/
 /* here are just some defines to allocate initial global arrays and stuff     */
 /* like that                                                                  */
@@ -116,9 +118,12 @@ double recurSweepRate;
 
 int EFFECTIVE_POPN_SIZE;
 
-#define TRAJSTEPSTART 5000000000
-long int  maxTrajSteps;
-float *currentTrajectory;
+/* This is the initial length of 
+ * a trajectory
+ */
+#define TRAJSTEPSTART 50
+extern size_t MAXTRAJSIZE;
+
 long int currentTrajectoryStep, totalTrajectorySteps;
 
 struct event events[MAXEVENTS];

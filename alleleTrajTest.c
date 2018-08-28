@@ -9,6 +9,9 @@
 unsigned long devrand(void);
 #define MAXTRAJ 10000000
 
+// Have to init our extern global here, too
+size_t MAXTRAJSIZE = 10;
+
 void createTrajectory(int N,double alpha,double dt, double *currentTrajectory);
 
 int main (int argc, const char * argv[]) {

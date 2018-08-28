@@ -895,15 +895,21 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 /*proposeTrajectory-- this function creates a sweep trajectory and deals with
 complications like changing population size, or soft sweeps, etc 
 returns the acceptance probability of the trajectory */
-double proposeTrajectory(int currentEventNumber, float *currentTrajectory, double *sizeRatio, char sweepMode, \
+double proposeTrajectory(int currentEventNumber, float **currentTrajectory, double *sizeRatio, char sweepMode, \
 double initialFreq, double *finalFreq, double alpha, double f0, double currentTime)
 {	
+    if(*currentTrajectory == NULL)
+    {
+        fprintf(stderr,"currentTrajectory is NULL");
+        exit(EXIT_FAILURE);
+    }
 	double tInc, tIncOrig, minF,ttau, N;
 	double N_0 = (double) EFFECTIVE_POPN_SIZE;
 	double Nmax, localNextTime,localCurrentTime, currentSizeRatio;
 	int i, insweepphase;
 	long int j;
-	float x;
+	float x, *reallocTraj;
+    size_t new_alloc_size;
 	
 	tIncOrig = 1.0 / (deltaTMod * EFFECTIVE_POPN_SIZE);
 	j=0;
@@ -952,11 +958,24 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 				x = neutralStochastic(tInc, x);
 			}
 			//printf("j: %ld x: %f\n",j,x);
-			if(j>=maxTrajSteps){
-				printf("trajectory too bigly. step= %ld freq = %f. killing myself gently\n",j, x);
-				exit(1);
-			}
-			currentTrajectory[j++]=x;
+            if(j+1 >= MAXTRAJSIZE)
+            {
+                new_alloc_size = MAXTRAJSIZE*1.5;
+                reallocTraj = (float*)realloc(*currentTrajectory,sizeof(float)*new_alloc_size);
+                if(reallocTraj != NULL)
+                {
+                    MAXTRAJSIZE=new_alloc_size;
+                    *currentTrajectory = reallocTraj;
+                    reallocTraj = NULL;
+                }
+                else
+                {
+                    fprintf(stderr,"Could not reallocate memory for trajectory");
+                    free(*currentTrajectory);
+                    exit(EXIT_FAILURE);
+                }
+            }
+			(*currentTrajectory)[j++]=x;
 		}
 	}
 	currentTrajectoryStep=0;
@@ -1239,7 +1258,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 }
 
 /*sweepPhaseEventsConditionalTrajectory-- does sweep phase with trajectory created externally */
-double sweepPhaseEventsConditionalTrajectory(int *bpArray, double startTime, double endTime, double sweepSite,\
+double sweepPhaseEventsConditionalTrajectory(float * currentTrajectory, int *bpArray, double startTime, double endTime, double sweepSite,\
 double initialFreq, double *finalFreq, int *stillSweeping, double alpha,\
 double *sizeRatio, char sweepMode,double f0, double uA)
 {
@@ -1492,7 +1511,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 
 /*recurrentSweepPhaseGeneralPopNumber--coalescent, recombination, gc events, and sweeps! until
 specified time. returns endTime. can handle multiple popns*/
-double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *finalFreq, double alpha, char sweepMode, double *sizeRatio){
+double recurrentSweepPhaseGeneralPopNumber(float * currentTrajectory, int *bpArray,double startTime, double endTime, double *finalFreq, double alpha, char sweepMode, double *sizeRatio){
 	double cTime, cRate[npops], rRate[npops], gcRate[npops], mRate[npops],totRate, waitTime, bp,r, r2;
 	double totCRate, totRRate, totGCRate,totMRate, eSum,curSweepSite, initFreq, probAccept;
 	int  i,j;
@@ -1609,12 +1628,12 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 								initFreq=1.0-(1.0/(2*sizeRatio[0]*EFFECTIVE_POPN_SIZE));
 							}
 							//generate a proposed trajectory
-							probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, sizeRatio, sweepMode, initFreq, finalFreq, alpha, f0, cTime);
+							probAccept = proposeTrajectory(currentEventNumber, &currentTrajectory, sizeRatio, sweepMode, initFreq, finalFreq, alpha, f0, cTime);
 							while(ranf()>probAccept){
-								probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, sizeRatio, sweepMode, initFreq, finalFreq, alpha, f0, cTime);
+								probAccept = proposeTrajectory(currentEventNumber, &currentTrajectory, sizeRatio, sweepMode, initFreq, finalFreq, alpha, f0, cTime);
 								//printf("probAccept: %lf\n",probAccept);
 							}
-							cTime= sweepPhaseEventsConditionalTrajectory(bpArray, cTime, endTime, curSweepSite,\
+							cTime= sweepPhaseEventsConditionalTrajectory(currentTrajectory, bpArray, cTime, endTime, curSweepSite,\
 								initFreq, finalFreq, &activeSweepFlag, alpha,\
 								sizeRatio, sweepMode,0, 0);
 							
