@@ -55,7 +55,6 @@ int main(int argc, const char * argv[]){
         totalSimCount = 0;
 
 	float * currentTrajectory = (float*)malloc(sizeof(float) * MAXTRAJSIZE);
-    fprintf(stderr,"%ld\n",&currentTrajectory);
 	assert(currentTrajectory);
 
 	while(i < sampleNumber){
