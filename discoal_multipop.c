@@ -616,11 +616,21 @@ void getParameters(int argc,const char **argv){
 			sweepMode = 's';
 			sweepSite = -1.0;
 			recurSweepRate = atof(argv[++args]);
+            if (recurSweepRate <= 0)
+            {
+                fprintf(stderr,"recurSweepRate must be > 0\n");
+                exit(0);
+            }
 			break;
 			case 'c' :
 			partialSweepMode = 1;
 			sweepMode = 's';
 			partialSweepFinalFreq = atof(argv[++args]);
+            if (partialSweepFinalFreq <= 0.0 || partialSweepFinalFreq >= 1.0)
+            {
+                fprintf(stderr,"partialSweepFinalFreq must be > 0 and < 1.0\n");
+                exit(1);
+            }
 			break;
 			case 'h' :
 			hidePartialSNP = 1;
