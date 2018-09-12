@@ -1992,40 +1992,56 @@ int findRootAtSite(float site){
 //printTreeAtSite-- prints a newick tree at a given site
 void printTreeAtSite(float site){
 	int rootIdx;
+    float tPtr;
 	
-
+    tPtr = 0;
 	rootIdx = findRootAtSite(site);
-	newickRecurse(allNodes[rootIdx],site,0);
+	newickRecurse(allNodes[rootIdx],site,tPtr);
 	printf(";\n");
 
 }
 
 void newickRecurse(rootedNode *aNode, float site, float tempTime){
-	
-	if(isCoalNode(aNode)){
+	//printf("site: %f tempTime: %f\n",site,tempTime);
+	//printNode(aNode);
+    if(isCoalNode(aNode)){
 		
 		if(hasMaterialHere(aNode->leftChild,site) && hasMaterialHere(aNode->rightChild,site)){	
 			printf("(");
-			newickRecurse(aNode->leftChild,site,tempTime);
+			newickRecurse(aNode->leftChild,site,0.0);
 			printf(",");
-			newickRecurse(aNode->rightChild,site,tempTime);
+			newickRecurse(aNode->rightChild,site,0.0);
 			printf(")");
 			if(nAncestorsHere(aNode, site) != sampleSize){
-				printf(":%f",(aNode->leftParent->time - aNode->time)*0.5);
+				printf(":%f",(aNode->branchLength + tempTime)*0.5);
 			}
 			
 		}
 		else{
-			if(hasMaterialHere(aNode->leftChild,site)) newickRecurse(aNode->leftChild,site,tempTime+(aNode->leftParent->time - aNode->time));
-			else if(hasMaterialHere(aNode->rightChild,site)) newickRecurse(aNode->rightChild,site,tempTime+(aNode->leftParent->time - aNode->time));
+            if(hasMaterialHere(aNode->leftChild,site)){
+                tempTime += aNode->branchLength;
+                newickRecurse(aNode->leftChild,site, \
+                        tempTime);
+            }
+			else if(hasMaterialHere(aNode->rightChild,site)){
+                tempTime += aNode->branchLength;
+                newickRecurse(aNode->rightChild,site, \
+                        tempTime);
+            }
 		}
 	}
 	else{
 		if(isLeaf(aNode)){
-			printf("%d:%f",aNode->id,(aNode->leftParent->time + tempTime - aNode->time)*0.5);
+			printf("%d:%f",aNode->id, \
+                    (aNode->branchLength +tempTime)*0.5);
 		}
 		else{ //recombination node
-			if(hasMaterialHere(aNode->leftChild,site)) newickRecurse(aNode->leftChild,site, tempTime + (aNode->leftParent->time - aNode->time));
+			if(hasMaterialHere(aNode->leftChild,site) && \
+                    hasMaterialHere(aNode,site)){
+               tempTime+= aNode->branchLength; 
+               newickRecurse(aNode->leftChild,site, \
+                        tempTime);
+            }
 		}
 	}
 }
