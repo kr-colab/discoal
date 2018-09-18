@@ -1351,6 +1351,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 
 
 		}
+		if(cTime+ttau >= endTime) return(cTime+ttau);
 
 		//Decide which event took place
 		//first was it in population 0 (sweep) or not
