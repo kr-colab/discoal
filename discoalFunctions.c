@@ -2241,13 +2241,20 @@ void admixPopns(int popnSrc, int popnDest1, int popnDest2, double admixProp){
 }
 
 //addAncientSample -- adds ancient samples by basically flipping population id of already alloced alleles and sets there time
-void addAncientSample(int lineageNumber, int popnDest, double addTime){
+void addAncientSample(int lineageNumber, int popnDest, double addTime, int stillSweeping, double currentFreq){
 	int i;
 	int count = 0;
+	double rn;
 	for(i=0; i < alleleNumber && count < lineageNumber; i++){
 		if(nodes[i]->population == (popnDest+1) * -1){
 			nodes[i]->population = popnDest;
 			nodes[i]->time = addTime;
+			if(stillSweeping == 1){
+				rn = ranf();
+				if(rn<currentFreq){
+					nodes[i]->sweepPopn=1;
+				}
+			}
 			//printf("time for %d: %f\n", i, nodes[i]->time);
 			popnSizes[popnDest]++;
 			count++;
@@ -2358,8 +2365,8 @@ rootedNode *pickNodePopnSweep(int popn,int sp){
 
 void printNode(rootedNode *aNode){
 	int i;
-	printf("node: %p time: %f lLim: %d rLim: %d nancSites: %d popn: %d\n nsites:\n",aNode, aNode->time,aNode->lLim,\
-		aNode->rLim, aNode->nancSites, aNode->population );
+	printf("node: %p time: %f lLim: %d rLim: %d nancSites: %d popn: %d sweepPopn: %d\n",aNode, aNode->time,aNode->lLim,\
+		aNode->rLim, aNode->nancSites, aNode->population, aNode->sweepPopn);
 	for(i=0;i<nSites;i++)printf("%d",aNode->ancSites[i]);
 	printf("\n");
 }
@@ -2406,6 +2413,13 @@ void printAllNodes(){
 	int i;
 	for(i = 0 ; i < totNodeNumber; i++){
 		printNode(allNodes[i]);
+	}
+}
+
+void printAllActiveNodes(){
+	int i;
+	for(i = 0 ; i < alleleNumber; i++){
+		printNode(nodes[i]);
 	}
 }
 

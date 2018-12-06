@@ -131,9 +131,9 @@ int main(int argc, const char * argv[]){
 				
 				currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
 					 currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
-			//	printf("currentFreqAfter: %f alleleNumber:%d\n",currentFreq,alleleNumber);
-			//	printf("pn0:%d pn1:%d alleleNumber: %d sp1: %d sp2: %d \n", popnSizes[0],popnSizes[1], alleleNumber,sweepPopnSizes[1],
-			//				sweepPopnSizes[0]);
+				//printf("currentFreqAfter: %f alleleNumber:%d currentTime:%f\n",currentFreq,alleleNumber,currentTime);
+				//printf("pn0:%d pn1:%d alleleNumber: %d sp1: %d sp2: %d \n", popnSizes[0],popnSizes[1], alleleNumber,sweepPopnSizes[1],
+				//			sweepPopnSizes[0]);
 				if (currentTime < nextTime)
                                         currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
 						
@@ -194,7 +194,9 @@ int main(int argc, const char * argv[]){
 				break;
 				case 'A':
 				currentTime = events[j].time;
-				addAncientSample(events[j].lineageNumber, events[j].popID, events[j].time);
+				//printAllActiveNodes();
+				addAncientSample(events[j].lineageNumber, events[j].popID, events[j].time, activeSweepFlag, currentFreq);
+				//printAllActiveNodes();
 				if(activeSweepFlag == 0){
 					if(recurSweepMode ==0){
 						currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);

@@ -30,7 +30,7 @@ void errorCheckMutations();
 
 void mergePopns(int popnSrc, int popnDest);
 void admixPopns(int popnSrc, int popnDest1, int popnDest2, double admixProp);
-void addAncientSample(int lineageNumber, int popnDest, double addTime);
+void addAncientSample(int lineageNumber, int popnDest, double addTime, int stillSweeping, double currentFreq);
 
 
 void recurrentMutAtTime(double cTime,int srcPopn, int sp);
@@ -83,6 +83,7 @@ int isCoalNode(rootedNode *aNode);
 void newickRecurse(rootedNode *aNode, float site,float tempTime);
 void printTreeAtSite(float site);
 void printAllNodes();
+void printAllActiveNodes();
 
 unsigned int devrand(void);
 int compare_doubles(const void *a,const void *b);
