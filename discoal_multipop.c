@@ -246,12 +246,14 @@ int main(int argc, const char * argv[]){
 
 					if(breakPoints[k] - lastBreak > 0){
 						printf("[%d]",breakPoints[k] - lastBreak);
-						printTreeAtSite(tempSite); 
+						printf("%g\n",allNodes[findRootAtSite(breakPoints[k])]->time);
+                        //printTreeAtSite(tempSite); 
 						lastBreak = breakPoints[k];
 					}
 				}
 				printf("[%d]",nSites- lastBreak);
-				printTreeAtSite(1.0 - (1.0/nSites)); 
+				printf("%g\n",allNodes[findRootAtSite(1.0-(1.0/nSites))]->time);
+				//printTreeAtSite(1.0 - (1.0/nSites)); 
 
 			}
 			else{
@@ -662,7 +664,7 @@ void getParameters(int argc,const char **argv){
 				selCheck = 1;
 	 		}
 			if(events[i].type == 'n'){
-				nChangeCheck = 1;
+				nChangeCheck += 1;
 	 		}
 	}
 	if(selCheck == 1){
@@ -670,8 +672,8 @@ void getParameters(int argc,const char **argv){
 			printf("Error with event specification: a single sweep event has been found but recurrentSweep mode has been specified\n");
 			exit(666);
 		}
-		if(nChangeCheck==1 && sweepMode=='d'){
-			printf("Error with event specification: you chose 1 or more population size changes with a determinstic sweep. Please us -ws flag instead\n");
+		if(nChangeCheck > 1 && sweepMode=='d'){
+			printf("Error with event specification: you chose 1 or more population size changes with a deterministic sweep. Please us -ws flag instead\n");
 			exit(666);
 		}
 		if(softSweepMode == 1 && partialSweepMode == 1){
