@@ -238,22 +238,21 @@ int main(int argc, const char * argv[]){
 		if(condRecMode == 0){
 			if(treeOutputMode == 1){
 				//output newick trees
-				qsort(breakPoints, breakNumber, sizeof(breakPoints[0]), compare_floats);
+                qsort(breakPoints, breakNumber, sizeof(breakPoints[0]), compare_floats);
 				lastBreak = 0;
 				printf("\n//\n");
 				for(k=0;k<breakNumber;k++){
 					tempSite = ((float) breakPoints[k] / nSites) - (0.5/nSites) ; //padding
-
 					if(breakPoints[k] - lastBreak > 0){
 						printf("[%d]",breakPoints[k] - lastBreak);
-						printf("%g\n",allNodes[findRootAtSite(breakPoints[k])]->time);
-                        //printTreeAtSite(tempSite); 
+                        //printf("%g\n",allNodes[findRootAtSite(breakPoints[k])]->time);
+                        printTreeAtSite(tempSite); 
 						lastBreak = breakPoints[k];
 					}
 				}
 				printf("[%d]",nSites- lastBreak);
-				printf("%g\n",allNodes[findRootAtSite(1.0-(1.0/nSites))]->time);
-				//printTreeAtSite(1.0 - (1.0/nSites)); 
+				//printf("%g\n",allNodes[findRootAtSite(1.0-(1.0/nSites))]->time);
+				printTreeAtSite(1.0 - (1.0/nSites)); 
 
 			}
 			else{
