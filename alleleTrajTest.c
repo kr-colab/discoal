@@ -22,23 +22,33 @@ int main (int argc, const char * argv[]) {
 	seed2 = (long) (devrand() % 2147483399);
 	setall(seed1, seed2 );
 	currentTraj = malloc(sizeof(double) * MAXTRAJ);
-	N = 20000;
+	N = 10000;
 	dt = 1.0 / (400.0 * N);
-	s = 0.0002;
-	alpha = 2*N*s;
-	createTrajectory(N,alpha,dt,currentTraj);
-	
-	i=0;
-	while(currentTraj[i] > (1.0/(2*N))){
-		printf("%lf\n",currentTraj[i++]);
-	}
-	printf("%d\n",i);
-	
+	alpha = 1000;
+    int reps = 1;
+    for(j=0; j<reps;j++){
+        createTrajectory(N,alpha,dt,currentTraj);
+	    i=0;
+        while(currentTraj[i] > (1.0/(2*N))){
+            printf("%g %g\n",currentTraj[i],i*dt);
+            i++;
+        }
+	    sum += i * dt;
+    }
+    printf("N: %g\n",N);
+    printf("alpha: %g\n",alpha);
+    printf("mean time: %g\n",sum/((float) reps));
+    printf("mean time x2: %g\n",2 * N * sum/((float) reps));
 }
 
 void createTrajectory(int N,double alpha,double dt, double *currentTrajectory){
 	float freq = ((2*N) - 1.0) / (2*N) ; 
-	int i=0;
+	int i;
+    // zero out vector
+    for(i=0;i<MAXTRAJ;i++){
+        currentTrajectory[i] = 0.0;
+    }
+    i = 0;
 	while(freq > (1.0/(2*N))){
 		freq = 1.0 - genicSelectionStochasticForwards(dt, (1.0 - freq), alpha);
 		currentTrajectory[i++]= freq;
