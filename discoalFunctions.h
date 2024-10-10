@@ -89,4 +89,6 @@ unsigned int devrand(void);
 int compare_doubles(const void *a,const void *b);
 int compare_floats(const void *a,const void *b);
 
+int recombineAtTimePopn_mod(double cTime, int popn);
+
 #endif

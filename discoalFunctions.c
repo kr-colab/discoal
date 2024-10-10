@@ -501,6 +501,76 @@ int recombineAtTimePopn(double cTime, int popn){
 	return 666;
 }
 
+// Memory accesion modification
+int recombineAtTimePopn_mod(double cTime, int popn) {
+    rootedNode *aNode, *lParent = NULL, *rParent = NULL;
+    int i, xOver;
+
+    aNode = pickNodePopn(popn);  // Select a node
+    xOver = ignuin(0, nSites - 1);  // Generate a crossover point
+
+    if (siteBetweenChunks(aNode, xOver) == 1 && isActive(xOver) == 1) {  // Check if crossover site is valid
+        removeNode(aNode);  // Remove the node from the population
+
+        // Allocate parent nodes
+        lParent = newRootedNode(cTime, popn);
+        rParent = newRootedNode(cTime, popn);
+
+        // Initialize the necessary fields
+        lParent->nancSites = 0;
+        rParent->nancSites = 0;
+        lParent->lLim = nSites;
+        lParent->rLim = 0;
+        rParent->lLim = nSites;
+        rParent->rLim = 0;
+
+        // Process site data directly without additional array allocation
+        for (i = 0; i < nSites; i++) {
+            int siteValue = aNode->ancSites[i];
+
+            if (i < xOver) {
+                if (siteValue > 0 && siteValue < sampleSize) {
+                    lParent->nancSites++;
+                    lParent->rLim = i;
+
+                    lParent->lLim = MIN(lParent->lLim, i);
+                    lParent->ancSites[i] = siteValue;
+                    rParent->ancSites[i] = 0;
+                }
+            } else {
+                if (siteValue > 0 && siteValue < sampleSize) {
+                    rParent->nancSites++;
+                    rParent->rLim = i;
+                    rParent->lLim = MIN(rParent->lLim, i);
+                    rParent->ancSites[i] = siteValue;
+                    lParent->ancSites[i] = 0;
+                }
+            }
+        }
+
+        // Set the left and right parents for the child node
+        aNode->leftParent = lParent;
+        aNode->rightParent = rParent;
+        lParent->leftChild = aNode;
+        rParent->leftChild = aNode;
+
+        // Set populations for both parents
+        lParent->population = aNode->population;
+        rParent->population = aNode->population;
+
+        // Add both parent nodes to the tree
+        addNode(lParent);
+        addNode(rParent);
+
+        // Update the branch length of the node
+        aNode->branchLength = cTime - aNode->time;
+
+        return xOver;  // Return the crossover point
+    }
+
+    return 666;  // Return 666 for debugging if no recombination occurs
+}
+
 void geneConversionAtTimePopn(double cTime, int popn){
 	rootedNode *aNode, *lParent, *rParent;
 	int i;
