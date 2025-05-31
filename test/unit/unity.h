@@ -6,11 +6,6 @@
 #include <string.h>
 #include <math.h>
 
-#define UNITY_VERSION_MAJOR    2
-#define UNITY_VERSION_MINOR    5
-#define UNITY_VERSION_BUILD    1
-#define UNITY_VERSION         ((UNITY_VERSION_MAJOR << 16) | (UNITY_VERSION_MINOR << 8) | UNITY_VERSION_BUILD)
-
 #ifdef __cplusplus
 extern "C"
 {
@@ -56,7 +51,15 @@ void tearDown(void);
 #define TEST_ASSERT_NOT_NULL(pointer) \
     do { \
         if ((pointer) == NULL) { \
-            printf("FAIL: Expected non-NULL but got NULL at %s:%d\n", __FILE__, __LINE__); \
+            printf("FAIL: Expected non-NULL pointer at %s:%d\n", __FILE__, __LINE__); \
+            exit(1); \
+        } \
+    } while(0)
+
+#define TEST_ASSERT_EQUAL_DOUBLE(expected, actual) \
+    do { \
+        if ((expected) != (actual)) { \
+            printf("FAIL: Expected %f but got %f at %s:%d\n", (double)(expected), (double)(actual), __FILE__, __LINE__); \
             exit(1); \
         } \
     } while(0)
@@ -64,12 +67,20 @@ void tearDown(void);
 // Test Runner
 #define RUN_TEST(func) \
     do { \
-        printf("Running %s...\n", #func); \
+        printf("Running " #func "...\n"); \
         setUp(); \
         func(); \
         tearDown(); \
-        printf("PASS: %s\n", #func); \
+        printf("PASS: " #func "\n"); \
     } while(0)
+
+// Unity Test Runner Functions
+#define UNITY_BEGIN() \
+    printf("\n\nUnity Test Runner\n================\n\n")
+
+#define UNITY_END() \
+    printf("\n\nAll tests passed!\n"); \
+    0
 
 #ifdef __cplusplus
 }
