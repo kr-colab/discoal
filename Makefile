@@ -16,16 +16,20 @@ test: alleleTrajTest.c alleleTraj.c alleleTraj.h discoalFunctions.c
 	$(CC) $(CFLAGS)  -o alleleTrajTest alleleTrajTest.c alleleTraj.c ranlibComplete.c discoalFunctions.c -lm
 
 # new unit tests
-test_node: test/unit/test_node.c discoal.h
-	$(CC) $(TEST_CFLAGS) -o test_node test/unit/test_node.c -lm
+test_node: test/unit/test_node.c discoalFunctions.c ranlibComplete.c alleleTraj.c discoal.h discoalFunctions.h
+	$(CC) $(TEST_CFLAGS) -o test_node test/unit/test_node.c discoalFunctions.c ranlibComplete.c alleleTraj.c -lm
 
-run_tests: test_node
+test_event: test/unit/test_event.c discoal.h
+	$(CC) $(TEST_CFLAGS) -o test_event test/unit/test_event.c -lm
+
+run_tests: test_node test_event
 	./test_node
+	./test_event
 
 #
 # clean
 #
 
 clean:
-	rm -f discoal *.o test_node alleleTrajTest
+	rm -f discoal *.o test_node test_event alleleTrajTest
 

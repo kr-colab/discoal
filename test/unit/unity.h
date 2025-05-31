@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #define UNITY_VERSION_MAJOR    2
 #define UNITY_VERSION_MINOR    5
