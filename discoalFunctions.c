@@ -277,6 +277,9 @@ rootedNode *newRootedNode(double cTime, int popn) {
 	
 	// Initialize ancSites array dynamically
 	initializeAncSites(temp, nSites);
+	
+	// Initialize muts array dynamically
+	initializeMuts(temp, 10);  // Start small, grow as needed
 //	temp->leafs = malloc(sizeof(int) * sampleSize);
 //	for(i=0;i<nSites;i++)temp->ancSites[i]=1;
 
@@ -2002,6 +2005,7 @@ void recurseTreePushMutation(rootedNode *aNode, float site){
 	}
 }
 void addMutation(rootedNode *aNode, double site){
+	ensureMutsCapacity(aNode, aNode->mutationNumber + 1);
 	aNode->muts[aNode->mutationNumber] = site;
 	aNode->mutationNumber += 1;
 
@@ -2412,6 +2416,7 @@ void freeTree(rootedNode *aNode){
 	//cleanup nodes
 	for (i = 0; i < totNodeNumber; i++){
 		cleanupAncSites(allNodes[i]);  // Free ancSites array
+		cleanupMuts(allNodes[i]);      // Free muts array
 		free(allNodes[i]);
 		allNodes[i] = NULL;
 	} 
@@ -2557,5 +2562,49 @@ void cleanupAncSites(rootedNode *node) {
 		free(node->ancSites);
 		node->ancSites = NULL;
 		node->ancSitesCapacity = 0;
+	}
+}
+
+// Muts dynamic memory management functions
+void initializeMuts(rootedNode *node, int capacity) {
+	if (capacity <= 0) {
+		capacity = 10;  // Start with small capacity, will grow as needed
+	}
+	
+	node->mutsCapacity = capacity;
+	node->muts = malloc(sizeof(double) * capacity);
+	
+	if (node->muts == NULL) {
+		fprintf(stderr, "Error: Failed to allocate memory for muts array (capacity: %d)\n", capacity);
+		exit(1);
+	}
+}
+
+void ensureMutsCapacity(rootedNode *node, int requiredSize) {
+	if (requiredSize > node->mutsCapacity) {
+		int newCapacity = node->mutsCapacity;
+		
+		// Double capacity until we have enough
+		while (newCapacity < requiredSize) {
+			newCapacity *= 2;
+		}
+		
+		double *newMuts = realloc(node->muts, sizeof(double) * newCapacity);
+		if (newMuts == NULL) {
+			fprintf(stderr, "Error: Failed to reallocate memory for muts array (capacity: %d -> %d)\n", 
+					node->mutsCapacity, newCapacity);
+			exit(1);
+		}
+		
+		node->muts = newMuts;
+		node->mutsCapacity = newCapacity;
+	}
+}
+
+void cleanupMuts(rootedNode *node) {
+	if (node->muts != NULL) {
+		free(node->muts);
+		node->muts = NULL;
+		node->mutsCapacity = 0;
 	}
 }

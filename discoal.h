@@ -35,7 +35,7 @@ typedef struct rootedNode
 {
 	struct rootedNode *leftParent, *rightParent, *leftChild, *rightChild;
 	double time, branchLength, blProb;
-	double muts[MAXMUTS];
+	double *muts;
 	#ifdef BIG
 	uint16_t *ancSites;
 	#else
@@ -44,6 +44,7 @@ typedef struct rootedNode
 	int nancSites, lLim, rLim;
 	int ancSitesCapacity;  // Track allocated capacity
 	int id, mutationNumber, population, sweepPopn;
+	int mutsCapacity;  // Track allocated capacity for muts
 	int ndes[2],*leafs;
 	double times[2];
 
