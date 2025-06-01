@@ -274,6 +274,9 @@ rootedNode *newRootedNode(double cTime, int popn) {
 	temp->mutationNumber = 0;
 	temp->population = popn;
 	temp->sweepPopn = -1;
+	
+	// Initialize ancSites array dynamically
+	initializeAncSites(temp, nSites);
 //	temp->leafs = malloc(sizeof(int) * sampleSize);
 //	for(i=0;i<nSites;i++)temp->ancSites[i]=1;
 
@@ -2408,6 +2411,7 @@ void freeTree(rootedNode *aNode){
 	//printf("final nodeNumber = %d\n",totNodeNumber);
 	//cleanup nodes
 	for (i = 0; i < totNodeNumber; i++){
+		cleanupAncSites(allNodes[i]);  // Free ancSites array
 		free(allNodes[i]);
 		allNodes[i] = NULL;
 	} 
@@ -2506,4 +2510,52 @@ unsigned int devrand(void) {
 		exit(-1); /* Failed! */ 
 	close(fn); 
 	return r;
+}
+
+// AncSites dynamic memory management functions
+void initializeAncSites(rootedNode *node, int capacity) {
+	if (capacity <= 0) {
+		capacity = nSites;  // Use actual number of sites needed
+	}
+	
+	node->ancSitesCapacity = capacity;
+	#ifdef BIG
+	node->ancSites = malloc(sizeof(uint16_t) * capacity);
+	#else
+	node->ancSites = malloc(sizeof(uint8_t) * capacity);
+	#endif
+	
+	if (node->ancSites == NULL) {
+		fprintf(stderr, "Error: Failed to allocate memory for ancSites array (capacity: %d)\n", capacity);
+		exit(1);
+	}
+}
+
+void ensureAncSitesCapacity(rootedNode *node, int requiredSize) {
+	if (requiredSize > node->ancSitesCapacity) {
+		int newCapacity = requiredSize;  // Exact allocation - no over-allocation needed for this pattern
+		
+		#ifdef BIG
+		uint16_t *newAncSites = realloc(node->ancSites, sizeof(uint16_t) * newCapacity);
+		#else
+		uint8_t *newAncSites = realloc(node->ancSites, sizeof(uint8_t) * newCapacity);
+		#endif
+		
+		if (newAncSites == NULL) {
+			fprintf(stderr, "Error: Failed to reallocate memory for ancSites array (capacity: %d -> %d)\n", 
+					node->ancSitesCapacity, newCapacity);
+			exit(1);
+		}
+		
+		node->ancSites = newAncSites;
+		node->ancSitesCapacity = newCapacity;
+	}
+}
+
+void cleanupAncSites(rootedNode *node) {
+	if (node->ancSites != NULL) {
+		free(node->ancSites);
+		node->ancSites = NULL;
+		node->ancSitesCapacity = 0;
+	}
 }
