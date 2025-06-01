@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,7 +11,56 @@
 #include "ranlib.h"
 #include "alleleTraj.h"
 
+// Initial capacity for breakPoints array (much smaller than original MAXBREAKS=1000000)
+#define INITIAL_BREAKPOINTS_CAPACITY 1000
 
+void initializeBreakPoints() {
+	// Clean up any existing allocation first
+	if (breakPoints != NULL) {
+		free(breakPoints);
+		breakPoints = NULL;
+	}
+	
+	breakPointsCapacity = INITIAL_BREAKPOINTS_CAPACITY;
+	breakPoints = malloc(sizeof(int) * breakPointsCapacity);
+	if (breakPoints == NULL) {
+		fprintf(stderr, "Error: Failed to allocate memory for breakPoints array\n");
+		exit(1);
+	}
+	breakPoints[0] = 666; // Initialize with original marker value
+	breakNumber = 0;
+}
+
+void ensureBreakPointsCapacity() {
+	if (breakNumber >= breakPointsCapacity) {
+		int newCapacity = breakPointsCapacity * 2;
+		int *newBreakPoints = realloc(breakPoints, sizeof(int) * newCapacity);
+		if (newBreakPoints == NULL) {
+			fprintf(stderr, "Error: Failed to reallocate memory for breakPoints array (capacity: %d -> %d)\n", 
+					breakPointsCapacity, newCapacity);
+			exit(1);
+		}
+		breakPoints = newBreakPoints;
+		breakPointsCapacity = newCapacity;
+		// Optional: Print growth information for debugging
+		// fprintf(stderr, "Debug: Grew breakPoints capacity to %d\n", breakPointsCapacity);
+	}
+}
+
+void cleanupBreakPoints() {
+	if (breakPoints != NULL) {
+		free(breakPoints);
+		breakPoints = NULL;
+		breakPointsCapacity = 0;
+		breakNumber = 0;
+	}
+}
+
+void addBreakPoint(int bp) {
+	ensureBreakPointsCapacity();
+	breakPoints[breakNumber] = bp;
+	breakNumber += 1;
+}
 
 void initialize(){
 	int i,j,p, count=0;
@@ -22,7 +70,7 @@ void initialize(){
 	
 	/* Initialize the arrays */
 	totChunkNumber = 0;
-	breakPoints[0] = 666;
+	initializeBreakPoints();
 	for(p=0;p<npops;p++){
 		popnSizes[p]=sampleSizes[p];
 		for( i = 0; i < sampleSizes[p]; i++){
@@ -131,7 +179,7 @@ void initializeTwoSite(){
 	int leafID=0;
 	/* initialize the arrays */
 	totChunkNumber = 0;
-	breakPoints[0] = 666;
+	initializeBreakPoints();
 	for(p=0;p<npops;p++){
 		popnSizes[p]=sampleSizes[p];
 		for( i = 0; i < sampleSizes[p]; i++){
@@ -598,8 +646,7 @@ double neutralPhase(int *bpArray,double startTime, double endTime, double sizeRa
 			//	printf("R %f active: %f\n",cTime, activeChromosomePercent());
 				bp = recombineAtTimePopn(cTime,0);
 				if (bp != 666){
-					bpArray[breakNumber] = bp;
-					breakNumber += 1; 
+					addBreakPoint(bp);
 				}
 			}
 			else{
@@ -614,8 +661,7 @@ double neutralPhase(int *bpArray,double startTime, double endTime, double sizeRa
 						if(r < ((rRate[0]+gcRate[0]+cRate[0]+rRate[1]) / totRate)){
 							bp = recombineAtTimePopn(cTime,1);
 							if (bp != 666){
-								bpArray[breakNumber] = bp;
-								breakNumber += 1; 
+								addBreakPoint(bp);
 							}
 						}
 						else{
@@ -672,8 +718,7 @@ double neutralPhaseMig(int *bpArray,double startTime, double endTime, double siz
 			//	printf("R %f active: %f\n",cTime, activeChromosomePercent());
 				bp = recombineAtTimePopn(cTime,0);
 				if (bp != 666){
-					bpArray[breakNumber] = bp;
-					breakNumber += 1; 
+					addBreakPoint(bp);
 				}
 			}
 			else{
@@ -684,8 +729,7 @@ double neutralPhaseMig(int *bpArray,double startTime, double endTime, double siz
 					if(r < ((rRate[0]+cRate[0]+rRate[1]) / totRate)){
 						bp = recombineAtTimePopn(cTime,1);
 						if (bp != 666){
-							bpArray[breakNumber] = bp;
-							breakNumber += 1; 
+							addBreakPoint(bp);
 						}
 					}
 					else{
@@ -744,8 +788,7 @@ double neutralPhaseMigExclude(int *bpArray,double startTime, double endTime, dou
 			//	printf("R %f active: %f\n",cTime, activeChromosomePercent());
 				bp = recombineAtTimePopn(cTime,0);
 				if (bp != 666){
-					bpArray[breakNumber] = bp;
-					breakNumber += 1; 
+					addBreakPoint(bp);
 				}
 			}
 			else{
@@ -756,8 +799,7 @@ double neutralPhaseMigExclude(int *bpArray,double startTime, double endTime, dou
 					if(r < ((rRate[0]+cRate[0]+rRate[1]) / totRate)){
 						bp = recombineAtTimePopn(cTime,1);
 						if (bp != 666){
-							bpArray[breakNumber] = bp;
-							breakNumber += 1; 
+							addBreakPoint(bp);
 						}
 					}
 					else{
@@ -837,8 +879,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 				while(eSum/totRRate < r2) eSum += rRate[++i];
 				bp = recombineAtTimePopn(cTime,i);
 				if (bp != 666){
-					bpArray[breakNumber] = bp;
-					breakNumber += 1; 
+					addBreakPoint(bp);
 				}
 			}
 			else{
@@ -1127,8 +1168,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 					if(r < sum / sweepPopTotRate){
 						bp = recombineAtTimePopnSweep(cTime + (ttau),0, 0, sweepSite, (1.0-x));
 						if(bp != 666){
-							bpArray[breakNumber] = bp;
-							breakNumber += 1; 
+							addBreakPoint(bp);
 							if(bp >= lSpot && bp < rSpot){
 								condRecMet = 1;
 							}
@@ -1140,13 +1180,11 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 							//recombination in B and bookkeeping
 							bp = recombineAtTimePopnSweep(cTime + (ttau),0, 1, sweepSite, x);
 							if(bp != 666){
-								bpArray[breakNumber] = bp;
-								breakNumber += 1; 
+								addBreakPoint(bp);
 								if(bp >= lSpot && bp < rSpot){
 									condRecMet = 1;
 								}
 							}
-
 						}
 						else{
 							sum+= pGCB;
@@ -1194,8 +1232,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 				while(eSum/totRRate < r2) eSum += rRate[++i];
 				bp = recombineAtTimePopn(cTime,i);
 				if (bp != 666){
-					bpArray[breakNumber] = bp;
-					breakNumber += 1; 
+					addBreakPoint(bp);
 				}
 			}
 			else{
@@ -1375,8 +1412,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 					if(r < sum / sweepPopTotRate){
 						bp = recombineAtTimePopnSweep(cTime + (ttau),0, 0, sweepSite, (1.0-x));
 						if(bp != 666){
-							bpArray[breakNumber] = bp;
-							breakNumber += 1; 
+							addBreakPoint(bp);
 							if(bp >= lSpot && bp < rSpot){
 								condRecMet = 1;
 							}
@@ -1388,13 +1424,11 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 							//recombination in B and bookkeeping
 							bp = recombineAtTimePopnSweep(cTime + (ttau),0, 1, sweepSite, x);
 							if(bp != 666){
-								bpArray[breakNumber] = bp;
-								breakNumber += 1; 
+								addBreakPoint(bp);
 								if(bp >= lSpot && bp < rSpot){
 									condRecMet = 1;
 								}
 							}
-
 						}
 						else{
 							sum+= pGCB;
@@ -1445,8 +1479,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 						while(eSum/totRRate < r2) eSum += rRate[++i];
 						bp = recombineAtTimePopn(cTime,i);
 						if (bp != 666){
-							bpArray[breakNumber] = bp;
-							breakNumber += 1; 
+							addBreakPoint(bp);
 						}
 					}
 					else{
@@ -1548,8 +1581,7 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 				while(eSum/totRRate < r2) eSum += rRate[++i];
 				bp = recombineAtTimePopn(cTime,i);
 				if (bp != 666){
-					bpArray[breakNumber] = bp;
-					breakNumber += 1; 
+					addBreakPoint(bp);
 				}
 			}
 			else{

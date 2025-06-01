@@ -88,24 +88,24 @@ int main(int argc, const char * argv[]){
 				//	for(j=0;j<npops;j++) printf("%f\n",migMat[i][j]);
 				if(activeSweepFlag == 0){
 					if(recurSweepMode ==0){
-						currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+						currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
 					}
 					else{
-						currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+						currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
 					}
 				}
 				else{
 					if(recurSweepMode ==0){
-						currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
 					 		currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
 						if (currentTime < nextTime)
-                                               		currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+                                               		currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
 					}
 					else{
-						currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
 					 		currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
 						if (currentTime < nextTime)
-                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
 					}
 				}
 			//	printf("pn0:%d pn1:%d alleleNumber: %d sp1: %d sp2: %d \n", popnSizes[0],popnSizes[1], alleleNumber,sweepPopnSizes[1],
@@ -129,13 +129,13 @@ int main(int argc, const char * argv[]){
 					//printf("probAccept: %lf\n",probAccept);
 				}
 				
-				currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
+				currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
 					 currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
 				//printf("currentFreqAfter: %f alleleNumber:%d currentTime:%f\n",currentFreq,alleleNumber,currentTime);
 				//printf("pn0:%d pn1:%d alleleNumber: %d sp1: %d sp2: %d \n", popnSizes[0],popnSizes[1], alleleNumber,sweepPopnSizes[1],
 				//			sweepPopnSizes[0]);
 				if (currentTime < nextTime)
-                                        currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+                                        currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
 						
 				break;
 				case 'p': //merging populations
@@ -145,24 +145,24 @@ int main(int argc, const char * argv[]){
 
 				if(activeSweepFlag == 0){
 					if(recurSweepMode ==0){
-						currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+						currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
 					}
 					else{
-						currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+						currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
 					}
 				}
 				else{
 					if(recurSweepMode ==0){
-						currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
 						 	currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
 						if (currentTime < nextTime)
-                                        		currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+                                        		currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
 					}
 					else{
-						currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
 					 		currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
 						if (currentTime < nextTime)
-                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
 					}
 				}
 				break;
@@ -171,24 +171,24 @@ int main(int argc, const char * argv[]){
 				admixPopns(events[j].popID, events[j].popID2, events[j].popID3, events[j].admixProp);
 				if(activeSweepFlag == 0){
 					if(recurSweepMode ==0){
-						currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+						currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
 					}
 					else{
-						currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
+						currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
 					}
 				}
 				else{
 					if(recurSweepMode ==0){
-						currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
 						 	currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
 						if (currentTime < nextTime)
-	                                        	currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+	                                        	currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
 					}
 					else{
-						currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
 					 		currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
 						if (currentTime < nextTime)
-                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
+                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
 					}
 				}
 				break;
@@ -199,24 +199,24 @@ int main(int argc, const char * argv[]){
 				//printAllActiveNodes();
 				if(activeSweepFlag == 0){
 					if(recurSweepMode ==0){
-						currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+						currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
 					}
 					else{
-						currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
+						currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
 					}
 				}
 				else{
 					if(recurSweepMode ==0){
-						currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
 						 	currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
 						if (currentTime < nextTime)
-	                                        	currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+	                                        	currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
 					}
 					else{
-						currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
 					 		currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
 						if (currentTime < nextTime)
-                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
+                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
 					}
 				}
 				break;
@@ -225,7 +225,7 @@ int main(int argc, const char * argv[]){
 		}
 		//finish up the coalescing action!
 		if(alleleNumber > 1){
-			currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, MAXTIME, currentSize);
+			currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, MAXTIME, currentSize);
 		}
 		//assign root
 	//	root = nodes[0];
@@ -273,6 +273,7 @@ int main(int argc, const char * argv[]){
 		}
 		
 		freeTree(nodes[0]);
+		cleanupBreakPoints();
                 totalSimCount += 1;
 	}
         if(condRecMode == 1)

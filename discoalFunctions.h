@@ -2,6 +2,10 @@
 #define __DISCOAL_H__
 
 void initialize();
+void initializeBreakPoints();
+void ensureBreakPointsCapacity();
+void cleanupBreakPoints();
+void addBreakPoint(int bp);
 rootedNode *newRootedNode(double cTime, int popn);
 
 void coalesceAtTimePopn(double cTime, int popn);

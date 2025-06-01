@@ -83,7 +83,7 @@ int activeMaterial[MAXSITES];
 int sampleSize, sampleNumber, breakNumber, segSites,alleleNumber, \
 	totNodeNumber, totChunkNumber, npops, eventFlag, nSites, activeSites,\
 	mask, finiteOutputFlag, outputStyle, effectiveSampleSize, runMode, gcMean,\
-	breakPoints[MAXBREAKS],sampleSizes[MAXPOPS];
+	*breakPoints, breakPointsCapacity, sampleSizes[MAXPOPS];
 
 double  leftRho, rho, theta, tDiv, alpha, sweepSite, tau, my_gamma, \
  	lambda, timeRecovery,bottleNeckRatio, bottleNeckDuration, \
