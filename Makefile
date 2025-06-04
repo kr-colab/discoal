@@ -16,19 +16,20 @@ discoal: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h
 discoal_trajectory_optimized: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h
 	$(CC) $(CFLAGS)  -o discoal_trajectory_optimized discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c -lm -fcommon
 
-# Build legacy version from git history for comparison testing
+# Build legacy version from master branch for comparison testing
 discoal_legacy_backup:
-	@echo "Building legacy version from git history..."
-	@if git show HEAD~5:discoal_multipop.c > /tmp/discoal_multipop_legacy.c 2>/dev/null && \
-	   git show HEAD~5:discoalFunctions.c > /tmp/discoalFunctions_legacy.c 2>/dev/null && \
-	   git show HEAD~5:discoal.h > /tmp/discoal_legacy.h 2>/dev/null; then \
+	@echo "Building legacy version from master branch..."
+	@if git show master:discoal_multipop.c > /tmp/discoal_multipop_legacy.c 2>/dev/null && \
+	   git show master:discoalFunctions.c > /tmp/discoalFunctions_legacy.c 2>/dev/null && \
+	   git show master:discoal.h > /tmp/discoal_legacy.h 2>/dev/null && \
+	   git show master:discoalFunctions.h > /tmp/discoalFunctions_legacy.h 2>/dev/null; then \
 		$(CC) $(CFLAGS) -I/tmp -o discoal_legacy_backup /tmp/discoal_multipop_legacy.c /tmp/discoalFunctions_legacy.c ranlibComplete.c alleleTraj.c -lm -fcommon; \
-		rm -f /tmp/discoal_multipop_legacy.c /tmp/discoalFunctions_legacy.c /tmp/discoal_legacy.h; \
-		echo "Legacy version built successfully"; \
+		rm -f /tmp/discoal_multipop_legacy.c /tmp/discoalFunctions_legacy.c /tmp/discoal_legacy.h /tmp/discoalFunctions_legacy.h; \
+		echo "Legacy version built successfully from master branch"; \
 	else \
-		echo "Warning: Could not build legacy version from git history"; \
-		echo "Creating symlink to current version for testing..."; \
-		ln -sf discoal discoal_legacy_backup; \
+		echo "ERROR: Could not build legacy version from master branch"; \
+		echo "This is required for testing. Please ensure master branch exists and contains the legacy code."; \
+		exit 1; \
 	fi
 
 # Build both versions needed for testing
