@@ -63,6 +63,16 @@ double sweepPhaseEventsConditionalTrajectory(int *bpArray, double startTime, dou
 	double initialFreq, double *finalFreq, int *stillSweeping, double alpha,\
 	double *sizeRatio, char sweepMode,double f0, double uA);
 
+// Trajectory generator functions for memory optimization
+TrajectoryGenerator* initializeTrajectoryGenerator(int currentEventNumber, double *sizeRatio, char sweepMode, 
+	double initialFreq, double alpha, double f0, double currentTime);
+double getNextTrajectoryValue(TrajectoryGenerator *gen);
+double calculateTrajectoryAcceptance(TrajectoryGenerator *gen);
+void cleanupTrajectoryGenerator(TrajectoryGenerator *gen);
+double sweepPhaseEventsLazyTrajectory(int *bpArray, double startTime, double endTime, double sweepSite,\
+	double initialFreq, double *finalFreq, int *stillSweeping, double alpha,\
+	double *sizeRatio, char sweepMode, double f0, double uA);
+
 		
 double totalTimeInTree();
 void dropMutationsUntilTime(double t);

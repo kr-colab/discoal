@@ -1042,6 +1042,118 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 	
 }
 
+/*======== TRAJECTORY GENERATOR OPTIMIZATION ========*/
+
+/*initializeTrajectoryGenerator-- creates a trajectory generator for lazy computation */
+TrajectoryGenerator* initializeTrajectoryGenerator(int currentEventNumber, double *sizeRatio, char sweepMode, 
+	double initialFreq, double alpha, double f0, double currentTime) {
+	
+	TrajectoryGenerator *gen = malloc(sizeof(TrajectoryGenerator));
+	if (!gen) {
+		fprintf(stderr, "Error: Failed to allocate trajectory generator\n");
+		exit(1);
+	}
+	
+	gen->x = initialFreq;
+	gen->ttau = 0.0;
+	gen->tIncOrig = 1.0 / (deltaTMod * EFFECTIVE_POPN_SIZE);
+	gen->alpha = alpha;
+	gen->minF = f0;
+	gen->sweepMode = sweepMode;
+	gen->insweepphase = 1;
+	gen->currentEventNumber = currentEventNumber;
+	gen->currentTime = currentTime;
+	gen->sizeRatio = sizeRatio;
+	gen->N_0 = (double) EFFECTIVE_POPN_SIZE;
+	
+	// Calculate Nmax (same logic as proposeTrajectory)
+	double currentSizeRatio = sizeRatio[0];
+	gen->Nmax = currentSizeRatio;
+	for(int i = currentEventNumber; i < eventNumber; i++) {
+		if(events[i].type == 'n') {
+			currentSizeRatio = events[i].popnSize;
+			if(currentSizeRatio > gen->Nmax) gen->Nmax = currentSizeRatio;
+		}
+	}
+	gen->currentSizeRatio = sizeRatio[0];
+	
+	// Set initial minimum frequency
+	double N = floor(gen->N_0 * sizeRatio[0]);
+	if(gen->minF < 1.0/(2.*N)) gen->minF = 1.0/(2.*N);
+	
+	return gen;
+}
+
+/*getNextTrajectoryValue-- computes the next trajectory value on demand */
+double getNextTrajectoryValue(TrajectoryGenerator *gen) {
+	double localCurrentTime, localNextTime;
+	double N, tInc;
+	int i;
+	
+	// Update time
+	gen->ttau += gen->tIncOrig;
+	
+	// Find current demographic epoch
+	for(i = gen->currentEventNumber; i < eventNumber; i++) {
+		localCurrentTime = events[i].time;
+		if(i == eventNumber - 1) {
+			localNextTime = MAXTIME;
+		} else {
+			localNextTime = events[i+1].time;
+		}
+		
+		// Check if we're in this epoch
+		if((gen->currentTime + gen->ttau) >= localCurrentTime && 
+		   (gen->currentTime + gen->ttau) < localNextTime) {
+			
+			// Update population size if this is a size change event
+			if(events[i].type == 'n') {
+				gen->currentSizeRatio = events[i].popnSize;
+				N = floor(gen->N_0 * events[i].popnSize);
+				if(gen->minF < 1.0/(2.*N)) gen->minF = 1.0/(2.*N);
+			} else {
+				N = floor(gen->N_0 * gen->currentSizeRatio);
+			}
+			break;
+		}
+	}
+	
+	tInc = 1.0 / (deltaTMod * N);
+	
+	// Compute next frequency value (same logic as proposeTrajectory)
+	if(gen->x > gen->minF && gen->insweepphase) {
+		switch(gen->sweepMode) {
+			case 'd':
+				gen->x = detSweepFreq(gen->ttau, gen->alpha * gen->currentSizeRatio);
+				break;
+			case 's':
+				gen->x = 1.0 - genicSelectionStochasticForwards(tInc, (1.0 - gen->x), gen->alpha * gen->currentSizeRatio);
+				break;
+			case 'N':
+				gen->x = neutralStochastic(tInc, gen->x);
+				break;
+		}
+	} else {
+		gen->insweepphase = 0;
+		tInc = 1.0 / (deltaTMod * N);
+		gen->x = neutralStochastic(tInc, gen->x);
+	}
+	
+	return gen->x;
+}
+
+/*calculateTrajectoryAcceptance-- calculates acceptance probability for trajectory */
+double calculateTrajectoryAcceptance(TrajectoryGenerator *gen) {
+	return gen->currentSizeRatio / gen->Nmax;
+}
+
+/*cleanupTrajectoryGenerator-- frees trajectory generator memory */
+void cleanupTrajectoryGenerator(TrajectoryGenerator *gen) {
+	if (gen) {
+		free(gen);
+	}
+}
+
 /*sweepPhaseEventsGeneralPopNumber-- this does the compressed time sweep thing. 
   generalized to account for popnSize changes returns the time after the sweep.
   Same as sweepPhaseEvents but includes recurrent adaptive mutation */
@@ -1560,6 +1672,264 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	return(cTime+(ttau));
 }
 
+/*sweepPhaseEventsLazyTrajectory-- memory-optimized sweep phase using on-demand trajectory generation */
+double sweepPhaseEventsLazyTrajectory(int *bpArray, double startTime, double endTime, double sweepSite,\
+double initialFreq, double *finalFreq, int *stillSweeping, double alpha,\
+double *sizeRatio, char sweepMode, double f0, double uA)
+{
+	double totRate,bp;
+	double  ttau, x, tInc, tIncOrig;
+	double pCoalB, pCoalb, pRecB, pRecb, r, sum,eventRand,eventProb, pLeftRecB, pLeftRecb;
+	double pRecurMut, pGCB, pGCb;
+	double sweepPopTotRate,cRate[npops], rRate[npops], gcRate[npops];
+	double totCRate, totRRate, totGCRate, eSum, r2;
+	double N = (double) EFFECTIVE_POPN_SIZE;
+	double minF;
+	double cTime = startTime;
+	int insweepphase, i;
+
+	//initialize stuff
+	pCoalB = pCoalb = pRecB = pRecb = totRate = pRecurMut = pLeftRecB = pLeftRecb = totGCRate = totCRate = totRRate = 0;
+	sweepPopTotRate = pGCB = pGCb = 0;
+
+	N = (double) floor(N * sizeRatio[0]);
+	ttau = 0.0;
+	x = initialFreq;
+	minF = f0;
+	if(minF < 1.0/(2.*N))
+		minF = 1.0/(2.*N);
+
+	//if new sweep then reset sweepPopnIDs; only popn 0 sweeps, sweepPopn==1 is the beneficial class
+	if(!*stillSweeping){
+		for(i=0;i<alleleNumber;i++){
+			if(nodes[i]->population==0){
+				if(partialSweepMode == 1){
+					//for partial sweeps choose randomly acccording to final sweep freq
+					if(ranf()>partialSweepFinalFreq){
+						nodes[i]->sweepPopn = 0;						
+					}
+					else{
+						nodes[i]->sweepPopn = 1;
+						if(isAncestralHere(nodes[i],sweepSite) && hidePartialSNP == 0)
+							addMutation(nodes[i],sweepSite);
+					}
+				}
+				else{
+			 		nodes[i]->sweepPopn=1;
+				}
+			}
+		}
+	*stillSweeping = 1;
+	}
+	
+	//assume that sweep always happens in popn 0!!!
+	//using popnSize global to manage bookkeeping
+	sweepPopnSizes[1] = nodePopnSweepSize(0,1);
+	sweepPopnSizes[0] = nodePopnSweepSize(0,0);
+
+	//set time increment
+	tInc = 1.0 / (deltaTMod * N);
+	tIncOrig = 1.0 / (deltaTMod * EFFECTIVE_POPN_SIZE);
+	insweepphase = 1;
+	
+	// Find current event number for lazy trajectory generation
+	int currentEventNumber = 0;
+	for(i = 0; i < eventNumber; i++) {
+		if(events[i].time <= cTime) {
+			currentEventNumber = i;
+		} else {
+			break;
+		}
+	}
+	
+	// Initialize lazy trajectory generator
+	TrajectoryGenerator *trajGen = initializeTrajectoryGenerator(currentEventNumber, sizeRatio, sweepMode, initialFreq, alpha, f0, cTime);
+	
+	//go for epoch time, sweep freq, or root
+	while( x > 1.0/(2.*N) && (cTime+ttau) < endTime && popnSizes[0] > 1){ 
+		//rejection algorithm of Braverman et al. 1995
+		eventRand = ranf();
+		eventProb = 1.0;
+		//wait for something
+		while(eventProb > eventRand && x > (1.0 / (2*N)) && (cTime+ttau) < endTime ){
+			ttau += tIncOrig;
+
+			// Get next trajectory value on-demand instead of from pre-computed array
+			x = getNextTrajectoryValue(trajGen);
+
+			//calculate event probs
+			//first 4 events are probs of events in population 0
+			pCoalB = ((sweepPopnSizes[1] * (sweepPopnSizes[1] - 1) ) * 0.5)/x*tIncOrig / sizeRatio[0];
+			pCoalb = ((sweepPopnSizes[0] * (sweepPopnSizes[0] - 1) ) * 0.5)/(1-x)*tIncOrig / sizeRatio[0];
+			pRecB = rho * sweepPopnSizes[1]*0.5 *tIncOrig; // / sizeRatio[0];
+			pRecb = rho * sweepPopnSizes[0]*0.5 *tIncOrig;// / sizeRatio[0];
+			pGCB = my_gamma * sweepPopnSizes[1]*0.5 *tIncOrig;// / sizeRatio[0];
+			pGCb = my_gamma * sweepPopnSizes[0]*0.5 *tIncOrig;/// sizeRatio[0];
+			pRecurMut = (uA * sweepPopnSizes[1]*0.5 *tIncOrig)/x;///sizeRatio[0];
+			if (sweepSite < 0.0){
+				pLeftRecB = leftRho * sweepPopnSizes[1]*0.5 * tIncOrig * (1-x);
+				pLeftRecb = leftRho * sweepPopnSizes[0]*0.5 * tIncOrig * x;
+                        }
+			sweepPopTotRate = pCoalB + pCoalb + pRecB + pRecb + pGCB + pGCb + pRecurMut + pLeftRecB + pLeftRecb;
+			//printf("nB: %d; x: %g; pCoalB: %g; tInc: %g cTime+ttau: %g popnSizes[0]:%d\n",sweepPopnSizes[1],x,pCoalB,tInc,cTime+ttau,  popnSizes[0]);
+			//now two events in population 1
+			totRate = 0.0;
+			totCRate = 0.0;
+			totRRate = 0.0;
+			totGCRate = 0.0;
+			totRate = sweepPopTotRate;
+			
+			//printf("currPopSize[0]: %d currPopSize[1]: %d\n",popnSizes[0],popnSizes[1]);
+			for(i=1;i<npops;i++){
+				cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 * tIncOrig / sizeRatio[i];
+				rRate[i] = rho * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
+				gcRate[i] = my_gamma * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
+				totCRate += cRate[i];
+				totRRate += rRate[i];
+				totGCRate += gcRate[i];
+				totRate += cRate[i] + rRate[i] + gcRate[i];
+			}
+			
+
+			eventProb *= 1-totRate;
+			//printf("x(t): %g t: %g tinc: %g eventProb: %g eventRand: %g totRate: %g swPopnSize1: %d swPopnSize2: %d\n",x,ttau,tInc, eventProb,
+			//	eventRand,totRate,sweepPopnSizes[0],sweepPopnSizes[1]);	
+
+
+		}
+
+		//Decide which event took place
+		//first was it in population 0 (sweep) or not
+		if(ranf() < sweepPopTotRate / totRate){
+			//event is in sweep pop; choose event
+			r = ranf();
+			sum = pCoalB;
+			//coalescent in B?
+			if(r < sum / sweepPopTotRate){
+				coalesceAtTimePopnSweep(cTime+(ttau), 0,1);
+			}
+			else{
+				sum += pCoalb;
+				//coalescent in b?
+				if(r < sum / sweepPopTotRate){
+					coalesceAtTimePopnSweep(cTime+(ttau),0, 0);
+				}
+				else{
+					sum += pRecb;
+					//recombination in b, also need bookkeeping
+					if(r < sum / sweepPopTotRate){
+						bp = recombineAtTimePopnSweep(cTime + (ttau),0, 0, sweepSite, (1.0-x));
+						if(bp != 666){
+							addBreakPoint(bp);
+							if(bp >= lSpot && bp < rSpot){
+								condRecMet = 1;
+							}
+						}
+					}
+					else{
+						sum += pRecB;
+						if( r < sum / sweepPopTotRate){
+							//recombination in B and bookkeeping
+							bp = recombineAtTimePopnSweep(cTime + (ttau),0, 1, sweepSite, x);
+							if(bp != 666){
+								addBreakPoint(bp);
+								if(bp >= lSpot && bp < rSpot){
+									condRecMet = 1;
+								}
+							}
+						}
+						else{
+							sum+= pGCB;
+							if( r < sum / sweepPopTotRate){
+								geneConversionAtTimePopnSweep(cTime + (ttau),0, 1, sweepSite, x);
+							}
+							else{
+								sum+= pGCb;
+								if( r < sum / sweepPopTotRate){
+									geneConversionAtTimePopnSweep(cTime + (ttau),0, 0, sweepSite, x);
+								}
+								else{
+									sum += pLeftRecb;
+									if ( r < sum / totRate){
+									        recombineToLeftPopnSweep(0, 0, x);
+									}
+									else{
+										sum += pLeftRecB;
+										if ( r < sum / totRate){
+										recombineToLeftPopnSweep(0, 1, x);
+										}
+										else{
+											//recurrent adaptive mutation:
+											//node in pop zero's sweep group exits sweep
+											//fprintf(stderr,"recurrent mutation at time %f; freq=%f\n", cTime+(ttau),x);
+											//fprintf(stderr,"recurMut prob: %g; uA: %f, sweepPopnSizes[1]:%d; x:%f; tInc: %g; sizeRatio: %f\npopnSizes[0]: %d; popnSizes[1]: %d\n", pRecurMut,uA,sweepPopnSizes[1],x,tInc,sizeRatio,popnSizes[0],popnSizes[1]);
+											recurrentMutAtTime(cTime+(ttau),0, 1);
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		else{	//event is in another population
+			totRate -= sweepPopTotRate; //discount sweepPopnEvent probs from tot
+			r = ranf();
+			if (r < (totRRate/ totRate)){
+				//pick popn
+				eSum = rRate[1];
+				i = 1;
+				r2 = ranf();
+				while(eSum/totRRate < r2) eSum += rRate[++i];
+				bp = recombineAtTimePopn(cTime,i);
+				if (bp != 666){
+					addBreakPoint(bp);
+				}
+			}
+			else{
+				if(r < ((totRRate + totGCRate)/totRate)){
+					//pick popn
+					eSum = gcRate[1];
+					i = 1;
+					r2 = ranf();
+					while(eSum/totGCRate < r2) eSum += gcRate[++i];
+					geneConversionAtTimePopn(cTime,i);
+				}
+				else{
+					//coalesce 
+					//pick popn
+					eSum = cRate[1];
+				//	printf("esum= %f\n",eSum);
+					i = 1;
+					r2 = ranf();
+					while(eSum/totCRate < r2){
+						 eSum += cRate[++i];
+						}
+					coalesceAtTimePopn(cTime,i);
+					
+					
+				}
+			}
+		}
+
+	}
+	if((cTime+ttau) >= endTime){
+		*stillSweeping = 1; 
+	}
+	else{
+		*stillSweeping = 0; 
+	}
+	if(sweepPopnSizes[1]==0) *stillSweeping = 0; 
+
+	*finalFreq = x;
+	
+	// Clean up trajectory generator
+	cleanupTrajectoryGenerator(trajGen);
+	
+	return(cTime+(ttau));
+}
+
 /*recurrentSweepPhaseGeneralPopNumber--coalescent, recombination, gc events, and sweeps! until
 specified time. returns endTime. can handle multiple popns*/
 double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *finalFreq, double alpha, char sweepMode, double *sizeRatio){
@@ -1677,13 +2047,17 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 							else{
 								initFreq=1.0-(1.0/(2*sizeRatio[0]*EFFECTIVE_POPN_SIZE));
 							}
-							//generate a proposed trajectory
-							probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, sizeRatio, sweepMode, initFreq, finalFreq, alpha, f0, cTime);
+							//generate a proposed trajectory using lazy approach
+							TrajectoryGenerator *candidateGen = initializeTrajectoryGenerator(currentEventNumber, sizeRatio, sweepMode, initFreq, alpha, f0, cTime);
+							probAccept = calculateTrajectoryAcceptance(candidateGen);
 							while(ranf()>probAccept){
-								probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, sizeRatio, sweepMode, initFreq, finalFreq, alpha, f0, cTime);
+								cleanupTrajectoryGenerator(candidateGen);
+								candidateGen = initializeTrajectoryGenerator(currentEventNumber, sizeRatio, sweepMode, initFreq, alpha, f0, cTime);
+								probAccept = calculateTrajectoryAcceptance(candidateGen);
 								//printf("probAccept: %lf\n",probAccept);
 							}
-							cTime= sweepPhaseEventsConditionalTrajectory(bpArray, cTime, endTime, curSweepSite,\
+							cleanupTrajectoryGenerator(candidateGen);
+							cTime= sweepPhaseEventsLazyTrajectory(bpArray, cTime, endTime, curSweepSite,\
 								initFreq, finalFreq, &activeSweepFlag, alpha,\
 								sizeRatio, sweepMode,0, 0);
 							
