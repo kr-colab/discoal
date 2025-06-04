@@ -78,7 +78,7 @@ declare -a TEST_CASES=(
     "selection:stochastic_sweep:3 2 100 -t 2 -r 2.4 -ws 0.05 -a 1000 -x 0.5:optimized_preferred"
     "selection:sweep_with_demog:3 2 100 -t 2 -r 2.4 -ws 0.05 -a 1000 -x 0.5 -en 0.5 0 0.1 -en 1.2 0 0.8:optimized_preferred"
     "selection:soft_sweep:3 2 100 -t 2 -r 2.4 -ws 0.05 -a 1000 -x 0.5 -f 0.1:optimized_preferred"
-    "selection:partial_soft_sweep:3 2 100 -t 2 -r 2.4 -ws 0.05 -a 1000 -x 0.5 -f 0.1 -c 0.8:optimized_preferred"
+    "selection:partial_soft_sweep:3 2 100 -t 2 -r 2.4 -ws 0.005 -a 5000 -x 0.5 -f 0.01 -c 0.8:optimized_preferred"
     
     # Tree output (Section: Outputting trees)
     "trees:tree_output:3 1 10 -t 1 -r 5 -T:both_succeed"
@@ -201,9 +201,9 @@ for test_case in "${TEST_CASES[@]}"; do
     
     # Compare outputs if both succeeded
     if [ $optimized_exit -eq 0 ] && [ $legacy_exit -eq 0 ]; then
-        # Filter out executable names for comparison
-        sed 's/discoal_legacy_backup/discoal/g; s|../discoal_trajectory_optimized|discoal|g' "$TEST_DIR/${category}_${test_name}_legacy.out" > "$TEST_DIR/${category}_${test_name}_legacy_filtered.out"
-        sed 's/discoal_legacy_backup/discoal/g; s|../discoal_trajectory_optimized|discoal|g' "$TEST_DIR/${category}_${test_name}_optimized.out" > "$TEST_DIR/${category}_${test_name}_optimized_filtered.out"
+        # Filter out executable names and paths for comparison
+        sed 's/discoal_legacy_backup/discoal/g; s|../discoal_trajectory_optimized|discoal|g; s|../discoal|discoal|g' "$TEST_DIR/${category}_${test_name}_legacy.out" > "$TEST_DIR/${category}_${test_name}_legacy_filtered.out"
+        sed 's/discoal_legacy_backup/discoal/g; s|../discoal_trajectory_optimized|discoal|g; s|../discoal|discoal|g' "$TEST_DIR/${category}_${test_name}_optimized.out" > "$TEST_DIR/${category}_${test_name}_optimized_filtered.out"
         
         if diff -q "$TEST_DIR/${category}_${test_name}_legacy_filtered.out" "$TEST_DIR/${category}_${test_name}_optimized_filtered.out" > /dev/null; then
             echo "    ✅ Output: IDENTICAL"
