@@ -53,7 +53,8 @@ int main(int argc, const char * argv[]){
 	
 	i = 0;
         totalSimCount = 0;
-	currentTrajectory = malloc(sizeof(float) * TRAJSTEPSTART);
+	trajectoryCapacity = TRAJSTEPSTART;
+	currentTrajectory = malloc(sizeof(float) * trajectoryCapacity);
 	assert(currentTrajectory);
 
 	while(i < sampleNumber){
@@ -62,7 +63,7 @@ int main(int argc, const char * argv[]){
 		currentSize[0]=1.0;
 		currentFreq = 1.0 - (1.0 / (2.0 * N * currentSize[0])); //just to initialize the value
 //		printf("popnsize[0]:%d",popnSizes[0]);
-		maxTrajSteps = TRAJSTEPSTART;
+		maxTrajSteps = trajectoryCapacity;
 		
 		
 		

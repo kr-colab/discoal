@@ -118,8 +118,10 @@ double recurSweepRate;
 
 int EFFECTIVE_POPN_SIZE;
 
-#define TRAJSTEPSTART 500000000
+#define TRAJSTEPSTART 1000
+#define TRAJ_GROWTH_FACTOR 2
 long int  maxTrajSteps;
+long int  trajectoryCapacity;
 float *currentTrajectory;
 long int currentTrajectoryStep, totalTrajectorySteps;
 

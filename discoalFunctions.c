@@ -944,10 +944,36 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 	return(cTime);
 }
 
+void ensureTrajectoryCapacity(long int requiredSize) {
+	if (requiredSize >= trajectoryCapacity) {
+		long int newCapacity = trajectoryCapacity;
+		while (newCapacity <= requiredSize) {
+			newCapacity *= TRAJ_GROWTH_FACTOR;
+		}
+		
+		// Safety check to prevent infinite growth - match legacy behavior  
+		if (requiredSize >= 500000000) {  // Match legacy TRAJSTEPSTART exactly
+			fprintf(stderr, "trajectory too bigly. step= %ld freq = unknown. killing myself gently\n", requiredSize);
+			exit(1);
+		}
+		
+		float *newTrajectory = realloc(currentTrajectory, sizeof(float) * newCapacity);
+		if (newTrajectory == NULL) {
+			fprintf(stderr, "Error: Failed to reallocate trajectory memory (requested: %ld floats, %.1f MB)\n", 
+					newCapacity, (newCapacity * sizeof(float)) / (1024.0 * 1024.0));
+			exit(1);
+		}
+		
+		currentTrajectory = newTrajectory;
+		trajectoryCapacity = newCapacity;
+		maxTrajSteps = trajectoryCapacity;
+	}
+}
+
 /*proposeTrajectory-- this function creates a sweep trajectory and deals with
 complications like changing population size, or soft sweeps, etc 
 returns the acceptance probability of the trajectory */
-double proposeTrajectory(int currentEventNumber, float *currentTrajectory, double *sizeRatio, char sweepMode, \
+double proposeTrajectory(int currentEventNumber, float *trajectoryParam, double *sizeRatio, char sweepMode, \
 double initialFreq, double *finalFreq, double alpha, double f0, double currentTime)
 {	
 	double tInc, tIncOrig, minF,ttau, N;
@@ -1004,10 +1030,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 				x = neutralStochastic(tInc, x);
 			}
 			//printf("j: %ld x: %f\n",j,x);
-			if(j>=maxTrajSteps){
-				printf("trajectory too bigly. step= %ld freq = %f. killing myself gently\n",j, x);
-				exit(1);
-			}
+			ensureTrajectoryCapacity(j + 1);
 			currentTrajectory[j++]=x;
 		}
 	}
