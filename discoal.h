@@ -78,7 +78,8 @@ event;
 /* ancestral dna. There are also parameters controlling the coalescent        */
 /* process                                                                    */
 
-rootedNode  *nodes[MAXNODES], *allNodes[MAXNODES];
+rootedNode  **nodes, **allNodes;
+int nodesCapacity, allNodesCapacity;
 
 int activeMaterial[MAXSITES];
 

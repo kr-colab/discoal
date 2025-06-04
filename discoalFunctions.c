@@ -71,6 +71,7 @@ void initialize(){
 	/* Initialize the arrays */
 	totChunkNumber = 0;
 	initializeBreakPoints();
+	initializeNodeArrays();
 	for(p=0;p<npops;p++){
 		popnSizes[p]=sampleSizes[p];
 		for( i = 0; i < sampleSizes[p]; i++){
@@ -180,6 +181,7 @@ void initializeTwoSite(){
 	/* initialize the arrays */
 	totChunkNumber = 0;
 	initializeBreakPoints();
+	initializeNodeArrays();
 	for(p=0;p<npops;p++){
 		popnSizes[p]=sampleSizes[p];
 		for( i = 0; i < sampleSizes[p]; i++){
@@ -2330,10 +2332,61 @@ void addAncientSample(int lineageNumber, int popnDest, double addTime, int still
 	
 }
 
+void initializeNodeArrays() {
+	int initialCapacity = 1000;  // Start small
+	
+	nodesCapacity = initialCapacity;
+	allNodesCapacity = initialCapacity;
+	
+	nodes = malloc(sizeof(rootedNode*) * nodesCapacity);
+	allNodes = malloc(sizeof(rootedNode*) * allNodesCapacity);
+	
+	if (nodes == NULL || allNodes == NULL) {
+		fprintf(stderr, "Error: Failed to allocate initial node arrays\n");
+		exit(1);
+	}
+}
+
+void ensureNodesCapacity(int requiredSize) {
+	if (requiredSize >= nodesCapacity) {
+		int newCapacity = nodesCapacity;
+		while (newCapacity <= requiredSize) {
+			newCapacity *= 2;
+		}
+		
+		rootedNode **newNodes = realloc(nodes, sizeof(rootedNode*) * newCapacity);
+		if (newNodes == NULL) {
+			fprintf(stderr, "Error: Failed to reallocate nodes array (requested: %d pointers)\n", newCapacity);
+			exit(1);
+		}
+		
+		nodes = newNodes;
+		nodesCapacity = newCapacity;
+	}
+}
+
+void ensureAllNodesCapacity(int requiredSize) {
+	if (requiredSize >= allNodesCapacity) {
+		int newCapacity = allNodesCapacity;
+		while (newCapacity <= requiredSize) {
+			newCapacity *= 2;
+		}
+		
+		rootedNode **newAllNodes = realloc(allNodes, sizeof(rootedNode*) * newCapacity);
+		if (newAllNodes == NULL) {
+			fprintf(stderr, "Error: Failed to reallocate allNodes array (requested: %d pointers)\n", newCapacity);
+			exit(1);
+		}
+		
+		allNodes = newAllNodes;
+		allNodesCapacity = newCapacity;
+	}
+}
 
 void addNode(rootedNode *aNode){
-        assert(alleleNumber < MAXNODES);
-        assert(totNodeNumber < MAXNODES);
+	ensureNodesCapacity(alleleNumber + 1);
+	ensureAllNodesCapacity(totNodeNumber + 1);
+	
 	nodes[alleleNumber] = aNode;
 	allNodes[totNodeNumber] = aNode;
 	alleleNumber += 1;

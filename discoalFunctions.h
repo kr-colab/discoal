@@ -46,6 +46,9 @@ void addAncientSample(int lineageNumber, int popnDest, double addTime, int still
 void recurrentMutAtTime(double cTime,int srcPopn, int sp);
 
 void ensureTrajectoryCapacity(long int requiredSize);
+void initializeNodeArrays();
+void ensureNodesCapacity(int requiredSize);
+void ensureAllNodesCapacity(int requiredSize);
 
 double sweepPhaseEventsGeneralPopNumber(int *bpArray, double startTime, double endTime, double sweepSite,\
 			double initialFreq, double *finalFreq, int *stillSweeping, double alpha,\
