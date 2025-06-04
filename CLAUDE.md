@@ -11,6 +11,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Testing
 
+**IMPORTANT: Always run the comprehensive testing suite when making changes to ensure no regressions.**
+
+### Comprehensive Testing Framework (PRIMARY)
+The comprehensive testing suite in `testing/` directory is based on all documented examples and must be run for any changes:
+
+**Quick validation (use during development):**
+```bash
+cd testing/
+./focused_validation_suite.sh
+```
+
+**Full validation (required before commits):**
+```bash
+cd testing/
+./comprehensive_validation_suite.sh
+```
+
+The testing framework:
+- Tests all documented functionality from discoaldoc.tex
+- Compares optimized vs legacy versions for identical output
+- Profiles memory usage and detects regressions
+- Provides 21 comprehensive test cases covering all features
+- Ensures trajectory optimization maintains compatibility
+
 ### Unit Tests
 Unit tests use a custom Unity testing framework in `test/unit/unity.h`. Tests are located in `test/unit/`:
 - `test_node.c` - Tests rootedNode structure operations
@@ -18,7 +42,7 @@ Unit tests use a custom Unity testing framework in `test/unit/unity.h`. Tests ar
 - `test_event.c` - Tests event structure
 - `test_node_operations.c` - Tests node operations
 
-### Integration Tests
+### Legacy Integration Tests
 Bash scripts in root directory test different aspects:
 - Performance: `test_performance_*.sh`
 - Memory: `test_memory_*.sh`, `test_memory_leaks.sh`
@@ -73,3 +97,22 @@ The codebase has been optimized for memory efficiency:
 - Memory-efficient dynamic allocation patterns
 - Extensive use of function pointers for different simulation modes
 - Consistent naming: `*AtTime*()` for time-based operations, `*Popn*()` for population-specific operations
+
+## Development Workflow
+
+### Required Testing Workflow
+1. **During development**: Run `cd testing/ && ./focused_validation_suite.sh` frequently
+2. **Before commits**: Run `cd testing/ && ./comprehensive_validation_suite.sh` to ensure no regressions
+3. **After major changes**: Run full comprehensive suite and document any performance improvements
+4. **Never commit without validation**: The testing suite must pass before any code changes are committed
+
+### Optimization Guidelines
+- Always establish baseline performance with testing suite before optimization
+- Use focused testing suite for rapid iteration during optimization work
+- Document memory savings and success rate improvements in commit messages
+- Update test cases when adding new functionality
+- Maintain backward compatibility verified through identical output comparison
+
+## Git Commands
+
+- when you make commits, don't add Claude as a co-author. i'm ultimately responsible for the code.
