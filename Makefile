@@ -11,6 +11,39 @@ all: discoal
 
 discoal: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h
 	$(CC) $(CFLAGS)  -o discoal discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c -lm -fcommon
+
+# Build optimized version for testing (same as main but explicit name)
+discoal_trajectory_optimized: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h
+	$(CC) $(CFLAGS)  -o discoal_trajectory_optimized discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c -lm -fcommon
+
+# Build legacy version from git history for comparison testing
+discoal_legacy_backup:
+	@echo "Building legacy version from git history..."
+	@if git show HEAD~5:discoal_multipop.c > /tmp/discoal_multipop_legacy.c 2>/dev/null && \
+	   git show HEAD~5:discoalFunctions.c > /tmp/discoalFunctions_legacy.c 2>/dev/null && \
+	   git show HEAD~5:discoal.h > /tmp/discoal_legacy.h 2>/dev/null; then \
+		$(CC) $(CFLAGS) -I/tmp -o discoal_legacy_backup /tmp/discoal_multipop_legacy.c /tmp/discoalFunctions_legacy.c ranlibComplete.c alleleTraj.c -lm -fcommon; \
+		rm -f /tmp/discoal_multipop_legacy.c /tmp/discoalFunctions_legacy.c /tmp/discoal_legacy.h; \
+		echo "Legacy version built successfully"; \
+	else \
+		echo "Warning: Could not build legacy version from git history"; \
+		echo "Creating symlink to current version for testing..."; \
+		ln -sf discoal discoal_legacy_backup; \
+	fi
+
+# Build both versions needed for testing
+test_binaries: discoal_trajectory_optimized discoal_legacy_backup
+	@echo "Built both optimized and legacy versions for testing"
+
+# Run the comprehensive testing suite
+test_comprehensive: test_binaries
+	@echo "Running comprehensive validation suite..."
+	cd testing && ./comprehensive_validation_suite.sh
+
+# Run the focused testing suite  
+test_focused: test_binaries
+	@echo "Running focused validation suite..."
+	cd testing && ./focused_validation_suite.sh
 	
 test: alleleTrajTest.c alleleTraj.c alleleTraj.h discoalFunctions.c
 	$(CC) $(CFLAGS)  -o alleleTrajTest alleleTrajTest.c alleleTraj.c ranlibComplete.c discoalFunctions.c -lm
@@ -39,5 +72,5 @@ run_tests: test_node test_event test_node_operations test_mutations
 #
 
 clean:
-	rm -f discoal *.o test_node test_event test_node_operations test_mutations alleleTrajTest
+	rm -f discoal discoal_* *.o test_node test_event test_node_operations test_mutations alleleTrajTest
 

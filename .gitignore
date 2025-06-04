@@ -1,0 +1,49 @@
+# Compiled executables
+discoal
+discoal_*
+
+# Build artifacts
+*.o
+*.dSYM/
+
+# Test results (timestamped directories)
+*_test_*
+*_validation_*
+*_memory_test_*
+
+# Temporary output files
+*.out
+*_memory.txt
+*_output.txt
+*_stress.txt
+current_output.txt
+new_output.txt
+legacy_*.txt
+refactored_*.txt
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Editor files
+.vscode/
+.swp
+*.swp
+
+# OS files
+.DS_Store
+
+# Temporary analysis files
+instance
+seedms
+testTrees.foo
+foo*
+
+# Report files (generated during analysis)
+*_report.md
+*_optimization*.md
+*_savings*.md
+
+# Profiling scripts (temporary)
+profile_*.sh
+analyze_*.sh
