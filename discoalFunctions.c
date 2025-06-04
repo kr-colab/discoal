@@ -502,6 +502,11 @@ int recombineAtTimePopn(double cTime, int popn){
 //	printf("there xover: %d t1: %d t2: %d\n",xOver,siteBetweenChunks(aNode, xOver),isActive(xOver));
 		
 	if (siteBetweenChunks(aNode, xOver) == 1 &&  isActive(xOver) == 1  ){
+		// Early exit if no ancestral material
+		if(aNode->nancSites == 0 || aNode->lLim > aNode->rLim) {
+			return xOver;
+		}
+		
 		removeNode(aNode); 
 		lParent = newRootedNode(cTime,popn);
 		rParent = newRootedNode(cTime,popn);
@@ -512,42 +517,42 @@ int recombineAtTimePopn(double cTime, int popn){
 		rParent->leftChild = aNode;
 		lParent->population = aNode->population;
 		rParent->population = aNode->population;
-		lParent->nancSites=0;
-		rParent->nancSites=0;
-		lParent->lLim= nSites;
-		lParent->rLim=0;
-		rParent->lLim = nSites;
-		rParent->rLim=0;
-		for(i=0;i<nSites;i++){
-			if(i<xOver){
-				lParent->ancSites[i] = aNode->ancSites[i];
-				rParent->ancSites[i] = 0;
-			}
-			else{
-				lParent->ancSites[i] = 0;
-				rParent->ancSites[i] = aNode->ancSites[i];
-			}
-
-			if(lParent->ancSites[i] > 0 && lParent->ancSites[i] < sampleSize){
-				lParent->nancSites += 1;
-				lParent->rLim=i;
-				lParent->lLim=MIN(lParent->lLim,i);
-			}
-
-			if(rParent->ancSites[i] > 0 && rParent->ancSites[i] < sampleSize){
-				rParent->nancSites += 1;
-				rParent->rLim=i;
-				rParent->lLim=MIN(rParent->lLim,i);
+		
+		// Initialize boundary tracking variables
+		int lParent_lLim = nSites, lParent_rLim = 0;
+		int rParent_lLim = nSites, rParent_rLim = 0;
+		int lParent_count = 0, rParent_count = 0;
+		
+		// Only iterate over the active region where ancestral material exists
+		for(i = aNode->lLim; i <= aNode->rLim; i++){
+			if(aNode->ancSites[i] > 0 && aNode->ancSites[i] < sampleSize){
+				if(i < xOver){
+					lParent->ancSites[i] = aNode->ancSites[i];
+					lParent_count++;
+					lParent_lLim = MIN(lParent_lLim, i);
+					lParent_rLim = i;
+				}
+				else{
+					rParent->ancSites[i] = aNode->ancSites[i];
+					rParent_count++;
+					rParent_lLim = MIN(rParent_lLim, i);
+					rParent_rLim = i;
+				}
 			}
 		}
-	//	if(lParent->lLim < lParent->rLim)
-			addNode(lParent);
-	//	else
-	//		free(lParent);
-	//	if(rParent->lLim < rParent->rLim)
-			addNode(rParent);
-	//	else
-	//		free(rParent)
+		
+		// Set final boundaries and counts
+		lParent->nancSites = lParent_count;
+		lParent->lLim = (lParent_count > 0) ? lParent_lLim : nSites;
+		lParent->rLim = (lParent_count > 0) ? lParent_rLim : 0;
+		
+		rParent->nancSites = rParent_count;
+		rParent->lLim = (rParent_count > 0) ? rParent_lLim : nSites;
+		rParent->rLim = (rParent_count > 0) ? rParent_rLim : 0;
+		
+		addNode(lParent);
+		addNode(rParent);
+		
 	//	printf("reco-> lParent: %u rParent:%u child: %u time:%f xover:%d\n",lParent,rParent,aNode,cTime,xOver);
 		//printNode(aNode);
 		return xOver;
