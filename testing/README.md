@@ -63,7 +63,7 @@ comprehensive_validation_YYYYMMDD_HHMMSS/
 
 - **Git setup**: Access to both current feature branch and master branch
 - **Build system**: Automated binary generation via `make test_binaries`
-  - `discoal_trajectory_optimized`: Built from current working branch
+  - `discoal_edited`: Built from current working branch
   - `discoal_legacy_backup`: Built from master branch for stable baseline comparison
 - **System**: BSD `time` command for memory profiling
 - **Optional**: `timeout` command (install with `brew install coreutils` on macOS)

@@ -70,7 +70,7 @@ for test_case in "${CORE_TEST_CASES[@]}"; do
     SEED2=67890
     
     # Test optimized version
-    optimized_cmd="../discoal_trajectory_optimized $test_args -d $SEED1 $SEED2"
+    optimized_cmd="../discoal_edited $test_args -d $SEED1 $SEED2"
     measure_memory "$optimized_cmd" "$TEST_DIR/${category}_${test_name}_opt.out" "$TEST_DIR/${category}_${test_name}_opt_mem.txt"
     opt_exit=$?
     
@@ -96,8 +96,8 @@ for test_case in "${CORE_TEST_CASES[@]}"; do
         
         # Compare outputs if both succeeded
         if [ $opt_exit -eq 0 ]; then
-            sed 's|../discoal_legacy_backup|discoal|g; s|../discoal_trajectory_optimized|discoal|g' "$TEST_DIR/${category}_${test_name}_leg.out" > "$TEST_DIR/${category}_${test_name}_leg_filt.out"
-            sed 's|../discoal_legacy_backup|discoal|g; s|../discoal_trajectory_optimized|discoal|g' "$TEST_DIR/${category}_${test_name}_opt.out" > "$TEST_DIR/${category}_${test_name}_opt_filt.out"
+            sed 's|../discoal_legacy_backup|discoal|g; s|../discoal_edited|discoal|g' "$TEST_DIR/${category}_${test_name}_leg.out" > "$TEST_DIR/${category}_${test_name}_leg_filt.out"
+            sed 's|../discoal_legacy_backup|discoal|g; s|../discoal_edited|discoal|g' "$TEST_DIR/${category}_${test_name}_opt.out" > "$TEST_DIR/${category}_${test_name}_opt_filt.out"
             
             if diff -q "$TEST_DIR/${category}_${test_name}_leg_filt.out" "$TEST_DIR/${category}_${test_name}_opt_filt.out" > /dev/null; then
                 echo "  ✅ Output: IDENTICAL"

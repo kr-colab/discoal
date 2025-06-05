@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Directory Structure
+
+**IMPORTANT**: When working with bash commands, be aware of the directory structure:
+- **Root directory** (`/Users/adk/github/discoal/`): Contains source files, Makefile, and main executables
+- **Testing directory** (`/Users/adk/github/discoal/testing/`): Contains all test scripts
+- **Unit test directory** (`/Users/adk/github/discoal/test/unit/`): Contains unit test files
+
+**Note about shell sessions**: The bash tool maintains persistent state, so after `cd testing/`, subsequent commands run in that directory. To avoid confusion:
+- Use absolute paths when possible
+- Or explicitly return to root with `cd ..` or `cd /Users/adk/github/discoal`
+- Check current directory with `pwd` if uncertain
+
 ## Build Commands
 
 - `make discoal` - Build the main discoal executable

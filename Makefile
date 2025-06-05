@@ -12,9 +12,9 @@ all: discoal
 discoal: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h
 	$(CC) $(CFLAGS)  -o discoal discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c -lm -fcommon
 
-# Build optimized version for testing (same as main but explicit name)
-discoal_trajectory_optimized: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h
-	$(CC) $(CFLAGS)  -o discoal_trajectory_optimized discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c -lm -fcommon
+# Build edited version for testing (same as main but explicit name)
+discoal_edited: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h
+	$(CC) $(CFLAGS)  -o discoal_edited discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c -lm -fcommon
 
 # Build legacy version from master branch for comparison testing
 discoal_legacy_backup:
@@ -39,8 +39,8 @@ discoal_legacy_backup:
 	fi
 
 # Build both versions needed for testing
-test_binaries: discoal_trajectory_optimized discoal_legacy_backup
-	@echo "Built both optimized and legacy versions for testing"
+test_binaries: discoal_edited discoal_legacy_backup
+	@echo "Built both edited and legacy versions for testing"
 
 # Run the comprehensive testing suite
 test_comprehensive: test_binaries
@@ -79,5 +79,5 @@ run_tests: test_node test_event test_node_operations test_mutations
 #
 
 clean:
-	rm -f discoal discoal_trajectory_optimized discoal_legacy_backup *.o test_node test_event test_node_operations test_mutations alleleTrajTest
+	rm -f discoal discoal_edited discoal_legacy_backup *.o test_node test_event test_node_operations test_mutations alleleTrajTest
 
