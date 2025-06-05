@@ -119,33 +119,13 @@ double recurSweepRate;
 
 int EFFECTIVE_POPN_SIZE;
 
-// Trajectory generator state for lazy computation
-typedef struct {
-    double x;                   // current frequency
-    double ttau;               // current time offset
-    double tIncOrig;           // original time increment
-    double alpha;              // selection coefficient
-    double minF;               // minimum frequency
-    char sweepMode;            // sweep mode ('d', 's', 'N')
-    int insweepphase;          // whether still in sweep phase
-    int currentEventNumber;    // current event index
-    double currentTime;        // current simulation time
-    double *sizeRatio;         // population size ratios
-    double N_0;                // effective population size
-    double Nmax;               // maximum population size ratio
-    double currentSizeRatio;   // current size ratio
-} TrajectoryGenerator;
-
-// Legacy trajectory support (kept for compatibility)
+// Trajectory support
 #define TRAJSTEPSTART 1000
 #define TRAJ_GROWTH_FACTOR 2
 long int  maxTrajSteps;
 long int  trajectoryCapacity;
 float *currentTrajectory;
 long int currentTrajectoryStep, totalTrajectorySteps;
-
-// Active trajectory generator
-TrajectoryGenerator *activeTrajectoryGen;
 
 struct event events[MAXEVENTS];
 

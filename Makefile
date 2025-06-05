@@ -19,16 +19,22 @@ discoal_trajectory_optimized: discoal_multipop.c discoalFunctions.c discoal.h di
 # Build legacy version from master branch for comparison testing
 discoal_legacy_backup:
 	@echo "Building legacy version from master branch..."
-	@if git show master:discoal_multipop.c > /tmp/discoal_multipop_legacy.c 2>/dev/null && \
-	   git show master:discoalFunctions.c > /tmp/discoalFunctions_legacy.c 2>/dev/null && \
-	   git show master:discoal.h > /tmp/discoal_legacy.h 2>/dev/null && \
-	   git show master:discoalFunctions.h > /tmp/discoalFunctions_legacy.h 2>/dev/null; then \
-		$(CC) $(CFLAGS) -I/tmp -o discoal_legacy_backup /tmp/discoal_multipop_legacy.c /tmp/discoalFunctions_legacy.c ranlibComplete.c alleleTraj.c -lm -fcommon; \
-		rm -f /tmp/discoal_multipop_legacy.c /tmp/discoalFunctions_legacy.c /tmp/discoal_legacy.h /tmp/discoalFunctions_legacy.h; \
+	@mkdir -p /tmp/discoal_legacy_build
+	@if git show master:discoal_multipop.c > /tmp/discoal_legacy_build/discoal_multipop.c 2>/dev/null && \
+	   git show master:discoalFunctions.c > /tmp/discoal_legacy_build/discoalFunctions.c 2>/dev/null && \
+	   git show master:discoal.h > /tmp/discoal_legacy_build/discoal.h 2>/dev/null && \
+	   git show master:discoalFunctions.h > /tmp/discoal_legacy_build/discoalFunctions.h 2>/dev/null && \
+	   git show master:ranlibComplete.c > /tmp/discoal_legacy_build/ranlibComplete.c 2>/dev/null && \
+	   git show master:alleleTraj.c > /tmp/discoal_legacy_build/alleleTraj.c 2>/dev/null && \
+	   git show master:alleleTraj.h > /tmp/discoal_legacy_build/alleleTraj.h 2>/dev/null && \
+	   git show master:ranlib.h > /tmp/discoal_legacy_build/ranlib.h 2>/dev/null; then \
+		cd /tmp/discoal_legacy_build && $(CC) $(CFLAGS) -o discoal_legacy_backup discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c -lm -fcommon && mv discoal_legacy_backup $(CURDIR)/ && cd ../..; \
+		rm -rf /tmp/discoal_legacy_build; \
 		echo "Legacy version built successfully from master branch"; \
 	else \
 		echo "ERROR: Could not build legacy version from master branch"; \
 		echo "This is required for testing. Please ensure master branch exists and contains the legacy code."; \
+		rm -rf /tmp/discoal_legacy_build; \
 		exit 1; \
 	fi
 
@@ -73,5 +79,5 @@ run_tests: test_node test_event test_node_operations test_mutations
 #
 
 clean:
-	rm -f discoal discoal_* *.o test_node test_event test_node_operations test_mutations alleleTrajTest
+	rm -f discoal discoal_trajectory_optimized discoal_legacy_backup *.o test_node test_event test_node_operations test_mutations alleleTrajTest
 
