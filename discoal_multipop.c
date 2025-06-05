@@ -58,7 +58,6 @@ int main(int argc, const char * argv[]){
 	assert(currentTrajectory);
 	
 	// Initialize global trajectory generator (lazy approach)
-	activeTrajectoryGen = NULL;
 
 	while(i < sampleNumber){
 		currentTime=0;
@@ -126,18 +125,14 @@ int main(int argc, const char * argv[]){
 				}
 			//	printf("event%d currentTime: %f nextTime: %f popnSize: %f\n",j,currentTime,nextTime,currentSize);
 
-				//generate a proposed trajectory using lazy approach
-				TrajectoryGenerator *candidateGen = initializeTrajectoryGenerator(currentEventNumber, currentSize, sweepMode, currentFreq, alpha, f0, currentTime);
-				probAccept = calculateTrajectoryAcceptance(candidateGen);
+				//generate a proposed trajectory
+				probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, currentSize, sweepMode, currentFreq, &currentFreq, alpha, f0, currentTime);
 				while(ranf()>probAccept){
-					cleanupTrajectoryGenerator(candidateGen);
-					candidateGen = initializeTrajectoryGenerator(currentEventNumber, currentSize, sweepMode, currentFreq, alpha, f0, currentTime);
-					probAccept = calculateTrajectoryAcceptance(candidateGen);
+					probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, currentSize, sweepMode, currentFreq, &currentFreq, alpha, f0, currentTime);
 					//printf("probAccept: %lf\n",probAccept);
 				}
-				cleanupTrajectoryGenerator(candidateGen);
 				
-				currentTime = sweepPhaseEventsLazyTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
+				currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
 					 currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
 				//printf("currentFreqAfter: %f alleleNumber:%d currentTime:%f\n",currentFreq,alleleNumber,currentTime);
 				//printf("pn0:%d pn1:%d alleleNumber: %d sp1: %d sp2: %d \n", popnSizes[0],popnSizes[1], alleleNumber,sweepPopnSizes[1],
@@ -291,11 +286,6 @@ int main(int argc, const char * argv[]){
 	free(currentTrajectory);
 	free(currentSize);
 	
-	// Clean up global trajectory generator if allocated
-	if(activeTrajectoryGen != NULL) {
-		cleanupTrajectoryGenerator(activeTrajectoryGen);
-		activeTrajectoryGen = NULL;
-	}
 	
 	return(0);
 }
