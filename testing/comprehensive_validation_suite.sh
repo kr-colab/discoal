@@ -143,7 +143,7 @@ for test_case in "${TEST_CASES[@]}"; do
     
     # Test optimized version
     echo "  Testing optimized version..."
-    optimized_cmd="../discoal_trajectory_optimized $test_args -d $SEED1 $SEED2"
+    optimized_cmd="../discoal_edited $test_args -d $SEED1 $SEED2"
     measure_memory "$optimized_cmd" "$TEST_DIR/${category}_${test_name}_optimized.out" "$TEST_DIR/${category}_${test_name}_optimized_memory.txt"
     optimized_exit=$?
     
@@ -202,8 +202,8 @@ for test_case in "${TEST_CASES[@]}"; do
     # Compare outputs if both succeeded
     if [ $optimized_exit -eq 0 ] && [ $legacy_exit -eq 0 ]; then
         # Filter out executable names and paths for comparison
-        sed 's/discoal_legacy_backup/discoal/g; s|../discoal_trajectory_optimized|discoal|g; s|../discoal|discoal|g' "$TEST_DIR/${category}_${test_name}_legacy.out" > "$TEST_DIR/${category}_${test_name}_legacy_filtered.out"
-        sed 's/discoal_legacy_backup/discoal/g; s|../discoal_trajectory_optimized|discoal|g; s|../discoal|discoal|g' "$TEST_DIR/${category}_${test_name}_optimized.out" > "$TEST_DIR/${category}_${test_name}_optimized_filtered.out"
+        sed 's/discoal_legacy_backup/discoal/g; s|../discoal_edited|discoal|g; s|../discoal|discoal|g' "$TEST_DIR/${category}_${test_name}_legacy.out" > "$TEST_DIR/${category}_${test_name}_legacy_filtered.out"
+        sed 's/discoal_legacy_backup/discoal/g; s|../discoal_edited|discoal|g; s|../discoal|discoal|g' "$TEST_DIR/${category}_${test_name}_optimized.out" > "$TEST_DIR/${category}_${test_name}_optimized_filtered.out"
         
         if diff -q "$TEST_DIR/${category}_${test_name}_legacy_filtered.out" "$TEST_DIR/${category}_${test_name}_optimized_filtered.out" > /dev/null; then
             echo "    ✅ Output: IDENTICAL"
