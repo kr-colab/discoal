@@ -2,14 +2,18 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <stdint.h>
 #include <assert.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <time.h>
 #include "discoal.h"
 #include "discoalFunctions.h"
 #include "ranlib.h"
 #include "alleleTraj.h"
+
 
 // Initial capacity for breakPoints array (much smaller than original MAXBREAKS=1000000)
 #define INITIAL_BREAKPOINTS_CAPACITY 1000
@@ -947,28 +951,50 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 }
 
 void ensureTrajectoryCapacity(long int requiredSize) {
-	if (requiredSize >= trajectoryCapacity) {
-		long int newCapacity = trajectoryCapacity;
-		while (newCapacity <= requiredSize) {
-			newCapacity *= TRAJ_GROWTH_FACTOR;
+	// This function is now deprecated - we use file-based trajectories
+	// Keeping it for compatibility but it just checks size limits
+	if (requiredSize >= 500000000) {  // Match legacy limit
+		fprintf(stderr, "trajectory too bigly. step= %ld. killing myself gently\n", requiredSize);
+		exit(1);
+	}
+}
+
+
+// Function to mmap an accepted trajectory file
+void mmapAcceptedTrajectory(const char *filename, long int numSteps) {
+	// Clean up any previous trajectory
+	if (trajectoryFd != -1) {
+		if (currentTrajectory && currentTrajectory != MAP_FAILED) {
+			munmap(currentTrajectory, trajectoryFileSize);
 		}
-		
-		// Safety check to prevent infinite growth - match legacy behavior  
-		if (requiredSize >= 500000000) {  // Match legacy TRAJSTEPSTART exactly
-			fprintf(stderr, "trajectory too bigly. step= %ld freq = unknown. killing myself gently\n", requiredSize);
-			exit(1);
-		}
-		
-		float *newTrajectory = realloc(currentTrajectory, sizeof(float) * newCapacity);
-		if (newTrajectory == NULL) {
-			fprintf(stderr, "Error: Failed to reallocate trajectory memory (requested: %ld floats, %.1f MB)\n", 
-					newCapacity, (newCapacity * sizeof(float)) / (1024.0 * 1024.0));
-			exit(1);
-		}
-		
-		currentTrajectory = newTrajectory;
-		trajectoryCapacity = newCapacity;
-		maxTrajSteps = trajectoryCapacity;
+		close(trajectoryFd);
+		trajectoryFd = -1;
+	}
+	
+	// Open the trajectory file
+	trajectoryFd = open(filename, O_RDONLY);
+	if (trajectoryFd == -1) {
+		perror("Failed to open trajectory file for mmap");
+		exit(1);
+	}
+	
+	// Calculate file size
+	trajectoryFileSize = numSteps * sizeof(float);
+	
+	// Memory map the file
+	currentTrajectory = (float *)mmap(NULL, trajectoryFileSize, PROT_READ, 
+	                                  MAP_PRIVATE, trajectoryFd, 0);
+	if (currentTrajectory == MAP_FAILED) {
+		perror("Failed to mmap trajectory file");
+		close(trajectoryFd);
+		exit(1);
+	}
+}
+
+// Function to clean up rejected trajectory files
+void cleanupRejectedTrajectory(const char *filename) {
+	if (filename && filename[0] != '\0') {
+		unlink(filename);
 	}
 }
 
@@ -984,6 +1010,21 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 	int i, insweepphase;
 	long int j;
 	float x;
+	
+	// For sweep simulations, write directly to a temporary file
+	char tempFilename[256];
+	snprintf(tempFilename, sizeof(tempFilename), "/tmp/discoal_traj_%d_%ld_%d.tmp", 
+	         getpid(), time(NULL), rand());
+	
+	FILE *trajFile = fopen(tempFilename, "wb");
+	if (!trajFile) {
+		perror("Failed to create trajectory file");
+		exit(1);
+	}
+	
+	// Use buffered writes for efficiency
+	float writeBuffer[1024];
+	int bufferPos = 0;
 	
 	tIncOrig = 1.0 / (deltaTMod * EFFECTIVE_POPN_SIZE);
 	j=0;
@@ -1032,12 +1073,40 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 				x = neutralStochastic(tInc, x);
 			}
 			//printf("j: %ld x: %f\n",j,x);
-			ensureTrajectoryCapacity(j + 1);
-			currentTrajectory[j++]=x;
+			
+			// Check trajectory size to prevent runaway
+			if (j >= 500000000) {  // Match legacy limit
+				fprintf(stderr, "trajectory too bigly. step= %ld. killing myself gently\n", j);
+				fclose(trajFile);
+				unlink(tempFilename);
+				exit(1);
+			}
+			
+			// Write to buffer
+			writeBuffer[bufferPos++] = x;
+			if (bufferPos >= 1024) {
+				// Flush buffer to file
+				fwrite(writeBuffer, sizeof(float), bufferPos, trajFile);
+				bufferPos = 0;
+			}
+			j++;
 		}
 	}
-	currentTrajectoryStep=0;
-	totalTrajectorySteps=j;
+	
+	// Flush any remaining data in buffer
+	if (bufferPos > 0) {
+		fwrite(writeBuffer, sizeof(float), bufferPos, trajFile);
+	}
+	fclose(trajFile);
+	
+	// Store the filename and trajectory length globally
+	strncpy(trajectoryFilename, tempFilename, sizeof(trajectoryFilename) - 1);
+	currentTrajectoryStep = 0;
+	totalTrajectorySteps = j;
+	
+	// Note: We don't mmap here because this function may be called multiple times
+	// during rejection sampling. The accepted trajectory will be mmap'd later.
+	
 	return(currentSizeRatio/Nmax);
 	
 }
@@ -1383,7 +1452,12 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 		while(eventProb > eventRand && x > (1.0 / (2*N)) && (cTime+ttau) < endTime ){
 			ttau += tIncOrig;
 
-			x = currentTrajectory[currentTrajectoryStep++];
+			if (currentTrajectoryStep >= totalTrajectorySteps) {
+			fprintf(stderr, "Error: trajectory step %ld exceeds total steps %ld\n", 
+					currentTrajectoryStep, totalTrajectorySteps);
+			exit(1);
+		}
+		x = currentTrajectory[currentTrajectoryStep++];
 
 			//calculate event probs
 			//first 4 events are probs of events in population 0
