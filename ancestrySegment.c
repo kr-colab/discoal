@@ -36,13 +36,21 @@ void freeSegmentTree(AncestrySegment *root) {
 AncestrySegment* copySegmentTree(AncestrySegment *root) {
     if (!root) return NULL;
     
+    // If the tree is immutable (no next pointers), we can share it
+    if (!root->next && root->refCount > 0) {
+        return retainSegment(root);
+    }
+    
+    // Otherwise, create a deep copy
     AncestrySegment *newRoot = NULL;
     AncestrySegment *lastNew = NULL;
     AncestrySegment *current = root;
     
     while (current) {
+        // For child segments, retain them instead of copying
         AncestrySegment *newSeg = newSegment(current->start, current->end, 
-                                            current->left, current->right);
+                                            retainSegment(current->left), 
+                                            retainSegment(current->right));
         newSeg->count = current->count;
         newSeg->isLeaf = current->isLeaf;
         
@@ -92,8 +100,13 @@ void releaseSegment(AncestrySegment *seg) {
         if (seg->next) {
             releaseSegment(seg->next);
         }
-        // For now, we don't release children as they may be shared
-        // This will be handled more carefully when we fully implement sharing
+        // Release child segments
+        if (seg->left) {
+            releaseSegment(seg->left);
+        }
+        if (seg->right) {
+            releaseSegment(seg->right);
+        }
         free(seg);
     }
 }
@@ -166,7 +179,9 @@ AncestrySegment* mergeAncestryTrees(AncestrySegment *leftTree, AncestrySegment *
     if (leftTree && rightTree && leftTree->start == 0 && rightTree->start == 0 && 
         leftTree->end == rightTree->end && !leftTree->next && !rightTree->next) {
         // Common case: both cover all sites with no recombination
-        AncestrySegment *merged = newSegment(0, leftTree->end, leftTree, rightTree);
+        AncestrySegment *merged = newSegment(0, leftTree->end, 
+                                           retainSegment(leftTree), 
+                                           retainSegment(rightTree));
         merged->count = leftTree->count + rightTree->count;
         return merged;
     }
@@ -228,6 +243,16 @@ AncestrySegment* splitLeft(AncestrySegment *root, int breakpoint) {
     AncestrySegment *last = root;
     while (last->next) last = last->next;
     if (breakpoint >= last->end) {
+        // Can share the entire tree
+        if (!root->next) {
+            return retainSegment(root);
+        } else {
+            return copySegmentTree(root);
+        }
+    }
+    
+    // Check if we can share a prefix of the tree
+    if (!root->next && root->start == 0 && breakpoint >= root->end) {
         return retainSegment(root);
     }
     
@@ -237,8 +262,7 @@ AncestrySegment* splitLeft(AncestrySegment *root, int breakpoint) {
     
     while (current && current->start < breakpoint) {
         if (current->end <= breakpoint) {
-            // Entire segment is to the left - could potentially share but 
-            // for now create new to maintain list structure
+            // Entire segment is to the left
             addSegmentToResult(&result, &tail, current->start, current->end, current->count);
         } else {
             // Segment spans the breakpoint
@@ -253,6 +277,26 @@ AncestrySegment* splitLeft(AncestrySegment *root, int breakpoint) {
 // Split ancestry tree at breakpoint (for recombination) - right side
 AncestrySegment* splitRight(AncestrySegment *root, int breakpoint) {
     if (!root) return NULL;
+    
+    // Special case: if breakpoint is at or before the start, share the entire tree
+    if (breakpoint <= root->start) {
+        if (!root->next) {
+            return retainSegment(root);
+        } else {
+            return copySegmentTree(root);
+        }
+    }
+    
+    // Check if we can share a suffix of the tree
+    AncestrySegment *firstRight = root;
+    while (firstRight && firstRight->end <= breakpoint) {
+        firstRight = firstRight->next;
+    }
+    
+    if (firstRight && !firstRight->next && firstRight->start >= breakpoint) {
+        // Single segment entirely to the right
+        return retainSegment(firstRight);
+    }
     
     AncestrySegment *result = NULL;
     AncestrySegment *tail = NULL;
