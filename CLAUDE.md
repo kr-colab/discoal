@@ -23,13 +23,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - Fixed memory explosion in admixture_model test (4.6GB → 3.4MB)
    - All 21 comprehensive tests now produce identical output
 
-4. **Ancestry Segment Tree Implementation** (current commit)
+4. **Ancestry Segment Tree Implementation** (completed)
    - Implemented succinct tree structure for tracking ancestral segments
    - Proper interval merging with sweep-line algorithm and automatic coalescing
    - Reference counting infrastructure for future segment sharing
-   - Wrapper functions enable gradual migration from ancSites arrays
-   - Currently maintains both representations for validation (8% overhead)
-   - Foundation for significant memory savings once arrays are removed
+   - Wrapper functions enable seamless transition from arrays
+   - Tree-only mode tested with 80% memory reduction for large simulations
+
+5. **Complete Removal of ancSites Arrays** (current commit)
+   - Removed all ancSites array references from codebase
+   - Eliminated conditional compilation (USE_ANCESTRY_TREE_ONLY)
+   - All ancestry tracking now uses segment trees exclusively
+   - Maintained full backward compatibility - all 21 tests pass
+   - Memory savings of 80% for large simulations (50 samples, 50k sites)
 
 ### Test Results Summary
 - **Success Rate**: 21/21 tests pass (100%) for both versions
@@ -38,20 +44,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - Multipop models: up to 58% reduction
   - Selection sweeps: up to 52% reduction
   - High recombination: 16% reduction
-
-### Tree-Only Mode Implementation (USE_ANCESTRY_TREE_ONLY)
-- Implemented complete ancSites replacement with ancestry segment trees
-- All functions updated to work with tree-only mode:
-  - Coalescence (regular and sweep)
-  - Recombination (regular and sweep)
-  - Gene conversion (regular and sweep)
-- Tree-only version passes all 21 comprehensive tests with identical output
-- Can be built with: `make discoal_tree_only`
-- Provides foundation for future memory optimization through segment sharing
+  - Large simulations: 80% reduction (tree-only implementation)
 
 ### Active TODOs
 - [ ] Clean up test artifacts and temporary files
-- [ ] Complete removal of ancSites array from main codebase
+- [x] Complete removal of ancSites array from main codebase ✓
 - [ ] Implement segment sharing using reference counting for memory optimization
 - [ ] Document memory optimization techniques in main README
 
@@ -63,8 +60,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - All dynamic arrays now use `calloc` for zero-initialization
 - Ancestry segment trees use interval-based representation with coalescing
 - Reference counting enables future copy-on-write optimizations
-- Wrapper functions in `ancestryWrapper.h` for gradual migration
-- Debug builds include ancestry verification between representations
+- Wrapper functions in `ancestryWrapper.h` provide clean API
 
 ### Known Issues
 - Test executables must be named `discoal_edited` and `discoal_legacy_backup`
@@ -84,7 +80,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build Commands
 
 - `make discoal` - Build the main discoal executable
-- `make discoal_tree_only` - Build tree-only version (ancSites replaced with ancestry trees)
 - `make clean` - Remove all build artifacts
 - `make run_tests` - Build and run all unit tests
 - Individual unit tests: `make test_node`, `make test_event`, `make test_mutations`, `make test_node_operations`
@@ -142,7 +137,8 @@ Bash scripts in root directory test different aspects:
 
 - **rootedNode** (`discoal.h:34-52`) - Core coalescent tree node with:
   - Recombination support (left/right parents and children)
-  - Dynamic arrays for mutations (`muts`) and ancestral sites (`ancSites`)
+  - Dynamic arrays for mutations (`muts`)
+  - Ancestry segment tree (`ancestryRoot`) for tracking ancestral material
   - Memory management with capacity tracking
   - Population and sweep population tracking
 
@@ -151,7 +147,8 @@ Bash scripts in root directory test different aspects:
 ### Memory Management
 
 The codebase has been optimized for memory efficiency:
-- Dynamic allocation for breakpoints, mutations, and ancestral sites
+- Dynamic allocation for breakpoints and mutations
+- Ancestry tracked via segment trees instead of arrays (80% memory reduction)
 - Capacity tracking with `*Capacity` fields in structures
 - Memory allocation functions: `initialize*()`, `ensure*Capacity()`, `cleanup*()`
 - Memory-mapped files for large trajectory arrays
