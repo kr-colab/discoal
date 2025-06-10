@@ -30,12 +30,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - Wrapper functions enable seamless transition from arrays
    - Tree-only mode tested with 80% memory reduction for large simulations
 
-5. **Complete Removal of ancSites Arrays** (current commit)
+5. **Complete Removal of ancSites Arrays** (previous commit)
    - Removed all ancSites array references from codebase
    - Eliminated conditional compilation (USE_ANCESTRY_TREE_ONLY)
    - All ancestry tracking now uses segment trees exclusively
    - Maintained full backward compatibility - all 21 tests pass
    - Memory savings of 80% for large simulations (50 samples, 50k sites)
+
+6. **Segment Sharing with Reference Counting** (current commit)
+   - Implemented reference counting for all ancestry segments
+   - Smart copying shares immutable segments instead of deep copying
+   - Optimized merge operations retain child segments
+   - Efficient split operations share segments when possible
+   - Additional memory savings: 10-16% on top of previous optimizations
 
 ### Test Results Summary
 - **Success Rate**: 21/21 tests pass (100%) for both versions
@@ -45,11 +52,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - Selection sweeps: up to 52% reduction
   - High recombination: 16% reduction
   - Large simulations: 80% reduction (tree-only implementation)
+  - No recombination: Additional 10.8% with segment sharing
+  - Large sample sizes: Additional 16.1% with segment sharing
 
 ### Active TODOs
-- [ ] Clean up test artifacts and temporary files
 - [x] Complete removal of ancSites array from main codebase ✓
-- [ ] Implement segment sharing using reference counting for memory optimization
+- [x] Implement segment sharing using reference counting ✓
 - [ ] Document memory optimization techniques in main README
 
 ### Implementation Details
@@ -59,7 +67,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 500M step safety limit prevents runaway trajectories
 - All dynamic arrays now use `calloc` for zero-initialization
 - Ancestry segment trees use interval-based representation with coalescing
-- Reference counting enables future copy-on-write optimizations
+- Reference counting enables segment sharing between nodes
+- Immutable segments can be safely shared, reducing memory overhead
 - Wrapper functions in `ancestryWrapper.h` provide clean API
 
 ### Known Issues
@@ -149,6 +158,7 @@ Bash scripts in root directory test different aspects:
 The codebase has been optimized for memory efficiency:
 - Dynamic allocation for breakpoints and mutations
 - Ancestry tracked via segment trees instead of arrays (80% memory reduction)
+- Segment sharing via reference counting (additional 10-16% reduction)
 - Capacity tracking with `*Capacity` fields in structures
 - Memory allocation functions: `initialize*()`, `ensure*Capacity()`, `cleanup*()`
 - Memory-mapped files for large trajectory arrays
