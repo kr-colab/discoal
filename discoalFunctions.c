@@ -377,6 +377,7 @@ void coalesceAtTimePopn(double cTime, int popn){
 	temp->nancSites = 0;
 	temp->lLim = nSites;
 	temp->rLim = 0;
+	#ifndef USE_ANCESTRY_TREE_ONLY
 	for(i=0;i<nSites;i++){
 		temp->ancSites[i] = lChild->ancSites[i] + rChild->ancSites[i];
 		if(temp->ancSites[i] > 0 && temp->ancSites[i] < sampleSize){
@@ -386,8 +387,12 @@ void coalesceAtTimePopn(double cTime, int popn){
 			
 		}
 	}
+	#endif
 	// Merge ancestry segment trees
 	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
+	
+	// Update stats from tree when in tree-only mode
+	updateAncestryStatsFromTree(temp);
 	
 	// Verify consistency in debug mode
 	#ifdef DEBUG_ANCESTRY
@@ -428,6 +433,7 @@ void coalesceAtTimePopnTrackLeafs(double cTime, int popn){
 	temp->nancSites = 0;
 	temp->lLim = nSites;
 	temp->rLim = 0;
+	#ifndef USE_ANCESTRY_TREE_ONLY
 	for(i=0;i<nSites;i++){
 		temp->ancSites[i] = lChild->ancSites[i] + rChild->ancSites[i];
 		if(temp->ancSites[i] > 0 && temp->ancSites[i] < sampleSize){
@@ -437,6 +443,7 @@ void coalesceAtTimePopnTrackLeafs(double cTime, int popn){
 			
 		}
 	}
+	#endif
 	// Merge ancestry segment trees
 	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
 	//deal with leafs
@@ -452,6 +459,27 @@ void coalesceAtTimePopnTrackLeafs(double cTime, int popn){
 }*/
 
 
+// Helper function to update nancSites, lLim, rLim from ancestry tree
+void updateAncestryStatsFromTree(rootedNode *node) {
+	#ifdef USE_ANCESTRY_TREE_ONLY
+	if (!node || !node->ancestryRoot) return;
+	
+	node->nancSites = 0;
+	node->lLim = nSites;
+	node->rLim = 0;
+	
+	int i;
+	for(i = 0; i < nSites; i++) {
+		uint16_t count = getAncestryCount(node->ancestryRoot, i);
+		if(count > 0 && count < sampleSize) {
+			node->nancSites += 1;
+			node->rLim = i;
+			node->lLim = MIN(node->lLim, i);
+		}
+	}
+	#endif
+}
+
 /*updateActiveMaterial- does bookkeeping on the material that has found it's MRCA-- added for efficiency */
 void updateActiveMaterial(rootedNode *aNode){
 	int i;
@@ -463,6 +491,11 @@ void updateActiveMaterial(rootedNode *aNode){
 		//set global activeSites
 		activeSites+=activeMaterial[i];	
 	}
+	#ifdef DEBUG_TREE_ONLY
+	if (activeSites == 0) {
+		fprintf(stderr, "DEBUG: All sites have found MRCA\n");
+	}
+	#endif
 }
 
 /* asks whether a potential breakpoint is in material that hasn't found MRCA yet*/
@@ -544,6 +577,7 @@ int recombineAtTimePopn(double cTime, int popn){
 		lParent->population = aNode->population;
 		rParent->population = aNode->population;
 		
+		#ifndef USE_ANCESTRY_TREE_ONLY
 		// Initialize boundary tracking variables
 		int lParent_lLim = nSites, lParent_rLim = 0;
 		int rParent_lLim = nSites, rParent_rLim = 0;
@@ -575,10 +609,15 @@ int recombineAtTimePopn(double cTime, int popn){
 		rParent->nancSites = rParent_count;
 		rParent->lLim = (rParent_count > 0) ? rParent_lLim : nSites;
 		rParent->rLim = (rParent_count > 0) ? rParent_rLim : 0;
+		#endif
 		
 		// Split ancestry segment tree at crossover point
 		lParent->ancestryRoot = splitLeft(aNode->ancestryRoot, xOver);
 		rParent->ancestryRoot = splitRight(aNode->ancestryRoot, xOver);
+		
+		// Update stats from tree when in tree-only mode
+		updateAncestryStatsFromTree(lParent);
+		updateAncestryStatsFromTree(rParent);
 		
 		addNode(lParent);
 		addNode(rParent);
@@ -622,6 +661,8 @@ void geneConversionAtTimePopn(double cTime, int popn){
 		lParent->rLim=0;
 		rParent->lLim = nSites;
 		rParent->rLim=0;
+		
+		#ifndef USE_ANCESTRY_TREE_ONLY
 		for(i=0;i<nSites;i++){
 			if(i<xOver || i >= xOver+tractL){
 				lParent->ancSites[i] = 0;
@@ -644,12 +685,23 @@ void geneConversionAtTimePopn(double cTime, int popn){
 				rParent->lLim=MIN(rParent->lLim,i);
 			}
 		}
+		#endif
 		
-		// For gene conversion, we need to handle the ancestry segments differently
-		// Create a copy of the child's tree and modify the converted region
-		lParent->ancestryRoot = copySegmentTree(aNode->ancestryRoot);
-		rParent->ancestryRoot = copySegmentTree(aNode->ancestryRoot);
-		// TODO: Implement more sophisticated gene conversion handling if needed
+		// For gene conversion, handle the ancestry segments
+		// Gene conversion creates a tract where one parent gets a segment and the other gets the rest
+		if (aNode->ancestryRoot) {
+			// Split the tree for gene conversion tract
+			gcSplitResult gcSplit = splitSegmentTreeForGeneConversion(aNode->ancestryRoot, xOver, xOver + tractL);
+			lParent->ancestryRoot = gcSplit.converted;     // Gets the converted tract
+			rParent->ancestryRoot = gcSplit.unconverted;   // Gets everything else
+		} else {
+			lParent->ancestryRoot = NULL;
+			rParent->ancestryRoot = NULL;
+		}
+		
+		// Update stats from the ancestry trees
+		updateAncestryStatsFromTree(lParent);
+		updateAncestryStatsFromTree(rParent);
 		
 		addNode(lParent);
 		addNode(rParent);
@@ -1842,6 +1894,8 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 			lParent->rLim=0;
 			rParent->lLim = nSites;
 			rParent->rLim=0;
+			
+			#ifndef USE_ANCESTRY_TREE_ONLY
 			for(i=0;i<nSites;i++){
 				if(i<xOver){
 					lParent->ancSites[i] = aNode->ancSites[i];
@@ -1864,6 +1918,7 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 					rParent->lLim=MIN(rParent->lLim,i);
 				}
 			}
+			#endif
 			//determine sweep popn affinity
 			//left side?
 		//	printf("here-- popnFreq:%f sweepSite:%f xOver: %d test: %d \n",popnFreq,sweepSite,xOver,sweepSite < (float) xOver / nSites);
@@ -1884,6 +1939,10 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 			// Split ancestry segment tree at crossover point
 			lParent->ancestryRoot = splitLeft(aNode->ancestryRoot, xOver);
 			rParent->ancestryRoot = splitRight(aNode->ancestryRoot, xOver);
+			
+			// Update stats from ancestry trees
+			updateAncestryStatsFromTree(lParent);
+			updateAncestryStatsFromTree(rParent);
 			
 			//add in the nodes
 			addNode(lParent);
@@ -1943,6 +2002,8 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 		lParent->rLim=0;
 		rParent->lLim = nSites;
 		rParent->rLim=0;
+		
+		#ifndef USE_ANCESTRY_TREE_ONLY
 		for(i=0;i<nSites;i++){
 			if(i<xOver || i >= xOver+tractL){
 				lParent->ancSites[i] = 0;
@@ -1965,6 +2026,22 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 				rParent->lLim=MIN(rParent->lLim,i);
 			}
 		}
+		#endif
+		
+		// For gene conversion during sweep, handle the ancestry segments
+		if (aNode->ancestryRoot) {
+			// Split the tree for gene conversion tract
+			gcSplitResult gcSplit = splitSegmentTreeForGeneConversion(aNode->ancestryRoot, xOver, xOver + tractL);
+			lParent->ancestryRoot = gcSplit.converted;     // Gets the converted tract
+			rParent->ancestryRoot = gcSplit.unconverted;   // Gets everything else
+		} else {
+			lParent->ancestryRoot = NULL;
+			rParent->ancestryRoot = NULL;
+		}
+		
+		// Update stats from the ancestry trees
+		updateAncestryStatsFromTree(lParent);
+		updateAncestryStatsFromTree(rParent);
 			//determine sweep popn affinity
 			//left side?
 		//	printf("here-- popnFreq:%f sweepSite:%f xOver: %d test: %d \n",popnFreq,sweepSite,xOver,sweepSite < (float) xOver / nSites);
@@ -2010,6 +2087,7 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	temp->nancSites = 0;
 	temp->lLim = nSites;
 	temp->rLim = 0;
+	#ifndef USE_ANCESTRY_TREE_ONLY
 	for(i=0;i<nSites;i++){
 		temp->ancSites[i] = lChild->ancSites[i] + rChild->ancSites[i];
 		if(temp->ancSites[i] > 0 && temp->ancSites[i] < sampleSize){
@@ -2019,8 +2097,11 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 			
 		}
 	}
+	#endif
 	// Merge ancestry segment trees
 	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
+	// Update stats from tree when in tree-only mode
+	updateAncestryStatsFromTree(temp);
 	//printNode(temp);
 	addNode(temp);
 	//update active anc. material

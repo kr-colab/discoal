@@ -309,3 +309,56 @@ int verifySegmentTree(AncestrySegment *root, int nSites) {
     
     return 1;
 }
+
+// Split ancestry tree for gene conversion
+// Returns converted tract and everything else
+gcSplitResult splitSegmentTreeForGeneConversion(AncestrySegment *root, int startPos, int endPos) {
+    gcSplitResult result;
+    result.converted = NULL;
+    result.unconverted = NULL;
+    
+    if (!root || startPos >= endPos) {
+        result.unconverted = copySegmentTree(root);
+        return result;
+    }
+    
+    AncestrySegment *convTail = NULL;
+    AncestrySegment *unconvTail = NULL;
+    AncestrySegment *current = root;
+    
+    while (current) {
+        if (current->end <= startPos || current->start >= endPos) {
+            // Segment is completely outside conversion tract
+            addSegmentToResult(&result.unconverted, &unconvTail, 
+                             current->start, current->end, current->count);
+        } else if (current->start >= startPos && current->end <= endPos) {
+            // Segment is completely inside conversion tract
+            addSegmentToResult(&result.converted, &convTail,
+                             current->start, current->end, current->count);
+        } else {
+            // Segment overlaps with conversion tract boundary
+            if (current->start < startPos) {
+                // Part before conversion tract
+                addSegmentToResult(&result.unconverted, &unconvTail,
+                                 current->start, startPos, current->count);
+            }
+            
+            // Part inside conversion tract
+            int convStart = (current->start > startPos) ? current->start : startPos;
+            int convEnd = (current->end < endPos) ? current->end : endPos;
+            if (convStart < convEnd) {
+                addSegmentToResult(&result.converted, &convTail,
+                                 convStart, convEnd, current->count);
+            }
+            
+            if (current->end > endPos) {
+                // Part after conversion tract
+                addSegmentToResult(&result.unconverted, &unconvTail,
+                                 endPos, current->end, current->count);
+            }
+        }
+        current = current->next;
+    }
+    
+    return result;
+}
