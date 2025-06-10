@@ -2682,9 +2682,9 @@ void initializeAncSites(rootedNode *node, int capacity) {
 	
 	node->ancSitesCapacity = capacity;
 	#ifdef BIG
-	node->ancSites = malloc(sizeof(uint16_t) * capacity);
+	node->ancSites = calloc(capacity, sizeof(uint16_t));
 	#else
-	node->ancSites = malloc(sizeof(uint8_t) * capacity);
+	node->ancSites = calloc(capacity, sizeof(uint8_t));
 	#endif
 	
 	if (node->ancSites == NULL) {
