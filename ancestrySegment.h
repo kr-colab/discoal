@@ -31,6 +31,20 @@ AncestrySegment* mergeAncestryTrees(AncestrySegment *left, AncestrySegment *righ
 AncestrySegment* splitLeft(AncestrySegment *root, int breakpoint);
 AncestrySegment* splitRight(AncestrySegment *root, int breakpoint);
 
+// Structures for split operations
+typedef struct {
+    AncestrySegment *left;
+    AncestrySegment *right;
+} splitResult;
+
+typedef struct {
+    AncestrySegment *converted;
+    AncestrySegment *unconverted;
+} gcSplitResult;
+
+// Gene conversion specific split
+gcSplitResult splitSegmentTreeForGeneConversion(AncestrySegment *root, int startPos, int endPos);
+
 // Debug operations
 void printSegmentTree(AncestrySegment *root, int depth);
 int verifySegmentTree(AncestrySegment *root, int nSites);

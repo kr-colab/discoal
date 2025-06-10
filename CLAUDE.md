@@ -39,12 +39,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - Selection sweeps: up to 52% reduction
   - High recombination: 16% reduction
 
+### Tree-Only Mode Implementation (USE_ANCESTRY_TREE_ONLY)
+- Implemented complete ancSites replacement with ancestry segment trees
+- All functions updated to work with tree-only mode:
+  - Coalescence (regular and sweep)
+  - Recombination (regular and sweep)
+  - Gene conversion (regular and sweep)
+- Tree-only version passes all 21 comprehensive tests with identical output
+- Can be built with: `make discoal_tree_only`
+- Provides foundation for future memory optimization through segment sharing
+
 ### Active TODOs
-- [ ] Complete migration of all ancSites operations to use ancestry tree
-- [ ] Remove ancSites arrays entirely once validation is complete
-- [ ] Implement segment sharing using reference counting
-- [ ] Profile memory savings with tree-only implementation
 - [ ] Clean up test artifacts and temporary files
+- [ ] Complete removal of ancSites array from main codebase
+- [ ] Implement segment sharing using reference counting for memory optimization
 - [ ] Document memory optimization techniques in main README
 
 ### Implementation Details
@@ -76,6 +84,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build Commands
 
 - `make discoal` - Build the main discoal executable
+- `make discoal_tree_only` - Build tree-only version (ancSites replaced with ancestry trees)
 - `make clean` - Remove all build artifacts
 - `make run_tests` - Build and run all unit tests
 - Individual unit tests: `make test_node`, `make test_event`, `make test_mutations`, `make test_node_operations`

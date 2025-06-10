@@ -25,6 +25,7 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 
 
 void updateActiveMaterial(rootedNode *aNode);
+void updateAncestryStatsFromTree(rootedNode *node);
 int isActive(int site);
 int isAncestralHere(rootedNode *aNode, float site);
 int nAncestorsHere(rootedNode *aNode, float site);
