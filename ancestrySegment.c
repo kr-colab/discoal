@@ -3,6 +3,7 @@
 #include <string.h>
 #include <limits.h>
 #include "ancestrySegment.h"
+#include "ancestrySegmentAVL.h"
 
 AncestrySegment* newSegment(int start, int end, AncestrySegment *left, AncestrySegment *right) {
     AncestrySegment *seg = (AncestrySegment*)calloc(1, sizeof(AncestrySegment));
@@ -17,6 +18,7 @@ AncestrySegment* newSegment(int start, int end, AncestrySegment *left, AncestryS
     seg->next = NULL;
     seg->isLeaf = (left == NULL && right == NULL) ? 1 : 0;
     seg->refCount = 1;  // Initial reference count
+    seg->avlTree = NULL;  // AVL tree only used on root segments
     
     // For leaf segments, count is 1; for internal nodes, sum of children
     if (seg->isLeaf) {
@@ -67,8 +69,14 @@ AncestrySegment* copySegmentTree(AncestrySegment *root) {
 }
 
 uint16_t getAncestryCount(AncestrySegment *root, int site) {
-    AncestrySegment *current = root;
+    // Use AVL tree for O(log n) lookup if available
+    if (root && root->avlTree) {
+        AncestrySegment *found = findSegmentContaining((AVLTree*)root->avlTree, site);
+        return found ? found->count : 0;
+    }
     
+    // Fall back to linear search
+    AncestrySegment *current = root;
     while (current) {
         if (site >= current->start && site < current->end) {
             return current->count;
@@ -106,6 +114,11 @@ void releaseSegment(AncestrySegment *seg) {
         }
         if (seg->right) {
             releaseSegment(seg->right);
+        }
+        // Free AVL tree if present
+        if (seg->avlTree) {
+            freeAVLTree((AVLTree*)seg->avlTree);
+            seg->avlTree = NULL;
         }
         free(seg);
     }
@@ -230,6 +243,21 @@ AncestrySegment* mergeAncestryTrees(AncestrySegment *leftTree, AncestrySegment *
         // Advance pointers past segments that have ended
         while (l && l->end <= pos) l = l->next;
         while (r && r->end <= pos) r = r->next;
+    }
+    
+    // Build AVL tree if result has enough segments for it to be worthwhile
+    if (result) {
+        int segmentCount = 0;
+        AncestrySegment *temp = result;
+        while (temp && segmentCount < 3) {  // Count up to threshold
+            segmentCount++;
+            temp = temp->next;
+        }
+        
+        // Build AVL tree for fast lookups if we have 3 or more segments
+        if (segmentCount >= 3) {
+            result->avlTree = buildAVLFromList(result);
+        }
     }
     
     return result;

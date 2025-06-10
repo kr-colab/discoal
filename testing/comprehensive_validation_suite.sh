@@ -102,8 +102,16 @@ declare -a TEST_CASES=(
     
     # Additional edge cases and stress tests
     "stress:large_sample:20 1 1500 -t 6 -r 4:both_succeed"
-    "stress:high_recomb:10 1 800 -t 3 -r 10:both_succeed"
+    "stress:high_recomb:10 1 100000 -t 3 -r 1000:both_succeed"
     "stress:complex_demog:12 1 1200 -t 5 -r 3 -en 0.1 0 0.2 -en 0.3 0 3.0 -en 0.8 0 0.5:both_succeed"
+    
+    # High recombination + high sequence length stress tests (AVL tree optimization targets)
+    "stress:mega_recomb_short:5 1 50000 -t 2 -r 500:both_succeed"
+    "stress:mega_recomb_medium:8 1 200000 -t 4 -r 2000:both_succeed"
+    "stress:mega_recomb_long:6 1 500000 -t 3 -r 5000:both_succeed"
+    "stress:extreme_recomb:4 1 1000000 -t 2 -r 10000:both_succeed"
+    "stress:multipop_high_recomb:10 2 100000 -t 5 -r 1500 -ej 0.5 2 1:both_succeed"
+    "stress:admix_high_recomb:8 3 250000 -t 4 -r 3000 -es 0.2 2 0.7 -ej 0.8 3 1:both_succeed"
     
     # Gene conversion stress tests
     "gc:high_gc_rate:8 1 600 -t 3 -r 2 -g 5 15:both_succeed"

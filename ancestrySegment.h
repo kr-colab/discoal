@@ -10,6 +10,7 @@ typedef struct AncestrySegment {
     uint16_t count;  // number of lineages
     int isLeaf;  // 1 if this is a leaf segment, 0 otherwise
     int refCount;  // Reference count for sharing
+    void *avlTree;  // Optional AVL tree for fast lookups (only on root)
 } AncestrySegment;
 
 // Basic operations
