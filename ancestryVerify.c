@@ -7,25 +7,15 @@ extern int totNodeNumber;
 
 int verifyAncestryConsistency(rootedNode *node, int nSites) {
     if (!node) return 1;
-    if (!node->ancestryRoot && !node->ancSites) return 1; // Both NULL is OK
     
-    if (!node->ancestryRoot || !node->ancSites) {
-        fprintf(stderr, "ERROR: Node %d has inconsistent ancestry representations\n", node->id);
-        return 0;
+    // Only verify tree structure now that ancSites is removed
+    if (node->ancestryRoot) {
+        // Could add tree consistency checks here if needed
+        // For now, just verify the tree exists
+        return 1;
     }
     
-    // Check each site
-    for (int i = 0; i < nSites; i++) {
-        uint16_t treeCount = getAncestryCount(node->ancestryRoot, i);
-        uint16_t arrayCount = node->ancSites[i];
-        
-        if (treeCount != arrayCount) {
-            fprintf(stderr, "ERROR: Node %d site %d mismatch: tree=%d, array=%d\n", 
-                    node->id, i, treeCount, arrayCount);
-            return 0;
-        }
-    }
-    
+    // No ancestry tree is OK for some nodes
     return 1;
 }
 

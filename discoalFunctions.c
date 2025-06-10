@@ -85,9 +85,6 @@ void initialize(){
 			nodes[count]->nancSites = nSites;
 			nodes[count]->lLim=0;
 			nodes[count]->rLim=nSites-1;
-			#ifndef USE_ANCESTRY_TREE_ONLY
-			for(j=0;j<nSites;j++)nodes[count]->ancSites[j]=1;
-			#endif
 			// Initialize ancestry segment tree for leaf node
 			nodes[count]->ancestryRoot = newSegment(0, nSites, NULL, NULL);
 
@@ -199,9 +196,6 @@ void initializeTwoSite(){
 			nodes[count]->nancSites = nSites;
 			nodes[count]->lLim=0;
 			nodes[count]->rLim=nSites-1;
-			#ifndef USE_ANCESTRY_TREE_ONLY
-			for(j=0;j<nSites;j++)nodes[count]->ancSites[j]=1;
-			#endif
 			// Initialize ancestry segment tree for leaf node
 			nodes[count]->ancestryRoot = newSegment(0, nSites, NULL, NULL);
 			if(p>0)nodes[count]->sweepPopn = 0;
@@ -291,9 +285,6 @@ rootedNode *newRootedNode(double cTime, int popn) {
 	temp->population = popn;
 	temp->sweepPopn = -1;
 	
-	// Initialize ancSites array dynamically
-	initializeAncSites(temp, nSites);
-	
 	// Initialize muts array dynamically
 	initializeMuts(temp, 10);  // Start small, grow as needed
 //	temp->leafs = malloc(sizeof(int) * sampleSize);
@@ -377,17 +368,6 @@ void coalesceAtTimePopn(double cTime, int popn){
 	temp->nancSites = 0;
 	temp->lLim = nSites;
 	temp->rLim = 0;
-	#ifndef USE_ANCESTRY_TREE_ONLY
-	for(i=0;i<nSites;i++){
-		temp->ancSites[i] = lChild->ancSites[i] + rChild->ancSites[i];
-		if(temp->ancSites[i] > 0 && temp->ancSites[i] < sampleSize){
-			temp->nancSites += 1;
-			temp->rLim=i;
-			temp->lLim=MIN(temp->lLim,i);
-			
-		}
-	}
-	#endif
 	// Merge ancestry segment trees
 	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
 	
@@ -433,17 +413,6 @@ void coalesceAtTimePopnTrackLeafs(double cTime, int popn){
 	temp->nancSites = 0;
 	temp->lLim = nSites;
 	temp->rLim = 0;
-	#ifndef USE_ANCESTRY_TREE_ONLY
-	for(i=0;i<nSites;i++){
-		temp->ancSites[i] = lChild->ancSites[i] + rChild->ancSites[i];
-		if(temp->ancSites[i] > 0 && temp->ancSites[i] < sampleSize){
-			temp->nancSites += 1;
-			temp->rLim=i;
-			temp->lLim=MIN(temp->lLim,i);
-			
-		}
-	}
-	#endif
 	// Merge ancestry segment trees
 	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
 	//deal with leafs
@@ -461,7 +430,6 @@ void coalesceAtTimePopnTrackLeafs(double cTime, int popn){
 
 // Helper function to update nancSites, lLim, rLim from ancestry tree
 void updateAncestryStatsFromTree(rootedNode *node) {
-	#ifdef USE_ANCESTRY_TREE_ONLY
 	if (!node || !node->ancestryRoot) return;
 	
 	node->nancSites = 0;
@@ -477,7 +445,6 @@ void updateAncestryStatsFromTree(rootedNode *node) {
 			node->lLim = MIN(node->lLim, i);
 		}
 	}
-	#endif
 }
 
 /*updateActiveMaterial- does bookkeeping on the material that has found it's MRCA-- added for efficiency */
@@ -577,39 +544,6 @@ int recombineAtTimePopn(double cTime, int popn){
 		lParent->population = aNode->population;
 		rParent->population = aNode->population;
 		
-		#ifndef USE_ANCESTRY_TREE_ONLY
-		// Initialize boundary tracking variables
-		int lParent_lLim = nSites, lParent_rLim = 0;
-		int rParent_lLim = nSites, rParent_rLim = 0;
-		int lParent_count = 0, rParent_count = 0;
-		
-		// Only iterate over the active region where ancestral material exists
-		for(i = aNode->lLim; i <= aNode->rLim; i++){
-			if(aNode->ancSites[i] > 0 && aNode->ancSites[i] < sampleSize){
-				if(i < xOver){
-					lParent->ancSites[i] = aNode->ancSites[i];
-					lParent_count++;
-					lParent_lLim = MIN(lParent_lLim, i);
-					lParent_rLim = i;
-				}
-				else{
-					rParent->ancSites[i] = aNode->ancSites[i];
-					rParent_count++;
-					rParent_lLim = MIN(rParent_lLim, i);
-					rParent_rLim = i;
-				}
-			}
-		}
-		
-		// Set final boundaries and counts
-		lParent->nancSites = lParent_count;
-		lParent->lLim = (lParent_count > 0) ? lParent_lLim : nSites;
-		lParent->rLim = (lParent_count > 0) ? lParent_rLim : 0;
-		
-		rParent->nancSites = rParent_count;
-		rParent->lLim = (rParent_count > 0) ? rParent_lLim : nSites;
-		rParent->rLim = (rParent_count > 0) ? rParent_rLim : 0;
-		#endif
 		
 		// Split ancestry segment tree at crossover point
 		lParent->ancestryRoot = splitLeft(aNode->ancestryRoot, xOver);
@@ -662,30 +596,6 @@ void geneConversionAtTimePopn(double cTime, int popn){
 		rParent->lLim = nSites;
 		rParent->rLim=0;
 		
-		#ifndef USE_ANCESTRY_TREE_ONLY
-		for(i=0;i<nSites;i++){
-			if(i<xOver || i >= xOver+tractL){
-				lParent->ancSites[i] = 0;
-				rParent->ancSites[i] = aNode->ancSites[i];
-			}
-			else{
-				lParent->ancSites[i] = aNode->ancSites[i];
-				rParent->ancSites[i] = 0;
-			}
-
-			if(lParent->ancSites[i] > 0 && lParent->ancSites[i] < sampleSize){
-				lParent->nancSites += 1;
-				lParent->rLim=i;
-				lParent->lLim=MIN(lParent->lLim,i);
-			}
-
-			if(rParent->ancSites[i] > 0 && rParent->ancSites[i] < sampleSize){
-				rParent->nancSites += 1;
-				rParent->rLim=i;
-				rParent->lLim=MIN(rParent->lLim,i);
-			}
-		}
-		#endif
 		
 		// For gene conversion, handle the ancestry segments
 		// Gene conversion creates a tract where one parent gets a segment and the other gets the rest
@@ -1895,30 +1805,6 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 			rParent->lLim = nSites;
 			rParent->rLim=0;
 			
-			#ifndef USE_ANCESTRY_TREE_ONLY
-			for(i=0;i<nSites;i++){
-				if(i<xOver){
-					lParent->ancSites[i] = aNode->ancSites[i];
-					rParent->ancSites[i] = 0;
-				}
-				else{
-					lParent->ancSites[i] = 0;
-					rParent->ancSites[i] = aNode->ancSites[i];
-				}
-
-				if(lParent->ancSites[i] > 0 && lParent->ancSites[i] < sampleSize){
-					lParent->nancSites += 1;
-					lParent->rLim=i;
-					lParent->lLim=MIN(lParent->lLim,i);
-				}
-
-				if(rParent->ancSites[i] > 0 && rParent->ancSites[i] < sampleSize){
-					rParent->nancSites += 1;
-					rParent->rLim=i;
-					rParent->lLim=MIN(rParent->lLim,i);
-				}
-			}
-			#endif
 			//determine sweep popn affinity
 			//left side?
 		//	printf("here-- popnFreq:%f sweepSite:%f xOver: %d test: %d \n",popnFreq,sweepSite,xOver,sweepSite < (float) xOver / nSites);
@@ -2003,30 +1889,6 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 		rParent->lLim = nSites;
 		rParent->rLim=0;
 		
-		#ifndef USE_ANCESTRY_TREE_ONLY
-		for(i=0;i<nSites;i++){
-			if(i<xOver || i >= xOver+tractL){
-				lParent->ancSites[i] = 0;
-				rParent->ancSites[i] = aNode->ancSites[i];
-			}
-			else{
-				lParent->ancSites[i] = aNode->ancSites[i];
-				rParent->ancSites[i] = 0;
-			}
-
-			if(lParent->ancSites[i] > 0 && lParent->ancSites[i] < sampleSize){
-				lParent->nancSites += 1;
-				lParent->rLim=i;
-				lParent->lLim=MIN(lParent->lLim,i);
-			}
-
-			if(rParent->ancSites[i] > 0 && rParent->ancSites[i] < sampleSize){
-				rParent->nancSites += 1;
-				rParent->rLim=i;
-				rParent->lLim=MIN(rParent->lLim,i);
-			}
-		}
-		#endif
 		
 		// For gene conversion during sweep, handle the ancestry segments
 		if (aNode->ancestryRoot) {
@@ -2087,17 +1949,6 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	temp->nancSites = 0;
 	temp->lLim = nSites;
 	temp->rLim = 0;
-	#ifndef USE_ANCESTRY_TREE_ONLY
-	for(i=0;i<nSites;i++){
-		temp->ancSites[i] = lChild->ancSites[i] + rChild->ancSites[i];
-		if(temp->ancSites[i] > 0 && temp->ancSites[i] < sampleSize){
-			temp->nancSites += 1;
-			temp->rLim=i;
-			temp->lLim=MIN(temp->lLim,i);
-			
-		}
-	}
-	#endif
 	// Merge ancestry segment trees
 	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
 	// Update stats from tree when in tree-only mode
@@ -2679,11 +2530,9 @@ rootedNode *pickNodePopnSweep(int popn,int sp){
 
 
 void printNode(rootedNode *aNode){
-	int i;
 	printf("node: %p time: %f lLim: %d rLim: %d nancSites: %d popn: %d sweepPopn: %d\n",aNode, aNode->time,aNode->lLim,\
 		aNode->rLim, aNode->nancSites, aNode->population, aNode->sweepPopn);
-	for(i=0;i<nSites;i++)printf("%d",aNode->ancSites[i]);
-	printf("\n");
+	// ancSites array removed - ancestry now tracked via tree
 }
 
 void freeTree(rootedNode *aNode){
@@ -2691,7 +2540,6 @@ void freeTree(rootedNode *aNode){
 	//printf("final nodeNumber = %d\n",totNodeNumber);
 	//cleanup nodes
 	for (i = 0; i < totNodeNumber; i++){
-		cleanupAncSites(allNodes[i]);  // Free ancSites array
 		cleanupMuts(allNodes[i]);      // Free muts array
 		// Free ancestry segment tree
 		if (allNodes[i]->ancestryRoot) {
@@ -2798,59 +2646,6 @@ unsigned int devrand(void) {
 	return r;
 }
 
-// AncSites dynamic memory management functions
-void initializeAncSites(rootedNode *node, int capacity) {
-	#ifndef USE_ANCESTRY_TREE_ONLY
-	if (capacity <= 0) {
-		capacity = nSites;  // Use actual number of sites needed
-	}
-	
-	node->ancSitesCapacity = capacity;
-	#ifdef BIG
-	node->ancSites = calloc(capacity, sizeof(uint16_t));
-	#else
-	node->ancSites = calloc(capacity, sizeof(uint8_t));
-	#endif
-	
-	if (node->ancSites == NULL) {
-		fprintf(stderr, "Error: Failed to allocate memory for ancSites array (capacity: %d)\n", capacity);
-		exit(1);
-	}
-	#else
-	// When using tree only, no allocation needed
-	node->ancSites = NULL;
-	node->ancSitesCapacity = 0;
-	#endif
-}
-
-void ensureAncSitesCapacity(rootedNode *node, int requiredSize) {
-	if (requiredSize > node->ancSitesCapacity) {
-		int newCapacity = requiredSize;  // Exact allocation - no over-allocation needed for this pattern
-		
-		#ifdef BIG
-		uint16_t *newAncSites = realloc(node->ancSites, sizeof(uint16_t) * newCapacity);
-		#else
-		uint8_t *newAncSites = realloc(node->ancSites, sizeof(uint8_t) * newCapacity);
-		#endif
-		
-		if (newAncSites == NULL) {
-			fprintf(stderr, "Error: Failed to reallocate memory for ancSites array (capacity: %d -> %d)\n", 
-					node->ancSitesCapacity, newCapacity);
-			exit(1);
-		}
-		
-		node->ancSites = newAncSites;
-		node->ancSitesCapacity = newCapacity;
-	}
-}
-
-void cleanupAncSites(rootedNode *node) {
-	if (node->ancSites != NULL) {
-		free(node->ancSites);
-		node->ancSites = NULL;
-		node->ancSitesCapacity = 0;
-	}
-}
 
 // Muts dynamic memory management functions
 void initializeMuts(rootedNode *node, int capacity) {

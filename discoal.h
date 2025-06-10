@@ -39,18 +39,12 @@ typedef struct rootedNode
 	struct rootedNode *leftParent, *rightParent, *leftChild, *rightChild;
 	double time, branchLength, blProb;
 	double *muts;
-	#ifdef BIG
-	uint16_t *ancSites;
-	#else
-	uint8_t *ancSites;
-	#endif
-	int nancSites, lLim, rLim;
-	int ancSitesCapacity;  // Track allocated capacity
+	int nancSites, lLim, rLim;  // Still needed, calculated from ancestry tree
 	int id, mutationNumber, population, sweepPopn;
 	int mutsCapacity;  // Track allocated capacity for muts
 	int ndes[2],*leafs;
 	double times[2];
-	// New ancestry segment tree (will coexist with ancSites during transition)
+	// Ancestry segment tree for tracking which sites this node is ancestral to
 	AncestrySegment *ancestryRoot;
 
 }

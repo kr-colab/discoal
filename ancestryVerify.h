@@ -4,7 +4,7 @@
 #include "discoal.h"
 #include "ancestrySegment.h"
 
-// Verification functions to ensure ancestry segment tree matches ancSites array
+// Verification functions to check ancestry segment tree consistency
 int verifyAncestryConsistency(rootedNode *node, int nSites);
 void verifyAllNodes(int nSites);
 

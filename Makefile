@@ -20,10 +20,6 @@ discoal_edited: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions
 discoal_debug: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestryVerify.c ancestryVerify.h
 	$(CC) $(CFLAGS) -DDEBUG_ANCESTRY -o discoal_debug discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestryVerify.c -lm -fcommon
 
-# Build version using only ancestry tree (no ancSites array)
-discoal_tree_only: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestryVerify.c ancestryVerify.h
-	$(CC) $(CFLAGS) -DUSE_ANCESTRY_TREE_ONLY -o discoal_tree_only discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestryVerify.c -lm -fcommon
-
 # Build legacy version from master branch for comparison testing
 discoal_legacy_backup:
 	@echo "Building legacy version from master branch..."
