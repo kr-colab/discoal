@@ -2,6 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## When you open this file
+- **Read the entire file** to understand the current state of the codebase, recent changes, and testing requirements.
+- **Do not skip any sections** as they contain important information about the code structure, memory optimizations, and testing procedures.
+- **Follow the instructions carefully** to ensure you maintain the integrity of the codebase and adhere to the development workflow.
+- **Pay attention to the directory structure** and build commands, as they are crucial for running tests and building the project correctly.
+- **Note the current work status** to understand recent changes and ongoing optimizations.
+- **Be aware of the testing requirements** to ensure all changes are validated against the comprehensive testing suite.
+- **Read the makefile** to understand how to build the project and run tests.
+- **read the last few git commits** to see the latest changes and optimizations made to the codebase.
+- **read any changes on the current git branch that are uncommitted** to understand ongoing work and ensure you do not duplicate efforts.
+- **review the directory structure** to understand where files are located and how to navigate the project.
+- **read the readme** to familiarize yourself with the project, its components, and how to run it.
+- **acknowledge that you have read this**
+
 ## Current Work Status (as of latest fixes on `mem` branch)
 
 ### Recent Memory Optimizations
@@ -44,28 +58,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - Efficient split operations share segments when possible
    - Additional memory savings: 10-16% on top of previous optimizations
 
-7. **AVL Tree Indexing for Ancestry Lookups** (current work)
+7. **AVL Tree Indexing for Ancestry Lookups** (completed)
    - Implemented self-balancing AVL trees for O(log n) ancestry lookups
    - Optimized threshold: builds AVL tree when ≥3 segments exist
    - Performance profiling showed 21% speedup for high recombination (r=200)
    - Enables extreme recombination scenarios with 97% memory reduction
    - Trade-off: slower for very high recombination (r>1000) but prevents memory exhaustion
 
+8. **Active Material Segment-Based Tracking** (current work - completed)
+   - Replaced legacy `activeMaterial[]` array with segment-based structure
+   - Tracks active genomic regions as intervals instead of per-site arrays
+   - Integrated with AVL tree indexing for O(log n) lookups when needed
+   - Memory savings: 70-99% for high recombination scenarios
+   - Performance improvements: Up to 47x faster for memory-intensive simulations
+   - Maintains 100% output compatibility with legacy implementation
+
 ### Test Results Summary
-- **Success Rate**: 21/21 tests pass (100%) for both versions
-- **Output Compatibility**: 21/21 tests produce identical output
-- **Memory Improvements**: 16/21 tests show memory savings (average 9%)
+- **Success Rate**: 24/24 tests pass (100%) for both versions
+- **Output Compatibility**: 24/24 tests produce identical output
+- **Memory Improvements**: Average 23% reduction across all tests
   - Multipop models: up to 58% reduction
   - Selection sweeps: up to 52% reduction
-  - High recombination: 16% reduction
+  - High recombination: 97-99% reduction
   - Large simulations: 80% reduction (tree-only implementation)
   - No recombination: Additional 10.8% with segment sharing
   - Large sample sizes: Additional 16.1% with segment sharing
+  - Extreme recombination (r=10000): 98% reduction with 33-47x speedup
 
 ### Active TODOs
 - [x] Complete removal of ancSites array from main codebase ✓
 - [x] Implement segment sharing using reference counting ✓
 - [x] Add AVL tree indexing for high-recombination scenarios ✓
+- [x] Replace activeMaterial array with segment-based tracking ✓
 - [ ] Document memory optimization techniques in main README
 
 ### Implementation Details
@@ -80,6 +104,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Wrapper functions in `ancestryWrapper.h` provide clean API
 - AVL trees built for segment lists with ≥3 segments for O(log n) lookups
 - AVL indexing prevents performance degradation under high recombination
+- Active material tracked via `ActiveMaterial` structure with segment list
+- Active segments coalesce automatically to minimize memory overhead
+- AVL tree built for active segments when count ≥10 for efficient queries
 
 ### Known Issues
 - Test executables must be named `discoal_edited` and `discoal_legacy_backup`
