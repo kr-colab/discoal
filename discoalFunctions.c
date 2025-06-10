@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include "ancestryVerify.h"
 #include "ancestryWrapper.h"
+#include "activeSegment.h"
 #include <time.h>
 #include "discoal.h"
 #include "discoalFunctions.h"
@@ -97,8 +98,8 @@ void initialize(){
 
 
 	breakNumber = 0;
-	//setup active material array
-	for(i=0;i<nSites;i++) activeMaterial[i] = 1;
+	// Initialize segment-based active material (all sites start as active)
+	initializeActiveMaterial(&activeMaterialSegments, nSites);
 	
 	//set initial counts
 	alleleNumber = sampleSize;
@@ -209,8 +210,8 @@ void initializeTwoSite(){
 	}
 	
 	breakNumber = 0;
-	//setup active material array
-	for(i=0;i<nSites;i++) activeMaterial[i] = 1;
+	// Initialize segment-based active material (all sites start as active)
+	initializeActiveMaterial(&activeMaterialSegments, nSites);
 	
 	//set initial counts
 	alleleNumber = sampleSize;
@@ -436,28 +437,43 @@ void updateAncestryStatsFromTree(rootedNode *node) {
 	node->lLim = nSites;
 	node->rLim = 0;
 	
-	int i;
-	for(i = 0; i < nSites; i++) {
-		uint16_t count = getAncestryCount(node->ancestryRoot, i);
-		if(count > 0 && count < sampleSize) {
-			node->nancSites += 1;
-			node->rLim = i;
-			node->lLim = MIN(node->lLim, i);
+	// Walk the segment list instead of querying every site
+	AncestrySegment *seg = node->ancestryRoot;
+	while (seg) {
+		// Check if this segment is polymorphic (has ancestry but not fixed)
+		if (seg->count > 0 && seg->count < sampleSize) {
+			// Add all sites in this polymorphic segment
+			node->nancSites += (seg->end - seg->start);
+			
+			// Update left boundary
+			if (seg->start < node->lLim) {
+				node->lLim = seg->start;
+			}
+			// Update right boundary (end is exclusive, so last site is end-1)
+			if (seg->end - 1 > node->rLim) {
+				node->rLim = seg->end - 1;
+			}
 		}
+		seg = seg->next;
 	}
 }
 
 /*updateActiveMaterial- does bookkeeping on the material that has found it's MRCA-- added for efficiency */
 void updateActiveMaterial(rootedNode *aNode){
-	int i;
-	activeSites = 0;
-	for(i=0;i<nSites;i++){
-		if(isFixedAt(aNode, i, sampleSize)){
-			activeMaterial[i]=0;
-		}
-		//set global activeSites
-		activeSites+=activeMaterial[i];	
-	}
+	// Use segment-based approach to update active material
+	// This removes regions where the node has ancestry from all samples
+	updateActiveMaterialFromAncestry(&activeMaterialSegments, aNode->ancestryRoot, 
+	                                sampleSize, nSites);
+	
+	// Update global active site count
+	activeSites = getActiveSiteCount(&activeMaterialSegments);
+	
+	#ifdef DEBUG_ACTIVE_MATERIAL
+	fprintf(stderr, "DEBUG updateActiveMaterial: node at time %f, %d sites still active\n", 
+	        aNode->time, activeSites);
+	printActiveSegments(&activeMaterialSegments);
+	#endif
+	
 	#ifdef DEBUG_TREE_ONLY
 	if (activeSites == 0) {
 		fprintf(stderr, "DEBUG: All sites have found MRCA\n");
@@ -467,7 +483,7 @@ void updateActiveMaterial(rootedNode *aNode){
 
 /* asks whether a potential breakpoint is in material that hasn't found MRCA yet*/
 int isActive(int site){
-	return(activeMaterial[site]);
+	return isActiveSite(&activeMaterialSegments, site);
 }
 
 int siteBetweenChunks(rootedNode *aNode, int xOverSite){

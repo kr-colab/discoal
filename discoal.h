@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 #include "ancestrySegment.h"
+#include "activeSegment.h"
 
 /******************************************************************************/
 /* here are just some defines to allocate initial global arrays and stuff     */
@@ -80,7 +81,8 @@ event;
 rootedNode  **nodes, **allNodes;
 int nodesCapacity, allNodesCapacity;
 
-int activeMaterial[MAXSITES];
+// int activeMaterial[MAXSITES];  // DEPRECATED - replaced by segment structure
+ActiveMaterial activeMaterialSegments;  // New segment-based structure
 
 int sampleSize, sampleNumber, breakNumber, segSites,alleleNumber, \
 	totNodeNumber, totChunkNumber, npops, eventFlag, nSites, activeSites,\
