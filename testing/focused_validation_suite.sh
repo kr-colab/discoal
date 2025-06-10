@@ -34,6 +34,15 @@ get_peak_memory() {
     fi
 }
 
+get_wall_time() {
+    local memory_file="$1"
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        grep "real" "$memory_file" | head -1 | awk '{print $1}'
+    else
+        grep "Elapsed (wall clock) time" "$memory_file" | sed 's/.*: //' | awk -F: '{ if (NF == 2) {print $1 * 60 + $2} else {print $1 * 3600 + $2 * 60 + $3} }'
+    fi
+}
+
 # Core test cases representing each major feature
 declare -a CORE_TEST_CASES=(
     # Format: "category:name:command_args:expected"
@@ -78,7 +87,9 @@ for test_case in "${CORE_TEST_CASES[@]}"; do
         echo "  ✅ Optimized: SUCCESS"
         OPTIMIZED_SUCCESSES=$((OPTIMIZED_SUCCESSES + 1))
         opt_memory=$(get_peak_memory "$TEST_DIR/${category}_${test_name}_opt_mem.txt")
+        opt_time=$(get_wall_time "$TEST_DIR/${category}_${test_name}_opt_mem.txt")
         echo "     Memory: ${opt_memory} $([ "$OSTYPE" = "darwin"* ] && echo "bytes" || echo "KB")"
+        echo "     Time: ${opt_time} seconds"
     else
         echo "  ❌ Optimized: FAILED"
     fi
@@ -92,7 +103,9 @@ for test_case in "${CORE_TEST_CASES[@]}"; do
         echo "  ✅ Legacy: SUCCESS"
         LEGACY_SUCCESSES=$((LEGACY_SUCCESSES + 1))
         leg_memory=$(get_peak_memory "$TEST_DIR/${category}_${test_name}_leg_mem.txt")
+        leg_time=$(get_wall_time "$TEST_DIR/${category}_${test_name}_leg_mem.txt")
         echo "     Memory: ${leg_memory} $([ "$OSTYPE" = "darwin"* ] && echo "bytes" || echo "KB")"
+        echo "     Time: ${leg_time} seconds"
         
         # Compare outputs if both succeeded
         if [ $opt_exit -eq 0 ]; then
