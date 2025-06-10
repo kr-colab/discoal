@@ -2,6 +2,37 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Current Work Status (as of commit df6368b on `mem` branch)
+
+### Recent Memory Optimizations
+1. **Dynamic Memory Allocation** (previous commits)
+   - Converted fixed arrays to dynamic allocation for nodes, breakpoints, mutations
+   - Reduced baseline memory from ~400MB to ~10MB
+   - Achieved 15-93% memory savings across test cases
+
+2. **Memory-Mapped Trajectory Storage** (commit df6368b)
+   - Implemented file-backed mmap for sweep trajectories
+   - Trajectories write directly to temp files during generation
+   - Accepted trajectories are memory-mapped for reading
+   - Reduced memory usage from ~2GB to ~1.4MB for medium sweeps (99.9% reduction)
+   - Enables previously impossible large sweep simulations
+
+### Active TODOs
+- [ ] Run full regression test suite
+- [ ] Verify output identical to previous implementation  
+- [ ] Clean up test artifacts and temporary files
+- [ ] Investigate additional optimizations for activeMaterial array
+
+### Implementation Details
+- Trajectory files: `/tmp/discoal_traj_<pid>_<time>_<rand>.tmp`
+- Rejected trajectories cleaned up immediately
+- Signal handlers ensure cleanup on exit
+- 500M step safety limit prevents runaway trajectories
+
+### Known Issues
+- Some soft sweep tests fail (both legacy and optimized) - appears to be unimplemented features
+- Test executables must be named `discoal_edited` and `discoal_legacy_backup`
+
 ## Directory Structure
 
 **IMPORTANT**: When working with bash commands, be aware of the directory structure:
@@ -86,7 +117,14 @@ The codebase has been optimized for memory efficiency:
 - Dynamic allocation for breakpoints, mutations, and ancestral sites
 - Capacity tracking with `*Capacity` fields in structures
 - Memory allocation functions: `initialize*()`, `ensure*Capacity()`, `cleanup*()`
+- Memory-mapped files for large trajectory arrays
 - Multiple executable versions exist for comparison (legacy vs optimized)
+
+### Trajectory Storage (NEW)
+- Sweep trajectories written to temporary files during generation
+- Files are memory-mapped read-only after acceptance
+- Rejected trajectories cleaned up immediately
+- Signal handlers ensure cleanup on exit/interrupt
 
 ### Simulation Architecture
 
@@ -98,10 +136,12 @@ The codebase has been optimized for memory efficiency:
 
 ### Key Global Variables
 
-- `nodes[]` - Active nodes in coalescent tree
+- `nodes[]` - Active nodes in coalescent tree (dynamically allocated)
 - `breakPoints[]` - Recombination breakpoints (dynamically allocated)
 - `activeMaterial[]` - Tracks which sites have ancestral material
 - `events[]` - Array of demographic events sorted by time
+- `currentTrajectory` - Memory-mapped pointer to trajectory data
+- `trajectoryFd` - File descriptor for mmap'd trajectory
 
 ## Code Conventions
 
