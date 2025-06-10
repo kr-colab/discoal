@@ -4,6 +4,9 @@
 #ifndef __DISCOAL_GLOBALS__
 #define __DISCOAL_GLOBALS__
 
+#include <stdint.h>
+#include "ancestrySegment.h"
+
 /******************************************************************************/
 /* here are just some defines to allocate initial global arrays and stuff     */
 /* like that                                                                  */
@@ -47,6 +50,8 @@ typedef struct rootedNode
 	int mutsCapacity;  // Track allocated capacity for muts
 	int ndes[2],*leafs;
 	double times[2];
+	// New ancestry segment tree (will coexist with ancSites during transition)
+	AncestrySegment *ancestryRoot;
 
 }
 rootedNode;

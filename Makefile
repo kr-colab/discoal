@@ -9,12 +9,20 @@ all: discoal
 
 
 
-discoal: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h
-	$(CC) $(CFLAGS)  -o discoal discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c -lm -fcommon
+discoal: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestryVerify.c ancestryVerify.h
+	$(CC) $(CFLAGS)  -o discoal discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestryVerify.c -lm -fcommon
 
 # Build edited version for testing (same as main but explicit name)
-discoal_edited: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h
-	$(CC) $(CFLAGS)  -o discoal_edited discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c -lm -fcommon
+discoal_edited: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestryVerify.c ancestryVerify.h
+	$(CC) $(CFLAGS)  -o discoal_edited discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestryVerify.c -lm -fcommon
+
+# Build debug version with ancestry verification
+discoal_debug: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestryVerify.c ancestryVerify.h
+	$(CC) $(CFLAGS) -DDEBUG_ANCESTRY -o discoal_debug discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestryVerify.c -lm -fcommon
+
+# Build version using only ancestry tree (no ancSites array)
+discoal_tree_only: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestryVerify.c ancestryVerify.h
+	$(CC) $(CFLAGS) -DUSE_ANCESTRY_TREE_ONLY -o discoal_tree_only discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestryVerify.c -lm -fcommon
 
 # Build legacy version from master branch for comparison testing
 discoal_legacy_backup:
