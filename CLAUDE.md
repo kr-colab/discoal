@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Current Work Status (as of commit df6368b on `mem` branch)
+## Current Work Status (as of latest fixes on `mem` branch)
 
 ### Recent Memory Optimizations
 1. **Dynamic Memory Allocation** (previous commits)
@@ -17,20 +17,33 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - Reduced memory usage from ~2GB to ~1.4MB for medium sweeps (99.9% reduction)
    - Enables previously impossible large sweep simulations
 
+3. **Fixed RNG Corruption Bug** (latest fix)
+   - Changed `malloc` to `calloc` in `initializeAncSites()` function
+   - Resolved output differences between optimized and legacy versions
+   - Fixed memory explosion in admixture_model test (4.6GB → 3.4MB)
+   - All 21 comprehensive tests now produce identical output
+
+### Test Results Summary
+- **Success Rate**: 21/21 tests pass (100%) for both versions
+- **Output Compatibility**: 21/21 tests produce identical output
+- **Memory Improvements**: 16/21 tests show memory savings (average 9%)
+  - Multipop models: up to 58% reduction
+  - Selection sweeps: up to 52% reduction
+  - High recombination: 16% reduction
+
 ### Active TODOs
-- [ ] Run full regression test suite
-- [ ] Verify output identical to previous implementation  
 - [ ] Clean up test artifacts and temporary files
 - [ ] Investigate additional optimizations for activeMaterial array
+- [ ] Document memory optimization techniques in main README
 
 ### Implementation Details
 - Trajectory files: `/tmp/discoal_traj_<pid>_<time>_<rand>.tmp`
 - Rejected trajectories cleaned up immediately
 - Signal handlers ensure cleanup on exit
 - 500M step safety limit prevents runaway trajectories
+- All dynamic arrays now use `calloc` for zero-initialization
 
 ### Known Issues
-- Some soft sweep tests fail (both legacy and optimized) - appears to be unimplemented features
 - Test executables must be named `discoal_edited` and `discoal_legacy_backup`
 
 ## Directory Structure
