@@ -120,12 +120,17 @@ double recurSweepRate;
 int EFFECTIVE_POPN_SIZE;
 
 // Trajectory support
-#define TRAJSTEPSTART 1000
+#define TRAJSTEPSTART 500000000
 #define TRAJ_GROWTH_FACTOR 2
 long int  maxTrajSteps;
 long int  trajectoryCapacity;
 float *currentTrajectory;
 long int currentTrajectoryStep, totalTrajectorySteps;
+
+// Memory-mapped trajectory support
+char trajectoryFilename[256];  // Current trajectory file
+int trajectoryFd;              // File descriptor for mmap
+size_t trajectoryFileSize;     // Size of mmap'd region
 
 struct event events[MAXEVENTS];
 

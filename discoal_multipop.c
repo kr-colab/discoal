@@ -13,9 +13,11 @@
 #include <string.h>
 #include <math.h>
 #include <time.h>
-#include <fcntl.h>
 #include <unistd.h>
 #include <assert.h>
+#include <signal.h>
+#include <sys/mman.h>
+#include <fcntl.h>
 #include "ranlib.h"
 #include "discoal.h"
 #include "discoalFunctions.h"
@@ -34,6 +36,22 @@ long seed1, seed2;
 
 void getParameters(int argc,const char **argv);
 void usage();
+void cleanup_and_exit(int sig);
+
+// Signal handler for cleanup
+void cleanup_and_exit(int sig) {
+	// Clean up trajectory storage if it exists
+	if (trajectoryFd != -1) {
+		if (currentTrajectory && currentTrajectory != MAP_FAILED) {
+			munmap(currentTrajectory, trajectoryFileSize);
+		}
+		close(trajectoryFd);
+		if (trajectoryFilename[0] != '\0') {
+			unlink(trajectoryFilename);
+		}
+	}
+	exit(sig);
+}
 
 int main(int argc, const char * argv[]){
 	int i,j,k, totalSimCount;
@@ -46,6 +64,11 @@ int main(int argc, const char * argv[]){
 	getParameters(argc,argv);
 	double N = EFFECTIVE_POPN_SIZE; // effective population size
 	setall(seed1, seed2 );
+	
+	// Register signal handlers for cleanup
+	signal(SIGINT, cleanup_and_exit);
+	signal(SIGTERM, cleanup_and_exit);
+	signal(SIGSEGV, cleanup_and_exit);
 
 	//Hudson style header
 	for(i=0;i<argc;i++)printf("%s ",argv[i]);
@@ -54,8 +77,9 @@ int main(int argc, const char * argv[]){
 	i = 0;
         totalSimCount = 0;
 	trajectoryCapacity = TRAJSTEPSTART;
-	currentTrajectory = malloc(sizeof(float) * trajectoryCapacity);
-	assert(currentTrajectory);
+	trajectoryFd = -1;  // Initialize to invalid
+	trajectoryFilename[0] = '\0';  // Empty filename
+	currentTrajectory = NULL;  // Will be mmap'd when needed
 	
 	// Initialize global trajectory generator (lazy approach)
 
@@ -126,11 +150,26 @@ int main(int argc, const char * argv[]){
 			//	printf("event%d currentTime: %f nextTime: %f popnSize: %f\n",j,currentTime,nextTime,currentSize);
 
 				//generate a proposed trajectory
+				char previousTrajectoryFile[256] = "";
 				probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, currentSize, sweepMode, currentFreq, &currentFreq, alpha, f0, currentTime);
 				while(ranf()>probAccept){
+					// Clean up rejected trajectory
+					if (previousTrajectoryFile[0] != '\0') {
+						cleanupRejectedTrajectory(previousTrajectoryFile);
+					}
+					strcpy(previousTrajectoryFile, trajectoryFilename);
+					
 					probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, currentSize, sweepMode, currentFreq, &currentFreq, alpha, f0, currentTime);
 					//printf("probAccept: %lf\n",probAccept);
 				}
+				
+				// Clean up any remaining rejected trajectory
+				if (previousTrajectoryFile[0] != '\0' && strcmp(previousTrajectoryFile, trajectoryFilename) != 0) {
+					cleanupRejectedTrajectory(previousTrajectoryFile);
+				}
+				
+				// Now mmap the accepted trajectory
+				mmapAcceptedTrajectory(trajectoryFilename, totalTrajectorySteps);
 				
 				currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
 					 currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
@@ -277,13 +316,38 @@ int main(int argc, const char * argv[]){
 		
 		freeTree(nodes[0]);
 		cleanupBreakPoints();
+		
+		// Clean up trajectory after each simulation
+		if (trajectoryFd != -1) {
+			if (currentTrajectory && currentTrajectory != MAP_FAILED) {
+				munmap(currentTrajectory, trajectoryFileSize);
+			}
+			close(trajectoryFd);
+			if (trajectoryFilename[0] != '\0') {
+				unlink(trajectoryFilename);
+			}
+			trajectoryFd = -1;
+			trajectoryFilename[0] = '\0';
+			currentTrajectory = NULL;
+		}
+		
                 totalSimCount += 1;
 	}
         if(condRecMode == 1)
         {
             fprintf(stderr, "Needed run %d simulations to get %d with a recombination event within the specified bounds.\n", totalSimCount, i);
         }
-	free(currentTrajectory);
+	// Clean up any remaining trajectory storage
+	if (trajectoryFd != -1) {
+		if (currentTrajectory && currentTrajectory != MAP_FAILED) {
+			munmap(currentTrajectory, trajectoryFileSize);
+		}
+		close(trajectoryFd);
+		if (trajectoryFilename[0] != '\0') {
+			unlink(trajectoryFilename);
+		}
+	}
+	
 	free(currentSize);
 	
 	
