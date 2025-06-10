@@ -17,11 +17,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - Reduced memory usage from ~2GB to ~1.4MB for medium sweeps (99.9% reduction)
    - Enables previously impossible large sweep simulations
 
-3. **Fixed RNG Corruption Bug** (latest fix)
+3. **Fixed RNG Corruption Bug** (previous fix)
    - Changed `malloc` to `calloc` in `initializeAncSites()` function
    - Resolved output differences between optimized and legacy versions
    - Fixed memory explosion in admixture_model test (4.6GB → 3.4MB)
    - All 21 comprehensive tests now produce identical output
+
+4. **Ancestry Segment Tree Implementation** (current commit)
+   - Implemented succinct tree structure for tracking ancestral segments
+   - Proper interval merging with sweep-line algorithm and automatic coalescing
+   - Reference counting infrastructure for future segment sharing
+   - Wrapper functions enable gradual migration from ancSites arrays
+   - Currently maintains both representations for validation (8% overhead)
+   - Foundation for significant memory savings once arrays are removed
 
 ### Test Results Summary
 - **Success Rate**: 21/21 tests pass (100%) for both versions
@@ -32,8 +40,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - High recombination: 16% reduction
 
 ### Active TODOs
+- [ ] Complete migration of all ancSites operations to use ancestry tree
+- [ ] Remove ancSites arrays entirely once validation is complete
+- [ ] Implement segment sharing using reference counting
+- [ ] Profile memory savings with tree-only implementation
 - [ ] Clean up test artifacts and temporary files
-- [ ] Investigate additional optimizations for activeMaterial array
 - [ ] Document memory optimization techniques in main README
 
 ### Implementation Details
@@ -42,6 +53,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Signal handlers ensure cleanup on exit
 - 500M step safety limit prevents runaway trajectories
 - All dynamic arrays now use `calloc` for zero-initialization
+- Ancestry segment trees use interval-based representation with coalescing
+- Reference counting enables future copy-on-write optimizations
+- Wrapper functions in `ancestryWrapper.h` for gradual migration
+- Debug builds include ancestry verification between representations
 
 ### Known Issues
 - Test executables must be named `discoal_edited` and `discoal_legacy_backup`

@@ -8,6 +8,8 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include "ancestryVerify.h"
+#include "ancestryWrapper.h"
 #include <time.h>
 #include "discoal.h"
 #include "discoalFunctions.h"
@@ -83,7 +85,11 @@ void initialize(){
 			nodes[count]->nancSites = nSites;
 			nodes[count]->lLim=0;
 			nodes[count]->rLim=nSites-1;
+			#ifndef USE_ANCESTRY_TREE_ONLY
 			for(j=0;j<nSites;j++)nodes[count]->ancSites[j]=1;
+			#endif
+			// Initialize ancestry segment tree for leaf node
+			nodes[count]->ancestryRoot = newSegment(0, nSites, NULL, NULL);
 
 			if(p>0)nodes[count]->sweepPopn = 0;
 			nodes[count]->id=leafID++;
@@ -193,7 +199,11 @@ void initializeTwoSite(){
 			nodes[count]->nancSites = nSites;
 			nodes[count]->lLim=0;
 			nodes[count]->rLim=nSites-1;
+			#ifndef USE_ANCESTRY_TREE_ONLY
 			for(j=0;j<nSites;j++)nodes[count]->ancSites[j]=1;
+			#endif
+			// Initialize ancestry segment tree for leaf node
+			nodes[count]->ancestryRoot = newSegment(0, nSites, NULL, NULL);
 			if(p>0)nodes[count]->sweepPopn = 0;
 			nodes[count]->id=leafID++;
 			//do stuff for leafs containers
@@ -289,6 +299,9 @@ rootedNode *newRootedNode(double cTime, int popn) {
 //	temp->leafs = malloc(sizeof(int) * sampleSize);
 //	for(i=0;i<nSites;i++)temp->ancSites[i]=1;
 
+	// Initialize ancestry segment tree to NULL (will be set during initialization)
+	temp->ancestryRoot = NULL;
+
 	return temp;
 }
 
@@ -373,6 +386,17 @@ void coalesceAtTimePopn(double cTime, int popn){
 			
 		}
 	}
+	// Merge ancestry segment trees
+	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
+	
+	// Verify consistency in debug mode
+	#ifdef DEBUG_ANCESTRY
+	if (!verifyAncestryConsistency(temp, nSites)) {
+		fprintf(stderr, "Ancestry verification failed after coalescence\n");
+		exit(1);
+	}
+	#endif
+	
 	//printNode(temp);
 	//printf("coal-> lChild: %u rChild: %u parent: %u time: %f\n",lChild,rChild,temp,cTime);
 	addNode(temp);
@@ -413,6 +437,8 @@ void coalesceAtTimePopnTrackLeafs(double cTime, int popn){
 			
 		}
 	}
+	// Merge ancestry segment trees
+	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
 	//deal with leafs
 	for(i=0;i<sampleSize;i++){
 		temp->leafs[i] =  lChild->leafs[i] + rChild->leafs[i];
@@ -431,7 +457,7 @@ void updateActiveMaterial(rootedNode *aNode){
 	int i;
 	activeSites = 0;
 	for(i=0;i<nSites;i++){
-		if(aNode->ancSites[i]==sampleSize){
+		if(isFixedAt(aNode, i, sampleSize)){
 			activeMaterial[i]=0;
 		}
 		//set global activeSites
@@ -458,25 +484,19 @@ int siteBetweenChunks(rootedNode *aNode, int xOverSite){
 int isAncestralHere(rootedNode *aNode, float site){
 	int bp;
 	bp = floor(site * nSites);
-	if(aNode->ancSites[bp] > 0 && aNode->ancSites[bp] < sampleSize)
-		return(1);
-	else
-		return(0);
+	return isPolymorphicAt(aNode, bp, sampleSize);
 }
 
 int hasMaterialHere(rootedNode *aNode, float site){
 	int bp;
 	bp = floor(site * nSites);
-	if(aNode->ancSites[bp] > 0)
-		return(1);
-	else
-		return(0);
+	return hasAncestryAt(aNode, bp);
 }
 
 int nAncestorsHere(rootedNode *aNode, float site){
 	int bp;
 	bp = floor(site * nSites);
-	return(aNode->ancSites[bp]);
+	return getAncestryAt(aNode, bp);
 }
 
 int isLeaf(rootedNode *aNode){
@@ -556,6 +576,10 @@ int recombineAtTimePopn(double cTime, int popn){
 		rParent->lLim = (rParent_count > 0) ? rParent_lLim : nSites;
 		rParent->rLim = (rParent_count > 0) ? rParent_rLim : 0;
 		
+		// Split ancestry segment tree at crossover point
+		lParent->ancestryRoot = splitLeft(aNode->ancestryRoot, xOver);
+		rParent->ancestryRoot = splitRight(aNode->ancestryRoot, xOver);
+		
 		addNode(lParent);
 		addNode(rParent);
 		
@@ -620,6 +644,13 @@ void geneConversionAtTimePopn(double cTime, int popn){
 				rParent->lLim=MIN(rParent->lLim,i);
 			}
 		}
+		
+		// For gene conversion, we need to handle the ancestry segments differently
+		// Create a copy of the child's tree and modify the converted region
+		lParent->ancestryRoot = copySegmentTree(aNode->ancestryRoot);
+		rParent->ancestryRoot = copySegmentTree(aNode->ancestryRoot);
+		// TODO: Implement more sophisticated gene conversion handling if needed
+		
 		addNode(lParent);
 		addNode(rParent);
 	}
@@ -1849,6 +1880,11 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 				else lParent->sweepPopn = (sp == 0) ? 1:0;
 			}
 		//	printf("lParentsp:%d rParentsp:%d\n",lParent->sweepPopn,rParent->sweepPopn);
+			
+			// Split ancestry segment tree at crossover point
+			lParent->ancestryRoot = splitLeft(aNode->ancestryRoot, xOver);
+			rParent->ancestryRoot = splitRight(aNode->ancestryRoot, xOver);
+			
 			//add in the nodes
 			addNode(lParent);
 			addNode(rParent);
@@ -1983,6 +2019,8 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 			
 		}
 	}
+	// Merge ancestry segment trees
+	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
 	//printNode(temp);
 	addNode(temp);
 	//update active anc. material
@@ -2574,6 +2612,11 @@ void freeTree(rootedNode *aNode){
 	for (i = 0; i < totNodeNumber; i++){
 		cleanupAncSites(allNodes[i]);  // Free ancSites array
 		cleanupMuts(allNodes[i]);      // Free muts array
+		// Free ancestry segment tree
+		if (allNodes[i]->ancestryRoot) {
+			freeSegmentTree(allNodes[i]->ancestryRoot);
+			allNodes[i]->ancestryRoot = NULL;
+		}
 		free(allNodes[i]);
 		allNodes[i] = NULL;
 	} 
@@ -2676,6 +2719,7 @@ unsigned int devrand(void) {
 
 // AncSites dynamic memory management functions
 void initializeAncSites(rootedNode *node, int capacity) {
+	#ifndef USE_ANCESTRY_TREE_ONLY
 	if (capacity <= 0) {
 		capacity = nSites;  // Use actual number of sites needed
 	}
@@ -2691,6 +2735,11 @@ void initializeAncSites(rootedNode *node, int capacity) {
 		fprintf(stderr, "Error: Failed to allocate memory for ancSites array (capacity: %d)\n", capacity);
 		exit(1);
 	}
+	#else
+	// When using tree only, no allocation needed
+	node->ancSites = NULL;
+	node->ancSitesCapacity = 0;
+	#endif
 }
 
 void ensureAncSitesCapacity(rootedNode *node, int requiredSize) {
