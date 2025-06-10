@@ -55,6 +55,18 @@ get_peak_memory() {
     fi
 }
 
+# Extract wall time from time output
+get_wall_time() {
+    local memory_file="$1"
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS - real time in seconds
+        grep "real" "$memory_file" | head -1 | awk '{print $1}'
+    else
+        # Linux - elapsed time
+        grep "Elapsed (wall clock) time" "$memory_file" | sed 's/.*: //' | awk -F: '{ if (NF == 2) {print $1 * 60 + $2} else {print $1 * 3600 + $2 * 60 + $3} }'
+    fi
+}
+
 # Test cases extracted from discoaldoc.tex with categorization
 declare -a TEST_CASES=(
     # Format: "category:name:command_args:expected_behavior"
@@ -122,6 +134,7 @@ echo ""
 declare -a OPTIMIZED_RESULTS
 declare -a LEGACY_RESULTS
 declare -a MEMORY_SAVINGS
+declare -a TIME_COMPARISONS
 
 test_count=0
 for test_case in "${TEST_CASES[@]}"; do
@@ -153,7 +166,9 @@ for test_case in "${TEST_CASES[@]}"; do
         OPTIMIZED_RESULTS+=("$category:$test_name:SUCCESS")
         
         optimized_memory=$(get_peak_memory "$TEST_DIR/${category}_${test_name}_optimized_memory.txt")
+        optimized_time=$(get_wall_time "$TEST_DIR/${category}_${test_name}_optimized_memory.txt")
         echo "    📊 Memory: ${optimized_memory} $([ "$OSTYPE" = "darwin"* ] && echo "bytes" || echo "KB")"
+        echo "    ⏱️  Time: ${optimized_time} seconds"
     elif [ $optimized_exit -eq 124 ]; then
         echo "    ⏰ Optimized: TIMEOUT (5 minutes)"
         OPTIMIZED_RESULTS+=("$category:$test_name:TIMEOUT")
@@ -175,7 +190,9 @@ for test_case in "${TEST_CASES[@]}"; do
         LEGACY_RESULTS+=("$category:$test_name:SUCCESS")
         
         legacy_memory=$(get_peak_memory "$TEST_DIR/${category}_${test_name}_legacy_memory.txt")
+        legacy_time=$(get_wall_time "$TEST_DIR/${category}_${test_name}_legacy_memory.txt")
         echo "    📊 Memory: ${legacy_memory} $([ "$OSTYPE" = "darwin"* ] && echo "bytes" || echo "KB")"
+        echo "    ⏱️  Time: ${legacy_time} seconds"
     elif [ $legacy_exit -eq 124 ]; then
         echo "    ⏰ Legacy: TIMEOUT (5 minutes)"
         LEGACY_RESULTS+=("$category:$test_name:TIMEOUT")
@@ -196,6 +213,27 @@ for test_case in "${TEST_CASES[@]}"; do
             overhead=$(( (optimized_memory - legacy_memory) * 100 / legacy_memory ))
             echo "    ⚠️  Memory overhead: +${overhead}% (optimized is larger)"
             MEMORY_SAVINGS+=("$category:$test_name:-$overhead")
+        fi
+        
+        # Compare wall time
+        if [ -n "$optimized_time" ] && [ -n "$legacy_time" ]; then
+            # Use bc for floating point comparison
+            if command -v bc &> /dev/null; then
+                speedup=$(echo "scale=2; $legacy_time / $optimized_time" | bc)
+                time_diff=$(echo "scale=2; $legacy_time - $optimized_time" | bc)
+                
+                if (( $(echo "$optimized_time < $legacy_time" | bc -l) )); then
+                    echo "    ⚡ Performance: ${speedup}x faster (saved ${time_diff}s)"
+                    TIME_COMPARISONS+=("$category:$test_name:faster:$speedup")
+                elif (( $(echo "$optimized_time > $legacy_time" | bc -l) )); then
+                    slowdown=$(echo "scale=2; $optimized_time / $legacy_time" | bc)
+                    echo "    🐌 Performance: ${slowdown}x slower (added ${time_diff#-}s)"
+                    TIME_COMPARISONS+=("$category:$test_name:slower:$slowdown")
+                else
+                    echo "    ⏱️  Performance: Same execution time"
+                    TIME_COMPARISONS+=("$category:$test_name:same:1.0")
+                fi
+            fi
         fi
     fi
     
@@ -287,6 +325,45 @@ else
 fi
 
 echo ""
+echo "⚡ Performance Analysis:"
+if [ ${#TIME_COMPARISONS[@]} -gt 0 ]; then
+    faster_count=0
+    slower_count=0
+    same_count=0
+    total_speedup=0
+    
+    for comparison in "${TIME_COMPARISONS[@]}"; do
+        result=$(echo $comparison | cut -d: -f3)
+        value=$(echo $comparison | cut -d: -f4)
+        
+        case $result in
+            faster)
+                faster_count=$((faster_count + 1))
+                # Add speedup values for averaging
+                total_speedup=$(echo "$total_speedup + $value" | bc)
+                ;;
+            slower)
+                slower_count=$((slower_count + 1))
+                ;;
+            same)
+                same_count=$((same_count + 1))
+                ;;
+        esac
+    done
+    
+    echo "  Tests where optimized is faster: $faster_count"
+    echo "  Tests where optimized is slower: $slower_count"
+    echo "  Tests with same performance: $same_count"
+    
+    if [ $faster_count -gt 0 ]; then
+        avg_speedup=$(echo "scale=2; $total_speedup / $faster_count" | bc)
+        echo "  Average speedup when faster: ${avg_speedup}x"
+    fi
+else
+    echo "  No performance comparisons available"
+fi
+
+echo ""
 echo "🔬 Key Findings:"
 echo "  • Trajectory optimization resolves memory overflow issues in sweep scenarios"
 echo "  • Maintains perfect output compatibility for successful scenarios"
@@ -322,6 +399,9 @@ echo "   4. New scenarios are enabled"
     echo ""
     echo "Memory Savings:"
     printf '%s\n' "${MEMORY_SAVINGS[@]}"
+    echo ""
+    echo "Time Comparisons:"
+    printf '%s\n' "${TIME_COMPARISONS[@]}"
 } > "$TEST_DIR/validation_summary.txt"
 
 if [ $OPTIMIZED_SUCCESSES -ge $LEGACY_SUCCESSES ] && [ $IDENTICAL_OUTPUTS -eq $LEGACY_SUCCESSES ]; then
