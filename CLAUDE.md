@@ -249,15 +249,16 @@ The codebase has been optimized for memory efficiency:
 ## Git Workflow and Branch Management
 
 ### Branch Strategy
-- **master branch**: Protected baseline containing stable legacy code for comparison
+- **master-backup branch**: Stable baseline containing legacy code for comparison testing
+- **master branch**: Main development branch that can evolve independently
 - **Feature branches** (e.g., `mem`, `optimization`, etc.): Active development branches
-- **NEVER commit to master**: All development work must be done on feature branches
+- **Development workflow**: Work on feature branches, merge to master when ready
 
 ### Legacy Testing Convention
-- Legacy binary (`discoal_legacy_backup`) is automatically built from master branch
+- Legacy binary (`discoal_legacy_backup`) is automatically built from master-backup branch
 - This ensures consistent baseline for functional compatibility testing
-- Master branch serves as the "source of truth" for original functionality
-- All optimizations must maintain identical output to master branch version
+- Master-backup branch serves as the "source of truth" for original functionality
+- All optimizations must maintain identical output to master-backup branch version
 
 ### Commit Guidelines
 - Only commit to feature branches, never to master
@@ -266,7 +267,7 @@ The codebase has been optimized for memory efficiency:
 - Document optimization benefits and performance improvements in commit messages
 
 ### Testing Requirements
-- Legacy version always built from master branch via `git show master:filename`
+- Legacy version always built from master-backup branch via `git show master-backup:filename`
 - Optimized version built from current working branch
-- All tests compare feature branch (optimized) vs master branch (legacy)
+- All tests compare feature branch (optimized) vs master-backup branch (legacy)
 - This guarantees that optimizations maintain compatibility with baseline functionality
