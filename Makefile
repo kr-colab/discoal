@@ -55,6 +55,23 @@ test_comprehensive: test_binaries
 test_focused: test_binaries
 	@echo "Running focused validation suite..."
 	cd testing && ./focused_validation_suite.sh
+
+# Generate PDF documentation from LaTeX source
+doc: discoaldoc.pdf
+
+discoaldoc.pdf: discoaldoc.tex texrefs.bib
+	@echo "Generating PDF documentation..."
+	@if command -v pdflatex >/dev/null 2>&1; then \
+		pdflatex discoaldoc.tex && \
+		bibtex discoaldoc && \
+		pdflatex discoaldoc.tex && \
+		pdflatex discoaldoc.tex && \
+		rm -f discoaldoc.aux discoaldoc.bbl discoaldoc.blg discoaldoc.log discoaldoc.out && \
+		echo "Documentation generated: discoaldoc.pdf"; \
+	else \
+		echo "ERROR: pdflatex not found. Please install LaTeX (e.g., texlive-latex-base texlive-latex-extra)"; \
+		exit 1; \
+	fi
 	
 test: alleleTrajTest.c alleleTraj.c alleleTraj.h discoalFunctions.c
 	$(CC) $(CFLAGS)  -o alleleTrajTest alleleTrajTest.c alleleTraj.c ranlibComplete.c discoalFunctions.c -lm
@@ -84,4 +101,5 @@ run_tests: test_node test_event test_node_operations test_mutations
 
 clean:
 	rm -f discoal discoal_edited discoal_legacy_backup *.o test_node test_event test_node_operations test_mutations alleleTrajTest
+	rm -f discoaldoc.pdf discoaldoc.aux discoaldoc.bbl discoaldoc.blg discoaldoc.log discoaldoc.out
 
