@@ -205,7 +205,7 @@ void updateActiveMaterialFromAncestry(ActiveMaterial *am, AncestrySegment *ances
         temp = temp->next;
     }
     
-    if (segmentCount >= 10) {
+    if (segmentCount >= 100) {
         // Build AVL tree for fast lookups
         AVLTree *tree = createAVLTree();
         if (tree) {
