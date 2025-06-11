@@ -18,7 +18,7 @@
 #include "alleleTraj.h"
 
 
-// Initial capacity for breakPoints array (much smaller than original MAXBREAKS=1000000)
+// Initial capacity for breakPoints array
 #define INITIAL_BREAKPOINTS_CAPACITY 1000
 
 void initializeBreakPoints() {
