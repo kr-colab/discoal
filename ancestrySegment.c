@@ -255,7 +255,7 @@ AncestrySegment* mergeAncestryTrees(AncestrySegment *leftTree, AncestrySegment *
         }
         
         // Build AVL tree for fast lookups if we have 3 or more segments
-        if (segmentCount >= 3) {
+        if (segmentCount >= 30) {
             result->avlTree = buildAVLFromList(result);
         }
     }
