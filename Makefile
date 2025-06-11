@@ -14,7 +14,7 @@ discoal: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ance
 
 # Build edited version for testing (same as main but explicit name)
 discoal_edited: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h ancestryVerify.c ancestryVerify.h activeSegment.c activeSegment.h
-	$(CC) $(CFLAGS)  -o discoal_edited discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
+	$(CC) -O3 -march=native -ffast-math -I.  -o discoal_edited discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
 
 # Build debug version with ancestry verification
 discoal_debug: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h ancestryVerify.c ancestryVerify.h activeSegment.c activeSegment.h
@@ -55,6 +55,27 @@ test_comprehensive: test_binaries
 test_focused: test_binaries
 	@echo "Running focused validation suite..."
 	cd testing && ./focused_validation_suite.sh
+
+# Build version from HEAD of current branch as legacy_backup for comparison
+discoal_legacy_backup_head:
+	@echo "Building version from HEAD of current branch as legacy_backup..."
+	@mkdir -p /tmp/discoal_head_build
+	@git archive HEAD | tar -x -C /tmp/discoal_head_build
+	@cd /tmp/discoal_head_build && $(CC) $(CFLAGS) -o discoal_legacy_backup discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon && mv discoal_legacy_backup $(CURDIR)/
+	@rm -rf /tmp/discoal_head_build
+	@echo "HEAD version built successfully as discoal_legacy_backup"
+
+# Build both versions for HEAD comparison testing
+test_binaries_head: discoal_edited discoal_legacy_backup_head
+	@echo "Built both optimized and HEAD versions for testing"
+
+# Run comprehensive test comparing optimized vs HEAD of branch
+test_comprehensive_head: test_binaries_head
+	@echo "Running comprehensive validation suite (optimized vs HEAD)..."
+	@echo "This will compare the performance improvements of our optimizations"
+	@echo "Optimized = current working directory with trajectory optimizations"
+	@echo "Legacy = HEAD of current branch (before optimizations)"
+	cd testing && ./comprehensive_validation_suite.sh
 
 # Generate PDF documentation from LaTeX source
 doc: discoaldoc.pdf
