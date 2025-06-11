@@ -53,6 +53,22 @@ void cleanup_and_exit(int sig) {
 	exit(sig);
 }
 
+// Helper function to ensure events array has enough capacity
+void ensureEventsCapacity() {
+	if (eventNumber >= eventsCapacity) {
+		int newCapacity = eventsCapacity * 2;
+		struct event *newEvents = (struct event*) realloc(events, newCapacity * sizeof(struct event));
+		if (newEvents == NULL) {
+			fprintf(stderr, "Error: Failed to reallocate events array\n");
+			exit(1);
+		}
+		events = newEvents;
+		eventsCapacity = newCapacity;
+		// Initialize new elements to zero
+		memset(&events[eventNumber], 0, (newCapacity - eventNumber) * sizeof(struct event));
+	}
+}
+
 int main(int argc, const char * argv[]){
 	int i,j,k, totalSimCount;
 	float tempSite;
@@ -349,6 +365,7 @@ int main(int argc, const char * argv[]){
 	}
 	
 	free(currentSize);
+		free(events);
 	
 	
 	return(0);
@@ -422,6 +439,14 @@ void getParameters(int argc,const char **argv){
 	ancSampleFlag = 0;
 	ancSampleSize = 0;
 	hidePartialSNP = 0;
+	
+	// Initialize events array with initial capacity
+	eventsCapacity = 50;  // Start with reasonable capacity
+	events = (struct event*) calloc(eventsCapacity, sizeof(struct event));
+	if (events == NULL) {
+		fprintf(stderr, "Error: Failed to allocate events array\n");
+		exit(1);
+	}
 	
 	//set up first bogus event
 	eventNumber = 0;
@@ -514,6 +539,7 @@ void getParameters(int argc,const char **argv){
 			case 'e' :
 				switch(argv[args][2]){
 					case 'n':
+					ensureEventsCapacity();
 					events[eventNumber].time = atof(argv[++args]) * 2.0;
 					events[eventNumber].popID = atoi(argv[++args]);
 					events[eventNumber].popnSize = atof(argv[++args]);
@@ -522,6 +548,7 @@ void getParameters(int argc,const char **argv){
 					break;
 					case 'd' :
 					tDiv =  atof(argv[++args]);
+						ensureEventsCapacity();
 					events[eventNumber].time = tDiv * 2.0;
 					events[eventNumber].popID = atoi(argv[++args]);
 					events[eventNumber].popID2 = atoi(argv[++args]);
@@ -529,6 +556,7 @@ void getParameters(int argc,const char **argv){
 					eventNumber++;
 					break;
 					case 'a' :
+						ensureEventsCapacity();
 					events[eventNumber].time = atof(argv[++args]) * 2.0;
 					events[eventNumber].popID = atoi(argv[++args]);
 					events[eventNumber].popID2 = atoi(argv[++args]);
@@ -552,6 +580,7 @@ void getParameters(int argc,const char **argv){
 					break;
 					}
 				tau = atof(argv[++args]) * 2.0;
+					ensureEventsCapacity();
 				events[eventNumber].time = tau;
 				events[eventNumber].type = 's'; //sweep event
 				eventNumber++;
@@ -572,10 +601,11 @@ void getParameters(int argc,const char **argv){
 				tau = atof(argv[++args]) * 2.0;
 				leftRho = atof(argv[++args]) * 2.0;
 				leftRhoFlag=1;
+					ensureEventsCapacity();
 				events[eventNumber].time = tau;
 				events[eventNumber].type = 's'; //sweep event
 				eventNumber++;
-				break;
+					break;
 			case 'f':
 			f0 = atof(argv[++args]);
 			softSweepMode = 1;
@@ -643,6 +673,7 @@ void getParameters(int argc,const char **argv){
 					pE1THigh=atof(argv[++args])*2.0;
 					pE1SLow=atof(argv[++args]);
 					pE1SHigh=atof(argv[++args]);
+						ensureEventsCapacity();
 					events[eventNumber].type = 'n';
 					eventNumber++;
 					break;
@@ -652,6 +683,7 @@ void getParameters(int argc,const char **argv){
 					pE2THigh=atof(argv[++args])*2.0;
 					pE2SLow=atof(argv[++args]);
 					pE2SHigh=atof(argv[++args]);
+						ensureEventsCapacity();
 					events[eventNumber].type = 'n';
 					eventNumber++;
 					break;
@@ -709,6 +741,7 @@ void getParameters(int argc,const char **argv){
 			hidePartialSNP = 1;
 			break;
 			case 'A' :
+				ensureEventsCapacity();
 			events[eventNumber].lineageNumber = atoi(argv[++args]);
 			events[eventNumber].popID = atoi(argv[++args]);	 
 			events[eventNumber].time = atof(argv[++args]) * 2.0; 
@@ -716,7 +749,7 @@ void getParameters(int argc,const char **argv){
 			events[eventNumber].type = 'A'; //ancient sample
 			ancSampleFlag = 1;
 			eventNumber++;
-			assert(events[eventNumber].lineageNumber < sampleSize);
+			assert(events[eventNumber-1].lineageNumber < sampleSize);
 			break;
 			 
 		}
@@ -815,3 +848,4 @@ void usage(){
 	
 	exit(1);
 }
+

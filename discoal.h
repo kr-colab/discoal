@@ -9,21 +9,25 @@
 #include "activeSegment.h"
 
 /******************************************************************************/
-/* here are just some defines to allocate initial global arrays and stuff     */
-/* like that                                                                  */
+/* Global constants and limits                                                */
+/*                                                                            */
 
-#define MAXNODES 20000000
-#define MAXSITES 220020
-#define SMALLCHUNKS 100000
-#define MAXBREAKS 1000000
-#define MAXMUTS 40000
-#define MAXTIME 100000.0
-#define MAXPOPS 121
+/* Still needed for various static arrays and limits */
+#define MAXSITES 220020      /* Maximum number of sites - used for input validation */
+#define MAXMUTS 40000        /* Maximum mutations for output formatting */
+#define MAXTIME 100000.0     /* Sentinel value representing "infinite" time */
+#define MAXPOPS 121          /* Maximum number of populations */
+
+/* No longer needed after dynamic memory optimizations:
+   - MAXNODES: nodes/allNodes arrays are now dynamic
+   - SMALLCHUNKS: was never used  
+   - MAXBREAKS: breakPoints array is now dynamic
+   - MAXLEAFS: was never used
+   - MAXEVENTS: events array is now dynamic
+*/
 
 #define MAX(a, b)  (((a) > (b)) ? (a) : (b))
 #define MIN(a, b)  (((a) > (b)) ? (b) : (a))
-#define MAXEVENTS 250
-#define MAXLEAFS 200
 
 /******************************************************************************/
 
@@ -133,7 +137,8 @@ char trajectoryFilename[256];  // Current trajectory file
 int trajectoryFd;              // File descriptor for mmap
 size_t trajectoryFileSize;     // Size of mmap'd region
 
-struct event events[MAXEVENTS];
+struct event *events;          /* Dynamic array of demographic events */
+int eventsCapacity;            /* Allocated capacity for events array */
 
 int lSpot, rSpot, condRecMode;
 int condRecMet;
