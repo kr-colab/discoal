@@ -153,8 +153,35 @@ The testing framework:
 - Tests all documented functionality from discoaldoc.tex
 - Compares optimized vs legacy versions for identical output
 - Profiles memory usage and detects regressions
-- Provides 21 comprehensive test cases covering all features
+- Provides 27 comprehensive test cases covering all features
 - Ensures trajectory optimization maintains compatibility
+
+### Statistical Validation Suite (NEW)
+The statistical validation suite runs multiple replicates of each test case to ensure statistical equivalence between versions:
+
+**Usage:**
+```bash
+cd testing/
+./statistical_validation_suite.sh              # 100 replicates, auto mode
+./statistical_validation_suite.sh parallel 50  # 50 replicates, parallel mode
+./statistical_validation_suite.sh 200          # 200 replicates, auto mode
+```
+
+**Features:**
+- Runs configurable number of replicates (default: 100) for each test case
+- Extracts segregating sites counts from each replicate
+- Performs Kolmogorov-Smirnov test to compare distributions
+- Tests null hypothesis that outputs come from same distribution
+- Supports parallel execution with GNU parallel
+- Provides detailed statistical summaries (mean, SD, min, max)
+- Identifies cases where distributions differ significantly
+
+**Key statistics analyzed:**
+- Number of segregating sites per replicate
+- Memory usage and performance metrics
+- Distribution comparisons at 0.05 significance level
+
+This suite is essential for validating that optimizations don't introduce systematic biases or alter the statistical properties of the simulations.
 
 ### Unit Tests
 Unit tests use a custom Unity testing framework in `test/unit/unity.h`. Tests are located in `test/unit/`:
