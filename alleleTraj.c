@@ -46,6 +46,20 @@ double neutralStochastic(double dt, double currentFreq){
 	return(currentFreq);
 }
 
+/* Optimized version of neutralStochastic with reduced overhead */
+static inline double neutralStochasticOptimized(double dt, double currentFreq){
+	// Precompute common expressions
+	double drift_term = -currentFreq * dt;
+	double variance = currentFreq * (1.0 - currentFreq) * dt;
+	double diffusion_term = sqrt(variance);
+	
+	// Use 2*ranf()-1 to get random sign (-1 or +1) in one call
+	// This avoids the branch and uses arithmetic instead
+	double random_sign = 2.0 * ranf() - 1.0;
+	
+	return currentFreq + drift_term + random_sign * diffusion_term;
+}
+
 /* genicSelectionStochastic-- returns the frequency of a selected allele
 which is sweeping through the population. This is the jump process
 corresponding to the condition diffusion towards loss (i.e. backwards).

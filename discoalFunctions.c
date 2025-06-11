@@ -1069,17 +1069,17 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 					x = detSweepFreq(ttau, alpha * currentSizeRatio);
 					break;
 					case 's':
-					x = 1.0 - genicSelectionStochasticForwards(tInc, (1.0 - x), alpha * currentSizeRatio);
+					x = 1.0 - genicSelectionStochasticForwardsOptimized(tInc, (1.0 - x), alpha * currentSizeRatio);
 					break;
 					case 'N':
-					x = neutralStochastic(tInc, x);
+					x = neutralStochasticOptimized(tInc, x);
 					break;
 				}
 			}
 			else{
 				insweepphase = 0;
 				tInc = 1.0 / (deltaTMod * N );
-				x = neutralStochastic(tInc, x);
+				x = neutralStochasticOptimized(tInc, x);
 			}
 			//printf("j: %ld x: %f\n",j,x);
 			
@@ -1204,12 +1204,12 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 
 					break;
 					case 's':
-					x = 1.0 - genicSelectionStochasticForwards(tInc, (1.0 - x), alpha * sizeRatio[0]);
+					x = 1.0 - genicSelectionStochasticForwardsOptimized(tInc, (1.0 - x), alpha * sizeRatio[0]);
 				//	printf("x here:%f ttau: %f alpha*sizeRatio: %f\n",x,ttau,alpha*sizeRatio[0]);
 					break;
 					case 'N':
 				//	printf("here\n");
-					x = neutralStochastic(tInc, x);
+					x = neutralStochasticOptimized(tInc, x);
 					break;
 				}
 				//	printf("x:%g ttau: %f\n",x,ttau );
