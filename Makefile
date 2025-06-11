@@ -20,24 +20,24 @@ discoal_edited: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions
 discoal_debug: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h ancestryVerify.c ancestryVerify.h activeSegment.c activeSegment.h
 	$(CC) $(CFLAGS) -DDEBUG_ANCESTRY -o discoal_debug discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
 
-# Build legacy version from master branch for comparison testing
+# Build legacy version from master-backup branch for comparison testing
 discoal_legacy_backup:
-	@echo "Building legacy version from master branch..."
+	@echo "Building legacy version from master-backup branch..."
 	@mkdir -p /tmp/discoal_legacy_build
-	@if git show master:discoal_multipop.c > /tmp/discoal_legacy_build/discoal_multipop.c 2>/dev/null && \
-	   git show master:discoalFunctions.c > /tmp/discoal_legacy_build/discoalFunctions.c 2>/dev/null && \
-	   git show master:discoal.h > /tmp/discoal_legacy_build/discoal.h 2>/dev/null && \
-	   git show master:discoalFunctions.h > /tmp/discoal_legacy_build/discoalFunctions.h 2>/dev/null && \
-	   git show master:ranlibComplete.c > /tmp/discoal_legacy_build/ranlibComplete.c 2>/dev/null && \
-	   git show master:alleleTraj.c > /tmp/discoal_legacy_build/alleleTraj.c 2>/dev/null && \
-	   git show master:alleleTraj.h > /tmp/discoal_legacy_build/alleleTraj.h 2>/dev/null && \
-	   git show master:ranlib.h > /tmp/discoal_legacy_build/ranlib.h 2>/dev/null; then \
+	@if git show master-backup:discoal_multipop.c > /tmp/discoal_legacy_build/discoal_multipop.c 2>/dev/null && \
+	   git show master-backup:discoalFunctions.c > /tmp/discoal_legacy_build/discoalFunctions.c 2>/dev/null && \
+	   git show master-backup:discoal.h > /tmp/discoal_legacy_build/discoal.h 2>/dev/null && \
+	   git show master-backup:discoalFunctions.h > /tmp/discoal_legacy_build/discoalFunctions.h 2>/dev/null && \
+	   git show master-backup:ranlibComplete.c > /tmp/discoal_legacy_build/ranlibComplete.c 2>/dev/null && \
+	   git show master-backup:alleleTraj.c > /tmp/discoal_legacy_build/alleleTraj.c 2>/dev/null && \
+	   git show master-backup:alleleTraj.h > /tmp/discoal_legacy_build/alleleTraj.h 2>/dev/null && \
+	   git show master-backup:ranlib.h > /tmp/discoal_legacy_build/ranlib.h 2>/dev/null; then \
 		cd /tmp/discoal_legacy_build && $(CC) $(CFLAGS) -o discoal_legacy_backup discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c -lm -fcommon && mv discoal_legacy_backup $(CURDIR)/ && cd ../..; \
 		rm -rf /tmp/discoal_legacy_build; \
-		echo "Legacy version built successfully from master branch"; \
+		echo "Legacy version built successfully from master-backup branch"; \
 	else \
-		echo "ERROR: Could not build legacy version from master branch"; \
-		echo "This is required for testing. Please ensure master branch exists and contains the legacy code."; \
+		echo "ERROR: Could not build legacy version from master-backup branch"; \
+		echo "This is required for testing. Please ensure master-backup branch exists and contains the legacy code."; \
 		rm -rf /tmp/discoal_legacy_build; \
 		exit 1; \
 	fi
@@ -101,5 +101,5 @@ run_tests: test_node test_event test_node_operations test_mutations
 
 clean:
 	rm -f discoal discoal_edited discoal_legacy_backup *.o test_node test_event test_node_operations test_mutations alleleTrajTest
-	rm -f discoaldoc.pdf discoaldoc.aux discoaldoc.bbl discoaldoc.blg discoaldoc.log discoaldoc.out
+	rm -f discoaldoc.aux discoaldoc.bbl discoaldoc.blg discoaldoc.log discoaldoc.out
 
