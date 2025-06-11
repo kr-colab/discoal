@@ -3,6 +3,31 @@
 # Comprehensive validation test suite based on all examples from discoaldoc.tex
 # This suite tests both functionality and memory usage between optimized and legacy versions
 # Keep this test suite for future optimization validation
+#
+# Usage: ./comprehensive_validation_suite.sh [mode]
+#   mode: auto (default), parallel, sequential
+#   auto: Use parallel if available, fallback to sequential
+#   parallel: Force parallel execution (fails if GNU parallel not available)
+#   sequential: Force sequential execution
+
+# Parse command line arguments
+EXECUTION_MODE="${1:-auto}"
+
+if [[ "$EXECUTION_MODE" == "-h" || "$EXECUTION_MODE" == "--help" ]]; then
+    echo "Usage: $0 [mode]"
+    echo ""
+    echo "Execution modes:"
+    echo "  auto       - Use parallel if GNU parallel available, fallback to sequential (default)"
+    echo "  parallel   - Force parallel execution (requires GNU parallel)"
+    echo "  sequential - Force sequential execution"
+    echo ""
+    echo "Examples:"
+    echo "  $0                    # Auto-detect and use best available mode"
+    echo "  $0 parallel           # Force parallel execution"
+    echo "  $0 sequential         # Force sequential execution"
+    echo ""
+    exit 0
+fi
 
 TEST_DIR="comprehensive_validation_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$TEST_DIR"
@@ -10,6 +35,7 @@ mkdir -p "$TEST_DIR"
 echo "=== COMPREHENSIVE DISCOAL VALIDATION SUITE ==="
 echo "Based on all examples from discoaldoc.tex documentation"
 echo "Test directory: $TEST_DIR"
+echo "Execution mode: $EXECUTION_MODE"
 echo ""
 
 # Memory measurement function with timeout
@@ -65,6 +91,322 @@ get_wall_time() {
         # Linux - elapsed time
         grep "Elapsed (wall clock) time" "$memory_file" | sed 's/.*: //' | awk -F: '{ if (NF == 2) {print $1 * 60 + $2} else {print $1 * 3600 + $2 * 60 + $3} }'
     fi
+}
+
+# Single test case execution function (for potential parallel execution)
+run_single_test_case() {
+    local test_case="$1"
+    local test_dir="$2"
+    local test_index="$3"
+    local total_tests="$4"
+    
+    # Parse test case
+    local category=$(echo $test_case | cut -d: -f1)
+    local test_name=$(echo $test_case | cut -d: -f2)
+    local test_args=$(echo $test_case | cut -d: -f3)
+    local expected=$(echo $test_case | cut -d: -f4)
+    
+    echo "=== [$test_index/$total_tests] [$category] Testing: $test_name ==="
+    echo "Command: discoal $test_args"
+    echo "Expected: $expected"
+    
+    # Fixed seeds for reproducible results
+    local SEED1=98765
+    local SEED2=54321
+    
+    # Test optimized version
+    echo "  Testing optimized version..."
+    local optimized_cmd="../discoal_edited $test_args -d $SEED1 $SEED2"
+    measure_memory "$optimized_cmd" "$test_dir/${category}_${test_name}_optimized.out" "$test_dir/${category}_${test_name}_optimized_memory.txt"
+    local optimized_exit=$?
+    
+    local optimized_memory=""
+    local optimized_time=""
+    local optimized_status=""
+    
+    if [ $optimized_exit -eq 0 ]; then
+        echo "    ✅ Optimized: SUCCESS"
+        optimized_status="SUCCESS"
+        
+        optimized_memory=$(get_peak_memory "$test_dir/${category}_${test_name}_optimized_memory.txt")
+        optimized_time=$(get_wall_time "$test_dir/${category}_${test_name}_optimized_memory.txt")
+        echo "    📊 Memory: ${optimized_memory} $([ "$OSTYPE" = "darwin"* ] && echo "bytes" || echo "KB")"
+        echo "    ⏱️  Time: ${optimized_time} seconds"
+    elif [ $optimized_exit -eq 124 ]; then
+        echo "    ⏰ Optimized: TIMEOUT (5 minutes)"
+        optimized_status="TIMEOUT"
+    else
+        echo "    ❌ Optimized: FAILED"
+        optimized_status="FAILED"
+        echo "    🔍 Error: $(tail -1 "$test_dir/${category}_${test_name}_optimized.out")"
+    fi
+    
+    # Test legacy version
+    echo "  Testing legacy version..."
+    local legacy_cmd="../discoal_legacy_backup $test_args -d $SEED1 $SEED2"
+    measure_memory "$legacy_cmd" "$test_dir/${category}_${test_name}_legacy.out" "$test_dir/${category}_${test_name}_legacy_memory.txt"
+    local legacy_exit=$?
+    
+    local legacy_memory=""
+    local legacy_time=""
+    local legacy_status=""
+    
+    if [ $legacy_exit -eq 0 ]; then
+        echo "    ✅ Legacy: SUCCESS"
+        legacy_status="SUCCESS"
+        
+        legacy_memory=$(get_peak_memory "$test_dir/${category}_${test_name}_legacy_memory.txt")
+        legacy_time=$(get_wall_time "$test_dir/${category}_${test_name}_legacy_memory.txt")
+        echo "    📊 Memory: ${legacy_memory} $([ "$OSTYPE" = "darwin"* ] && echo "bytes" || echo "KB")"
+        echo "    ⏱️  Time: ${legacy_time} seconds"
+    elif [ $legacy_exit -eq 124 ]; then
+        echo "    ⏰ Legacy: TIMEOUT (5 minutes)"
+        legacy_status="TIMEOUT"
+    else
+        echo "    ❌ Legacy: FAILED"
+        legacy_status="FAILED"
+        echo "    🔍 Error: $(tail -1 "$test_dir/${category}_${test_name}_legacy.out")"
+    fi
+    
+    # Initialize result variables
+    local memory_result=""
+    local time_result=""
+    local output_identical=0
+    
+    # Compare memory usage if both succeeded
+    if [ $optimized_exit -eq 0 ] && [ $legacy_exit -eq 0 ] && [ -n "$optimized_memory" ] && [ -n "$legacy_memory" ]; then
+        if [ "$optimized_memory" -lt "$legacy_memory" ]; then
+            local savings=$(( (legacy_memory - optimized_memory) * 100 / legacy_memory ))
+            echo "    💾 Memory savings: ${savings}% (optimized is smaller)"
+            memory_result="$category:$test_name:$savings"
+        else
+            local overhead=$(( (optimized_memory - legacy_memory) * 100 / legacy_memory ))
+            echo "    ⚠️  Memory overhead: +${overhead}% (optimized is larger)"
+            memory_result="$category:$test_name:-$overhead"
+        fi
+        
+        # Compare wall time
+        if [ -n "$optimized_time" ] && [ -n "$legacy_time" ]; then
+            # Use bc for floating point comparison
+            if command -v bc &> /dev/null; then
+                local speedup=$(echo "scale=2; $legacy_time / $optimized_time" | bc)
+                local time_diff=$(echo "scale=2; $legacy_time - $optimized_time" | bc)
+                
+                if (( $(echo "$optimized_time < $legacy_time" | bc -l) )); then
+                    echo "    ⚡ Performance: ${speedup}x faster (saved ${time_diff}s)"
+                    time_result="$category:$test_name:faster:$speedup"
+                elif (( $(echo "$optimized_time > $legacy_time" | bc -l) )); then
+                    local slowdown=$(echo "scale=2; $optimized_time / $legacy_time" | bc)
+                    echo "    🐌 Performance: ${slowdown}x slower (added ${time_diff#-}s)"
+                    time_result="$category:$test_name:slower:$slowdown"
+                else
+                    echo "    ⏱️  Performance: Same execution time"
+                    time_result="$category:$test_name:same:1.0"
+                fi
+            fi
+        fi
+    fi
+    
+    # Compare outputs if both succeeded
+    if [ $optimized_exit -eq 0 ] && [ $legacy_exit -eq 0 ]; then
+        # Filter out executable names and paths for comparison
+        sed 's/discoal_legacy_backup/discoal/g; s|../discoal_edited|discoal|g; s|../discoal|discoal|g' "$test_dir/${category}_${test_name}_legacy.out" > "$test_dir/${category}_${test_name}_legacy_filtered.out"
+        sed 's/discoal_legacy_backup/discoal/g; s|../discoal_edited|discoal|g; s|../discoal|discoal|g' "$test_dir/${category}_${test_name}_optimized.out" > "$test_dir/${category}_${test_name}_optimized_filtered.out"
+        
+        if diff -q "$test_dir/${category}_${test_name}_legacy_filtered.out" "$test_dir/${category}_${test_name}_optimized_filtered.out" > /dev/null; then
+            echo "    ✅ Output: IDENTICAL"
+            output_identical=1
+            # Clean up identical outputs to save space
+            rm "$test_dir/${category}_${test_name}_legacy_filtered.out" "$test_dir/${category}_${test_name}_optimized_filtered.out"
+            rm "$test_dir/${category}_${test_name}_legacy.out" "$test_dir/${category}_${test_name}_optimized.out"
+        else
+            echo "    ⚠️  Output: DIFFERENT"
+            echo "      Diff saved for inspection"
+            rm "$test_dir/${category}_${test_name}_legacy_filtered.out" "$test_dir/${category}_${test_name}_optimized_filtered.out"
+        fi
+    fi
+    
+    # Write results to a structured file for aggregation
+    local result_file="$test_dir/result_${test_index}_${category}_${test_name}.txt"
+    {
+        echo "OPTIMIZED_RESULT='$category:$test_name:$optimized_status'"
+        echo "LEGACY_RESULT='$category:$test_name:$legacy_status'"
+        echo "MEMORY_RESULT='$memory_result'"
+        echo "TIME_RESULT='$time_result'"
+        echo "OUTPUT_IDENTICAL=$output_identical"
+    } > "$result_file"
+    
+    echo ""
+}
+
+# Aggregate results from individual result files
+aggregate_results() {
+    local test_dir="$1"
+    
+    # Initialize arrays
+    OPTIMIZED_RESULTS=()
+    LEGACY_RESULTS=()
+    MEMORY_SAVINGS=()
+    TIME_COMPARISONS=()
+    
+    # Reset counters
+    OPTIMIZED_SUCCESSES=0
+    LEGACY_SUCCESSES=0
+    IDENTICAL_OUTPUTS=0
+    MEMORY_COMPARISONS=0
+    
+    # Process all result files
+    for result_file in "$test_dir"/result_*.txt; do
+        if [ -f "$result_file" ]; then
+            # Source the result file to load variables
+            source "$result_file"
+            
+            # Add to arrays
+            if [ -n "$OPTIMIZED_RESULT" ]; then
+                OPTIMIZED_RESULTS+=("$OPTIMIZED_RESULT")
+                if [[ "$OPTIMIZED_RESULT" == *":SUCCESS" ]]; then
+                    OPTIMIZED_SUCCESSES=$((OPTIMIZED_SUCCESSES + 1))
+                fi
+            fi
+            
+            if [ -n "$LEGACY_RESULT" ]; then
+                LEGACY_RESULTS+=("$LEGACY_RESULT")
+                if [[ "$LEGACY_RESULT" == *":SUCCESS" ]]; then
+                    LEGACY_SUCCESSES=$((LEGACY_SUCCESSES + 1))
+                fi
+            fi
+            
+            if [ -n "$MEMORY_RESULT" ] && [ "$MEMORY_RESULT" != "''" ]; then
+                MEMORY_SAVINGS+=("$MEMORY_RESULT")
+                MEMORY_COMPARISONS=$((MEMORY_COMPARISONS + 1))
+            fi
+            
+            if [ -n "$TIME_RESULT" ] && [ "$TIME_RESULT" != "''" ]; then
+                TIME_COMPARISONS+=("$TIME_RESULT")
+            fi
+            
+            if [ "$OUTPUT_IDENTICAL" = "1" ]; then
+                IDENTICAL_OUTPUTS=$((IDENTICAL_OUTPUTS + 1))
+            fi
+        fi
+    done
+    
+    # Clean up result files
+    rm -f "$test_dir"/result_*.txt
+}
+
+# Check for GNU parallel availability
+check_parallel_support() {
+    if ! command -v parallel &> /dev/null; then
+        echo "⚠️  GNU parallel not found. Install with:"
+        echo "   Ubuntu/Debian: sudo apt-get install parallel"
+        echo "   macOS: brew install parallel"
+        echo "   CentOS/RHEL: sudo yum install parallel"
+        echo "   Falling back to sequential execution..."
+        echo ""
+        return 1
+    fi
+    
+    # Check if parallel is GNU parallel (not other parallel implementations)
+    if ! parallel --version 2>/dev/null | grep -q "GNU parallel"; then
+        echo "⚠️  Found parallel but not GNU parallel. Falling back to sequential execution..."
+        echo ""
+        return 1
+    fi
+    
+    return 0
+}
+
+# Parallel test execution
+run_parallel_tests() {
+    local test_dir="$1"
+    local total_tests="$2"
+    
+    # Conservative core usage (leave 1-2 cores free for system)
+    local available_cores=$(nproc 2>/dev/null || echo "4")
+    local cores_to_use=$((available_cores - 1))
+    cores_to_use=$(( cores_to_use > 1 ? cores_to_use : 1 ))
+    
+    echo "🚀 Running tests in parallel using $cores_to_use cores..."
+    echo "📊 Progress will be shown as tests complete..."
+    echo ""
+    
+    # Export functions for parallel execution
+    export -f run_single_test_case measure_memory get_peak_memory get_wall_time
+    
+    # Create indexed test case array for progress tracking
+    printf '%s\n' "${TEST_CASES[@]}" | \
+        parallel -j "$cores_to_use" \
+        --timeout 600 \
+        --joblog "$test_dir/parallel.log" \
+        run_single_test_case {} "$test_dir" {#} "$total_tests" 2>/dev/null
+    
+    local parallel_exit=$?
+    
+    echo ""
+    echo "✅ Parallel execution completed. Aggregating results..."
+    echo ""
+    
+    if [ $parallel_exit -ne 0 ]; then
+        echo "⚠️  Some parallel jobs failed. Check $test_dir/parallel.log for details."
+    fi
+    
+    # Aggregate results
+    aggregate_results "$test_dir"
+    
+    return $parallel_exit
+}
+
+# Sequential test execution (fallback implementation)
+run_sequential_tests() {
+    local test_dir="$1"
+    local total_tests="$2"
+    
+    echo "🐌 Running tests sequentially..."
+    echo ""
+    
+    local test_count=0
+    for test_case in "${TEST_CASES[@]}"; do
+        test_count=$((test_count + 1))
+        run_single_test_case "$test_case" "$test_dir" "$test_count" "$total_tests"
+    done
+    
+    # Aggregate results
+    aggregate_results "$test_dir"
+}
+
+# Main test execution with automatic parallel/sequential selection
+run_tests() {
+    local test_dir="$1"
+    local total_tests="$2"
+    local execution_mode="${3:-auto}"
+    
+    case "$execution_mode" in
+        parallel)
+            if check_parallel_support; then
+                run_parallel_tests "$test_dir" "$total_tests"
+            else
+                echo "❌ Parallel execution requested but GNU parallel not available."
+                echo "   Install GNU parallel or use sequential mode."
+                exit 1
+            fi
+            ;;
+        sequential)
+            run_sequential_tests "$test_dir" "$total_tests"
+            ;;
+        auto)
+            if check_parallel_support; then
+                run_parallel_tests "$test_dir" "$total_tests"
+            else
+                run_sequential_tests "$test_dir" "$total_tests"
+            fi
+            ;;
+        *)
+            echo "❌ Invalid execution mode: $execution_mode"
+            echo "   Valid modes: parallel, sequential, auto"
+            exit 1
+            ;;
+    esac
 }
 
 # Test cases extracted from discoaldoc.tex with categorization
@@ -138,134 +480,14 @@ echo "Running comprehensive validation on $TOTAL_TESTS test cases..."
 echo "⏰ Each test has a 5-minute timeout limit"
 echo ""
 
-# Results summary arrays
+# Results summary arrays (will be populated by aggregation)
 declare -a OPTIMIZED_RESULTS
 declare -a LEGACY_RESULTS
 declare -a MEMORY_SAVINGS
 declare -a TIME_COMPARISONS
 
-test_count=0
-for test_case in "${TEST_CASES[@]}"; do
-    test_count=$((test_count + 1))
-    
-    # Parse test case
-    category=$(echo $test_case | cut -d: -f1)
-    test_name=$(echo $test_case | cut -d: -f2)
-    test_args=$(echo $test_case | cut -d: -f3)
-    expected=$(echo $test_case | cut -d: -f4)
-    
-    echo "=== [$test_count/$TOTAL_TESTS] [$category] Testing: $test_name ==="
-    echo "Command: discoal $test_args"
-    echo "Expected: $expected"
-    
-    # Fixed seeds for reproducible results
-    SEED1=98765
-    SEED2=54321
-    
-    # Test optimized version
-    echo "  Testing optimized version..."
-    optimized_cmd="../discoal_edited $test_args -d $SEED1 $SEED2"
-    measure_memory "$optimized_cmd" "$TEST_DIR/${category}_${test_name}_optimized.out" "$TEST_DIR/${category}_${test_name}_optimized_memory.txt"
-    optimized_exit=$?
-    
-    if [ $optimized_exit -eq 0 ]; then
-        echo "    ✅ Optimized: SUCCESS"
-        OPTIMIZED_SUCCESSES=$((OPTIMIZED_SUCCESSES + 1))
-        OPTIMIZED_RESULTS+=("$category:$test_name:SUCCESS")
-        
-        optimized_memory=$(get_peak_memory "$TEST_DIR/${category}_${test_name}_optimized_memory.txt")
-        optimized_time=$(get_wall_time "$TEST_DIR/${category}_${test_name}_optimized_memory.txt")
-        echo "    📊 Memory: ${optimized_memory} $([ "$OSTYPE" = "darwin"* ] && echo "bytes" || echo "KB")"
-        echo "    ⏱️  Time: ${optimized_time} seconds"
-    elif [ $optimized_exit -eq 124 ]; then
-        echo "    ⏰ Optimized: TIMEOUT (5 minutes)"
-        OPTIMIZED_RESULTS+=("$category:$test_name:TIMEOUT")
-    else
-        echo "    ❌ Optimized: FAILED"
-        OPTIMIZED_RESULTS+=("$category:$test_name:FAILED")
-        echo "    🔍 Error: $(tail -1 "$TEST_DIR/${category}_${test_name}_optimized.out")"
-    fi
-    
-    # Test legacy version
-    echo "  Testing legacy version..."
-    legacy_cmd="../discoal_legacy_backup $test_args -d $SEED1 $SEED2"
-    measure_memory "$legacy_cmd" "$TEST_DIR/${category}_${test_name}_legacy.out" "$TEST_DIR/${category}_${test_name}_legacy_memory.txt"
-    legacy_exit=$?
-    
-    if [ $legacy_exit -eq 0 ]; then
-        echo "    ✅ Legacy: SUCCESS"
-        LEGACY_SUCCESSES=$((LEGACY_SUCCESSES + 1))
-        LEGACY_RESULTS+=("$category:$test_name:SUCCESS")
-        
-        legacy_memory=$(get_peak_memory "$TEST_DIR/${category}_${test_name}_legacy_memory.txt")
-        legacy_time=$(get_wall_time "$TEST_DIR/${category}_${test_name}_legacy_memory.txt")
-        echo "    📊 Memory: ${legacy_memory} $([ "$OSTYPE" = "darwin"* ] && echo "bytes" || echo "KB")"
-        echo "    ⏱️  Time: ${legacy_time} seconds"
-    elif [ $legacy_exit -eq 124 ]; then
-        echo "    ⏰ Legacy: TIMEOUT (5 minutes)"
-        LEGACY_RESULTS+=("$category:$test_name:TIMEOUT")
-    else
-        echo "    ❌ Legacy: FAILED"
-        LEGACY_RESULTS+=("$category:$test_name:FAILED")
-        echo "    🔍 Error: $(tail -1 "$TEST_DIR/${category}_${test_name}_legacy.out")"
-    fi
-    
-    # Compare memory usage if both succeeded
-    if [ $optimized_exit -eq 0 ] && [ $legacy_exit -eq 0 ] && [ -n "$optimized_memory" ] && [ -n "$legacy_memory" ]; then
-        MEMORY_COMPARISONS=$((MEMORY_COMPARISONS + 1))
-        if [ "$optimized_memory" -lt "$legacy_memory" ]; then
-            savings=$(( (legacy_memory - optimized_memory) * 100 / legacy_memory ))
-            echo "    💾 Memory savings: ${savings}% (optimized is smaller)"
-            MEMORY_SAVINGS+=("$category:$test_name:$savings")
-        else
-            overhead=$(( (optimized_memory - legacy_memory) * 100 / legacy_memory ))
-            echo "    ⚠️  Memory overhead: +${overhead}% (optimized is larger)"
-            MEMORY_SAVINGS+=("$category:$test_name:-$overhead")
-        fi
-        
-        # Compare wall time
-        if [ -n "$optimized_time" ] && [ -n "$legacy_time" ]; then
-            # Use bc for floating point comparison
-            if command -v bc &> /dev/null; then
-                speedup=$(echo "scale=2; $legacy_time / $optimized_time" | bc)
-                time_diff=$(echo "scale=2; $legacy_time - $optimized_time" | bc)
-                
-                if (( $(echo "$optimized_time < $legacy_time" | bc -l) )); then
-                    echo "    ⚡ Performance: ${speedup}x faster (saved ${time_diff}s)"
-                    TIME_COMPARISONS+=("$category:$test_name:faster:$speedup")
-                elif (( $(echo "$optimized_time > $legacy_time" | bc -l) )); then
-                    slowdown=$(echo "scale=2; $optimized_time / $legacy_time" | bc)
-                    echo "    🐌 Performance: ${slowdown}x slower (added ${time_diff#-}s)"
-                    TIME_COMPARISONS+=("$category:$test_name:slower:$slowdown")
-                else
-                    echo "    ⏱️  Performance: Same execution time"
-                    TIME_COMPARISONS+=("$category:$test_name:same:1.0")
-                fi
-            fi
-        fi
-    fi
-    
-    # Compare outputs if both succeeded
-    if [ $optimized_exit -eq 0 ] && [ $legacy_exit -eq 0 ]; then
-        # Filter out executable names and paths for comparison
-        sed 's/discoal_legacy_backup/discoal/g; s|../discoal_edited|discoal|g; s|../discoal|discoal|g' "$TEST_DIR/${category}_${test_name}_legacy.out" > "$TEST_DIR/${category}_${test_name}_legacy_filtered.out"
-        sed 's/discoal_legacy_backup/discoal/g; s|../discoal_edited|discoal|g; s|../discoal|discoal|g' "$TEST_DIR/${category}_${test_name}_optimized.out" > "$TEST_DIR/${category}_${test_name}_optimized_filtered.out"
-        
-        if diff -q "$TEST_DIR/${category}_${test_name}_legacy_filtered.out" "$TEST_DIR/${category}_${test_name}_optimized_filtered.out" > /dev/null; then
-            echo "    ✅ Output: IDENTICAL"
-            IDENTICAL_OUTPUTS=$((IDENTICAL_OUTPUTS + 1))
-            # Clean up identical outputs to save space
-            rm "$TEST_DIR/${category}_${test_name}_legacy_filtered.out" "$TEST_DIR/${category}_${test_name}_optimized_filtered.out"
-            rm "$TEST_DIR/${category}_${test_name}_legacy.out" "$TEST_DIR/${category}_${test_name}_optimized.out"
-        else
-            echo "    ⚠️  Output: DIFFERENT"
-            echo "      Diff saved for inspection"
-            rm "$TEST_DIR/${category}_${test_name}_legacy_filtered.out" "$TEST_DIR/${category}_${test_name}_optimized_filtered.out"
-        fi
-    fi
-    
-    echo ""
-done
+# Execute tests using selected mode (auto/parallel/sequential)
+run_tests "$TEST_DIR" "$TOTAL_TESTS" "$EXECUTION_MODE"
 
 # Generate comprehensive summary report
 echo "======================================================================"
