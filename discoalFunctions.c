@@ -2178,27 +2178,73 @@ void newickRecurse(rootedNode *aNode, float site, float tempTime){
 	}
 }
 
+/* Hash table entry for mutation duplicate detection */
+typedef struct MutHashEntry {
+	double mutation;
+	struct MutHashEntry *next;
+} MutHashEntry;
+
+#define MUTATION_HASH_SIZE 40009  /* Prime number larger than MAXMUTS to ensure good performance */
+
+/* Hash function for mutations - uses bit representation of double */
+static inline unsigned int hashMutation(double mut) {
+	union { double d; uint64_t i; } u;
+	u.d = mut;
+	/* Mix the bits to get better distribution */
+	u.i ^= (u.i >> 32);
+	u.i *= 0x9e3779b97f4a7c15ULL;  /* Golden ratio constant */
+	return (unsigned int)(u.i % MUTATION_HASH_SIZE);
+}
+
 /*makeGametesMS-- MS style sample output */
 void makeGametesMS(int argc,const char *argv[]){
-	int i,j, size, count, k, mutNumber;
+	int i,j, size, mutNumber;
 	double allMuts[MAXMUTS];
+	MutHashEntry *hashTable[MUTATION_HASH_SIZE];
+	MutHashEntry *entry, *newEntry;
 
-	/* get unique list of muts */
+	/* Initialize hash table */
+	for (i = 0; i < MUTATION_HASH_SIZE; i++) {
+		hashTable[i] = NULL;
+	}
+
+	/* get unique list of muts using hash table for O(n) duplicate detection */
 	size = 0;
 	for (i = 0; i < sampleSize; i++){
 		for (j = 0; j < allNodes[i]->mutationNumber; j++){
-			count = 0;
-			for( k = 0; k < size; k++){
-			//	printf("%f %f %d\n",allMuts[k],allNodes[i]->muts[j],allMuts[k] == allNodes[i]->muts[j]);
-				if (allMuts[k] == allNodes[i]->muts[j]){
-					count += 1;
+			double mut = allNodes[i]->muts[j];
+			unsigned int hash = hashMutation(mut);
+			
+			/* Check if mutation already exists in hash table */
+			int found = 0;
+			for (entry = hashTable[hash]; entry != NULL; entry = entry->next) {
+				if (entry->mutation == mut) {
+					found = 1;
+					break;
 				}
 			}
-			if (count == 0){
-                                assert(size < MAXMUTS);
-				allMuts[size] = allNodes[i]->muts[j];
+			
+			if (!found) {
+				assert(size < MAXMUTS);
+				allMuts[size] = mut;
 				size++;
+				
+				/* Add to hash table */
+				newEntry = (MutHashEntry*)malloc(sizeof(MutHashEntry));
+				newEntry->mutation = mut;
+				newEntry->next = hashTable[hash];
+				hashTable[hash] = newEntry;
 			}
+		}
+	}
+	
+	/* Clean up hash table */
+	for (i = 0; i < MUTATION_HASH_SIZE; i++) {
+		entry = hashTable[i];
+		while (entry != NULL) {
+			MutHashEntry *temp = entry;
+			entry = entry->next;
+			free(temp);
 		}
 	}
 	
