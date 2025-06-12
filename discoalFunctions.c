@@ -2302,22 +2302,43 @@ void makeGametesMS(int argc,const char *argv[]){
 		fprintf(stdout,"%6.6lf ",allMuts[i] );
 	fprintf(stdout,"\n");
 
-/* go through sites, if there is a mut is allMuts print out segSite */
-	for (i = 0; i < sampleSize; i++){
-		for (j = 0; j < mutNumber; j++){
-			if(isAncestralHere(allNodes[i],allMuts[j] )){
-				if (hasMutation(allNodes[i],allMuts[ j])){
-					printf("1");
+/* Phase 3 optimization: Pre-compute presence matrix */
+	char *presenceMatrix = NULL;
+	if (mutNumber > 0) {
+		presenceMatrix = (char*)calloc(sampleSize * mutNumber, sizeof(char));
+		if (presenceMatrix == NULL) {
+			fprintf(stderr, "Error: Failed to allocate presence matrix\n");
+			exit(1);
+		}
+		
+		/* Pre-compute all ancestry and mutation information */
+		for (i = 0; i < sampleSize; i++) {
+			for (j = 0; j < mutNumber; j++) {
+				int idx = i * mutNumber + j;
+				if (isAncestralHere(allNodes[i], allMuts[j])) {
+					if (hasMutation(allNodes[i], allMuts[j])) {
+						presenceMatrix[idx] = '1';
+					} else {
+						presenceMatrix[idx] = '0';
+					}
+				} else {
+					presenceMatrix[idx] = 'N';
 				}
-				else{
-					printf("0");
-				}
-			}
-			else{
-				printf("N");
 			}
 		}
+	}
+	
+	/* Output using pre-computed matrix */
+	for (i = 0; i < sampleSize; i++) {
+		for (j = 0; j < mutNumber; j++) {
+			printf("%c", presenceMatrix[i * mutNumber + j]);
+		}
 		printf("\n");
+	}
+	
+	/* Clean up */
+	if (presenceMatrix) {
+		free(presenceMatrix);
 	}  
 }
 
