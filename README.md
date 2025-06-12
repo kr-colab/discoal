@@ -3,6 +3,8 @@
 # discoal
 discoal is a coalescent simulation program capable of simulating models with recombination, selective sweeps, and demographic changes including population splits and admixture events.
 
+**Recent improvements**: Memory optimizations have increased the maximum sample size from 254 to 65,535 samples, eliminated the need for the `-DBIG` compilation flag, and reduced memory usage by 15-99% across different simulation scenarios.
+
 ## Documentation
 
 Full documentation is available at [https://discoal.readthedocs.io](https://discoal.readthedocs.io)

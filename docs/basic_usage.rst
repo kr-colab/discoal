@@ -12,7 +12,7 @@ At its most basic, a discoal command line looks like:
 
 Where:
 
-* ``sampleSize``: The number of chromosomes to sample
+* ``sampleSize``: The number of chromosomes to sample (maximum: 65,535)
 * ``numReplicates``: The number of independent samples to generate
 * ``nSites``: The number of discrete sites in the sequence
 * ``theta``: The population mutation rate (4N₀μ) where N₀ is the current population size and μ is the mutation rate per generation for the entire locus

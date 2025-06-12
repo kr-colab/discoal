@@ -124,12 +124,7 @@ Large-scale Simulations
 For very large simulations:
 
 1. **Increase MAXSITES**: Edit ``discoal.h`` and recompile
-2. **Use BIG mode**: For >254 samples
-
-.. code-block:: bash
-
-   make clean
-   make CFLAGS="-DBIG -O2" discoal
+2. **Sample size limit**: The maximum sample size is now 65,535 (previously 254)
 
 Performance Tuning
 ^^^^^^^^^^^^^^^^^^

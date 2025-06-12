@@ -28,6 +28,7 @@ Features
 * Various selection models including hard and soft sweeps
 * Partial sweeps and recurrent hitchhiking
 * Efficient memory usage with dynamic allocation
+* Support for up to 65,535 samples (increased from previous limit of 254)
 * Output compatible with ``ms`` format
 
 Quick Start

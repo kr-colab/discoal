@@ -3,6 +3,21 @@ Development
 
 This section covers the development environment setup and testing procedures for contributing to discoal.
 
+Recent Improvements
+-------------------
+
+Memory Optimizations
+^^^^^^^^^^^^^^^^^^^^
+
+The codebase has undergone significant memory optimizations:
+
+* **Ancestry tracking**: Replaced fixed-size ``ancSites`` arrays with dynamic ancestry segment trees
+* **Sample size limit increased**: Maximum sample size increased from 254 to 65,535
+* **Memory usage reduced**: 15-99% memory savings across different simulation scenarios
+* **Dynamic allocation**: All major data structures now use dynamic memory allocation
+
+These changes eliminate the need for the ``-DBIG`` compilation flag, which is now obsolete.
+
 Development Environment
 -----------------------
 
