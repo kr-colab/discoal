@@ -55,11 +55,7 @@ Additional build targets:
 Compilation Options
 -------------------
 
-For simulations with more than 254 samples, compile with the ``BIG`` flag:
-
-.. code-block:: bash
-
-   make CFLAGS="-DBIG -O2" discoal
+The standard compilation supports up to 65,535 samples. The previous limitation of 254 samples (and the need for the ``-DBIG`` flag) has been removed due to memory optimizations.
 
 To change the maximum number of sites (default 100 million), edit ``MAXSITES`` in ``discoal.h`` and recompile.
 

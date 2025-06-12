@@ -56,7 +56,7 @@ $ make discoal
 \end{verbatim}
 
 \texttt{discoal} should build on most unix-like systems without a problem. We have built it on numerous linux systems as
-well as OS X machines.  
+well as OS X machines. Note that recent memory optimizations have increased the maximum sample size from 254 to 65,535, eliminating the need for special compilation flags for large samples.
 
 \section*{Basic usage}
 As we said above, using \texttt{discoal} is very familiar for people used to \texttt{ms} style commands. At its
@@ -64,7 +64,7 @@ most basic a \texttt{discoal} command line looks like the following
 \begin{verbatim}
 $ ./discoal sampleSize numReplicates nSites -t theta
 \end{verbatim}
-Here there are four arguments we are passing to \texttt{discoal}: sampleSize -- the size of each sample, numReplicates -- the
+Here there are four arguments we are passing to \texttt{discoal}: sampleSize -- the size of each sample (maximum 65,535), numReplicates -- the
 number of independent samples to generate, nSites-- the number of sites in the sequence to be modeled, and then following the \texttt{-t}
 flag $\theta = 4N_0u$, the population mutation rate where $N_0$ is the population size currently and $u$ is the mutation rate per generation for the entire locus. This is identical to 
 the command lines handed to \texttt{ms} with the addition of the nSites parameter. A representative run with its associated output might look like the following:

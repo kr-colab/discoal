@@ -384,11 +384,9 @@ void getParameters(int argc,const char **argv){
 	}
 
 	sampleSize = atoi(argv[1]);
-	if(sampleSize > 254){
-		#ifndef BIG
-		printf("Error: sampleSize > 254. recompile discoal and set the -DBIG flag\n");
+	if(sampleSize > 65535){
+		printf("Error: sampleSize > 65535. This exceeds the maximum supported by uint16_t ancestry counts.\n");
 		exit(666);
-		#endif
 	}
 	sampleNumber = atoi(argv[2]);
 	nSites = atoi(argv[3]);
