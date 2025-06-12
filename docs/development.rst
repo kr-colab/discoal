@@ -136,6 +136,52 @@ This suite:
 * Performs Kolmogorov-Smirnov tests
 * Verifies distributions are statistically equivalent
 
+msprime Comparison Suite
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+To validate discoal against the well-established msprime coalescent simulator:
+
+.. code-block:: bash
+
+   cd testing/
+   ./msprime_comparison_suite.sh
+
+This suite compares discoal and msprime across:
+
+* Neutral models with and without recombination
+* Various sample sizes and mutation rates
+* Selection models (hard sweeps with different strengths and ages)
+
+The comparison includes runtime performance metrics and statistical tests to ensure equivalent output distributions.
+
+**Parameter Scaling for msprime Comparisons**
+
+When comparing discoal with msprime, careful parameter conversion is required due to different conventions:
+
+1. **Population Size**: discoal uses scaled parameters assuming Ne=1. For msprime, we use Ne=0.5 with diploid samples (n_samples/2) and ploidy=2 to match discoal's haploid output.
+
+2. **Mutation Rate**: 
+   
+   * discoal: θ = 4 × Ne × μ × L (over whole locus)
+   * msprime: mutation_rate = θ / (4 × Ne × L) (per base pair)
+
+3. **Recombination Rate**:
+   
+   * discoal: ρ = 4 × Ne × r × L
+   * msprime: recombination_rate = ρ / (4 × Ne × L)
+
+4. **Selection Coefficient** (for sweeps):
+   
+   * discoal: α = 2 × Ne × s
+   * msprime: s = α / (2 × Ne) × 2 (factor of 2 for msprime's fitness model)
+
+5. **Sweep Timing**:
+   
+   * When τ > 0 in discoal, we rescale to Ne=0.25 in msprime for consistent time units
+   * Allele frequencies use the original Ne to ensure valid [0,1] bounds
+
+These scaling conventions ensure that both simulators produce statistically equivalent results, as validated by the comparison suite.
+
 Development Workflow
 --------------------
 
