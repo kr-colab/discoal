@@ -17,6 +17,7 @@ discoal - a coalescent simulator with selection
    selection
    advanced_features
    examples
+   development
    api_reference
 
 Features
