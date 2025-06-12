@@ -31,6 +31,8 @@ int siteBetweenChunks(rootedNode *aNode, int xOverSite);
 void dropMutations();
 void addMutation(rootedNode *aNode, double site);
 int hasMutation(rootedNode *aNode, double site);
+void sortNodeMutations(rootedNode *node);
+void sortAllMutations();
 void makeGametesMS(int argc,const char *argv[]);
 void dropMutationsRecurse();
 void recurseTreePushMutation(rootedNode *aNode, float site);

@@ -2103,12 +2103,55 @@ void addMutation(rootedNode *aNode, double site){
 
 }
 
-int hasMutation(rootedNode *aNode, double site){
+/* Sort mutations on a single node */
+void sortNodeMutations(rootedNode *node) {
+	if (node != NULL && node->mutationNumber > 1) {
+		qsort(node->muts, node->mutationNumber, sizeof(double), compare_doubles);
+	}
+}
+
+/* Sort mutations on all nodes after mutation placement */
+void sortAllMutations() {
 	int i;
-	for (i = 0; i < aNode->mutationNumber; i++){
-		if (aNode->muts[i] == site) return 1;
+	for (i = 0; i < totNodeNumber; i++) {
+		if (allNodes[i] != NULL) {
+			sortNodeMutations(allNodes[i]);
+		}
+	}
+}
+
+/* Binary search implementation for sorted mutations */
+static int hasMutationBinary(rootedNode *aNode, double site) {
+	int left = 0;
+	int right = aNode->mutationNumber - 1;
+	
+	while (left <= right) {
+		int mid = left + (right - left) / 2;
+		if (aNode->muts[mid] == site) {
+			return 1;
+		} else if (aNode->muts[mid] < site) {
+			left = mid + 1;
+		} else {
+			right = mid - 1;
+		}
 	}
 	return 0;
+}
+
+int hasMutation(rootedNode *aNode, double site){
+	if (aNode->mutationNumber == 0) return 0;
+	
+	/* Use linear search for small arrays (faster due to cache locality) */
+	if (aNode->mutationNumber < 10) {
+		int i;
+		for (i = 0; i < aNode->mutationNumber; i++){
+			if (aNode->muts[i] == site) return 1;
+		}
+		return 0;
+	}
+	
+	/* Use binary search for larger arrays */
+	return hasMutationBinary(aNode, site);
 }
 
 //findRootAtSite-- returns the index of the node that is the root at a given site
@@ -2202,6 +2245,9 @@ void makeGametesMS(int argc,const char *argv[]){
 	double allMuts[MAXMUTS];
 	MutHashEntry *hashTable[MUTATION_HASH_SIZE];
 	MutHashEntry *entry, *newEntry;
+
+	/* Sort all mutations before output generation for binary search */
+	sortAllMutations();
 
 	/* Initialize hash table */
 	for (i = 0; i < MUTATION_HASH_SIZE; i++) {
