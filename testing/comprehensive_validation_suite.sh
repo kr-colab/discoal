@@ -465,6 +465,9 @@ declare -a TEST_CASES=(
     "mutation:high_theta_2000:20 1 10000 -t 2000 -r 100:both_succeed"
     "mutation:high_theta_5000:20 1 10000 -t 5000 -r 100:both_succeed"
     "mutation:extreme_theta_10000:20 1 10000 -t 10000 -r 100:both_succeed"
+
+    # Complex case with priors
+    "complex:prior_sweep:38 1 11000 -Pt 406.0570116183964964 4060.570116183964964 -Pre 2233.3135639011807302 6699.9406917 -i 40 -ws 0 -Pa 418.61547589525412 4186.1547589525412 -Pu 0 0.001 -Pf 0 0.05 -Px 0.45454545454 0.54545454545"
 )
 
 # Initialize counters
