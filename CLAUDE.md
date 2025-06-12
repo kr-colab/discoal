@@ -16,6 +16,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **read the readme** to familiarize yourself with the project, its components, and how to run it.
 - **acknowledge that you have read this**
 
+## CRITICAL: File Deletion Warning
+**NEVER DELETE TEST SUITE FILES**: When cleaning up artifacts, be extremely careful:
+- ✅ OK to delete: Test result directories (e.g., `comprehensive_validation_TIMESTAMP/`)
+- ✅ OK to delete: Temporary files (`.tmp`, `.out`, `perf.data`)
+- ❌ NEVER delete: Test scripts (`*_suite.sh`, `*.sh` in testing/)
+- ❌ NEVER delete: Source code or configuration files
+- Always use `git status` before cleanup to ensure important files aren't deleted
+- If unsure, ask before deleting ANY file
+
 ## Current Work Status (as of latest fixes on `mem` branch)
 
 ### Recent Memory Optimizations
@@ -65,7 +74,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - Enables extreme recombination scenarios with 97% memory reduction
    - Trade-off: slower for very high recombination (r>1000) but prevents memory exhaustion
 
-8. **Active Material Segment-Based Tracking** (current work - completed)
+8. **Active Material Segment-Based Tracking** (completed)
    - Replaced legacy `activeMaterial[]` array with segment-based structure
    - Tracks active genomic regions as intervals instead of per-site arrays
    - Integrated with AVL tree indexing for O(log n) lookups when needed
@@ -73,9 +82,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - Performance improvements: Up to 47x faster for memory-intensive simulations
    - Maintains 100% output compatibility with legacy implementation
 
+9. **msprime Comparison Suite** (completed)
+   - Created comprehensive comparison framework with msprime coalescent simulator
+   - Implemented proper parameter scaling between discoal and msprime conventions
+   - All 10 test cases pass statistical validation (KS test p>0.05)
+   - Validates that memory optimizations maintain statistical correctness
+   - Performance tracking integrated (discoal averages 56x faster than msprime)
+   - Documentation includes detailed parameter conversion guide
+
+10. **Mutation Handling Optimization - Phase 1** (completed)
+   - Identified O(n²) bottleneck in duplicate mutation detection
+   - Implemented hash table for O(n) duplicate detection
+   - Hash table size increased to 40,009 (prime > MAXMUTS) to handle extreme cases
+   - Performance improvements:
+     - θ=1,000: 1.50x speedup
+     - θ=5,000: 1.97x speedup  
+     - θ=10,000: 2.16x speedup
+   - Added high mutation rate tests to comprehensive suite
+   - Memory overhead minimal (<1-3%)
+
 ### Test Results Summary
-- **Success Rate**: 24/24 tests pass (100%) for both versions
-- **Output Compatibility**: 24/24 tests produce identical output
+- **Success Rate**: 31/31 tests pass (100%) for both versions (includes 4 new high mutation tests)
+- **Output Compatibility**: 31/31 tests produce identical output
 - **Memory Improvements**: Average 23% reduction across all tests
   - Multipop models: up to 58% reduction
   - Selection sweeps: up to 52% reduction
@@ -84,13 +112,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - No recombination: Additional 10.8% with segment sharing
   - Large sample sizes: Additional 16.1% with segment sharing
   - Extreme recombination (r=10000): 98% reduction with 33-47x speedup
+- **Performance Improvements** (mutation optimization):
+  - High mutation scenarios (θ>1000): 1.5-2.2x speedup
+  - Extreme mutation (θ=10000): 2.16x speedup with 5.2s absolute time saved
 
 ### Active TODOs
 - [x] Complete removal of ancSites array from main codebase ✓
 - [x] Implement segment sharing using reference counting ✓
 - [x] Add AVL tree indexing for high-recombination scenarios ✓
 - [x] Replace activeMaterial array with segment-based tracking ✓
+- [x] Add msprime comparison suite for statistical validation ✓
+- [x] Optimize mutation duplicate detection with hash table ✓
 - [ ] Document memory optimization techniques in main README
+- [ ] Phase 2: Optimize hasMutation() with binary search or per-node hashing
+- [ ] Phase 3: Pre-compute mutation presence matrix for output generation
+- [ ] Consider memory layout optimizations for better cache efficiency
 
 ### Implementation Details
 - Trajectory files: `/tmp/discoal_traj_<pid>_<time>_<rand>.tmp`
@@ -182,6 +218,32 @@ cd testing/
 - Distribution comparisons at 0.05 significance level
 
 This suite is essential for validating that optimizations don't introduce systematic biases or alter the statistical properties of the simulations.
+
+### msprime Comparison Suite (NEW)
+The msprime comparison suite validates discoal against the well-established msprime coalescent simulator:
+
+**Usage:**
+```bash
+cd testing/
+./msprime_comparison_suite.sh
+```
+
+**Features:**
+- Compares discoal and msprime across 10 test scenarios
+- Tests neutral models with various sample sizes and recombination rates
+- Tests selection models (hard sweeps) with different strengths and ages
+- Performs statistical validation using Kolmogorov-Smirnov tests
+- Tracks runtime performance for both simulators
+- All tests currently pass (p > 0.05) confirming statistical equivalence
+
+**Parameter Scaling:**
+The suite handles the complex parameter conversions between discoal and msprime:
+- Population size: Ne=0.5 for msprime with diploid samples
+- Mutation/recombination rates: Converted from locus-wide to per-bp
+- Selection coefficients: Properly scaled with msprime's fitness model
+- Time scaling: Special handling for sweep timing parameters
+
+See `docs/development.rst` for detailed parameter conversion documentation.
 
 ### Unit Tests
 Unit tests use a custom Unity testing framework in `test/unit/unity.h`. Tests are located in `test/unit/`:

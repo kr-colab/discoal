@@ -459,6 +459,12 @@ declare -a TEST_CASES=(
     "gc:high_gc_rate:8 1 600 -t 3 -r 2 -g 5 15:both_succeed"
     "gc:short_tracts:6 1 400 -t 2 -r 1.5 -g 3 5:both_succeed"
     "gc:long_tracts:5 1 300 -t 2 -r 1 -g 2 25:both_succeed"
+    
+    # High mutation rate tests (stress test for mutation handling optimization)
+    "mutation:high_theta_1000:20 1 10000 -t 1000 -r 100:both_succeed"
+    "mutation:high_theta_2000:20 1 10000 -t 2000 -r 100:both_succeed"
+    "mutation:high_theta_5000:20 1 10000 -t 5000 -r 100:both_succeed"
+    "mutation:extreme_theta_10000:20 1 10000 -t 10000 -r 100:both_succeed"
 )
 
 # Initialize counters
