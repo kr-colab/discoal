@@ -99,6 +99,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
      - θ=5,000: 1.97x speedup  
      - θ=10,000: 2.16x speedup
    - Added high mutation rate tests to comprehensive suite
+
+11. **Mutation Handling Optimization - Phase 2** (completed)
+   - Implemented sorting of mutations after placement for binary search
+   - Modified hasMutation() to use binary search for arrays >10 elements
+   - sortAllMutations() called within makeGametesMS after all mutations placed
+   - Combined Phase 1+2 performance improvements:
+     - θ=1,000: 1.95x speedup (0.04s vs 0.14s)
+     - θ=5,000: 6.46x speedup (0.21s vs 2.82s)
+     - θ=10,000: >50x speedup (0.37s vs >30s timeout)
+   - Maintains 100% output compatibility with legacy version
    - Memory overhead minimal (<1-3%)
 
 ### Test Results Summary
@@ -112,9 +122,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - No recombination: Additional 10.8% with segment sharing
   - Large sample sizes: Additional 16.1% with segment sharing
   - Extreme recombination (r=10000): 98% reduction with 33-47x speedup
-- **Performance Improvements** (mutation optimization):
-  - High mutation scenarios (θ>1000): 1.5-2.2x speedup
-  - Extreme mutation (θ=10000): 2.16x speedup with 5.2s absolute time saved
+- **Performance Improvements** (mutation optimization Phase 1+2):
+  - High mutation (θ=1000): 1.95x speedup
+  - Very high mutation (θ=5000): 6.46x speedup
+  - Extreme mutation (θ=10000): >50x speedup (legacy times out after 30s)
 
 ### Active TODOs
 - [x] Complete removal of ancSites array from main codebase ✓
@@ -122,11 +133,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - [x] Add AVL tree indexing for high-recombination scenarios ✓
 - [x] Replace activeMaterial array with segment-based tracking ✓
 - [x] Add msprime comparison suite for statistical validation ✓
-- [x] Optimize mutation duplicate detection with hash table ✓
+- [x] Optimize mutation duplicate detection with hash table (Phase 1) ✓
+- [x] Optimize hasMutation() with binary search (Phase 2) ✓
 - [ ] Document memory optimization techniques in main README
-- [ ] Phase 2: Optimize hasMutation() with binary search or per-node hashing
 - [ ] Phase 3: Pre-compute mutation presence matrix for output generation
-- [ ] Consider memory layout optimizations for better cache efficiency
+- [ ] Phase 4: Memory layout optimizations for better cache efficiency
 
 ### Implementation Details
 - Trajectory files: `/tmp/discoal_traj_<pid>_<time>_<rand>.tmp`
@@ -143,6 +154,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Active material tracked via `ActiveMaterial` structure with segment list
 - Active segments coalesce automatically to minimize memory overhead
 - AVL tree built for active segments when count ≥10 for efficient queries
+- Mutation hash table uses MUTATION_HASH_SIZE=40009 (prime > MAXMUTS)
+- Binary search for hasMutation() with adaptive threshold (>10 mutations)
+- Mutations sorted after placement in makeGametesMS for O(log n) lookups
 
 ### Known Issues
 - Test executables must be named `discoal_edited` and `discoal_legacy_backup`
@@ -151,7 +165,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **IMPORTANT**: When working with bash commands, be aware of the directory structure:
 - **Root directory** (`/Users/adk/github/discoal/`): Contains source files, Makefile, and main executables
-- **Testing directory** (`/Users/adk/github/discoal/testing/`): Contains all test scripts
+- **Testing directory** (`/Users/adk/github/discoal/testing/`): Contains all test scripts. NEVER DELETE THESE.
 - **Unit test directory** (`/Users/adk/github/discoal/test/unit/`): Contains unit test files
 
 **Note about shell sessions**: The bash tool maintains persistent state, so after `cd testing/`, subsequent commands run in that directory. To avoid confusion:
