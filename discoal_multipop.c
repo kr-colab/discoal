@@ -367,6 +367,8 @@ int main(int argc, const char * argv[]){
 	free(currentSize);
 		free(events);
 	
+	// Clean up node arrays
+	cleanupNodeArrays();
 	
 	return(0);
 }
