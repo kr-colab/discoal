@@ -9,6 +9,7 @@ void addBreakPoint(int bp);
 void initializeMuts(rootedNode *node, int capacity);
 void ensureMutsCapacity(rootedNode *node, int requiredSize);
 void cleanupMuts(rootedNode *node);
+void cleanupNodeArrays();
 rootedNode *newRootedNode(double cTime, int popn);
 
 void coalesceAtTimePopn(double cTime, int popn);

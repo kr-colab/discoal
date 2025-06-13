@@ -2558,6 +2558,19 @@ void ensureAllNodesCapacity(int requiredSize) {
 	}
 }
 
+void cleanupNodeArrays() {
+	if (nodes != NULL) {
+		free(nodes);
+		nodes = NULL;
+		nodesCapacity = 0;
+	}
+	if (allNodes != NULL) {
+		free(allNodes);
+		allNodes = NULL;
+		allNodesCapacity = 0;
+	}
+}
+
 void addNode(rootedNode *aNode){
 	ensureNodesCapacity(alleleNumber + 1);
 	ensureAllNodesCapacity(totNodeNumber + 1);
