@@ -1,7 +1,9 @@
 #include "unity.h"
 #include "../../discoal.h"
 #include "../../discoalFunctions.h"
+#include <stdlib.h>
 
+#ifndef TEST_RUNNER_MODE
 void setUp(void) {
     // Minimal setup
     sampleSize = 10;
@@ -11,6 +13,7 @@ void setUp(void) {
 void tearDown(void) {
     // Minimal cleanup
 }
+#endif
 
 void test_basicNodeCreation(void) {
     // Test basic node allocation and initialization
@@ -23,7 +26,7 @@ void test_basicNodeCreation(void) {
     node->mutationNumber = 0;
     
     // Test that we can access the basic fields
-    TEST_ASSERT_EQUAL_DOUBLE(1.0, node->time);
+    TEST_ASSERT_EQUAL_FLOAT(1.0, node->time);
     TEST_ASSERT_EQUAL(1, node->population);
     TEST_ASSERT_EQUAL(0, node->mutationNumber);
     
@@ -42,7 +45,7 @@ void test_mutationArrayAccess(void) {
     node->muts[0] = 0.5;
     node->mutationNumber = 1;
     
-    TEST_ASSERT_EQUAL_DOUBLE(0.5, node->muts[0]);
+    TEST_ASSERT_EQUAL_FLOAT(0.5, node->muts[0]);
     TEST_ASSERT_EQUAL(1, node->mutationNumber);
     
     free(node);
@@ -66,20 +69,20 @@ void test_simpleManualMutation(void) {
     
     // Test the values
     TEST_ASSERT_EQUAL(2, node->mutationNumber);
-    TEST_ASSERT_EQUAL_DOUBLE(0.3, node->muts[0]);
-    TEST_ASSERT_EQUAL_DOUBLE(0.7, node->muts[1]);
+    TEST_ASSERT_EQUAL_FLOAT(0.3, node->muts[0]);
+    TEST_ASSERT_EQUAL_FLOAT(0.7, node->muts[1]);
     
     free(node);
 }
 
+#ifndef TEST_RUNNER_MODE
 int main(void) {
-    printf("\nRunning Mutation Tests\n");
-    printf("---------------------\n");
+    UNITY_BEGIN();
     
     RUN_TEST(test_basicNodeCreation);
     RUN_TEST(test_mutationArrayAccess);
     RUN_TEST(test_simpleManualMutation);
     
-    printf("\nAll tests passed!\n");
-    return 0;
-} 
+    return UNITY_END();
+}
+#endif 

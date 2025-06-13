@@ -81,18 +81,201 @@ discoal has a comprehensive testing framework to ensure code changes maintain co
 Unit Tests
 ^^^^^^^^^^
 
-Basic unit tests for core data structures:
+discoal has a comprehensive unit testing framework using the Unity test framework. The unit tests cover all major components of the codebase.
+
+**Running Unit Tests**
+
+To run all unit tests individually:
 
 .. code-block:: bash
 
    make run_tests
 
-This runs tests for:
+To run all tests using the unified test runner:
 
-* Node operations
-* Event handling  
-* Mutation tracking
-* Node manipulation functions
+.. code-block:: bash
+
+   make run_all_tests
+
+To run a specific test suite:
+
+.. code-block:: bash
+
+   make test_node         # Test node operations
+   make test_event        # Test event handling
+   # ... etc
+
+**Test Coverage**
+
+The unit test suite includes 77 tests across 9 test files:
+
+1. **Node Operations** (``test_node.c`` - 3 tests):
+   
+   * Node initialization and property setting
+   * Creation of new rooted nodes
+   * Basic node structure validation
+
+2. **Event Handling** (``test_event.c`` - 2 tests):
+   
+   * Event structure initialization
+   * Event property manipulation
+
+3. **Node Operations** (``test_node_operations.c`` - 4 tests):
+   
+   * Creating and destroying nodes
+   * Adding and removing nodes from active set
+   * Node selection by population
+   * Population size tracking
+
+4. **Mutation Tracking** (``test_mutations.c`` - 3 tests):
+   
+   * Basic node creation with mutations
+   * Mutation array access and manipulation
+   * Manual mutation addition
+
+5. **Ancestry Segment Trees** (``test_ancestry_segment.c`` - 13 tests):
+   
+   * Segment creation and validation
+   * Reference counting (retain/release)
+   * Shallow vs deep copying
+   * Tree merging and splitting operations
+   * Ancestry count queries
+   * NULL safety checks
+
+6. **Active Material Segments** (``test_active_segment.c`` - 12 tests):
+   
+   * Active material initialization
+   * Site activity queries
+   * Fixed region removal
+   * Segment coalescing
+   * AVL tree integration
+   * Verification functions
+
+7. **Trajectory Handling** (``test_trajectory.c`` - 12 tests):
+   
+   * Trajectory capacity management
+   * File cleanup for rejected trajectories
+   * Memory-mapped file operations
+   * Large file handling
+   * File persistence and cleanup
+   * Concurrent trajectory management
+
+8. **Coalescence and Recombination** (``test_coalescence_recombination.c`` - 11 tests):
+   
+   * Basic coalescence operations
+   * Ancestry merging during coalescence
+   * Recombination with ancestry splitting
+   * Gene conversion functionality
+   * Mutation collection for output
+   * Population-specific operations
+
+9. **Memory Management** (``test_memory_management.c`` - 17 tests):
+   
+   * Dynamic array initialization and cleanup
+   * Capacity growth for breakpoints, nodes, and mutations
+   * Stress testing with large allocations
+   * Reinitialization handling
+   * NULL pointer safety
+   * Integrated memory usage scenarios
+
+**Building Individual Tests**
+
+Each test suite can be built separately:
+
+.. code-block:: bash
+
+   make test_ancestry_segment
+   make test_memory_management
+   # etc.
+
+**Test Development**
+
+When adding new functionality:
+
+1. Create a new test file in ``test/unit/`` following the naming convention ``test_<component>.c``
+2. Include the Unity framework headers
+3. Write setUp() and tearDown() functions for test fixtures
+4. Add test functions following the pattern ``test_<functionality>_<scenario>()``
+5. Update the Makefile with build rules for the new test
+6. Add the test to ``test_runner.c`` for unified execution
+
+**Debugging Tests**
+
+To debug a failing test:
+
+.. code-block:: bash
+
+   # Build with debug symbols
+   gcc -g -O0 -I. -I./test/unit -o test_name test/unit/test_name.c test/unit/unity.c \
+       discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c \
+       ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
+   
+   # Run with gdb
+   gdb ./test_name
+
+**Unity Test Framework**
+
+The tests use the official Unity test framework (https://github.com/ThrowTheSwitch/Unity) which provides:
+
+* Rich assertion macros (TEST_ASSERT_EQUAL, TEST_ASSERT_FLOAT_WITHIN, etc.)
+* Automatic test discovery and execution
+* Clear failure messages with file and line information
+* Test fixtures with setUp/tearDown support
+
+The framework files are located in ``test/unit/``:
+* ``unity.h`` - Main header file
+* ``unity.c`` - Implementation
+* ``unity_internals.h`` - Internal definitions
+
+**Quick Testing Reference**
+
+Common testing commands during development:
+
+.. code-block:: bash
+
+   # Run all unit tests
+   make run_all_tests
+   
+   # Run specific test suite
+   make test_memory_management && ./test_memory_management
+   
+   # Clean and rebuild all tests
+   make clean && make run_tests
+   
+   # Quick validation during development
+   cd testing/ && ./focused_validation_suite.sh
+   
+   # Full validation before commits
+   cd testing/ && ./comprehensive_validation_suite.sh
+   
+   # Statistical validation (if needed)
+   cd testing/ && ./statistical_validation_suite.sh
+   
+   # Run comprehensive tests (optimized vs legacy from master-backup)
+   make test_comprehensive
+   
+   # Run comprehensive tests (current working dir vs HEAD of branch)
+   make test_comprehensive_head
+
+**Make Targets for Comprehensive Testing**
+
+The Makefile provides convenient targets that build the required binaries and run the comprehensive test suite:
+
+* ``make test_comprehensive``: 
+  
+  * Builds ``discoal_edited`` (optimized version from current working directory)
+  * Builds ``discoal_legacy_backup`` from the ``master-backup`` branch
+  * Runs the comprehensive validation suite comparing these two versions
+  * Use this to ensure your optimizations maintain compatibility with the original implementation
+
+* ``make test_comprehensive_head``:
+  
+  * Builds ``discoal_edited`` (optimized version from current working directory)
+  * Builds ``discoal_legacy_backup`` from HEAD of the current branch
+  * Runs the comprehensive validation suite comparing working changes against the last commit
+  * Use this to measure performance improvements of uncommitted changes
+
+These targets automatically handle the complex process of building from different sources and are the recommended way to run comprehensive tests during development.
 
 Comprehensive Validation Suite
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
