@@ -110,7 +110,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
      - θ=10,000: >50x speedup (0.37s vs >30s timeout)
    - Maintains 100% output compatibility with legacy version
 
-12. **Mutation Handling Optimization - Phase 3** (current work - completed)
+12. **Mutation Handling Optimization - Phase 3** (completed)
    - Pre-compute mutation presence matrix for output generation
    - Eliminates O(n×m) ancestry lookups during output phase
    - Single pre-computation pass stores results in char matrix
@@ -120,6 +120,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
      - Most effective with large sample sizes and many segregating sites
    - Minimal memory overhead (temporary sampleSize × mutNumber bytes)
    - Memory overhead minimal (<1-3%)
+
+13. **Comprehensive Unit Test Framework** (completed)
+   - Migrated from custom Unity implementation to official Unity framework
+   - Created unified test runner for all unit tests
+   - Added 5 new test suites with 46 additional tests:
+     - Ancestry segment tests (13 tests): Tree operations, reference counting, splitting/merging
+     - Active segment tests (12 tests): Active material tracking, fixed region removal
+     - Trajectory tests (12 tests): Memory-mapped files, cleanup, persistence
+     - Coalescence/recombination tests (11 tests): Core simulation operations
+     - Memory management tests (17 tests): Dynamic arrays, capacity growth, stress testing
+   - Total test coverage: 77 unit tests across 9 test files
+   - All tests integrated into Makefile with individual and unified execution options
+   - Updated development documentation with comprehensive testing guide
 
 ### Test Results Summary
 - **Success Rate**: 31/31 tests pass (100%) for both versions (includes 4 new high mutation tests)
@@ -274,11 +287,21 @@ The suite handles the complex parameter conversions between discoal and msprime:
 See `docs/development.rst` for detailed parameter conversion documentation.
 
 ### Unit Tests
-Unit tests use a custom Unity testing framework in `test/unit/unity.h`. Tests are located in `test/unit/`:
-- `test_node.c` - Tests rootedNode structure operations
-- `test_mutations.c` - Tests mutation handling
-- `test_event.c` - Tests event structure
-- `test_node_operations.c` - Tests node operations
+Unit tests use the official Unity testing framework (https://github.com/ThrowTheSwitch/Unity). Tests are located in `test/unit/`:
+- `test_node.c` - Tests rootedNode structure operations (3 tests)
+- `test_event.c` - Tests event structure (2 tests)
+- `test_node_operations.c` - Tests node operations (4 tests)
+- `test_mutations.c` - Tests mutation handling (3 tests)
+- `test_ancestry_segment.c` - Tests ancestry segment trees (13 tests)
+- `test_active_segment.c` - Tests active material tracking (12 tests)
+- `test_trajectory.c` - Tests trajectory file handling (12 tests)
+- `test_coalescence_recombination.c` - Tests core simulation operations (11 tests)
+- `test_memory_management.c` - Tests memory management functions (17 tests)
+
+**Running unit tests:**
+- `make run_tests` - Run all tests individually
+- `make run_all_tests` - Run all tests with unified runner
+- `make test_<name>` - Build and run specific test suite
 
 ### Legacy Integration Tests
 Bash scripts in root directory test different aspects:

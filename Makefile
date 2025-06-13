@@ -98,29 +98,57 @@ test: alleleTrajTest.c alleleTraj.c alleleTraj.h discoalFunctions.c
 	$(CC) $(CFLAGS)  -o alleleTrajTest alleleTrajTest.c alleleTraj.c ranlibComplete.c discoalFunctions.c -lm
 
 # unit tests
-test_node: test/unit/test_node.c discoalFunctions.c ranlibComplete.c alleleTraj.c discoal.h discoalFunctions.h
-	$(CC) $(TEST_CFLAGS) -o test_node test/unit/test_node.c discoalFunctions.c ranlibComplete.c alleleTraj.c -lm
+test_node: test/unit/test_node.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c discoal.h discoalFunctions.h
+	$(CC) $(TEST_CFLAGS) -o test_node test/unit/test_node.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
 
-test_event: test/unit/test_event.c discoal.h
-	$(CC) $(TEST_CFLAGS) -o test_event test/unit/test_event.c -lm
+test_event: test/unit/test_event.c test/unit/unity.c discoal.h
+	$(CC) $(TEST_CFLAGS) -o test_event test/unit/test_event.c test/unit/unity.c -lm -fcommon
 
-test_node_operations: test/unit/test_node_operations.c discoalFunctions.c ranlibComplete.c alleleTraj.c discoal.h discoalFunctions.h
-	$(CC) $(TEST_CFLAGS) -o test_node_operations test/unit/test_node_operations.c discoalFunctions.c ranlibComplete.c alleleTraj.c -lm
+test_node_operations: test/unit/test_node_operations.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c discoal.h discoalFunctions.h
+	$(CC) $(TEST_CFLAGS) -o test_node_operations test/unit/test_node_operations.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
 
-test_mutations: test/unit/test_mutations.c discoalFunctions.c ranlibComplete.c alleleTraj.c discoal.h discoalFunctions.h
-	$(CC) $(TEST_CFLAGS) -o test_mutations test/unit/test_mutations.c discoalFunctions.c ranlibComplete.c alleleTraj.c -lm
+test_mutations: test/unit/test_mutations.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c discoal.h discoalFunctions.h
+	$(CC) $(TEST_CFLAGS) -o test_mutations test/unit/test_mutations.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
 
-run_tests: test_node test_event test_node_operations test_mutations
+test_ancestry_segment: test/unit/test_ancestry_segment.c test/unit/unity.c ancestrySegment.c ancestrySegmentAVL.c ancestrySegment.h
+	$(CC) $(TEST_CFLAGS) -o test_ancestry_segment test/unit/test_ancestry_segment.c test/unit/unity.c ancestrySegment.c ancestrySegmentAVL.c -lm -fcommon
+
+test_active_segment: test/unit/test_active_segment.c test/unit/unity.c activeSegment.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.h ancestrySegment.h discoal.h
+	$(CC) $(TEST_CFLAGS) -o test_active_segment test/unit/test_active_segment.c test/unit/unity.c activeSegment.c ancestrySegment.c ancestrySegmentAVL.c -lm -fcommon
+
+test_trajectory: test/unit/test_trajectory.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c discoal.h discoalFunctions.h
+	$(CC) $(TEST_CFLAGS) -o test_trajectory test/unit/test_trajectory.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
+
+test_coalescence_recombination: test/unit/test_coalescence_recombination.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c discoal.h discoalFunctions.h
+	$(CC) $(TEST_CFLAGS) -o test_coalescence_recombination test/unit/test_coalescence_recombination.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
+
+test_memory_management: test/unit/test_memory_management.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c discoal.h discoalFunctions.h
+	$(CC) $(TEST_CFLAGS) -o test_memory_management test/unit/test_memory_management.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
+
+# Unified test runner
+test_runner: test/unit/test_runner.c test/unit/test_node.c test/unit/test_event.c test/unit/test_node_operations.c test/unit/test_mutations.c test/unit/test_ancestry_segment.c test/unit/test_active_segment.c test/unit/test_trajectory.c test/unit/test_coalescence_recombination.c test/unit/test_memory_management.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c discoal.h discoalFunctions.h
+	$(CC) $(TEST_CFLAGS) -DTEST_RUNNER_MODE -o test_runner test/unit/test_runner.c test/unit/test_node.c test/unit/test_event.c test/unit/test_node_operations.c test/unit/test_mutations.c test/unit/test_ancestry_segment.c test/unit/test_active_segment.c test/unit/test_trajectory.c test/unit/test_coalescence_recombination.c test/unit/test_memory_management.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
+
+run_tests: test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_coalescence_recombination test_memory_management
 	./test_node || exit 1
 	./test_event || exit 1
 	./test_node_operations || exit 1
 	./test_mutations || exit 1
+	./test_ancestry_segment || exit 1
+	./test_active_segment || exit 1
+	./test_trajectory || exit 1
+	./test_coalescence_recombination || exit 1
+	./test_memory_management || exit 1
+
+# Run all tests using the unified runner
+run_all_tests: test_runner
+	./test_runner
 
 #
 # clean
 #
 
 clean:
-	rm -f discoal discoal_edited discoal_legacy_backup *.o test_node test_event test_node_operations test_mutations alleleTrajTest
+	rm -f discoal discoal_edited discoal_legacy_backup *.o test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_coalescence_recombination test_memory_management test_runner alleleTrajTest
 	rm -f discoaldoc.aux discoaldoc.bbl discoaldoc.blg discoaldoc.log discoaldoc.out
 
