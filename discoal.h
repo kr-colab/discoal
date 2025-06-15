@@ -155,5 +155,9 @@ int ancSampleTime;
 
 int hidePartialSNP;
 
+// Tree sequence recording
+int tskitOutputMode;
+char tskitOutputFilename[1024];
+
 
 #endif

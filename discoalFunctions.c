@@ -16,6 +16,7 @@
 #include "discoalFunctions.h"
 #include "ranlib.h"
 #include "alleleTraj.h"
+#include "tskitInterface.h"
 
 
 // Initial capacity for breakPoints array
@@ -92,6 +93,13 @@ void initialize(){
 			if(p>0)nodes[count]->sweepPopn = 0;
 			nodes[count]->id=leafID++;
 			allNodes[count] = nodes[count];
+			
+			// Record sample node in tskit
+			if (tskitOutputMode) {
+				tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
+				set_tskit_node_id_at_index(count, tsk_id);
+			}
+			
 			count += 1;
 		}
 	}
@@ -375,6 +383,42 @@ void coalesceAtTimePopn(double cTime, int popn){
 	// Update stats from tree when in tree-only mode
 	updateAncestryStatsFromTree(temp);
 	
+	// Add the parent node to discoal's arrays and tskit BEFORE recording edges
+	addNode(temp);
+	
+	// Record edges in tskit for each ancestry segment
+	if (tskitOutputMode) {
+		// Get tskit IDs for all nodes involved in coalescence  
+		tsk_id_t parent_tsk_id = get_tskit_node_id(temp);
+		tsk_id_t lchild_tsk_id = get_tskit_node_id(lChild);
+		tsk_id_t rchild_tsk_id = get_tskit_node_id(rChild);
+		
+		fprintf(stderr, "Coalescence: parent_tsk_id=%lld, lchild_tsk_id=%lld, rchild_tsk_id=%lld\n", 
+			(long long)parent_tsk_id, (long long)lchild_tsk_id, (long long)rchild_tsk_id);
+		
+		if (parent_tsk_id != TSK_NULL) {
+			// Add edges for left child's ancestry segments
+			AncestrySegment *seg = lChild->ancestryRoot;
+			while (seg) {
+				if (lchild_tsk_id != TSK_NULL) {
+					tskit_add_edges(parent_tsk_id, lchild_tsk_id, 
+						(double)seg->start / nSites, (double)seg->end / nSites);
+				}
+				seg = seg->next;
+			}
+			
+			// Add edges for right child's ancestry segments
+			seg = rChild->ancestryRoot;
+			while (seg) {
+				if (rchild_tsk_id != TSK_NULL) {
+					tskit_add_edges(parent_tsk_id, rchild_tsk_id,
+						(double)seg->start / nSites, (double)seg->end / nSites);
+				}
+				seg = seg->next;
+			}
+		}
+	}
+	
 	// Verify consistency in debug mode
 	#ifdef DEBUG_ANCESTRY
 	if (!verifyAncestryConsistency(temp, nSites)) {
@@ -385,8 +429,7 @@ void coalesceAtTimePopn(double cTime, int popn){
 	
 	//printNode(temp);
 	//printf("coal-> lChild: %u rChild: %u parent: %u time: %f\n",lChild,rChild,temp,cTime);
-	addNode(temp);
-	//update active anc. material
+	//update active anc. material (addNode was moved earlier)
 	updateActiveMaterial(temp);
 	//popnSizes[popn]--; //decrese popnSize	
 }
@@ -1947,6 +1990,13 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	int i;
 
 	temp = newRootedNode(cTime,popn);
+	
+	// Record parent node in tskit
+	tsk_id_t parent_tsk_id = TSK_NULL;
+	if (tskitOutputMode) {
+		parent_tsk_id = tskit_add_node(cTime, popn, 0);  // is_sample=0
+		set_tskit_node_id(temp, parent_tsk_id);
+	}
 
 	lChild = pickNodePopnSweep(popn,sp);
 	temp->leftChild = lChild;
@@ -1967,6 +2017,32 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	temp->rLim = 0;
 	// Merge ancestry segment trees
 	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
+	
+	// Record edges in tskit for each ancestry segment
+	if (tskitOutputMode && parent_tsk_id != TSK_NULL) {
+		// Add edges for left child's ancestry segments
+		AncestrySegment *seg = lChild->ancestryRoot;
+		tsk_id_t lchild_tsk_id = get_tskit_node_id(lChild);
+		while (seg) {
+			if (lchild_tsk_id != TSK_NULL) {
+				tskit_add_edges(parent_tsk_id, lchild_tsk_id, 
+					(double)seg->start / nSites, (double)seg->end / nSites);
+			}
+			seg = seg->next;
+		}
+		
+		// Add edges for right child's ancestry segments
+		seg = rChild->ancestryRoot;
+		tsk_id_t rchild_tsk_id = get_tskit_node_id(rChild);
+		while (seg) {
+			if (rchild_tsk_id != TSK_NULL) {
+				tskit_add_edges(parent_tsk_id, rchild_tsk_id,
+					(double)seg->start / nSites, (double)seg->end / nSites);
+			}
+			seg = seg->next;
+		}
+	}
+	
 	// Update stats from tree when in tree-only mode
 	updateAncestryStatsFromTree(temp);
 	//printNode(temp);
@@ -2577,6 +2653,15 @@ void addNode(rootedNode *aNode){
 	
 	nodes[alleleNumber] = aNode;
 	allNodes[totNodeNumber] = aNode;
+	
+	// Record node in tskit when it's added to the simulation
+	if (tskitOutputMode) {
+		tsk_id_t tsk_id = tskit_add_node(aNode->time, aNode->population, 0);  // is_sample=0
+		fprintf(stderr, "addNode: Created tskit node %lld for node %p at totNodeNumber=%d\n", 
+			(long long)tsk_id, (void*)aNode, totNodeNumber);
+		set_tskit_node_id_at_index(totNodeNumber, tsk_id);
+	}
+	
 	alleleNumber += 1;
 	totNodeNumber += 1;
 	popnSizes[aNode->population]+=1;
