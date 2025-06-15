@@ -22,6 +22,7 @@
 #include "discoal.h"
 #include "discoalFunctions.h"
 #include "alleleTraj.h"
+#include "tskitInterface.h"
 
 
 
@@ -107,6 +108,16 @@ int main(int argc, const char * argv[]){
 //		printf("popnsize[0]:%d",popnSizes[0]);
 		maxTrajSteps = trajectoryCapacity;
 		
+		// Initialize tskit if output mode is enabled (must be before initialize())
+		if (tskitOutputMode && i == 0) {  // Only initialize on first replicate
+			fprintf(stderr, "Initializing tskit with sequence length %d\n", nSites);
+			int ret = tskit_initialize((double)nSites);
+			if (ret != 0) {
+				fprintf(stderr, "Error initializing tskit: %s\n", tsk_strerror(ret));
+				exit(1);
+			}
+			fprintf(stderr, "tskit initialized successfully\n");
+		}
 		
 		
 		initialize();
@@ -364,6 +375,16 @@ int main(int argc, const char * argv[]){
 		}
 	}
 	
+	// Finalize and write tskit tree sequence
+	if (tskitOutputMode) {
+		fprintf(stderr, "Writing tree sequence to %s\n", tskitOutputFilename);
+		int ret = tskit_finalize(tskitOutputFilename);
+		if (ret != 0) {
+			fprintf(stderr, "Error writing tree sequence: %s\n", tsk_strerror(ret));
+		}
+		tskit_cleanup();
+	}
+	
 	free(currentSize);
 		free(events);
 	
@@ -439,6 +460,8 @@ void getParameters(int argc,const char **argv){
 	ancSampleFlag = 0;
 	ancSampleSize = 0;
 	hidePartialSNP = 0;
+	tskitOutputMode = 0;
+	tskitOutputFilename[0] = '\0';
 	
 	// Initialize events array with initial capacity
 	eventsCapacity = 50;  // Start with reasonable capacity
@@ -468,7 +491,13 @@ void getParameters(int argc,const char **argv){
 			segSites =  atoi(argv[++args]);
 			break;
 			case 't' :
-			theta = atof(argv[++args]);
+			if (argv[args][2] == 's') {  // -ts flag for tree sequence
+				tskitOutputMode = 1;
+				strcpy(tskitOutputFilename, argv[++args]);
+			}
+			else {  // -t flag for theta
+				theta = atof(argv[++args]);
+			}
 			break;
 			case 'i' :
 			deltaTMod = atof(argv[++args]);
@@ -844,6 +873,7 @@ void usage(){
 	fprintf(stderr,"\t -L rhhRate (recurrent hitch hiking mode to the side of locus; leftRho is ~Unif(0,4Ns); rhh is rate per 2N individuals / generation)\n");
 	fprintf(stderr,"\t -h (hide selected SNP in partial sweep mode)\n");
 	fprintf(stderr,"\t -T (tree output mode)\n");
+	fprintf(stderr,"\t -ts filename (tree sequence output mode - saves to tskit file)\n");
 	fprintf(stderr,"\t -d seed1 seed2 (set random number generator seeds)\n");
 	
 	exit(1);
