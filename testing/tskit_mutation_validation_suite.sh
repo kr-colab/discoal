@@ -1,7 +1,7 @@
 #!/bin/bash
 #
-# Comprehensive validation suite for tskit mutation placement algorithms
-# Tests both node-based (RNG-compatible) and edge-based algorithms
+# Comprehensive validation suite for tskit mutation placement algorithm
+# Tests the edge-based mutation placement algorithm
 #
 
 set -e  # Exit on error
@@ -48,13 +48,8 @@ run_test() {
     
     echo -n "  Testing $test_name... "
     
-    if [ "$algo" == "node" ]; then
-        export DISCOAL_TSKIT_MUTATION_ALGO=node
-    elif [ "$algo" == "edge" ]; then
-        export DISCOAL_TSKIT_MUTATION_ALGO=edge
-    else
-        unset DISCOAL_TSKIT_MUTATION_ALGO
-    fi
+    # Edge-based algorithm is now the only option
+    unset DISCOAL_TSKIT_MUTATION_ALGO
     
     # Run with fixed seed for reproducibility
     ./discoal $SAMPLE_SIZE $REPLICATES $SEQUENCE_LENGTH -t $THETA -r $RECOMB \
@@ -74,7 +69,6 @@ run_test() {
 echo ""
 echo "Test 1: Basic mutation placement"
 echo "--------------------------------"
-run_test "basic" "node" ""
 run_test "basic" "edge" ""
 run_test "basic" "default" ""
 
@@ -82,28 +76,24 @@ run_test "basic" "default" ""
 echo ""
 echo "Test 2: No recombination (single tree)"
 echo "--------------------------------------"
-run_test "no_recomb" "node" "-r 0"
 run_test "no_recomb" "edge" "-r 0"
 
 # Test 3: High recombination
 echo ""
 echo "Test 3: High recombination rate"
 echo "-------------------------------"
-run_test "high_recomb" "node" "-r 100"
 run_test "high_recomb" "edge" "-r 100"
 
 # # Test 4: Multiple populations
 echo ""
 echo "Test 4: Multiple populations"
 echo "----------------------------"
-run_test "multipop" "node" "-I 2 10 10 0.1"
 run_test "multipop" "edge" "-I 2 10 10 0.1"
 
 # # Test 5: Selection
 echo ""
 echo "Test 5: Selection (sweep)"
 echo "------------------------"
-run_test "selection" "node" "-ws 0.1 -a 100 -x 0.5"
 run_test "selection" "edge" "-ws 0.1 -a 100 -x 0.5"
 
 # Compare outputs
@@ -144,10 +134,10 @@ def analyze_ms_file(filename):
     return None
 
 def analyze_test(test_name, outdir):
-    """Analyze a specific test comparing node vs edge algorithms"""
+    """Analyze a specific test for edge algorithm"""
     results = {}
     
-    for algo in ["node", "edge", "default"]:
+    for algo in ["edge", "default"]:
         ms_file = f"{outdir}/{test_name}_{algo}.ms"
         ms_results = analyze_ms_file(ms_file)
         if ms_results:
@@ -164,33 +154,22 @@ def print_comparison(test_name, results):
         print("  No results found")
         return
     
-    # Check if default matches node-based
-    if "default" in results and "node" in results:
-        if results["default"]["total_sites"] == results["node"]["total_sites"]:
-            print("  ✓ Default correctly uses node-based algorithm")
+    # Check if default matches edge-based
+    if "default" in results and "edge" in results:
+        if results["default"]["total_sites"] == results["edge"]["total_sites"]:
+            print("  ✓ Default correctly uses edge-based algorithm")
         else:
-            print("  ✗ WARNING: Default doesn't match node-based!")
+            print("  ✗ WARNING: Default doesn't match edge-based!")
     
-    # Compare node vs edge
-    if "node" in results and "edge" in results:
-        node_avg = results["node"]["average_sites"]
+    # Show edge results
+    if "edge" in results:
         edge_avg = results["edge"]["average_sites"]
-        node_total = results["node"]["total_sites"]
         edge_total = results["edge"]["total_sites"]
         
-        diff_pct = (edge_avg - node_avg) / max(node_avg, 1) * 100
-        
-        print(f"  Node-based: {results['node']['num_replicates']} replicates")
-        print(f"    Average mutations: {node_avg:.1f}")
-        print(f"    Range: [{results['node']['min_sites']}, {results['node']['max_sites']}]")
         print(f"  Edge-based: {results['edge']['num_replicates']} replicates")  
         print(f"    Average mutations: {edge_avg:.1f}")
         print(f"    Range: [{results['edge']['min_sites']}, {results['edge']['max_sites']}]")
-        print(f"  Difference: {diff_pct:+.1f}%")
-        
-        # Statistical check - they should be similar on average
-        if abs(diff_pct) > 50:
-            print("  ⚠ Large difference detected - may indicate an issue")
+        print(f"    Total mutations: {edge_total}")
 
 # Main analysis
 if __name__ == "__main__":
@@ -198,7 +177,7 @@ if __name__ == "__main__":
     
     tests = ["basic", "no_recomb", "high_recomb", "multipop", "selection"]
     
-    print("\nTSKIT MUTATION ALGORITHM COMPARISON")
+    print("\nTSKIT MUTATION ALGORITHM VALIDATION")
     print("=" * 50)
     
     all_results = {}
@@ -214,28 +193,22 @@ if __name__ == "__main__":
     
     total_tests = len(all_results)
     defaults_match = sum(1 for r in all_results.values() 
-                        if "default" in r and "node" in r 
-                        and r["default"]["total_sites"] == r["node"]["total_sites"])
+                        if "default" in r and "edge" in r 
+                        and r["default"]["total_sites"] == r["edge"]["total_sites"])
     
     print(f"Total tests run: {total_tests}")
-    print(f"Default algorithm matches node-based: {defaults_match}/{total_tests}")
+    print(f"Default algorithm matches edge-based: {defaults_match}/{total_tests}")
     
-    # Check for systematic differences
-    diffs = []
+    # Show aggregate statistics for edge-based algorithm
+    all_sites = []
     for test, results in all_results.items():
-        if "node" in results and "edge" in results:
-            node_avg = results["node"]["average_sites"]
-            edge_avg = results["edge"]["average_sites"]
-            if node_avg > 0:
-                diffs.append((edge_avg - node_avg) / node_avg)
+        if "edge" in results:
+            all_sites.append(results["edge"]["average_sites"])
     
-    if diffs:
-        mean_diff = sum(diffs) / len(diffs) * 100
-        print(f"\nMean difference (edge vs node): {mean_diff:.1f}%")
-        if abs(mean_diff) < 5:
-            print("✓ Algorithms produce statistically similar results")
-        else:
-            print("⚠ Algorithms show systematic differences")
+    if all_sites:
+        print(f"\nEdge-based algorithm statistics across all tests:")
+        print(f"  Mean mutations per test: {sum(all_sites)/len(all_sites):.1f}")
+        print(f"  Range: [{min(all_sites):.1f}, {max(all_sites):.1f}]")
 EOF
 
 chmod +x "$OUTDIR/analyze_results.py"

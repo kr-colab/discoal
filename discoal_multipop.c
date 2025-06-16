@@ -303,23 +303,10 @@ int main(int argc, const char * argv[]){
 			// Use direct mutation placement on tskit edges
 			extern double theta;
 			if (untilMode==0) {
-				// Use environment variable to choose mutation algorithm
-				// Default to node-based for RNG compatibility
-				const char *mut_algo = getenv("DISCOAL_TSKIT_MUTATION_ALGO");
-				int use_edge_based = (mut_algo != NULL && strcmp(mut_algo, "edge") == 0);
-				
-				if (use_edge_based) {
-					// Use msprime-style edge-based algorithm
-					if (tskit_place_mutations_edge_based(theta) < 0) {
-						fprintf(stderr, "Error: Failed to place mutations using edge-based algorithm\n");
-						exit(1);
-					}
-				} else {
-					// Use node-based algorithm for RNG compatibility (default)
-					if (tskit_place_mutations_node_based(theta) < 0) {
-						fprintf(stderr, "Error: Failed to place mutations using node-based algorithm\n");
-						exit(1);
-					}
+				// Use edge-based algorithm for tskit mutations
+				if (tskit_place_mutations_edge_based(theta) < 0) {
+					fprintf(stderr, "Error: Failed to place mutations in tskit\n");
+					exit(1);
 				}
 				
 				// Only populate discoal mutation arrays if we need ms output
