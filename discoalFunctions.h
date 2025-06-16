@@ -5,6 +5,14 @@ void initialize();
 void initializeBreakPoints();
 void ensureBreakPointsCapacity();
 void cleanupBreakPoints();
+
+#ifdef USE_TSKIT_ONLY
+// Sample node tracking functions for tskit-only optimization
+void initializeSampleNodeIds();
+void ensureSampleNodeCapacity(int required_size);
+void addSampleNodeId(tsk_id_t tskit_node_id);
+void cleanupSampleNodeIds();
+#endif
 void addBreakPoint(int bp);
 void initializeMuts(rootedNode *node, int capacity);
 void ensureMutsCapacity(rootedNode *node, int requiredSize);
@@ -35,6 +43,12 @@ int hasMutation(rootedNode *aNode, double site);
 void sortNodeMutations(rootedNode *node);
 void sortAllMutations();
 void makeGametesMS(int argc,const char *argv[]);
+
+#ifdef USE_TSKIT_ONLY
+void makeGametesMS_tskit(int argc, const char *argv[]);
+#endif
+
+
 void dropMutationsRecurse();
 void recurseTreePushMutation(rootedNode *aNode, float site);
 void errorCheckMutations();

@@ -151,11 +151,49 @@ run_tests: test_node test_event test_node_operations test_mutations test_ancestr
 run_all_tests: test_runner
 	./test_runner
 
+# Build discoal with tskit-only optimization enabled (Phase 1: Infrastructure only)
+discoal_tskit_only: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h ancestryVerify.c ancestryVerify.h activeSegment.c activeSegment.h tskitInterface.c tskitInterface.h $(TSKIT_SOURCES)
+	@echo "Phase 1: Building with tskit-only infrastructure (not fully functional yet)"
+	$(CC) $(CFLAGS) -DUSE_TSKIT_ONLY -o discoal_tskit_only discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c tskitInterface.c $(TSKIT_SOURCES) -lm -fcommon
+
+# Build both current and tskit-only versions for comparison testing
+tskit_only_binaries: discoal discoal_tskit_only
+	@echo "Built both current and tskit-only versions for comparison testing"
+
+# Run the tskit-only optimization validation suite
+test_tskit_only: tskit_only_binaries
+	@echo "Running tskit-only optimization validation suite..."
+	cd testing && ./tskit_only_validation_suite.sh
+
+# Run tskit-only validation with custom replicate count
+test_tskit_only_reps: tskit_only_binaries
+	@echo "Running tskit-only validation with custom replicate count..."
+	@read -p "Enter number of replicates (default 50): " reps; \
+	reps=$${reps:-50}; \
+	echo "Running with $$reps replicates..."; \
+	cd testing && ./tskit_only_validation_suite.sh $$reps
+
+# Quick tskit-only test with minimal replicates
+test_tskit_only_quick: tskit_only_binaries
+	@echo "Running quick tskit-only validation (10 replicates)..."
+	cd testing && ./tskit_only_validation_suite.sh 10
+
+# Memory profiling test for tskit-only optimization
+profile_tskit_only_memory: tskit_only_binaries
+	@echo "Profiling memory usage: current vs tskit-only..."
+	@echo "Testing large simulation to demonstrate memory savings..."
+	@echo ""
+	@echo "=== Current Implementation ==="
+	/usr/bin/time -v ./discoal 1000 1 100000 -t 200 -r 100 > /dev/null 2>&1 || true
+	@echo ""
+	@echo "=== Tskit-Only Implementation ==="
+	USE_TSKIT_ONLY=1 /usr/bin/time -v ./discoal_tskit_only 1000 1 100000 -t 200 -r 100 > /dev/null 2>&1 || true
+
 #
 # clean
 #
 
 clean:
-	rm -f discoal discoal_edited discoal_legacy_backup *.o test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_coalescence_recombination test_memory_management test_runner alleleTrajTest
+	rm -f discoal discoal_edited discoal_legacy_backup discoal_tskit_only *.o test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_coalescence_recombination test_memory_management test_runner alleleTrajTest
 	rm -f discoaldoc.aux discoaldoc.bbl discoaldoc.blg discoaldoc.log discoaldoc.out
 
