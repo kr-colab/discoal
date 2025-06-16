@@ -105,14 +105,15 @@ tsk_id_t tskit_add_node(double time, int population, int is_sample) {
     
     node_id = tsk_node_table_add_row(&tsk_tables->nodes, 
                                      flags, 
-                                     time, 
+                                     time / 2.0,  // Scale time by 0.5 to match msprime convention
                                      tsk_population, 
                                      TSK_NULL,  // individual
                                      NULL, 0);  // metadata
     
     // Debug output
     if (is_sample) {
-        fprintf(stderr, "Added sample node %lld: time=%f, pop=%d\n", (long long)node_id, time, tsk_population);
+        fprintf(stderr, "Added sample node %lld: time=%f (scaled=%f), pop=%d\n", 
+                (long long)node_id, time, time / 2.0, tsk_population);
     }
     
     return node_id;
@@ -132,8 +133,10 @@ int tskit_add_edges(tsk_id_t parent, tsk_id_t child, double left, double right) 
                                  NULL, 0);  // metadata
     
     // Debug output
-    fprintf(stderr, "Added edge: parent=%lld, child=%lld, left=%f, right=%f\n", 
-            (long long)parent, (long long)child, left, right);
+    if (right - left < 0.0001) {
+        fprintf(stderr, "WARNING: Very small edge interval: parent=%lld, child=%lld, left=%.10f, right=%.10f, length=%.10f\n", 
+                (long long)parent, (long long)child, left, right, right - left);
+    }
     
     return ret;
 }
@@ -183,14 +186,18 @@ int tskit_finalize(const char *filename) {
         return -1;
     }
     
-    // Sort tables
+    
+    // Sort tables (required for valid tree sequences)
     ret = tsk_table_collection_sort(tsk_tables, NULL, 0);
     if (ret != 0) {
         fprintf(stderr, "Error sorting tables: %s\n", tsk_strerror(ret));
         return ret;
     }
     
-    // Build index
+    // Note: We're not simplifying because with recombination, it's natural
+    // to have multiple roots - different genomic regions may not fully coalesce
+    
+    // Build index after simplification
     ret = tsk_table_collection_build_index(tsk_tables, 0);
     if (ret != 0) {
         fprintf(stderr, "Error building index: %s\n", tsk_strerror(ret));
