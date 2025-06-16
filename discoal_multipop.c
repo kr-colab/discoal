@@ -299,17 +299,33 @@ int main(int argc, const char * argv[]){
 		//assign root
 	//	root = nodes[0];
 		//add Mutations
-		if(untilMode==0)
-			dropMutations();
-		else
-			dropMutationsUntilTime(uTime);	
-		
-		// Record mutations in tskit if in tree sequence mode
 		if (tskitOutputMode) {
-			if (tskit_record_mutations() < 0) {
-				fprintf(stderr, "Error: Failed to record mutations in tskit\n");
-				exit(1);
+			// Use direct mutation placement on tskit edges
+			extern double theta;
+			if (untilMode==0) {
+				if (tskit_place_mutations_directly(theta) < 0) {
+					fprintf(stderr, "Error: Failed to place mutations directly in tskit\n");
+					exit(1);
+				}
+				// Populate discoal mutation arrays for ms output compatibility
+				if (tskit_populate_discoal_mutations() < 0) {
+					fprintf(stderr, "Error: Failed to populate discoal mutations from tskit\n");
+					exit(1);
+				}
+			} else {
+				// For untilMode, still use traditional approach for now
+				dropMutationsUntilTime(uTime);
+				if (tskit_record_mutations() < 0) {
+					fprintf(stderr, "Error: Failed to record mutations in tskit\n");
+					exit(1);
+				}
 			}
+		} else {
+			// Traditional discoal mutation placement
+			if(untilMode==0)
+				dropMutations();
+			else
+				dropMutationsUntilTime(uTime);	
 		}
 
 		if(condRecMode == 0){

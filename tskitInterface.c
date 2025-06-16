@@ -5,7 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <math.h>
 #include "tskitInterface.h"
+#include "ranlib.h"
 
 // Global tskit table collection
 tsk_table_collection_t *tsk_tables = NULL;
@@ -349,5 +351,218 @@ int tskit_record_mutations(void) {
     free(site_ids);
     
     // fprintf(stderr, "Successfully recorded %d sites with mutations in tskit\n", num_sites);
+    return 0;
+}
+
+// Place mutations directly on tskit edges (alternative to dropMutations)
+int tskit_place_mutations_directly(double theta) {
+    if (tsk_tables == NULL) {
+        return -1;
+    }
+    
+    extern int totNodeNumber;
+    extern rootedNode **allNodes;
+    extern int nSites;
+    
+    // Arrays to track created sites for mutation placement
+    double *site_positions = malloc(sizeof(double) * MAXMUTS);
+    tsk_id_t *site_ids = malloc(sizeof(tsk_id_t) * MAXMUTS);
+    int num_sites = 0;
+    
+    if (site_positions == NULL || site_ids == NULL) {
+        fprintf(stderr, "Error: Failed to allocate memory for direct mutation placement\n");
+        return -1;
+    }
+    
+    // Process nodes in the same order as allNodes[] for RNG compatibility
+    for (int node_idx = 0; node_idx < totNodeNumber; node_idx++) {
+        rootedNode *node = allNodes[node_idx];
+        if (node == NULL) continue;
+        
+        // Get the tskit node ID for this discoal node
+        tsk_id_t tskit_node_id = get_tskit_node_id(node);
+        if (tskit_node_id == TSK_NULL) continue;
+        
+        // Calculate total branch probability by summing over all edges where this node is child
+        double total_branch_prob = 0.0;
+        
+        for (tsk_id_t edge_id = 0; edge_id < tsk_tables->edges.num_rows; edge_id++) {
+            if (tsk_tables->edges.child[edge_id] == tskit_node_id) {
+                // Calculate branch length for this edge
+                tsk_id_t parent_id = tsk_tables->edges.parent[edge_id];
+                double parent_time = tsk_tables->nodes.time[parent_id];
+                double child_time = tsk_tables->nodes.time[tskit_node_id];
+                double branch_length = parent_time - child_time;
+                
+                // Calculate genomic span for this edge
+                double left = tsk_tables->edges.left[edge_id];
+                double right = tsk_tables->edges.right[edge_id];
+                double genomic_span = right - left;
+                
+                // Add to total branch probability (same formula as dropMutations)
+                // siteLength = 1.0/nSites, so genomic_span/nSites gives the site proportion
+                total_branch_prob += branch_length * (genomic_span / nSites);
+            }
+        }
+        
+        // Same mutation rate calculation as dropMutations: p = blProb * theta * 0.5
+        double p = total_branch_prob * theta * 0.5;
+        
+        if (p > 0.0) {
+            // Use same RNG call as dropMutations: m = ignpoi(p)
+            int m = ignpoi(p);
+            
+            while (m > 0) {
+                // Need to select which edge to place this mutation on
+                // Probability proportional to branch_length * genomic_span
+                double rand_val = genunf(0.0, total_branch_prob);
+                double cumulative_prob = 0.0;
+                
+                // Find the edge for this mutation
+                for (tsk_id_t edge_id = 0; edge_id < tsk_tables->edges.num_rows; edge_id++) {
+                    if (tsk_tables->edges.child[edge_id] == tskit_node_id) {
+                        tsk_id_t parent_id = tsk_tables->edges.parent[edge_id];
+                        double parent_time = tsk_tables->nodes.time[parent_id];
+                        double child_time = tsk_tables->nodes.time[tskit_node_id];
+                        double branch_length = parent_time - child_time;
+                        
+                        double left = tsk_tables->edges.left[edge_id];
+                        double right = tsk_tables->edges.right[edge_id];
+                        double genomic_span = right - left;
+                        
+                        double edge_prob = branch_length * (genomic_span / nSites);
+                        cumulative_prob += edge_prob;
+                        
+                        if (rand_val <= cumulative_prob) {
+                            // Place mutation on this edge
+                            // Generate position within this edge's genomic interval
+                            double mut_pos = genunf(left, right);
+                            
+                            // Check if we've already created a site for this position
+                            int found = 0;
+                            tsk_id_t site_id = TSK_NULL;
+                            for (int k = 0; k < num_sites; k++) {
+                                if (fabs(site_positions[k] - mut_pos) < 1e-9) {
+                                    found = 1;
+                                    site_id = site_ids[k];
+                                    break;
+                                }
+                            }
+                            
+                            // If not found, create a new site
+                            if (!found) {
+                                site_id = tskit_add_site(mut_pos, "0");  // ancestral state is "0"
+                                if (site_id < 0) {
+                                    fprintf(stderr, "Error: Failed to add site at position %f\n", mut_pos);
+                                    free(site_positions);
+                                    free(site_ids);
+                                    return -1;
+                                }
+                                if (num_sites >= MAXMUTS) {
+                                    fprintf(stderr, "Error: Too many mutation sites (>%d)\n", MAXMUTS);
+                                    free(site_positions);
+                                    free(site_ids);
+                                    return -1;
+                                }
+                                site_positions[num_sites] = mut_pos;
+                                site_ids[num_sites] = site_id;
+                                num_sites++;
+                            }
+                            
+                            // Add the mutation at this site on this node
+                            int ret = tskit_add_mutation(site_id, tskit_node_id, "1");  // derived state is "1"
+                            if (ret < 0) {
+                                fprintf(stderr, "Error: Failed to add mutation at site %lld on node %lld\n", 
+                                        (long long)site_id, (long long)tskit_node_id);
+                                free(site_positions);
+                                free(site_ids);
+                                return -1;
+                            }
+                            
+                            break;  // Found the edge, break out of edge loop
+                        }
+                    }
+                }
+                
+                m--;
+            }
+        }
+    }
+    
+    free(site_positions);
+    free(site_ids);
+    
+    return 0;
+}
+
+// Populate discoal mutation arrays from tskit data (for ms output compatibility)
+int tskit_populate_discoal_mutations(void) {
+    if (tsk_tables == NULL) {
+        return -1;
+    }
+    
+    extern int totNodeNumber;
+    extern rootedNode **allNodes;
+    extern int nSites;
+    
+    // Clear existing mutations in discoal nodes (should be empty but be safe)
+    for (int i = 0; i < totNodeNumber; i++) {
+        if (allNodes[i] != NULL) {
+            allNodes[i]->mutationNumber = 0;
+        }
+    }
+    
+    // Iterate through all mutations in tskit and add them to the corresponding discoal nodes
+    for (tsk_id_t mut_id = 0; mut_id < tsk_tables->mutations.num_rows; mut_id++) {
+        tsk_id_t site_id = tsk_tables->mutations.site[mut_id];
+        tsk_id_t tskit_node_id = tsk_tables->mutations.node[mut_id];
+        
+        // Get the site position and convert back to discoal's [0,1] scale
+        double site_position = tsk_tables->sites.position[site_id];
+        double discoal_position = site_position / tsk_tables->sequence_length;
+        
+        // Find the corresponding discoal node
+        int discoal_node_idx = -1;
+        for (int i = 0; i < totNodeNumber; i++) {
+            if (node_id_map[i] == tskit_node_id) {
+                discoal_node_idx = i;
+                break;
+            }
+        }
+        
+        if (discoal_node_idx >= 0 && allNodes[discoal_node_idx] != NULL) {
+            // Add mutation to the discoal node
+            rootedNode *node = allNodes[discoal_node_idx];
+            
+            // Ensure capacity for mutations
+            extern void ensureMutsCapacity(rootedNode *node, int required_capacity);
+            ensureMutsCapacity(node, node->mutationNumber + 1);
+            
+            // Add the mutation
+            node->muts[node->mutationNumber] = discoal_position;
+            node->mutationNumber++;
+        }
+    }
+    
+    // Now push mutations down the tree (same logic as traditional dropMutations)
+    extern int isAncestralHere(rootedNode *aNode, float site);
+    extern void addMutation(rootedNode *aNode, double site);
+    
+    for (int i = totNodeNumber-1; i >= 0; i--) {
+        rootedNode *node = allNodes[i];
+        if (node == NULL) continue;
+        
+        for (int j = 0; j < node->mutationNumber; j++) {
+            double mutSite = node->muts[j];
+            
+            if (node->leftChild != NULL && isAncestralHere(node->leftChild, mutSite)) {
+                addMutation(node->leftChild, mutSite);
+            }
+            if (node->rightChild != NULL && isAncestralHere(node->rightChild, mutSite)) {
+                addMutation(node->rightChild, mutSite);
+            }
+        }
+    }
+    
     return 0;
 }

@@ -61,4 +61,10 @@ void set_tskit_node_id_at_index(int index, tsk_id_t tsk_id);
 // Record all mutations after they've been placed on the tree
 int tskit_record_mutations(void);
 
+// Place mutations directly on tskit edges (alternative to dropMutations)
+int tskit_place_mutations_directly(double theta);
+
+// Populate discoal mutation arrays from tskit data (for ms output compatibility)
+int tskit_populate_discoal_mutations(void);
+
 #endif
