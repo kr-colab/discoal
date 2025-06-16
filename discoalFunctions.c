@@ -2734,8 +2734,8 @@ void addNode(rootedNode *aNode){
 	// Record node in tskit when it's added to the simulation
 	if (tskitOutputMode) {
 		tsk_id_t tsk_id = tskit_add_node(aNode->time, aNode->population, 0);  // is_sample=0
-		fprintf(stderr, "addNode: Created tskit node %lld for node %p at totNodeNumber=%d\n", 
-			(long long)tsk_id, (void*)aNode, totNodeNumber);
+		// fprintf(stderr, "addNode: Created tskit node %lld for node %p at totNodeNumber=%d\n", 
+		// 	(long long)tsk_id, (void*)aNode, totNodeNumber);
 		set_tskit_node_id_at_index(totNodeNumber, tsk_id);
 	}
 	

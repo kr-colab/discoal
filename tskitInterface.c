@@ -237,8 +237,8 @@ tsk_id_t get_tskit_node_id(rootedNode *node) {
     for (int i = 0; i < totNodeNumber; i++) {
         if (allNodes[i] == node) {
             if (i < node_id_map_capacity) {
-                fprintf(stderr, "Found mapping: node %p at index %d -> tskit ID %lld\n", 
-                        (void*)node, i, (long long)node_id_map[i]);
+                // fprintf(stderr, "Found mapping: node %p at index %d -> tskit ID %lld\n", 
+                //         (void*)node, i, (long long)node_id_map[i]);
                 return node_id_map[i];
             }
             break;
@@ -252,8 +252,8 @@ tsk_id_t get_tskit_node_id(rootedNode *node) {
 void set_tskit_node_id_at_index(int index, tsk_id_t tsk_id) {
     ensure_node_map_capacity(index);
     node_id_map[index] = tsk_id;
-    fprintf(stderr, "Stored mapping at index %d -> tskit ID %lld\n", 
-            index, (long long)tsk_id);
+    // fprintf(stderr, "Stored mapping at index %d -> tskit ID %lld\n", 
+    //         index, (long long)tsk_id);
 }
 
 // Store mapping from discoal node to tskit node ID
@@ -265,10 +265,89 @@ void set_tskit_node_id(rootedNode *node, tsk_id_t tsk_id) {
         if (allNodes[i] == node) {
             ensure_node_map_capacity(i);
             node_id_map[i] = tsk_id;
-            fprintf(stderr, "Stored mapping: node %p at index %d -> tskit ID %lld\n", 
-                    (void*)node, i, (long long)tsk_id);
+            // fprintf(stderr, "Stored mapping: node %p at index %d -> tskit ID %lld\n", 
+            //         (void*)node, i, (long long)tsk_id);
             return;
         }
     }
     fprintf(stderr, "WARNING: Could not find node %p in allNodes array\n", (void*)node);
+}
+
+// Record all mutations after they've been placed on the tree
+int tskit_record_mutations(void) {
+    if (tsk_tables == NULL) {
+        return -1;
+    }
+    
+    extern int totNodeNumber;
+    extern rootedNode **allNodes;
+    extern int nSites;
+    
+    // First, collect all unique mutation positions and create sites
+    // We'll use a simple array to track sites we've already created
+    double *site_positions = malloc(sizeof(double) * MAXMUTS);
+    tsk_id_t *site_ids = malloc(sizeof(tsk_id_t) * MAXMUTS);
+    int num_sites = 0;
+    
+    if (site_positions == NULL || site_ids == NULL) {
+        fprintf(stderr, "Error: Failed to allocate memory for mutation recording\n");
+        return -1;
+    }
+    
+    // Iterate through all nodes to find unique mutation positions
+    for (int i = 0; i < totNodeNumber; i++) {
+        rootedNode *node = allNodes[i];
+        if (node == NULL) continue;
+        
+        for (int j = 0; j < node->mutationNumber; j++) {
+            double mut_pos = node->muts[j];
+            
+            // Convert from discoal's [0,1] to actual position [0, sequence_length)
+            double actual_pos = mut_pos * tsk_tables->sequence_length;
+            
+            // Check if we've already created a site for this position
+            int found = 0;
+            tsk_id_t site_id = TSK_NULL;
+            for (int k = 0; k < num_sites; k++) {
+                if (site_positions[k] == actual_pos) {
+                    found = 1;
+                    site_id = site_ids[k];
+                    break;
+                }
+            }
+            
+            // If not found, create a new site
+            if (!found) {
+                site_id = tskit_add_site(actual_pos, "0");  // ancestral state is "0"
+                if (site_id < 0) {
+                    fprintf(stderr, "Error: Failed to add site at position %f\n", actual_pos);
+                    free(site_positions);
+                    free(site_ids);
+                    return -1;
+                }
+                site_positions[num_sites] = actual_pos;
+                site_ids[num_sites] = site_id;
+                num_sites++;
+            }
+            
+            // Now add the mutation at this site on this node
+            tsk_id_t tskit_node_id = get_tskit_node_id(node);
+            if (tskit_node_id != TSK_NULL) {
+                int ret = tskit_add_mutation(site_id, tskit_node_id, "1");  // derived state is "1"
+                if (ret < 0) {
+                    fprintf(stderr, "Error: Failed to add mutation at site %lld on node %lld\n", 
+                            (long long)site_id, (long long)tskit_node_id);
+                    free(site_positions);
+                    free(site_ids);
+                    return -1;
+                }
+            }
+        }
+    }
+    
+    free(site_positions);
+    free(site_ids);
+    
+    // fprintf(stderr, "Successfully recorded %d sites with mutations in tskit\n", num_sites);
+    return 0;
 }

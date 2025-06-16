@@ -303,6 +303,14 @@ int main(int argc, const char * argv[]){
 			dropMutations();
 		else
 			dropMutationsUntilTime(uTime);	
+		
+		// Record mutations in tskit if in tree sequence mode
+		if (tskitOutputMode) {
+			if (tskit_record_mutations() < 0) {
+				fprintf(stderr, "Error: Failed to record mutations in tskit\n");
+				exit(1);
+			}
+		}
 
 		if(condRecMode == 0){
 			if(treeOutputMode == 1){
