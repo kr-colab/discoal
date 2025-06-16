@@ -1,5 +1,21 @@
 // tskitInterface.h
 // Interface for tskit tree sequence recording in discoal
+//
+// IMPORTANT: Time Scaling Convention
+// ----------------------------------
+// discoal internally uses time units where the expected coalescence time for two lineages
+// in a population of size N is 2N generations. However, msprime and standard coalescent
+// theory use time units where the expected coalescence time is 2N generations for a 
+// population of diploid size N.
+// 
+// To maintain compatibility with msprime and other tools, all node times are automatically
+// divided by 2.0 when writing to the tskit tree sequence. This scaling is applied
+// internally in tskit_add_node(), so users don't need to manually adjust times.
+//
+// This means:
+// - discoal internal time t -> tskit time t/2
+// - Tree heights in tskit output will be ~0.5x the internal discoal values
+// - This matches msprime's convention for ms-compatible parameters with Ne=0.5
 
 #ifndef __TSKIT_INTERFACE_H__
 #define __TSKIT_INTERFACE_H__

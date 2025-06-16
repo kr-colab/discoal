@@ -397,24 +397,18 @@ void coalesceAtTimePopn(double cTime, int popn){
 			(long long)parent_tsk_id, (long long)lchild_tsk_id, (long long)rchild_tsk_id);
 		
 		if (parent_tsk_id != TSK_NULL) {
-			// Add edges for left child's ancestry segments
-			AncestrySegment *seg = lChild->ancestryRoot;
-			while (seg) {
-				if (lchild_tsk_id != TSK_NULL) {
-					tskit_add_edges(parent_tsk_id, lchild_tsk_id, 
-						(double)seg->start / nSites, (double)seg->end / nSites);
-				}
-				seg = seg->next;
+			// Add edge for left child spanning from lLim to rLim
+			// Note: rLim is inclusive (0-based index), but tskit intervals are half-open [left, right)
+			// So we need to add 1 to rLim to get the correct right boundary
+			if (lchild_tsk_id != TSK_NULL && lChild->lLim <= lChild->rLim) {
+				tskit_add_edges(parent_tsk_id, lchild_tsk_id, 
+					(double)lChild->lLim, (double)(lChild->rLim + 1));
 			}
 			
-			// Add edges for right child's ancestry segments
-			seg = rChild->ancestryRoot;
-			while (seg) {
-				if (rchild_tsk_id != TSK_NULL) {
-					tskit_add_edges(parent_tsk_id, rchild_tsk_id,
-						(double)seg->start / nSites, (double)seg->end / nSites);
-				}
-				seg = seg->next;
+			// Add edge for right child spanning from lLim to rLim  
+			if (rchild_tsk_id != TSK_NULL && rChild->lLim <= rChild->rLim) {
+				tskit_add_edges(parent_tsk_id, rchild_tsk_id,
+					(double)rChild->lLim, (double)(rChild->rLim + 1));
 			}
 		}
 	}
@@ -615,6 +609,23 @@ int recombineAtTimePopn(double cTime, int popn){
 		addNode(lParent);
 		addNode(rParent);
 		
+		// Record edges in tskit for recombination
+		if (tskitOutputMode) {
+			tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
+			tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
+			tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
+			
+			// Left parent gets ancestral material from [0, xOver)
+			if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && xOver > 0) {
+				tskit_add_edges(lparent_tsk_id, child_tsk_id, 0.0, (double)xOver);
+			}
+			
+			// Right parent gets ancestral material from [xOver, nSites)
+			if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && xOver < nSites) {
+				tskit_add_edges(rparent_tsk_id, child_tsk_id, (double)xOver, (double)nSites);
+			}
+		}
+		
 	//	printf("reco-> lParent: %u rParent:%u child: %u time:%f xover:%d\n",lParent,rParent,aNode,cTime,xOver);
 		//printNode(aNode);
 		return xOver;
@@ -674,6 +685,33 @@ void geneConversionAtTimePopn(double cTime, int popn){
 		
 		addNode(lParent);
 		addNode(rParent);
+		
+		// Record edges in tskit for gene conversion
+		if (tskitOutputMode) {
+			tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
+			tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
+			tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
+			
+			// For gene conversion:
+			// lParent gets the converted tract [xOver, min(xOver + tractL, nSites))
+			// rParent gets everything else
+			int tractEnd = (xOver + tractL < nSites) ? xOver + tractL : nSites;
+			
+			if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && tractEnd > xOver) {
+				// lParent gets the converted tract
+				tskit_add_edges(lparent_tsk_id, child_tsk_id, (double)xOver, (double)tractEnd);
+			}
+			
+			if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL) {
+				// rParent gets everything outside the converted tract
+				if (xOver > 0) {
+					tskit_add_edges(rparent_tsk_id, child_tsk_id, 0.0, (double)xOver);
+				}
+				if (tractEnd < nSites) {
+					tskit_add_edges(rparent_tsk_id, child_tsk_id, (double)tractEnd, (double)nSites);
+				}
+			}
+		}
 	}
 }
 
@@ -1892,6 +1930,24 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 			//add in the nodes
 			addNode(lParent);
 			addNode(rParent);
+			
+			// Record edges in tskit for recombination during sweep
+			if (tskitOutputMode) {
+				tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
+				tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
+				tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
+				
+				// Left parent gets ancestral material from [0, xOver)
+				if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && xOver > 0) {
+					tskit_add_edges(lparent_tsk_id, child_tsk_id, 0.0, (double)xOver);
+				}
+				
+				// Right parent gets ancestral material from [xOver, nSites)
+				if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && xOver < nSites) {
+					tskit_add_edges(rparent_tsk_id, child_tsk_id, (double)xOver, (double)nSites);
+				}
+			}
+			
 			//sweepPopnSizes[sp]++;
 			return xOver;
 		}
@@ -1982,6 +2038,33 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 			//add in the nodes
 		addNode(lParent);
 		addNode(rParent);
+		
+		// Record edges in tskit for gene conversion during sweep
+		if (tskitOutputMode) {
+			tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
+			tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
+			tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
+			
+			// For gene conversion:
+			// lParent gets the converted tract [xOver, min(xOver + tractL, nSites))
+			// rParent gets everything else
+			int tractEnd = (xOver + tractL < nSites) ? xOver + tractL : nSites;
+			
+			if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && tractEnd > xOver) {
+				// lParent gets the converted tract
+				tskit_add_edges(lparent_tsk_id, child_tsk_id, (double)xOver, (double)tractEnd);
+			}
+			
+			if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL) {
+				// rParent gets everything outside the converted tract
+				if (xOver > 0) {
+					tskit_add_edges(rparent_tsk_id, child_tsk_id, 0.0, (double)xOver);
+				}
+				if (tractEnd < nSites) {
+					tskit_add_edges(rparent_tsk_id, child_tsk_id, (double)tractEnd, (double)nSites);
+				}
+			}
+		}
 	}
 }
 
@@ -1990,13 +2073,6 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	int i;
 
 	temp = newRootedNode(cTime,popn);
-	
-	// Record parent node in tskit
-	tsk_id_t parent_tsk_id = TSK_NULL;
-	if (tskitOutputMode) {
-		parent_tsk_id = tskit_add_node(cTime, popn, 0);  // is_sample=0
-		set_tskit_node_id(temp, parent_tsk_id);
-	}
 
 	lChild = pickNodePopnSweep(popn,sp);
 	temp->leftChild = lChild;
@@ -2018,35 +2094,36 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	// Merge ancestry segment trees
 	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
 	
-	// Record edges in tskit for each ancestry segment
-	if (tskitOutputMode && parent_tsk_id != TSK_NULL) {
-		// Add edges for left child's ancestry segments
-		AncestrySegment *seg = lChild->ancestryRoot;
+	// Update stats from tree when in tree-only mode
+	updateAncestryStatsFromTree(temp);
+	
+	// Add the parent node to discoal's arrays and tskit BEFORE recording edges
+	addNode(temp);
+	
+	// Record edges in tskit - one edge per child spanning their full range
+	if (tskitOutputMode) {
+		// Get tskit IDs for all nodes involved in coalescence
+		tsk_id_t parent_tsk_id = get_tskit_node_id(temp);
 		tsk_id_t lchild_tsk_id = get_tskit_node_id(lChild);
-		while (seg) {
-			if (lchild_tsk_id != TSK_NULL) {
-				tskit_add_edges(parent_tsk_id, lchild_tsk_id, 
-					(double)seg->start / nSites, (double)seg->end / nSites);
-			}
-			seg = seg->next;
-		}
-		
-		// Add edges for right child's ancestry segments
-		seg = rChild->ancestryRoot;
 		tsk_id_t rchild_tsk_id = get_tskit_node_id(rChild);
-		while (seg) {
-			if (rchild_tsk_id != TSK_NULL) {
-				tskit_add_edges(parent_tsk_id, rchild_tsk_id,
-					(double)seg->start / nSites, (double)seg->end / nSites);
+		
+		if (parent_tsk_id != TSK_NULL) {
+			// Add edge for left child spanning from lLim to rLim
+			// Note: rLim is inclusive (0-based index), but tskit intervals are half-open [left, right)
+			// So we need to add 1 to rLim to get the correct right boundary
+			if (lchild_tsk_id != TSK_NULL && lChild->lLim <= lChild->rLim) {
+				tskit_add_edges(parent_tsk_id, lchild_tsk_id, 
+					(double)lChild->lLim, (double)(lChild->rLim + 1));
 			}
-			seg = seg->next;
+			
+			// Add edge for right child spanning from lLim to rLim
+			if (rchild_tsk_id != TSK_NULL && rChild->lLim <= rChild->rLim) {
+				tskit_add_edges(parent_tsk_id, rchild_tsk_id,
+					(double)rChild->lLim, (double)(rChild->rLim + 1));
+			}
 		}
 	}
 	
-	// Update stats from tree when in tree-only mode
-	updateAncestryStatsFromTree(temp);
-	//printNode(temp);
-	addNode(temp);
 	//update active anc. material
 	updateActiveMaterial(temp);
 	//popnSizes[popn]--; //decrese popnSize
