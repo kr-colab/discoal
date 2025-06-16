@@ -233,6 +233,10 @@ void tskit_cleanup(void) {
 
 // Map discoal node to tskit node ID
 tsk_id_t get_tskit_node_id(rootedNode *node) {
+#ifdef USE_TSKIT_ONLY
+    // In tskit-only mode, tskit ID is stored directly in the node
+    return node->tskit_node_id;
+#else
     // Find the node's index in allNodes array
     extern int totNodeNumber;
     extern rootedNode **allNodes;
@@ -248,6 +252,7 @@ tsk_id_t get_tskit_node_id(rootedNode *node) {
     }
     fprintf(stderr, "WARNING: Could not find mapping for node %p\n", (void*)node);
     return TSK_NULL;
+#endif
 }
 
 // Store mapping from discoal node to tskit node ID using index
@@ -260,6 +265,11 @@ void set_tskit_node_id_at_index(int index, tsk_id_t tsk_id) {
 
 // Store mapping from discoal node to tskit node ID
 void set_tskit_node_id(rootedNode *node, tsk_id_t tsk_id) {
+#ifdef USE_TSKIT_ONLY
+    // In tskit-only mode, store tskit ID directly in the node
+    node->tskit_node_id = tsk_id;
+    return;
+#else
     // Find the node's index in allNodes array
     extern int totNodeNumber;
     extern rootedNode **allNodes;
@@ -273,6 +283,7 @@ void set_tskit_node_id(rootedNode *node, tsk_id_t tsk_id) {
         }
     }
     fprintf(stderr, "WARNING: Could not find node %p in allNodes array\n", (void*)node);
+#endif
 }
 
 // Record all mutations after they've been placed on the tree
@@ -281,6 +292,11 @@ int tskit_record_mutations(void) {
         return -1;
     }
     
+#ifdef USE_TSKIT_ONLY
+    // TODO: Implement tskit-only mutation recording
+    // In tskit-only mode, mutations should be recorded directly during simulation
+    return 0;
+#else
     extern int totNodeNumber;
     extern rootedNode **allNodes;
     extern int nSites;
@@ -352,6 +368,7 @@ int tskit_record_mutations(void) {
     
     // fprintf(stderr, "Successfully recorded %d sites with mutations in tskit\n", num_sites);
     return 0;
+#endif
 }
 
 
@@ -362,6 +379,13 @@ int tskit_place_mutations_edge_based(double theta) {
     }
     
     extern int nSites;
+    
+    // First pass: collect all mutation information
+    struct {
+        double position;
+        tsk_id_t node_id;
+    } mutations[MAXMUTS];
+    int mutation_count = 0;
     
     // Iterate through all edges and place mutations independently
     for (tsk_id_t edge_id = 0; edge_id < tsk_tables->edges.num_rows; edge_id++) {
@@ -388,25 +412,56 @@ int tskit_place_mutations_edge_based(double theta) {
             // Draw number of mutations from Poisson distribution
             int num_mutations = ignpoi(expected_mutations);
             
-            // Place each mutation
+            // Collect mutations for later sorting
             for (int i = 0; i < num_mutations; i++) {
+                if (mutation_count >= MAXMUTS) {
+                    fprintf(stderr, "Error: Too many mutations (limit: %d)\n", MAXMUTS);
+                    return -1;
+                }
+                
                 // Generate position uniformly within this edge's interval
                 double mut_pos = genunf(left, right);
                 
-                // Create a new site for each mutation
-                tsk_id_t site_id = tskit_add_site(mut_pos, "0");  // ancestral state is "0"
-                if (site_id < 0) {
-                    fprintf(stderr, "Error: Failed to add site at position %f\n", mut_pos);
-                    return -1;
+                // Store mutation info for later processing
+                mutations[mutation_count].position = mut_pos;
+                mutations[mutation_count].node_id = child_id;
+                mutation_count++;
+            }
+        }
+    }
+    
+    // Second pass: sort mutations by position and add to tskit
+    if (mutation_count > 0) {
+        // Sort mutations by position
+        for (int i = 0; i < mutation_count - 1; i++) {
+            for (int j = i + 1; j < mutation_count; j++) {
+                if (mutations[i].position > mutations[j].position) {
+                    // Swap
+                    double temp_pos = mutations[i].position;
+                    tsk_id_t temp_node = mutations[i].node_id;
+                    mutations[i].position = mutations[j].position;
+                    mutations[i].node_id = mutations[j].node_id;
+                    mutations[j].position = temp_pos;
+                    mutations[j].node_id = temp_node;
                 }
-                
-                // Add the mutation at this site on the child node of this edge
-                int ret = tskit_add_mutation(site_id, child_id, "1");  // derived state is "1"
-                if (ret < 0) {
-                    fprintf(stderr, "Error: Failed to add mutation at site %lld on node %lld\n", 
-                            (long long)site_id, (long long)child_id);
-                    return -1;
-                }
+            }
+        }
+        
+        // Add sites and mutations in sorted order
+        for (int i = 0; i < mutation_count; i++) {
+            // Create a new site for each mutation
+            tsk_id_t site_id = tskit_add_site(mutations[i].position, "0");  // ancestral state is "0"
+            if (site_id < 0) {
+                fprintf(stderr, "Error: Failed to add site at position %f\n", mutations[i].position);
+                return -1;
+            }
+            
+            // Add the mutation at this site on the appropriate node
+            int ret = tskit_add_mutation(site_id, mutations[i].node_id, "1");  // derived state is "1"
+            if (ret < 0) {
+                fprintf(stderr, "Error: Failed to add mutation at site %lld on node %lld\n", 
+                        (long long)site_id, (long long)mutations[i].node_id);
+                return -1;
             }
         }
     }
@@ -426,6 +481,11 @@ int tskit_populate_discoal_mutations(void) {
         return -1;
     }
     
+#ifdef USE_TSKIT_ONLY
+    // TODO: Implement tskit-only mutation population
+    // In tskit-only mode, use genotype matrix directly for output
+    return 0;
+#else
     extern int totNodeNumber;
     extern rootedNode **allNodes;
     extern int nSites;
@@ -490,4 +550,5 @@ int tskit_populate_discoal_mutations(void) {
     }
     
     return 0;
+#endif
 }

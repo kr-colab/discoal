@@ -92,6 +92,16 @@ void initialize(){
 
 			if(p>0)nodes[count]->sweepPopn = 0;
 			nodes[count]->id=leafID++;
+			
+#ifdef USE_TSKIT_ONLY
+			// Tskit-only: Track sample node ID instead of storing in allNodes
+			if (tskitOutputMode) {
+				tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
+				set_tskit_node_id(nodes[count], tsk_id);
+				addSampleNodeId(tsk_id);
+			}
+#else
+			// Current implementation: Store in allNodes and record to tskit
 			allNodes[count] = nodes[count];
 			
 			// Record sample node in tskit
@@ -99,6 +109,7 @@ void initialize(){
 				tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
 				set_tskit_node_id_at_index(count, tsk_id);
 			}
+#endif
 			
 			count += 1;
 		}
@@ -212,7 +223,18 @@ void initializeTwoSite(){
 			//do stuff for leafs containers
 			//nodes->leafs = calloc(sizeof(int) * sampleSize);
 			//nodes->leafs[nodes[count]->id] = 1;
+			
+#ifdef USE_TSKIT_ONLY
+			// Tskit-only: Track sample node ID instead of storing in allNodes
+			if (tskitOutputMode) {
+				tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
+				set_tskit_node_id(nodes[count], tsk_id);
+				addSampleNodeId(tsk_id);
+			}
+#else
+			// Current implementation: Store in allNodes
 			allNodes[count] = nodes[count];
+#endif
 			count += 1;
 		}
 	}
@@ -301,6 +323,11 @@ rootedNode *newRootedNode(double cTime, int popn) {
 
 	// Initialize ancestry segment tree to NULL (will be set during initialization)
 	temp->ancestryRoot = NULL;
+
+#ifdef USE_TSKIT_ONLY
+	// Initialize tskit node ID
+	temp->tskit_node_id = TSK_NULL;
+#endif
 
 	return temp;
 }
@@ -393,22 +420,34 @@ void coalesceAtTimePopn(double cTime, int popn){
 		tsk_id_t lchild_tsk_id = get_tskit_node_id(lChild);
 		tsk_id_t rchild_tsk_id = get_tskit_node_id(rChild);
 		
-		fprintf(stderr, "Coalescence: parent_tsk_id=%lld, lchild_tsk_id=%lld, rchild_tsk_id=%lld\n", 
-			(long long)parent_tsk_id, (long long)lchild_tsk_id, (long long)rchild_tsk_id);
-		
 		if (parent_tsk_id != TSK_NULL) {
-			// Add edge for left child spanning from lLim to rLim
-			// Note: rLim is inclusive (0-based index), but tskit intervals are half-open [left, right)
-			// So we need to add 1 to rLim to get the correct right boundary
-			if (lchild_tsk_id != TSK_NULL && lChild->lLim <= lChild->rLim) {
-				tskit_add_edges(parent_tsk_id, lchild_tsk_id, 
-					(double)lChild->lLim, (double)(lChild->rLim + 1));
+			// Add edges in child ID order (required by tskit)
+			// Simple approach: determine which child has smaller ID and add that first
+			tsk_id_t first_child_id, second_child_id;
+			rootedNode *first_child, *second_child;
+			
+			if (lchild_tsk_id < rchild_tsk_id) {
+				first_child_id = lchild_tsk_id;
+				first_child = lChild;
+				second_child_id = rchild_tsk_id;
+				second_child = rChild;
+			} else {
+				first_child_id = rchild_tsk_id;
+				first_child = rChild;
+				second_child_id = lchild_tsk_id;
+				second_child = lChild;
 			}
 			
-			// Add edge for right child spanning from lLim to rLim  
-			if (rchild_tsk_id != TSK_NULL && rChild->lLim <= rChild->rLim) {
-				tskit_add_edges(parent_tsk_id, rchild_tsk_id,
-					(double)rChild->lLim, (double)(rChild->rLim + 1));
+			// Add edge for first child (smaller ID)
+			if (first_child_id != TSK_NULL && first_child->lLim <= first_child->rLim) {
+				tskit_add_edges(parent_tsk_id, first_child_id, 
+					(double)first_child->lLim, (double)(first_child->rLim + 1));
+			}
+			
+			// Add edge for second child (larger ID)  
+			if (second_child_id != TSK_NULL && second_child->lLim <= second_child->rLim) {
+				tskit_add_edges(parent_tsk_id, second_child_id,
+					(double)second_child->lLim, (double)(second_child->rLim + 1));
 			}
 		}
 	}
@@ -2134,10 +2173,23 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 
 /*******************************************************/
 void dropMutations(){
+#ifdef USE_TSKIT_ONLY
+	// Tskit-only: Use edge-based mutation placement instead of node-based tree traversal
+	if (tskitOutputMode) {
+		// Use the existing edge-based mutation placement algorithm
+		int ret = tskit_place_mutations_edge_based(theta);
+		if (ret < 0) {
+			fprintf(stderr, "Error: Failed to place mutations using edge-based algorithm\n");
+		}
+		return;
+	}
+#endif
+
 	int i, j, m;
 	double p;
 	double mutSite, error;
 	
+#ifndef USE_TSKIT_ONLY
 	//get time and set probs
 	coaltime = totalTimeInTree();
 	//printf("%f\n",coaltime);
@@ -2179,13 +2231,22 @@ void dropMutations(){
 				
 		}
 	}
+#endif
 }
 
 void dropMutationsRecurse(){
+#ifdef USE_TSKIT_ONLY
+	// Tskit-only: Use edge-based mutation placement instead
+	if (tskitOutputMode) {
+		return;
+	}
+#endif
+
 	int i, j, m;
 	double p;
 	float mutSite, error;
 	
+#ifndef USE_TSKIT_ONLY
 	//get time and set probs
 	coaltime = totalTimeInTree();
 	//printf("%f\n",coaltime);
@@ -2223,9 +2284,15 @@ void dropMutationsRecurse(){
 			recurseTreePushMutation(allNodes[i],mutSite);
 		}
 	}
+#endif
 }
 //calculates the total time in the tree, then set blProbs for each node
 double totalTimeInTree(){
+#ifdef USE_TSKIT_ONLY
+	// TODO: Implement tskit-based total time calculation
+	// For now, return a placeholder value
+	return 0.0;
+#else
 	double tTime, siteLength;
 	int i;
 	
@@ -2238,6 +2305,7 @@ double totalTimeInTree(){
 	}
 //	for(i=0;i<totNodeNumber;i++)allNodes[i]->blProb /= tTime;
 	return tTime;
+#endif
 }
 
 void recurseTreePushMutation(rootedNode *aNode, float site){
@@ -2265,12 +2333,14 @@ void sortNodeMutations(rootedNode *node) {
 
 /* Sort mutations on all nodes after mutation placement */
 void sortAllMutations() {
+#ifndef USE_TSKIT_ONLY
 	int i;
 	for (i = 0; i < totNodeNumber; i++) {
 		if (allNodes[i] != NULL) {
 			sortNodeMutations(allNodes[i]);
 		}
 	}
+#endif
 }
 
 /* Binary search implementation for sorted mutations */
@@ -2309,16 +2379,23 @@ int hasMutation(rootedNode *aNode, double site){
 
 //findRootAtSite-- returns the index of the node that is the root at a given site
 int findRootAtSite(float site){
+#ifdef USE_TSKIT_ONLY
+	// TODO: Implement tskit-based root finding
+	// For now, return placeholder
+	return 0;
+#else
 	int j;
 	j = 0;
 	while(nAncestorsHere(allNodes[j], site) != sampleSize){
 		j++;
 	}
 	return(j);
+#endif
 }
 
 //printTreeAtSite-- prints a newick tree at a given site
 void printTreeAtSite(float site){
+#ifndef USE_TSKIT_ONLY
 	int rootIdx;
     float tPtr;
 	
@@ -2326,7 +2403,7 @@ void printTreeAtSite(float site){
 	rootIdx = findRootAtSite(site);
 	newickRecurse(allNodes[rootIdx],site,tPtr);
 	printf(";\n");
-
+#endif
 }
 
 void newickRecurse(rootedNode *aNode, float site, float tempTime){
@@ -2394,6 +2471,14 @@ static inline unsigned int hashMutation(double mut) {
 
 /*makeGametesMS-- MS style sample output */
 void makeGametesMS(int argc,const char *argv[]){
+#ifdef USE_TSKIT_ONLY
+	// Tskit-only: Use tskit genotype matrix for output generation
+	if (tskitOutputMode) {
+		makeGametesMS_tskit(argc, argv);
+		return;
+	}
+#endif
+
 	int i,j, size, mutNumber;
 	double allMuts[MAXMUTS];
 	MutHashEntry *hashTable[MUTATION_HASH_SIZE];
@@ -2409,6 +2494,7 @@ void makeGametesMS(int argc,const char *argv[]){
 
 	/* get unique list of muts using hash table for O(n) duplicate detection */
 	size = 0;
+#ifndef USE_TSKIT_ONLY
 	for (i = 0; i < sampleSize; i++){
 		for (j = 0; j < allNodes[i]->mutationNumber; j++){
 			double mut = allNodes[i]->muts[j];
@@ -2436,6 +2522,7 @@ void makeGametesMS(int argc,const char *argv[]){
 			}
 		}
 	}
+#endif
 	
 	/* Clean up hash table */
 	for (i = 0; i < MUTATION_HASH_SIZE; i++) {
@@ -2465,6 +2552,7 @@ void makeGametesMS(int argc,const char *argv[]){
 		}
 		
 		/* Pre-compute all ancestry and mutation information */
+#ifndef USE_TSKIT_ONLY
 		for (i = 0; i < sampleSize; i++) {
 			for (j = 0; j < mutNumber; j++) {
 				int idx = i * mutNumber + j;
@@ -2479,6 +2567,7 @@ void makeGametesMS(int argc,const char *argv[]){
 				}
 			}
 		}
+#endif
 	}
 	
 	/* Output using pre-computed matrix */
@@ -2496,6 +2585,7 @@ void makeGametesMS(int argc,const char *argv[]){
 }
 
 void errorCheckMutations(){
+#ifndef USE_TSKIT_ONLY
 	int i,j;
 	
 	for (i = 0; i < sampleSize; i++){
@@ -2504,11 +2594,13 @@ void errorCheckMutations(){
 			printf("muts[%d]=%lf\n",j,allNodes[i]->muts[j]);
 		}
 	}
+#endif
 }
 
 //dropMutationsUntilTime-- places mutationson the tree iff they occur before time t
 //this will not return the "correct" number of mutations conditional on theta
 void dropMutationsUntilTime(double t){
+#ifndef USE_TSKIT_ONLY
 	int i, j, m;
 	double mutSite,p;
 	//get time and set probs
@@ -2547,10 +2639,16 @@ void dropMutationsUntilTime(double t){
 				
 		}
 	}
+#endif
 }
 
 //calculates the total time in the tree, then set blProbs for each node
 double totalTimeInTreeUntilTime(double t){
+#ifdef USE_TSKIT_ONLY
+	// TODO: Implement tskit-based total time calculation until time t
+	// For now, return a placeholder value
+	return 0.0;
+#else
 	double tTime, siteLength;
 	int i;
 	
@@ -2567,6 +2665,7 @@ double totalTimeInTreeUntilTime(double t){
 	}
 //	for(i=0;i<totNodeNumber;i++)allNodes[i]->blProb /= tTime;
 	return tTime;
+#endif
 }
 
 //////////////////////////////////////////////////////////
@@ -2664,15 +2763,25 @@ void initializeNodeArrays() {
 	int initialCapacity = 1000;  // Start small
 	
 	nodesCapacity = initialCapacity;
-	allNodesCapacity = initialCapacity;
-	
 	nodes = malloc(sizeof(rootedNode*) * nodesCapacity);
+	
+#ifdef USE_TSKIT_ONLY
+	// Tskit-only: Initialize sample node tracking instead of allNodes
+	initializeSampleNodeIds();
+	if (nodes == NULL) {
+		fprintf(stderr, "Error: Failed to allocate initial node arrays\n");
+		exit(1);
+	}
+#else
+	// Current implementation: Initialize allNodes array
+	allNodesCapacity = initialCapacity;
 	allNodes = malloc(sizeof(rootedNode*) * allNodesCapacity);
 	
 	if (nodes == NULL || allNodes == NULL) {
 		fprintf(stderr, "Error: Failed to allocate initial node arrays\n");
 		exit(1);
 	}
+#endif
 }
 
 void ensureNodesCapacity(int requiredSize) {
@@ -2693,6 +2802,7 @@ void ensureNodesCapacity(int requiredSize) {
 	}
 }
 
+#ifndef USE_TSKIT_ONLY
 void ensureAllNodesCapacity(int requiredSize) {
 	if (requiredSize >= allNodesCapacity) {
 		int newCapacity = allNodesCapacity;
@@ -2710,6 +2820,7 @@ void ensureAllNodesCapacity(int requiredSize) {
 		allNodesCapacity = newCapacity;
 	}
 }
+#endif
 
 void cleanupNodeArrays() {
 	if (nodes != NULL) {
@@ -2717,27 +2828,98 @@ void cleanupNodeArrays() {
 		nodes = NULL;
 		nodesCapacity = 0;
 	}
+#ifdef USE_TSKIT_ONLY
+	// Tskit-only: Cleanup sample node tracking
+	cleanupSampleNodeIds();
+#else
+	// Current implementation: Cleanup allNodes
 	if (allNodes != NULL) {
 		free(allNodes);
 		allNodes = NULL;
 		allNodesCapacity = 0;
 	}
+#endif
 }
+
+#ifdef USE_TSKIT_ONLY
+// Sample node tracking functions for tskit-only optimization
+void initializeSampleNodeIds() {
+	sample_node_capacity = 1000;  // Start with reasonable size
+	sample_node_count = 0;
+	sample_node_ids = malloc(sizeof(tsk_id_t) * sample_node_capacity);
+	
+	if (sample_node_ids == NULL) {
+		fprintf(stderr, "Error: Failed to allocate sample node IDs array\n");
+		exit(1);
+	}
+	
+	// Initialize all entries to invalid ID
+	for (int i = 0; i < sample_node_capacity; i++) {
+		sample_node_ids[i] = TSK_NULL;
+	}
+}
+
+void ensureSampleNodeCapacity(int required_size) {
+	if (required_size >= sample_node_capacity) {
+		int new_capacity = sample_node_capacity;
+		while (new_capacity <= required_size) {
+			new_capacity *= 2;
+		}
+		
+		tsk_id_t *new_array = realloc(sample_node_ids, sizeof(tsk_id_t) * new_capacity);
+		if (new_array == NULL) {
+			fprintf(stderr, "Error: Failed to reallocate sample node IDs array\n");
+			exit(1);
+		}
+		
+		// Initialize new entries
+		for (int i = sample_node_capacity; i < new_capacity; i++) {
+			new_array[i] = TSK_NULL;
+		}
+		
+		sample_node_ids = new_array;
+		sample_node_capacity = new_capacity;
+	}
+}
+
+void addSampleNodeId(tsk_id_t tskit_node_id) {
+	ensureSampleNodeCapacity(sample_node_count + 1);
+	sample_node_ids[sample_node_count] = tskit_node_id;
+	sample_node_count++;
+}
+
+void cleanupSampleNodeIds() {
+	if (sample_node_ids != NULL) {
+		free(sample_node_ids);
+		sample_node_ids = NULL;
+		sample_node_capacity = 0;
+		sample_node_count = 0;
+	}
+}
+#endif
 
 void addNode(rootedNode *aNode){
 	ensureNodesCapacity(alleleNumber + 1);
-	ensureAllNodesCapacity(totNodeNumber + 1);
-	
 	nodes[alleleNumber] = aNode;
+	
+#ifdef USE_TSKIT_ONLY
+	// Tskit-only: Record node immediately to tskit, don't store in allNodes
+	if (tskitOutputMode) {
+		tsk_id_t tsk_id = tskit_add_node(aNode->time, aNode->population, 0);  // is_sample=0
+		// Store tskit ID directly in the node
+		set_tskit_node_id(aNode, tsk_id);
+	}
+#else
+	// Current implementation: Store in allNodes and record to tskit
+	ensureAllNodesCapacity(totNodeNumber + 1);
 	allNodes[totNodeNumber] = aNode;
 	
 	// Record node in tskit when it's added to the simulation
 	if (tskitOutputMode) {
 		tsk_id_t tsk_id = tskit_add_node(aNode->time, aNode->population, 0);  // is_sample=0
-		// fprintf(stderr, "addNode: Created tskit node %lld for node %p at totNodeNumber=%d\n", 
-		// 	(long long)tsk_id, (void*)aNode, totNodeNumber);
 		set_tskit_node_id_at_index(totNodeNumber, tsk_id);
 	}
+#endif
 	
 	alleleNumber += 1;
 	totNodeNumber += 1;
@@ -2779,7 +2961,9 @@ a rootedNode at a specific index. useful for adding pops
 	or outgroups to current pops */
 void addNodeAtIndex(rootedNode *aNode, int anIndex){
 	nodes[anIndex] = aNode;
+#ifndef USE_TSKIT_ONLY
 	allNodes[anIndex] = aNode;
+#endif
 }
 
 /*shiftNodes- this moves the nodes over an offset and
@@ -2795,11 +2979,13 @@ void shiftNodes(int offset){
 	}
 	alleleNumber += offset;
 
+#ifndef USE_TSKIT_ONLY
 	for(i = totNodeNumber - 1; i >= 0; i--){
 		temp =  allNodes[i];
 		allNodes[i+offset] = temp;
 	}
 	totNodeNumber += offset;
+#endif
 }
 
 /*pickNodePopnSweep-- picks an allele at random from active nodes from specific popn and sweepPopn
@@ -2840,6 +3026,7 @@ void printNode(rootedNode *aNode){
 }
 
 void freeTree(rootedNode *aNode){
+#ifndef USE_TSKIT_ONLY
 	int i;
 	//printf("final nodeNumber = %d\n",totNodeNumber);
 	//cleanup nodes
@@ -2853,6 +3040,7 @@ void freeTree(rootedNode *aNode){
 		free(allNodes[i]);
 		allNodes[i] = NULL;
 	} 
+#endif
 }
 
 /*nodePopnSize-- returns popnSize of popn from
@@ -2884,10 +3072,12 @@ int nodePopnSweepSize(int popn, int sp){
 }
 
 void printAllNodes(){
+#ifndef USE_TSKIT_ONLY
 	int i;
 	for(i = 0 ; i < totNodeNumber; i++){
 		printNode(allNodes[i]);
 	}
+#endif
 }
 
 void printAllActiveNodes(){
@@ -2994,3 +3184,94 @@ void cleanupMuts(rootedNode *node) {
 		node->mutsCapacity = 0;
 	}
 }
+
+#ifdef USE_TSKIT_ONLY
+// Tskit-only output generation using genotype matrix
+void makeGametesMS_tskit(int argc, const char *argv[]) {
+	if (tsk_tables == NULL) {
+		fprintf(stderr, "Error: No tskit tables available for output generation\n");
+		return;
+	}
+	
+	// Build trees from the table collection for genotype calculation
+	tsk_treeseq_t ts;
+	int ret = tsk_treeseq_init(&ts, tsk_tables, TSK_TS_INIT_BUILD_INDEXES);
+	if (ret != 0) {
+		fprintf(stderr, "Error: Failed to build tree sequence: %s\n", tsk_strerror(ret));
+		return;
+	}
+	
+	// Get number of samples and sites
+	tsk_size_t num_samples = tsk_treeseq_get_num_samples(&ts);
+	tsk_size_t num_sites = tsk_treeseq_get_num_sites(&ts);
+	
+	// Print segsites header
+	printf("\n//\nsegsites: %zu", (size_t)num_sites);
+	
+	if (num_sites > 0) {
+		printf("\npositions: ");
+		
+		// Print positions
+		for (tsk_id_t site_id = 0; site_id < (tsk_id_t)num_sites; site_id++) {
+			double position = tsk_tables->sites.position[site_id];
+			// Convert from absolute position back to [0,1] scale
+			double relative_position = position / tsk_tables->sequence_length;
+			printf("%6.6f ", relative_position);
+		}
+		printf("\n");
+		
+		// Generate and print genotype matrix
+		// Use the sample_node_ids array to get the correct sample order
+		extern tsk_id_t *sample_node_ids;
+		extern int sample_node_count;
+		
+		if (sample_node_ids == NULL || sample_node_count == 0) {
+			fprintf(stderr, "Error: No sample node IDs available\n");
+			tsk_treeseq_free(&ts);
+			return;
+		}
+		
+		// Generate genotypes for each sample
+		for (int sample_idx = 0; sample_idx < sample_node_count; sample_idx++) {
+			tsk_id_t sample_node_id = sample_node_ids[sample_idx];
+			
+			// For each site, determine the genotype of this sample
+			for (tsk_id_t site_id = 0; site_id < (tsk_id_t)num_sites; site_id++) {
+				// Check if this sample has the derived allele at this site
+				// We need to find if there's a mutation on the path from this sample to the root
+				char genotype = '0';  // Default to ancestral state
+				
+				// Find mutations at this site
+				tsk_id_t *mutations_at_site = NULL;
+				tsk_size_t num_mutations_at_site = 0;
+				
+				// Simple approach: check all mutations at this site
+				for (tsk_id_t mut_id = 0; mut_id < tsk_tables->mutations.num_rows; mut_id++) {
+					if (tsk_tables->mutations.site[mut_id] == site_id) {
+						tsk_id_t mutation_node = tsk_tables->mutations.node[mut_id];
+						
+						// Check if this sample is descended from the mutation node
+						// For now, use a simple approach - if the mutation is on our sample node, we have it
+						if (mutation_node == sample_node_id) {
+							genotype = '1';
+							break;
+						}
+					}
+				}
+				
+				printf("%c", genotype);
+			}
+			printf("\n");
+		}
+	} else {
+		printf("\n");
+		// Still need to print sample lines even with no sites
+		extern int sampleSize;
+		for (int i = 0; i < sampleSize; i++) {
+			printf("\n");
+		}
+	}
+	
+	tsk_treeseq_free(&ts);
+}
+#endif
