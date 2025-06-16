@@ -8,9 +8,7 @@
 #include "ancestrySegment.h"
 #include "activeSegment.h"
 
-#ifdef USE_TSKIT_ONLY
 #include <tskit.h>
-#endif
 
 /******************************************************************************/
 /* Global constants and limits                                                */
@@ -45,22 +43,30 @@
 
 typedef struct rootedNode
 {
+	// Essential pointers for tree structure
 	struct rootedNode *leftParent, *rightParent, *leftChild, *rightChild;
-	double time, branchLength, blProb;
-	double *muts;
-	int nancSites, lLim, rLim;  // Still needed, calculated from ancestry tree
-	int id, mutationNumber, population, sweepPopn;
-	int mutsCapacity;  // Track allocated capacity for muts
-	int ndes[2],*leafs;
-	double times[2];
+	
+	// Essential time and branch information
+	double time, branchLength;
+	
+	// Ancestry information
+	int nancSites, lLim, rLim;  // Calculated from ancestry tree
+	int id, population, sweepPopn;
+	
 	// Ancestry segment tree for tracking which sites this node is ancestral to
 	AncestrySegment *ancestryRoot;
 	
-#ifdef USE_TSKIT_ONLY
-	// Store tskit node ID directly in the node for tskit-only mode
+	// Tskit node ID for tree sequence recording
 	tsk_id_t tskit_node_id;
-#endif
-
+	
+	// DEPRECATED FIELDS - temporarily kept for compilation, will be removed
+	double blProb;           // DEPRECATED - not used with tskit
+	double *muts;            // DEPRECATED - mutations handled by tskit
+	int mutationNumber;      // DEPRECATED - mutations handled by tskit
+	int mutsCapacity;        // DEPRECATED - mutations handled by tskit
+	int ndes[2];             // DEPRECATED - never used
+	int *leafs;              // DEPRECATED - never used
+	double times[2];         // DEPRECATED - never used
 }
 rootedNode;
 
@@ -91,19 +97,17 @@ event;
 /* ancestral dna. There are also parameters controlling the coalescent        */
 /* process                                                                    */
 
-#ifdef USE_TSKIT_ONLY
-// Tskit-only optimization: Track only active nodes and sample node IDs
+// Track only active nodes and sample node IDs (tskit mode)
 rootedNode  **nodes;
 int nodesCapacity;
-// Array to track tskit IDs for sample nodes (replaces allNodes[0..sampleSize])
+// Array to track tskit IDs for sample nodes
 tsk_id_t *sample_node_ids;
 int sample_node_count;
 int sample_node_capacity;
-#else
-// Current implementation: Keep all nodes in allNodes array
-rootedNode  **nodes, **allNodes;
-int nodesCapacity, allNodesCapacity;
-#endif
+
+// DEPRECATED: allNodes array - temporarily aliased to nodes for compilation
+rootedNode  **allNodes;  // Will be removed - use nodes array instead
+int allNodesCapacity;    // Will be removed
 
 // int activeMaterial[MAXSITES];  // DEPRECATED - replaced by segment structure
 ActiveMaterial activeMaterialSegments;  // New segment-based structure

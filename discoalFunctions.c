@@ -93,23 +93,10 @@ void initialize(){
 			if(p>0)nodes[count]->sweepPopn = 0;
 			nodes[count]->id=leafID++;
 			
-#ifdef USE_TSKIT_ONLY
-			// Tskit-only: Track sample node ID instead of storing in allNodes
-			if (tskitOutputMode) {
-				tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
-				set_tskit_node_id(nodes[count], tsk_id);
-				addSampleNodeId(tsk_id);
-			}
-#else
-			// Current implementation: Store in allNodes and record to tskit
-			allNodes[count] = nodes[count];
-			
-			// Record sample node in tskit
-			if (tskitOutputMode) {
-				tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
-				set_tskit_node_id_at_index(count, tsk_id);
-			}
-#endif
+			// Always track sample node ID in tskit
+			tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
+			set_tskit_node_id(nodes[count], tsk_id);
+			addSampleNodeId(tsk_id);
 			
 			count += 1;
 		}
@@ -226,11 +213,9 @@ void initializeTwoSite(){
 			
 #ifdef USE_TSKIT_ONLY
 			// Tskit-only: Track sample node ID instead of storing in allNodes
-			if (tskitOutputMode) {
-				tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
-				set_tskit_node_id(nodes[count], tsk_id);
-				addSampleNodeId(tsk_id);
-			}
+			tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
+			set_tskit_node_id(nodes[count], tsk_id);
+			addSampleNodeId(tsk_id);
 #else
 			// Current implementation: Store in allNodes
 			allNodes[count] = nodes[count];
@@ -413,42 +398,40 @@ void coalesceAtTimePopn(double cTime, int popn){
 	// Add the parent node to discoal's arrays and tskit BEFORE recording edges
 	addNode(temp);
 	
-	// Record edges in tskit for each ancestry segment
-	if (tskitOutputMode) {
-		// Get tskit IDs for all nodes involved in coalescence  
-		tsk_id_t parent_tsk_id = get_tskit_node_id(temp);
-		tsk_id_t lchild_tsk_id = get_tskit_node_id(lChild);
-		tsk_id_t rchild_tsk_id = get_tskit_node_id(rChild);
+	// Always record edges in tskit for each ancestry segment
+	// Get tskit IDs for all nodes involved in coalescence  
+	tsk_id_t parent_tsk_id = get_tskit_node_id(temp);
+	tsk_id_t lchild_tsk_id = get_tskit_node_id(lChild);
+	tsk_id_t rchild_tsk_id = get_tskit_node_id(rChild);
+	
+	if (parent_tsk_id != TSK_NULL) {
+		// Add edges in child ID order (required by tskit)
+		// Simple approach: determine which child has smaller ID and add that first
+		tsk_id_t first_child_id, second_child_id;
+		rootedNode *first_child, *second_child;
 		
-		if (parent_tsk_id != TSK_NULL) {
-			// Add edges in child ID order (required by tskit)
-			// Simple approach: determine which child has smaller ID and add that first
-			tsk_id_t first_child_id, second_child_id;
-			rootedNode *first_child, *second_child;
-			
-			if (lchild_tsk_id < rchild_tsk_id) {
-				first_child_id = lchild_tsk_id;
-				first_child = lChild;
-				second_child_id = rchild_tsk_id;
-				second_child = rChild;
-			} else {
-				first_child_id = rchild_tsk_id;
-				first_child = rChild;
-				second_child_id = lchild_tsk_id;
-				second_child = lChild;
-			}
-			
-			// Add edge for first child (smaller ID)
-			if (first_child_id != TSK_NULL && first_child->lLim <= first_child->rLim) {
-				tskit_add_edges(parent_tsk_id, first_child_id, 
-					(double)first_child->lLim, (double)(first_child->rLim + 1));
-			}
-			
-			// Add edge for second child (larger ID)  
-			if (second_child_id != TSK_NULL && second_child->lLim <= second_child->rLim) {
-				tskit_add_edges(parent_tsk_id, second_child_id,
-					(double)second_child->lLim, (double)(second_child->rLim + 1));
-			}
+		if (lchild_tsk_id < rchild_tsk_id) {
+			first_child_id = lchild_tsk_id;
+			first_child = lChild;
+			second_child_id = rchild_tsk_id;
+			second_child = rChild;
+		} else {
+			first_child_id = rchild_tsk_id;
+			first_child = rChild;
+			second_child_id = lchild_tsk_id;
+			second_child = lChild;
+		}
+		
+		// Add edge for first child (smaller ID)
+		if (first_child_id != TSK_NULL && first_child->lLim <= first_child->rLim) {
+			tskit_add_edges(parent_tsk_id, first_child_id, 
+				(double)first_child->lLim, (double)(first_child->rLim + 1));
+		}
+		
+		// Add edge for second child (larger ID)  
+		if (second_child_id != TSK_NULL && second_child->lLim <= second_child->rLim) {
+			tskit_add_edges(parent_tsk_id, second_child_id,
+				(double)second_child->lLim, (double)(second_child->rLim + 1));
 		}
 	}
 	
@@ -649,20 +632,19 @@ int recombineAtTimePopn(double cTime, int popn){
 		addNode(rParent);
 		
 		// Record edges in tskit for recombination
-		if (tskitOutputMode) {
-			tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
-			tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
-			tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
-			
-			// Left parent gets ancestral material from [0, xOver)
-			if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && xOver > 0) {
-				tskit_add_edges(lparent_tsk_id, child_tsk_id, 0.0, (double)xOver);
-			}
-			
-			// Right parent gets ancestral material from [xOver, nSites)
-			if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && xOver < nSites) {
-				tskit_add_edges(rparent_tsk_id, child_tsk_id, (double)xOver, (double)nSites);
-			}
+		// Always record edges for recombination
+		tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
+		tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
+		tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
+		
+		// Left parent gets ancestral material from [0, xOver)
+		if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && xOver > 0) {
+			tskit_add_edges(lparent_tsk_id, child_tsk_id, 0.0, (double)xOver);
+		}
+		
+		// Right parent gets ancestral material from [xOver, nSites)
+		if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && xOver < nSites) {
+			tskit_add_edges(rparent_tsk_id, child_tsk_id, (double)xOver, (double)nSites);
 		}
 		
 	//	printf("reco-> lParent: %u rParent:%u child: %u time:%f xover:%d\n",lParent,rParent,aNode,cTime,xOver);
@@ -726,29 +708,27 @@ void geneConversionAtTimePopn(double cTime, int popn){
 		addNode(rParent);
 		
 		// Record edges in tskit for gene conversion
-		if (tskitOutputMode) {
-			tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
-			tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
-			tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
-			
-			// For gene conversion:
-			// lParent gets the converted tract [xOver, min(xOver + tractL, nSites))
-			// rParent gets everything else
-			int tractEnd = (xOver + tractL < nSites) ? xOver + tractL : nSites;
-			
-			if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && tractEnd > xOver) {
-				// lParent gets the converted tract
-				tskit_add_edges(lparent_tsk_id, child_tsk_id, (double)xOver, (double)tractEnd);
+		tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
+		tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
+		tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
+		
+		// For gene conversion:
+		// lParent gets the converted tract [xOver, min(xOver + tractL, nSites))
+		// rParent gets everything else
+		int tractEnd = (xOver + tractL < nSites) ? xOver + tractL : nSites;
+		
+		if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && tractEnd > xOver) {
+			// lParent gets the converted tract
+			tskit_add_edges(lparent_tsk_id, child_tsk_id, (double)xOver, (double)tractEnd);
+		}
+		
+		if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL) {
+			// rParent gets everything outside the converted tract
+			if (xOver > 0) {
+				tskit_add_edges(rparent_tsk_id, child_tsk_id, 0.0, (double)xOver);
 			}
-			
-			if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL) {
-				// rParent gets everything outside the converted tract
-				if (xOver > 0) {
-					tskit_add_edges(rparent_tsk_id, child_tsk_id, 0.0, (double)xOver);
-				}
-				if (tractEnd < nSites) {
-					tskit_add_edges(rparent_tsk_id, child_tsk_id, (double)tractEnd, (double)nSites);
-				}
+			if (tractEnd < nSites) {
+				tskit_add_edges(rparent_tsk_id, child_tsk_id, (double)tractEnd, (double)nSites);
 			}
 		}
 	}
@@ -1971,20 +1951,18 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 			addNode(rParent);
 			
 			// Record edges in tskit for recombination during sweep
-			if (tskitOutputMode) {
-				tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
-				tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
-				tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
-				
-				// Left parent gets ancestral material from [0, xOver)
-				if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && xOver > 0) {
-					tskit_add_edges(lparent_tsk_id, child_tsk_id, 0.0, (double)xOver);
-				}
-				
-				// Right parent gets ancestral material from [xOver, nSites)
-				if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && xOver < nSites) {
-					tskit_add_edges(rparent_tsk_id, child_tsk_id, (double)xOver, (double)nSites);
-				}
+			tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
+			tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
+			tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
+			
+			// Left parent gets ancestral material from [0, xOver)
+			if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && xOver > 0) {
+				tskit_add_edges(lparent_tsk_id, child_tsk_id, 0.0, (double)xOver);
+			}
+			
+			// Right parent gets ancestral material from [xOver, nSites)
+			if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && xOver < nSites) {
+				tskit_add_edges(rparent_tsk_id, child_tsk_id, (double)xOver, (double)nSites);
 			}
 			
 			//sweepPopnSizes[sp]++;
@@ -2079,29 +2057,27 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 		addNode(rParent);
 		
 		// Record edges in tskit for gene conversion during sweep
-		if (tskitOutputMode) {
-			tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
-			tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
-			tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
-			
-			// For gene conversion:
-			// lParent gets the converted tract [xOver, min(xOver + tractL, nSites))
-			// rParent gets everything else
-			int tractEnd = (xOver + tractL < nSites) ? xOver + tractL : nSites;
-			
-			if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && tractEnd > xOver) {
-				// lParent gets the converted tract
-				tskit_add_edges(lparent_tsk_id, child_tsk_id, (double)xOver, (double)tractEnd);
+		tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
+		tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
+		tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
+		
+		// For gene conversion:
+		// lParent gets the converted tract [xOver, min(xOver + tractL, nSites))
+		// rParent gets everything else
+		int tractEnd = (xOver + tractL < nSites) ? xOver + tractL : nSites;
+		
+		if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && tractEnd > xOver) {
+			// lParent gets the converted tract
+			tskit_add_edges(lparent_tsk_id, child_tsk_id, (double)xOver, (double)tractEnd);
+		}
+		
+		if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL) {
+			// rParent gets everything outside the converted tract
+			if (xOver > 0) {
+				tskit_add_edges(rparent_tsk_id, child_tsk_id, 0.0, (double)xOver);
 			}
-			
-			if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL) {
-				// rParent gets everything outside the converted tract
-				if (xOver > 0) {
-					tskit_add_edges(rparent_tsk_id, child_tsk_id, 0.0, (double)xOver);
-				}
-				if (tractEnd < nSites) {
-					tskit_add_edges(rparent_tsk_id, child_tsk_id, (double)tractEnd, (double)nSites);
-				}
+			if (tractEnd < nSites) {
+				tskit_add_edges(rparent_tsk_id, child_tsk_id, (double)tractEnd, (double)nSites);
 			}
 		}
 	}
@@ -2140,26 +2116,24 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	addNode(temp);
 	
 	// Record edges in tskit - one edge per child spanning their full range
-	if (tskitOutputMode) {
-		// Get tskit IDs for all nodes involved in coalescence
-		tsk_id_t parent_tsk_id = get_tskit_node_id(temp);
-		tsk_id_t lchild_tsk_id = get_tskit_node_id(lChild);
-		tsk_id_t rchild_tsk_id = get_tskit_node_id(rChild);
+	// Get tskit IDs for all nodes involved in coalescence
+	tsk_id_t parent_tsk_id = get_tskit_node_id(temp);
+	tsk_id_t lchild_tsk_id = get_tskit_node_id(lChild);
+	tsk_id_t rchild_tsk_id = get_tskit_node_id(rChild);
+	
+	if (parent_tsk_id != TSK_NULL) {
+		// Add edge for left child spanning from lLim to rLim
+		// Note: rLim is inclusive (0-based index), but tskit intervals are half-open [left, right)
+		// So we need to add 1 to rLim to get the correct right boundary
+		if (lchild_tsk_id != TSK_NULL && lChild->lLim <= lChild->rLim) {
+			tskit_add_edges(parent_tsk_id, lchild_tsk_id, 
+				(double)lChild->lLim, (double)(lChild->rLim + 1));
+		}
 		
-		if (parent_tsk_id != TSK_NULL) {
-			// Add edge for left child spanning from lLim to rLim
-			// Note: rLim is inclusive (0-based index), but tskit intervals are half-open [left, right)
-			// So we need to add 1 to rLim to get the correct right boundary
-			if (lchild_tsk_id != TSK_NULL && lChild->lLim <= lChild->rLim) {
-				tskit_add_edges(parent_tsk_id, lchild_tsk_id, 
-					(double)lChild->lLim, (double)(lChild->rLim + 1));
-			}
-			
-			// Add edge for right child spanning from lLim to rLim
-			if (rchild_tsk_id != TSK_NULL && rChild->lLim <= rChild->rLim) {
-				tskit_add_edges(parent_tsk_id, rchild_tsk_id,
-					(double)rChild->lLim, (double)(rChild->rLim + 1));
-			}
+		// Add edge for right child spanning from lLim to rLim
+		if (rchild_tsk_id != TSK_NULL && rChild->lLim <= rChild->rLim) {
+			tskit_add_edges(parent_tsk_id, rchild_tsk_id,
+				(double)rChild->lLim, (double)(rChild->rLim + 1));
 		}
 	}
 	
@@ -2173,17 +2147,12 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 
 /*******************************************************/
 void dropMutations(){
-#ifdef USE_TSKIT_ONLY
-	// Tskit-only: Use edge-based mutation placement instead of node-based tree traversal
-	if (tskitOutputMode) {
-		// Use the existing edge-based mutation placement algorithm
-		int ret = tskit_place_mutations_edge_based(theta);
-		if (ret < 0) {
-			fprintf(stderr, "Error: Failed to place mutations using edge-based algorithm\n");
-		}
-		return;
+	// Always use edge-based mutation placement instead of node-based tree traversal
+	int ret = tskit_place_mutations_edge_based(theta);
+	if (ret < 0) {
+		fprintf(stderr, "Error: Failed to place mutations using edge-based algorithm\n");
 	}
-#endif
+	return;
 
 	int i, j, m;
 	double p;
@@ -2471,13 +2440,9 @@ static inline unsigned int hashMutation(double mut) {
 
 /*makeGametesMS-- MS style sample output */
 void makeGametesMS(int argc,const char *argv[]){
-#ifdef USE_TSKIT_ONLY
-	// Tskit-only: Use tskit genotype matrix for output generation
-	if (tskitOutputMode) {
-		makeGametesMS_tskit(argc, argv);
-		return;
-	}
-#endif
+	// Always use tskit genotype matrix for output generation
+	makeGametesMS_tskit(argc, argv);
+	return;
 
 	int i,j, size, mutNumber;
 	double allMuts[MAXMUTS];
@@ -2765,23 +2730,12 @@ void initializeNodeArrays() {
 	nodesCapacity = initialCapacity;
 	nodes = malloc(sizeof(rootedNode*) * nodesCapacity);
 	
-#ifdef USE_TSKIT_ONLY
-	// Tskit-only: Initialize sample node tracking instead of allNodes
+	// Always initialize sample node tracking
 	initializeSampleNodeIds();
 	if (nodes == NULL) {
 		fprintf(stderr, "Error: Failed to allocate initial node arrays\n");
 		exit(1);
 	}
-#else
-	// Current implementation: Initialize allNodes array
-	allNodesCapacity = initialCapacity;
-	allNodes = malloc(sizeof(rootedNode*) * allNodesCapacity);
-	
-	if (nodes == NULL || allNodes == NULL) {
-		fprintf(stderr, "Error: Failed to allocate initial node arrays\n");
-		exit(1);
-	}
-#endif
 }
 
 void ensureNodesCapacity(int requiredSize) {
@@ -2841,8 +2795,7 @@ void cleanupNodeArrays() {
 #endif
 }
 
-#ifdef USE_TSKIT_ONLY
-// Sample node tracking functions for tskit-only optimization
+// Sample node tracking functions (always available)
 void initializeSampleNodeIds() {
 	sample_node_capacity = 1000;  // Start with reasonable size
 	sample_node_count = 0;
@@ -2896,30 +2849,15 @@ void cleanupSampleNodeIds() {
 		sample_node_count = 0;
 	}
 }
-#endif
 
 void addNode(rootedNode *aNode){
 	ensureNodesCapacity(alleleNumber + 1);
 	nodes[alleleNumber] = aNode;
 	
-#ifdef USE_TSKIT_ONLY
-	// Tskit-only: Record node immediately to tskit, don't store in allNodes
-	if (tskitOutputMode) {
-		tsk_id_t tsk_id = tskit_add_node(aNode->time, aNode->population, 0);  // is_sample=0
-		// Store tskit ID directly in the node
-		set_tskit_node_id(aNode, tsk_id);
-	}
-#else
-	// Current implementation: Store in allNodes and record to tskit
-	ensureAllNodesCapacity(totNodeNumber + 1);
-	allNodes[totNodeNumber] = aNode;
-	
-	// Record node in tskit when it's added to the simulation
-	if (tskitOutputMode) {
-		tsk_id_t tsk_id = tskit_add_node(aNode->time, aNode->population, 0);  // is_sample=0
-		set_tskit_node_id_at_index(totNodeNumber, tsk_id);
-	}
-#endif
+	// Always record node immediately to tskit
+	tsk_id_t tsk_id = tskit_add_node(aNode->time, aNode->population, 0);  // is_sample=0
+	// Store tskit ID directly in the node
+	set_tskit_node_id(aNode, tsk_id);
 	
 	alleleNumber += 1;
 	totNodeNumber += 1;
@@ -3026,21 +2964,22 @@ void printNode(rootedNode *aNode){
 }
 
 void freeTree(rootedNode *aNode){
-#ifndef USE_TSKIT_ONLY
 	int i;
 	//printf("final nodeNumber = %d\n",totNodeNumber);
 	//cleanup nodes
 	for (i = 0; i < totNodeNumber; i++){
-		cleanupMuts(allNodes[i]);      // Free muts array
-		// Free ancestry segment tree
-		if (allNodes[i]->ancestryRoot) {
-			freeSegmentTree(allNodes[i]->ancestryRoot);
-			allNodes[i]->ancestryRoot = NULL;
+		if (nodes[i] == NULL) {
+			continue;
 		}
-		free(allNodes[i]);
-		allNodes[i] = NULL;
-	} 
-#endif
+		cleanupMuts(nodes[i]);      // Free muts array (may be deprecated but safe)
+		// Free ancestry segment tree
+		if (nodes[i]->ancestryRoot) {
+			freeSegmentTree(nodes[i]->ancestryRoot);
+			nodes[i]->ancestryRoot = NULL;
+		}
+		free(nodes[i]);
+		nodes[i] = NULL;
+	}
 }
 
 /*nodePopnSize-- returns popnSize of popn from
@@ -3185,8 +3124,7 @@ void cleanupMuts(rootedNode *node) {
 	}
 }
 
-#ifdef USE_TSKIT_ONLY
-// Tskit-only output generation using genotype matrix
+// Tskit output generation using genotype matrix (always available)
 void makeGametesMS_tskit(int argc, const char *argv[]) {
 	if (tsk_tables == NULL) {
 		fprintf(stderr, "Error: No tskit tables available for output generation\n");
@@ -3274,4 +3212,3 @@ void makeGametesMS_tskit(int argc, const char *argv[]) {
 	
 	tsk_treeseq_free(&ts);
 }
-#endif
