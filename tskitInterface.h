@@ -58,4 +58,7 @@ tsk_id_t get_tskit_node_id(rootedNode *node);
 void set_tskit_node_id(rootedNode *node, tsk_id_t tsk_id);
 void set_tskit_node_id_at_index(int index, tsk_id_t tsk_id);
 
+// Record all mutations after they've been placed on the tree
+int tskit_record_mutations(void);
+
 #endif

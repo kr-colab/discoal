@@ -134,6 +134,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - All tests integrated into Makefile with individual and unified execution options
    - Updated development documentation with comprehensive testing guide
 
+14. **tskit Tree Sequence Integration** (completed)
+   - Implemented full tree sequence recording using tskit C API
+   - Fixed coordinate system conversion (discoal inclusive [0,n-1] to tskit half-open [0,n))
+   - Added proper time scaling (divide by 2) to match msprime diploid convention
+   - Implemented edge recording for all simulation events:
+     - Regular coalescence and recombination
+     - Sweep coalescence and recombination
+     - Gene conversion (both regular and during sweeps)
+   - Fixed orphan node issue in sweep coalescence
+   - Created comprehensive comparison framework with msprime
+   - Added example scripts for diversity analysis with selective sweeps
+   - All tree sequence outputs validated against msprime for statistical equivalence
+
+15. **tskit Mutation Recording** (completed)
+   - Implemented complete mutation recording in tskit tree sequences
+   - Added `tskit_record_mutations()` function to record all mutations after placement
+   - Converts discoal mutation positions from [0,1] to actual sequence coordinates
+   - Creates unique sites for each mutation position with ancestral state "0"
+   - Records mutations on appropriate nodes with derived state "1"
+   - Integrated mutation recording into main simulation loop after `dropMutations()`
+   - Maintains 100% compatibility with existing workflow
+   - Tested with neutral, recombination, and selective sweep scenarios
+   - All focused validation tests pass (10/10) with identical outputs
+
 ### Test Results Summary
 - **Success Rate**: 31/31 tests pass (100%) for both versions (includes 4 new high mutation tests)
 - **Output Compatibility**: 31/31 tests produce identical output
@@ -160,6 +184,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - [x] Optimize mutation duplicate detection with hash table (Phase 1) ✓
 - [x] Optimize hasMutation() with binary search (Phase 2) ✓
 - [x] Pre-compute mutation presence matrix for output (Phase 3) ✓
+- [x] Implement tskit tree sequence recording ✓
+- [x] Add mutation recording to tskit tree sequences ✓
 - [ ] Document memory optimization techniques in main README
 - [ ] Phase 4: Memory layout optimizations for better cache efficiency
 - [ ] Optimize pickNodePopn with per-population node lists
@@ -184,6 +210,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Mutations sorted after placement in makeGametesMS for O(log n) lookups
 - Output generation uses pre-computed presence matrix (Phase 3)
 - Matrix computation reduces getAncestryCount from 17.81% to 10.22% of runtime
+- tskit integration:
+  - Tree sequences output with `-ts filename.trees` flag
+  - Coordinate conversion: discoal [0,n-1] inclusive → tskit [0,n) half-open
+  - Time scaling: discoal times divided by 2 for msprime compatibility
+  - Edge recording for all coalescence, recombination, and gene conversion events
+  - Node mapping maintained between discoal and tskit IDs
+  - Complete mutation recording: sites created for each position, mutations recorded on nodes
+  - Mutations use ancestral state "0" and derived state "1" convention
+  - Example scripts in `examples/` demonstrate diversity analysis workflows
 
 ### Known Issues
 - Test executables must be named `discoal_edited` and `discoal_legacy_backup`
