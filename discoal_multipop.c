@@ -108,15 +108,14 @@ int main(int argc, const char * argv[]){
 //		printf("popnsize[0]:%d",popnSizes[0]);
 		maxTrajSteps = trajectoryCapacity;
 		
-		// Initialize tskit if output mode is enabled (must be before initialize())
-		if (tskitOutputMode && i == 0) {  // Only initialize on first replicate
-			fprintf(stderr, "Initializing tskit with sequence length %d\n", nSites);
-			int ret = tskit_initialize((double)nSites);
-			if (ret != 0) {
-				fprintf(stderr, "Error initializing tskit: %s\n", tsk_strerror(ret));
-				exit(1);
-			}
-			fprintf(stderr, "tskit initialized successfully\n");
+		// Always initialize tskit for each replicate (must be before initialize())
+		if (tskitOutputMode && i == 0) {
+			fprintf(stderr, "Initializing tskit with sequence length %d (replicate %d)\n", nSites, i+1);
+		}
+		int ret = tskit_initialize((double)nSites);
+		if (ret != 0) {
+			fprintf(stderr, "Error initializing tskit: %s\n", tsk_strerror(ret));
+			exit(1);
 		}
 		
 		
@@ -299,38 +298,30 @@ int main(int argc, const char * argv[]){
 		//assign root
 	//	root = nodes[0];
 		//add Mutations
-		if (tskitOutputMode) {
-			// Use direct mutation placement on tskit edges
-			extern double theta;
-			if (untilMode==0) {
-				// Use edge-based algorithm for tskit mutations
-				if (tskit_place_mutations_edge_based(theta) < 0) {
-					fprintf(stderr, "Error: Failed to place mutations in tskit\n");
-					exit(1);
-				}
-				
-				// Only populate discoal mutation arrays if we need ms output
-				// (i.e., not in tree output mode and will call makeGametesMS)
-				if (treeOutputMode != 1 && condRecMode == 0) {
-					if (tskit_populate_discoal_mutations() < 0) {
-						fprintf(stderr, "Error: Failed to populate discoal mutations from tskit\n");
-						exit(1);
-					}
-				}
-			} else {
-				// For untilMode, still use traditional approach for now
-				dropMutationsUntilTime(uTime);
-				if (tskit_record_mutations() < 0) {
-					fprintf(stderr, "Error: Failed to record mutations in tskit\n");
+		// Always use tskit for mutation placement
+		extern double theta;
+		if (untilMode==0) {
+			// Use edge-based algorithm for tskit mutations
+			if (tskit_place_mutations_edge_based(theta) < 0) {
+				fprintf(stderr, "Error: Failed to place mutations in tskit\n");
+				exit(1);
+			}
+			
+			// Only populate discoal mutation arrays if we need ms output
+			// (i.e., not in tree output mode and will call makeGametesMS)
+			if (treeOutputMode != 1 && condRecMode == 0) {
+				if (tskit_populate_discoal_mutations() < 0) {
+					fprintf(stderr, "Error: Failed to populate discoal mutations from tskit\n");
 					exit(1);
 				}
 			}
 		} else {
-			// Traditional discoal mutation placement
-			if(untilMode==0)
-				dropMutations();
-			else
-				dropMutationsUntilTime(uTime);	
+			// For untilMode, still use traditional approach for now
+			dropMutationsUntilTime(uTime);
+			if (tskit_record_mutations() < 0) {
+				fprintf(stderr, "Error: Failed to record mutations in tskit\n");
+				exit(1);
+			}
 		}
 
 		if(condRecMode == 0){
@@ -387,6 +378,45 @@ int main(int argc, const char * argv[]){
 			currentTrajectory = NULL;
 		}
 		
+		// Finalize and write tskit tree sequence for this replicate
+		if (tskitOutputMode) {
+			// Create replicate-specific filename
+			char replicate_filename[1024];
+			if (sampleNumber == 1) {
+				// Single replicate - use original filename
+				strcpy(replicate_filename, tskitOutputFilename);
+			} else {
+				// Multiple replicates - append replicate number
+				// i was already incremented, so it gives us the correct 1-based replicate number
+				int replicate_num = i;
+				char *dot = strrchr(tskitOutputFilename, '.');
+				if (dot) {
+					// Insert replicate number before extension
+					int prefix_len = dot - tskitOutputFilename;
+					snprintf(replicate_filename, sizeof(replicate_filename), 
+						"%.*s_rep%d%s", prefix_len, tskitOutputFilename, replicate_num, dot);
+				} else {
+					// No extension - append replicate number
+					snprintf(replicate_filename, sizeof(replicate_filename), 
+						"%s_rep%d", tskitOutputFilename, replicate_num);
+				}
+			}
+			
+			if (i == 0) {
+				fprintf(stderr, "Writing tree sequence to %s\n", replicate_filename);
+			}
+			int ret = tskit_finalize(replicate_filename);
+			if (ret != 0) {
+				fprintf(stderr, "Error writing tree sequence: %s\n", tsk_strerror(ret));
+			}
+		} else {
+			// No file output - just need to sort tables for internal consistency
+			// (tskit_finalize with NULL filename would fail)
+		}
+		
+		// Clean up tskit for this replicate
+		tskit_cleanup();
+		
                 totalSimCount += 1;
 	}
         if(condRecMode == 1)
@@ -404,15 +434,7 @@ int main(int argc, const char * argv[]){
 		}
 	}
 	
-	// Finalize and write tskit tree sequence
-	if (tskitOutputMode) {
-		fprintf(stderr, "Writing tree sequence to %s\n", tskitOutputFilename);
-		int ret = tskit_finalize(tskitOutputFilename);
-		if (ret != 0) {
-			fprintf(stderr, "Error writing tree sequence: %s\n", tsk_strerror(ret));
-		}
-		tskit_cleanup();
-	}
+	// tskit finalization now handled per-replicate
 	
 	free(currentSize);
 		free(events);

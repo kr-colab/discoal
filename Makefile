@@ -14,8 +14,6 @@ all: discoal
 # executable 
 #
 
-
-
 discoal: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h ancestryVerify.c ancestryVerify.h activeSegment.c activeSegment.h tskitInterface.c tskitInterface.h $(TSKIT_SOURCES)
 	$(CC) $(CFLAGS) -o discoal discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c tskitInterface.c $(TSKIT_SOURCES) -lm -fcommon
 
@@ -25,7 +23,7 @@ discoal_edited: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions
 
 # Build debug version with ancestry verification
 discoal_debug: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h ancestryVerify.c ancestryVerify.h activeSegment.c activeSegment.h $(TSKIT_SOURCES)
-	$(CC) -O2 -I. -I./extern/tskit -I./extern/tskit/kastore -DDEBUG_ANCESTRY -o discoal_debug discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c $(TSKIT_SOURCES) -lm -fcommon
+	$(CC) -O2 -I. -I./extern/tskit -I./extern/tskit/kastore -DDEBUG_ANCESTRY -o discoal_debug discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c tskitInterface.c $(TSKIT_SOURCES) -lm -fcommon
 
 # Build legacy version from master-backup branch for comparison testing
 discoal_legacy_backup:
@@ -49,151 +47,97 @@ discoal_legacy_backup:
 		exit 1; \
 	fi
 
-# Build both versions needed for testing
-test_binaries: discoal_edited discoal_legacy_backup
-	@echo "Built both edited and legacy versions for testing"
+#
+# tests - for comprehensive population genetics testing
+#
 
-# Run the comprehensive testing suite
-test_comprehensive: test_binaries
-	@echo "Running comprehensive validation suite..."
+test: discoal_legacy_backup discoal_edited
+	@echo "Running comprehensive test suite..."
 	cd testing && ./comprehensive_validation_suite.sh
 
-# Run the focused testing suite  
-test_focused: test_binaries
-	@echo "Running focused validation suite..."
+test_quick: discoal_legacy_backup discoal_edited
+	@echo "Running quick focused validation..."
 	cd testing && ./focused_validation_suite.sh
 
-# Build version from HEAD of current branch as legacy_backup for comparison
-discoal_legacy_backup_head:
-	@echo "Building version from HEAD of current branch as legacy_backup..."
-	@mkdir -p /tmp/discoal_head_build
-	@git archive HEAD | tar -x -C /tmp/discoal_head_build
-	@cd /tmp/discoal_head_build && $(CC) $(CFLAGS) -o discoal_legacy_backup discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon && mv discoal_legacy_backup $(CURDIR)/
-	@rm -rf /tmp/discoal_head_build
-	@echo "HEAD version built successfully as discoal_legacy_backup"
+test_reps: discoal_legacy_backup discoal_edited
+	@echo "Running statistical validation with custom replicate count..."
+	@read -p "Enter number of replicates (default 100): " reps; \
+	reps=$${reps:-100}; \
+	echo "Running with $$reps replicates..."; \
+	cd testing && ./statistical_validation_suite.sh $$reps
 
-# Build both versions for HEAD comparison testing
-test_binaries_head: discoal_edited discoal_legacy_backup_head
-	@echo "Built both optimized and HEAD versions for testing"
+test_msprime: discoal_edited
+	@echo "Running msprime comparison suite..."
+	cd testing && ./msprime_comparison_suite.sh
 
-# Run comprehensive test comparing optimized vs HEAD of branch
-test_comprehensive_head: test_binaries_head
-	@echo "Running comprehensive validation suite (optimized vs HEAD)..."
-	@echo "This will compare the performance improvements of our optimizations"
-	@echo "Optimized = current working directory with trajectory optimizations"
-	@echo "Legacy = HEAD of current branch (before optimizations)"
-	cd testing && ./comprehensive_validation_suite.sh
+# Unit test-related targets
+TEST_DIR = test/unit
+UNITY_DIR = extern/Unity/src
 
-# Generate PDF documentation from LaTeX source
-doc: discoaldoc.pdf
+# Unity source files
+UNITY_SOURCES = $(UNITY_DIR)/unity.c
 
-discoaldoc.pdf: discoaldoc.tex texrefs.bib
-	@echo "Generating PDF documentation..."
-	@if command -v pdflatex >/dev/null 2>&1; then \
-		pdflatex discoaldoc.tex && \
-		bibtex discoaldoc && \
-		pdflatex discoaldoc.tex && \
-		pdflatex discoaldoc.tex && \
-		rm -f discoaldoc.aux discoaldoc.bbl discoaldoc.blg discoaldoc.log discoaldoc.out && \
-		echo "Documentation generated: discoaldoc.pdf"; \
-	else \
-		echo "ERROR: pdflatex not found. Please install LaTeX (e.g., texlive-latex-base texlive-latex-extra)"; \
-		exit 1; \
-	fi
-	
-test: alleleTrajTest.c alleleTraj.c alleleTraj.h discoalFunctions.c
-	$(CC) $(CFLAGS)  -o alleleTrajTest alleleTrajTest.c alleleTraj.c ranlibComplete.c discoalFunctions.c -lm
+# Test source files
+TEST_SOURCES = $(TEST_DIR)/test_runner.c
 
-# unit tests
-test_node: test/unit/test_node.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c discoal.h discoalFunctions.h
-	$(CC) $(TEST_CFLAGS) -o test_node test/unit/test_node.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
+# Individual test executables
+test_node: $(TEST_DIR)/test_node.c discoal.h ancestrySegment.o
+	$(CC) $(TEST_CFLAGS) -o test_node $(TEST_DIR)/test_node.c $(UNITY_SOURCES) ancestrySegment.o -I$(UNITY_DIR) -fcommon
 
-test_event: test/unit/test_event.c test/unit/unity.c discoal.h
-	$(CC) $(TEST_CFLAGS) -o test_event test/unit/test_event.c test/unit/unity.c -lm -fcommon
+test_event: $(TEST_DIR)/test_event.c discoal.h
+	$(CC) $(TEST_CFLAGS) -o test_event $(TEST_DIR)/test_event.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
-test_node_operations: test/unit/test_node_operations.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c discoal.h discoalFunctions.h
-	$(CC) $(TEST_CFLAGS) -o test_node_operations test/unit/test_node_operations.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
+test_node_operations: $(TEST_DIR)/test_node_operations.c discoal.h ancestrySegment.o
+	$(CC) $(TEST_CFLAGS) -o test_node_operations $(TEST_DIR)/test_node_operations.c $(UNITY_SOURCES) ancestrySegment.o -I$(UNITY_DIR) -fcommon
 
-test_mutations: test/unit/test_mutations.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c discoal.h discoalFunctions.h
-	$(CC) $(TEST_CFLAGS) -o test_mutations test/unit/test_mutations.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
+test_mutations: $(TEST_DIR)/test_mutations.c discoal.h
+	$(CC) $(TEST_CFLAGS) -o test_mutations $(TEST_DIR)/test_mutations.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
-test_ancestry_segment: test/unit/test_ancestry_segment.c test/unit/unity.c ancestrySegment.c ancestrySegmentAVL.c ancestrySegment.h
-	$(CC) $(TEST_CFLAGS) -o test_ancestry_segment test/unit/test_ancestry_segment.c test/unit/unity.c ancestrySegment.c ancestrySegmentAVL.c -lm -fcommon
+test_ancestry_segment: $(TEST_DIR)/test_ancestry_segment.c ancestrySegment.c ancestrySegmentAVL.c ancestrySegment.h ancestrySegmentAVL.h
+	$(CC) $(TEST_CFLAGS) -o test_ancestry_segment $(TEST_DIR)/test_ancestry_segment.c ancestrySegment.c ancestrySegmentAVL.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
-test_active_segment: test/unit/test_active_segment.c test/unit/unity.c activeSegment.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.h ancestrySegment.h discoal.h
-	$(CC) $(TEST_CFLAGS) -o test_active_segment test/unit/test_active_segment.c test/unit/unity.c activeSegment.c ancestrySegment.c ancestrySegmentAVL.c -lm -fcommon
+test_active_segment: $(TEST_DIR)/test_active_segment.c activeSegment.c activeSegment.h
+	$(CC) $(TEST_CFLAGS) -o test_active_segment $(TEST_DIR)/test_active_segment.c activeSegment.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
-test_trajectory: test/unit/test_trajectory.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c discoal.h discoalFunctions.h
-	$(CC) $(TEST_CFLAGS) -o test_trajectory test/unit/test_trajectory.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
+test_trajectory: $(TEST_DIR)/test_trajectory.c discoal.h
+	$(CC) $(TEST_CFLAGS) -o test_trajectory $(TEST_DIR)/test_trajectory.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
-test_coalescence_recombination: test/unit/test_coalescence_recombination.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c discoal.h discoalFunctions.h
-	$(CC) $(TEST_CFLAGS) -o test_coalescence_recombination test/unit/test_coalescence_recombination.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
+test_coalescence_recombination: $(TEST_DIR)/test_coalescence_recombination.c discoal.h ancestrySegment.o
+	$(CC) $(TEST_CFLAGS) -o test_coalescence_recombination $(TEST_DIR)/test_coalescence_recombination.c $(UNITY_SOURCES) ancestrySegment.o -I$(UNITY_DIR) -fcommon
 
-test_memory_management: test/unit/test_memory_management.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c discoal.h discoalFunctions.h
-	$(CC) $(TEST_CFLAGS) -o test_memory_management test/unit/test_memory_management.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
+test_memory_management: $(TEST_DIR)/test_memory_management.c discoal.h
+	$(CC) $(TEST_CFLAGS) -o test_memory_management $(TEST_DIR)/test_memory_management.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
-# Unified test runner
-test_runner: test/unit/test_runner.c test/unit/test_node.c test/unit/test_event.c test/unit/test_node_operations.c test/unit/test_mutations.c test/unit/test_ancestry_segment.c test/unit/test_active_segment.c test/unit/test_trajectory.c test/unit/test_coalescence_recombination.c test/unit/test_memory_management.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c discoal.h discoalFunctions.h
-	$(CC) $(TEST_CFLAGS) -DTEST_RUNNER_MODE -o test_runner test/unit/test_runner.c test/unit/test_node.c test/unit/test_event.c test/unit/test_node_operations.c test/unit/test_mutations.c test/unit/test_ancestry_segment.c test/unit/test_active_segment.c test/unit/test_trajectory.c test/unit/test_coalescence_recombination.c test/unit/test_memory_management.c test/unit/unity.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
+# Build the unified test runner executable
+test_runner: $(TEST_SOURCES) test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_coalescence_recombination test_memory_management
+	$(CC) $(TEST_CFLAGS) -o test_runner $(TEST_SOURCES) -I$(UNITY_DIR) -fcommon
 
+# Object files needed by tests
+ancestrySegment.o: ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h
+	$(CC) $(TEST_CFLAGS) -c ancestrySegment.c ancestrySegmentAVL.c
+
+# Run individual unit tests
 run_tests: test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_coalescence_recombination test_memory_management
-	./test_node || exit 1
-	./test_event || exit 1
-	./test_node_operations || exit 1
-	./test_mutations || exit 1
-	./test_ancestry_segment || exit 1
-	./test_active_segment || exit 1
-	./test_trajectory || exit 1
-	./test_coalescence_recombination || exit 1
-	./test_memory_management || exit 1
+	@echo "=== Running Unit Tests ==="
+	./test_node
+	./test_event
+	./test_node_operations
+	./test_mutations
+	./test_ancestry_segment
+	./test_active_segment
+	./test_trajectory
+	./test_coalescence_recombination
+	./test_memory_management
+	@echo "=== All Unit Tests Passed ==="
 
 # Run all tests using the unified runner
 run_all_tests: test_runner
 	./test_runner
-
-# Build discoal with tskit-only optimization enabled (Phase 1: Infrastructure only)
-discoal_tskit_only: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h ancestryVerify.c ancestryVerify.h activeSegment.c activeSegment.h tskitInterface.c tskitInterface.h $(TSKIT_SOURCES)
-	@echo "Phase 1: Building with tskit-only infrastructure (not fully functional yet)"
-	$(CC) $(CFLAGS) -DUSE_TSKIT_ONLY -o discoal_tskit_only discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c tskitInterface.c $(TSKIT_SOURCES) -lm -fcommon
-
-# Build both current and tskit-only versions for comparison testing
-tskit_only_binaries: discoal discoal_tskit_only
-	@echo "Built both current and tskit-only versions for comparison testing"
-
-# Run the tskit-only optimization validation suite
-test_tskit_only: tskit_only_binaries
-	@echo "Running tskit-only optimization validation suite..."
-	cd testing && ./tskit_only_validation_suite.sh
-
-# Run tskit-only validation with custom replicate count
-test_tskit_only_reps: tskit_only_binaries
-	@echo "Running tskit-only validation with custom replicate count..."
-	@read -p "Enter number of replicates (default 50): " reps; \
-	reps=$${reps:-50}; \
-	echo "Running with $$reps replicates..."; \
-	cd testing && ./tskit_only_validation_suite.sh $$reps
-
-# Quick tskit-only test with minimal replicates
-test_tskit_only_quick: tskit_only_binaries
-	@echo "Running quick tskit-only validation (10 replicates)..."
-	cd testing && ./tskit_only_validation_suite.sh 10
-
-# Memory profiling test for tskit-only optimization
-profile_tskit_only_memory: tskit_only_binaries
-	@echo "Profiling memory usage: current vs tskit-only..."
-	@echo "Testing large simulation to demonstrate memory savings..."
-	@echo ""
-	@echo "=== Current Implementation ==="
-	/usr/bin/time -v ./discoal 1000 1 100000 -t 200 -r 100 > /dev/null 2>&1 || true
-	@echo ""
-	@echo "=== Tskit-Only Implementation ==="
-	USE_TSKIT_ONLY=1 /usr/bin/time -v ./discoal_tskit_only 1000 1 100000 -t 200 -r 100 > /dev/null 2>&1 || true
 
 #
 # clean
 #
 
 clean:
-	rm -f discoal discoal_edited discoal_legacy_backup discoal_tskit_only *.o test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_coalescence_recombination test_memory_management test_runner alleleTrajTest
+	rm -f discoal discoal_edited discoal_legacy_backup *.o test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_coalescence_recombination test_memory_management test_runner alleleTrajTest
 	rm -f discoaldoc.aux discoaldoc.bbl discoaldoc.blg discoaldoc.log discoaldoc.out
-
