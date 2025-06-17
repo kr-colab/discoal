@@ -55,6 +55,10 @@ test: discoal_legacy_backup discoal_edited
 	@echo "Running comprehensive test suite..."
 	cd testing && ./comprehensive_validation_suite.sh
 
+test_comprehensive: discoal_legacy_backup discoal_edited
+	@echo "Running comprehensive test suite..."
+	cd testing && ./comprehensive_validation_suite.sh
+
 test_quick: discoal_legacy_backup discoal_edited
 	@echo "Running quick focused validation..."
 	cd testing && ./focused_validation_suite.sh

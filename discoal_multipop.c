@@ -109,9 +109,10 @@ int main(int argc, const char * argv[]){
 		maxTrajSteps = trajectoryCapacity;
 		
 		// Always initialize tskit for each replicate (must be before initialize())
-		if (tskitOutputMode && i == 0) {
-			fprintf(stderr, "Initializing tskit with sequence length %d (replicate %d)\n", nSites, i+1);
-		}
+		// Debug output commented out for production
+		// if (tskitOutputMode && i == 0) {
+		//	fprintf(stderr, "Initializing tskit with sequence length %d (replicate %d)\n", nSites, i+1);
+		// }
 		int ret = tskit_initialize((double)nSites);
 		if (ret != 0) {
 			fprintf(stderr, "Error initializing tskit: %s\n", tsk_strerror(ret));
@@ -308,8 +309,8 @@ int main(int argc, const char * argv[]){
 			}
 			
 			// Only populate discoal mutation arrays if we need ms output
-			// (i.e., not in tree output mode and will call makeGametesMS)
-			if (treeOutputMode != 1 && condRecMode == 0) {
+			// (i.e., not in conditional recombination mode)
+			if (condRecMode == 0) {
 				if (tskit_populate_discoal_mutations() < 0) {
 					fprintf(stderr, "Error: Failed to populate discoal mutations from tskit\n");
 					exit(1);
@@ -325,43 +326,41 @@ int main(int argc, const char * argv[]){
 		}
 
 		if(condRecMode == 0){
-			if(treeOutputMode == 1){
-				//output newick trees
-                qsort(breakPoints, breakNumber, sizeof(breakPoints[0]), compare_floats);
-				lastBreak = 0;
-				printf("\n//\n");
-				for(k=0;k<breakNumber;k++){
-					tempSite = ((float) breakPoints[k] / nSites) - (0.5/nSites) ; //padding
-					if(breakPoints[k] - lastBreak > 0){
-						printf("[%d]",breakPoints[k] - lastBreak);
-                        //printf("%g\n",allNodes[findRootAtSite(breakPoints[k])]->time);
-                        printTreeAtSite(tempSite); 
-						lastBreak = breakPoints[k];
-					}
-				}
-				printf("[%d]",nSites- lastBreak);
-				//printf("%g\n",allNodes[findRootAtSite(1.0-(1.0/nSites))]->time);
-				printTreeAtSite(1.0 - (1.0/nSites)); 
-
-			}
-			else{
-				//Hudson style output
-				//errorCheckMutations();
+			// Hudson style output
+			//errorCheckMutations();
+			// Only generate MS output if not using tskit-only output mode
+			if (!tskitOutputMode) {
 				makeGametesMS(argc,argv);
 			}
 			//printf("rep: %d\n",i);
-                        i++;
+			i++;
 		}
 		else{
 			if(condRecMet == 1){
                                 i++;
-				makeGametesMS(argc,argv);
+				// Only generate MS output if not using tskit-only output mode
+				if (!tskitOutputMode) {
+					makeGametesMS(argc,argv);
+				}
 				condRecMet = 0;
 			}
 	
 		}
 		
-		freeTree(nodes[0]);
+		// Clean up nodes for next replicate (tskit-only mode)
+		// In tskit-only mode, we need minimal cleanup since tskit handles most memory
+		for (int cleanup_i = 0; cleanup_i < alleleNumber && cleanup_i < 1000; cleanup_i++) {
+			if (nodes[cleanup_i] != NULL) {
+				// Free ancestry segments if they exist
+				if (nodes[cleanup_i]->ancestryRoot) {
+					freeSegmentTree(nodes[cleanup_i]->ancestryRoot);
+					nodes[cleanup_i]->ancestryRoot = NULL;
+				}
+				// Free the node itself
+				free(nodes[cleanup_i]);
+				nodes[cleanup_i] = NULL;
+			}
+		}
 		cleanupBreakPoints();
 		
 		// Clean up trajectory after each simulation
@@ -505,7 +504,6 @@ void getParameters(int argc,const char **argv){
 	migFlag = 0;
 	deltaTMod = 40;
 	recurSweepMode = 0;
-	treeOutputMode= 0;
 	partialSweepMode = 0;
 	softSweepMode = 0;
 	ancSampleFlag = 0;
@@ -544,7 +542,17 @@ void getParameters(int argc,const char **argv){
 			case 't' :
 			if (argv[args][2] == 's') {  // -ts flag for tree sequence
 				tskitOutputMode = 1;
-				strcpy(tskitOutputFilename, argv[++args]);
+				args++;
+				if (args >= argc || argv[args] == NULL || argv[args][0] == '-' || strlen(argv[args]) == 0) {
+					fprintf(stderr, "Error: -ts flag requires a filename argument\n");
+					fprintf(stderr, "Usage: %s [options] -ts <filename.trees>\n", argv[0]);
+					fprintf(stderr, "Example: %s 10 1 1000 -t 5 -ts output.trees\n", argv[0]);
+					if (args < argc && argv[args] != NULL && argv[args][0] == '-') {
+						fprintf(stderr, "Note: '%s' looks like another flag, not a filename\n", argv[args]);
+					}
+					exit(1);
+				}
+				strcpy(tskitOutputFilename, argv[args]);
 			}
 			else {  // -t flag for theta
 				theta = atof(argv[++args]);
@@ -782,9 +790,6 @@ void getParameters(int argc,const char **argv){
 			case 'N' :
 			EFFECTIVE_POPN_SIZE=atoi(argv[++args]);
 			break;
-			case 'T' :
-			treeOutputMode= 1;
-			break;
 			case 'C' :
 			condRecMode= 1;
 			condRecMet = 0;
@@ -830,6 +835,11 @@ void getParameters(int argc,const char **argv){
 			ancSampleFlag = 1;
 			eventNumber++;
 			assert(events[eventNumber-1].lineageNumber < sampleSize);
+			break;
+			case 'T' :
+			fprintf(stderr, "Error: -T tree output mode has been removed.\\n");
+			fprintf(stderr, "Use -ts <filename.trees> for tree sequence output instead.\\n");
+			exit(1);
 			break;
 			 
 		}
@@ -923,7 +933,6 @@ void usage(){
 	fprintf(stderr,"\t -R rhhRate (recurrent hitch hiking mode at the locus; rhh is rate per 2N individuals / generation)\n");
 	fprintf(stderr,"\t -L rhhRate (recurrent hitch hiking mode to the side of locus; leftRho is ~Unif(0,4Ns); rhh is rate per 2N individuals / generation)\n");
 	fprintf(stderr,"\t -h (hide selected SNP in partial sweep mode)\n");
-	fprintf(stderr,"\t -T (tree output mode)\n");
 	fprintf(stderr,"\t -ts filename (tree sequence output mode - saves to tskit file)\n");
 	fprintf(stderr,"\t -d seed1 seed2 (set random number generator seeds)\n");
 	
