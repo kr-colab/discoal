@@ -3169,38 +3169,73 @@ void makeGametesMS_tskit(int argc, const char *argv[]) {
 			return;
 		}
 		
-		// Generate genotypes for each sample
-		for (int sample_idx = 0; sample_idx < sample_node_count; sample_idx++) {
-			tsk_id_t sample_node_id = sample_node_ids[sample_idx];
-			
-			// For each site, determine the genotype of this sample
-			for (tsk_id_t site_id = 0; site_id < (tsk_id_t)num_sites; site_id++) {
-				// Check if this sample has the derived allele at this site
-				// We need to find if there's a mutation on the path from this sample to the root
-				char genotype = '0';  // Default to ancestral state
-				
-				// Find mutations at this site
-				tsk_id_t *mutations_at_site = NULL;
-				tsk_size_t num_mutations_at_site = 0;
-				
-				// Simple approach: check all mutations at this site
-				for (tsk_id_t mut_id = 0; mut_id < tsk_tables->mutations.num_rows; mut_id++) {
-					if (tsk_tables->mutations.site[mut_id] == site_id) {
-						tsk_id_t mutation_node = tsk_tables->mutations.node[mut_id];
-						
-						// Check if this sample is descended from the mutation node
-						// For now, use a simple approach - if the mutation is on our sample node, we have it
-						if (mutation_node == sample_node_id) {
-							genotype = '1';
-							break;
-						}
-					}
+		// Use tskit's efficient variant API for genotype generation
+		tsk_variant_t variant;
+		ret = tsk_variant_init(&variant, &ts, NULL, 0, NULL, 0);
+		if (ret != 0) {
+			fprintf(stderr, "Error: Failed to initialize variant: %s\n", tsk_strerror(ret));
+			tsk_treeseq_free(&ts);
+			return;
+		}
+		
+		// Create a matrix to store all genotypes (samples x sites)
+		int32_t **genotype_matrix = malloc(num_samples * sizeof(int32_t*));
+		if (genotype_matrix == NULL) {
+			fprintf(stderr, "Error: Failed to allocate genotype matrix\n");
+			tsk_variant_free(&variant);
+			tsk_treeseq_free(&ts);
+			return;
+		}
+		for (tsk_size_t i = 0; i < num_samples; i++) {
+			genotype_matrix[i] = malloc(num_sites * sizeof(int32_t));
+			if (genotype_matrix[i] == NULL) {
+				fprintf(stderr, "Error: Failed to allocate genotype row\n");
+				// Cleanup already allocated rows
+				for (tsk_size_t j = 0; j < i; j++) {
+					free(genotype_matrix[j]);
 				}
-				
-				printf("%c", genotype);
+				free(genotype_matrix);
+				tsk_variant_free(&variant);
+				tsk_treeseq_free(&ts);
+				return;
+			}
+		}
+		
+		// Decode genotypes for each site
+		for (tsk_id_t site_id = 0; site_id < (tsk_id_t)num_sites; site_id++) {
+			ret = tsk_variant_decode(&variant, site_id, 0);
+			if (ret != 0) {
+				fprintf(stderr, "Error: Failed to decode variant at site %d: %s\n", site_id, tsk_strerror(ret));
+				// Cleanup
+				for (tsk_size_t i = 0; i < num_samples; i++) {
+					free(genotype_matrix[i]);
+				}
+				free(genotype_matrix);
+				tsk_variant_free(&variant);
+				tsk_treeseq_free(&ts);
+				return;
+			}
+			
+			// Copy genotypes for this site
+			for (tsk_size_t sample_idx = 0; sample_idx < num_samples; sample_idx++) {
+				genotype_matrix[sample_idx][site_id] = variant.genotypes[sample_idx];
+			}
+		}
+		
+		// Print genotypes in sample order
+		for (tsk_size_t sample_idx = 0; sample_idx < num_samples; sample_idx++) {
+			for (tsk_size_t site_idx = 0; site_idx < num_sites; site_idx++) {
+				printf("%d", genotype_matrix[sample_idx][site_idx]);
 			}
 			printf("\n");
 		}
+		
+		// Cleanup
+		for (tsk_size_t i = 0; i < num_samples; i++) {
+			free(genotype_matrix[i]);
+		}
+		free(genotype_matrix);
+		tsk_variant_free(&variant);
 	} else {
 		printf("\n");
 		// Still need to print sample lines even with no sites

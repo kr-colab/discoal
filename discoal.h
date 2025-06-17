@@ -16,7 +16,7 @@
 
 /* Still needed for various static arrays and limits */
 #define MAXSITES 100000000   /* Maximum number of sites - used for input validation */
-#define MAXMUTS 40000        /* Maximum mutations for output formatting */
+#define MAXMUTS 400000        /* Maximum mutations for output formatting */
 #define MAXTIME 100000.0     /* Sentinel value representing "infinite" time */
 #define MAXPOPS 121          /* Maximum number of populations */
 
@@ -172,7 +172,6 @@ int partialSweepMode,softSweepMode;
 double partialSweepFinalFreq;
 
 double deltaTMod;
-int treeOutputMode;
 
 int ancSampleSize, ancPopID, ancSampleFlag;
 int ancSampleTime;
