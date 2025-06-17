@@ -33,11 +33,13 @@ const char *fileName;
 double uTime;
 double *currentSize;
 long seed1, seed2;
+double nextTime, currentFreq;
 //float *currentTrajectory;
 
 void getParameters(int argc,const char **argv);
 void usage();
 void cleanup_and_exit(int sig);
+void initializeTrajectoryVariables(double N);
 
 // Signal handler for cleanup
 void cleanup_and_exit(int sig) {
@@ -52,6 +54,25 @@ void cleanup_and_exit(int sig) {
 		}
 	}
 	exit(sig);
+}
+
+// Initialize all trajectory-related variables
+void initializeTrajectoryVariables(double N) {
+	// Initialize time-related variables
+	currentTime = 0;
+	nextTime = 999;
+	
+	// Initialize population size
+	currentSize[0] = 1.0;
+	
+	// Initialize frequency (just to initialize the value)
+	currentFreq = 1.0 - (1.0 / (2.0 * N * currentSize[0]));
+	
+	// Initialize trajectory steps
+	maxTrajSteps = trajectoryCapacity;
+	
+	// Initialize sweep flag
+	activeSweepFlag = 0;
 }
 
 // Helper function to ensure events array has enough capacity
@@ -74,7 +95,7 @@ int main(int argc, const char * argv[]){
 	int i,j,k, totalSimCount;
 	float tempSite;
 	int lastBreak;
-	double nextTime, currentFreq, probAccept;
+	double probAccept;
 	
 	
 	
@@ -101,12 +122,8 @@ int main(int argc, const char * argv[]){
 	// Initialize global trajectory generator (lazy approach)
 
 	while(i < sampleNumber){
-		currentTime=0;
-		nextTime=999;
-		currentSize[0]=1.0;
-		currentFreq = 1.0 - (1.0 / (2.0 * N * currentSize[0])); //just to initialize the value
-//		printf("popnsize[0]:%d",popnSizes[0]);
-		maxTrajSteps = trajectoryCapacity;
+		// Initialize all trajectory-related variables
+		initializeTrajectoryVariables(N);
 		
 		// Always initialize tskit for each replicate (must be before initialize())
 		// Debug output commented out for production
@@ -347,6 +364,12 @@ int main(int argc, const char * argv[]){
 	
 		}
 		
+		// Debug: Print memory statistics (commented out for production)
+		// if (tskitOutputMode || minimalTreeSeq) {
+		// 	fprintf(stderr, "Replicate %d: Total nodes created: %d, Nodes freed during sim: %d, Net nodes: %d\n", 
+		// 	        i, totNodeNumber, freedNodeCount, totNodeNumber - freedNodeCount);
+		// }
+		
 		// Clean up nodes for next replicate (tskit-only mode)
 		// In tskit-only mode, we need minimal cleanup since tskit handles most memory
 		for (int cleanup_i = 0; cleanup_i < alleleNumber && cleanup_i < 1000; cleanup_i++) {
@@ -520,6 +543,7 @@ void getParameters(int argc,const char **argv){
 	hidePartialSNP = 0;
 	tskitOutputMode = 0;
 	tskitOutputFilename[0] = '\0';
+	minimalTreeSeq = 1;  // Default to minimal tree sequence mode
 	
 	// Initialize events array with initial capacity
 	eventsCapacity = 50;  // Start with reasonable capacity
@@ -541,6 +565,15 @@ void getParameters(int argc,const char **argv){
 	condRecMode= 0;
 	while(args < argc){
 		switch(argv[args][1]){
+			case 'F' :
+			if (!tskitOutputMode) {
+				fprintf(stderr, "Error: -F flag requires -ts to be specified first\n");
+				fprintf(stderr, "Usage: %s [options] -ts <filename.trees> -F\n", argv[0]);
+				exit(1);
+			}
+			minimalTreeSeq = 0;  // Disable minimal mode, use full recording
+			fprintf(stderr, "Note: Full tree sequence mode enabled (recording all edges including recombination)\n");
+			break;
 			case 'S' :
 			runMode = 'S';
 			fileName = argv[++args];
@@ -611,15 +644,16 @@ void getParameters(int argc,const char **argv){
 			migFlag = 1;
 			break;
 			case 'm' :
-			if(npops==1){
-				fprintf(stderr,"Error: attempting to set migration but only one population! Be sure that 'm' flags are specified after 'p' flag\n");
-				exit(1);
-			}
-			i = atoi(argv[++args]);
-			j = atoi(argv[++args]);
-			migR = atof(argv[++args]);
-			migMatConst[i][j]=migR;
-			migFlag = 1;
+			// -m flag for migration
+				if(npops==1){
+					fprintf(stderr,"Error: attempting to set migration but only one population! Be sure that 'm' flags are specified after 'p' flag\n");
+					exit(1);
+				}
+				i = atoi(argv[++args]);
+				j = atoi(argv[++args]);
+				migR = atof(argv[++args]);
+				migMatConst[i][j]=migR;
+				migFlag = 1;
 			break;
 			case 'p' :
 			npops = atoi(argv[++args]);
@@ -943,6 +977,7 @@ void usage(){
 	fprintf(stderr,"\t -L rhhRate (recurrent hitch hiking mode to the side of locus; leftRho is ~Unif(0,4Ns); rhh is rate per 2N individuals / generation)\n");
 	fprintf(stderr,"\t -h (hide selected SNP in partial sweep mode)\n");
 	fprintf(stderr,"\t -ts filename (tree sequence output mode - saves to tskit file)\n");
+	fprintf(stderr,"\t -F (full ARG mode - record all edges including recombination; use with -ts)\n");
 	fprintf(stderr,"\t -d seed1 seed2 (set random number generator seeds)\n");
 	
 	exit(1);
