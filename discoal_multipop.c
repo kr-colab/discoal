@@ -379,11 +379,12 @@ int main(int argc, const char * argv[]){
 		
 		// Finalize and write tskit tree sequence for this replicate
 		if (tskitOutputMode) {
-			// Create replicate-specific filename
-			char replicate_filename[1024];
+			// Create replicate-specific filename with larger buffer to prevent overflow
+			char replicate_filename[1200];  // Extra space for _repN suffix
 			if (sampleNumber == 1) {
 				// Single replicate - use original filename
-				strcpy(replicate_filename, tskitOutputFilename);
+				strncpy(replicate_filename, tskitOutputFilename, sizeof(replicate_filename) - 1);
+				replicate_filename[sizeof(replicate_filename) - 1] = '\0';
 			} else {
 				// Multiple replicates - append replicate number
 				// i was already incremented, so it gives us the correct 1-based replicate number
@@ -392,12 +393,20 @@ int main(int argc, const char * argv[]){
 				if (dot) {
 					// Insert replicate number before extension
 					int prefix_len = dot - tskitOutputFilename;
-					snprintf(replicate_filename, sizeof(replicate_filename), 
+					int ret = snprintf(replicate_filename, sizeof(replicate_filename), 
 						"%.*s_rep%d%s", prefix_len, tskitOutputFilename, replicate_num, dot);
+					if (ret >= sizeof(replicate_filename)) {
+						fprintf(stderr, "Error: Output filename too long\\n");
+						exit(1);
+					}
 				} else {
 					// No extension - append replicate number
-					snprintf(replicate_filename, sizeof(replicate_filename), 
+					int ret = snprintf(replicate_filename, sizeof(replicate_filename), 
 						"%s_rep%d", tskitOutputFilename, replicate_num);
+					if (ret >= sizeof(replicate_filename)) {
+						fprintf(stderr, "Error: Output filename too long\\n");
+						exit(1);
+					}
 				}
 			}
 			
