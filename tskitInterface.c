@@ -290,9 +290,33 @@ int tskit_place_mutations_edge_based(double theta) {
     
     extern int nSites;
     
-    // First pass: collect all mutation information
-    temp_mutation_t mutations[MAXMUTS];
+    // First pass: estimate mutation count and allocate dynamically
+    // Estimate based on total branch length * theta * sequence length
+    double total_branch_length = 0.0;
+    for (tsk_id_t edge_id = 0; edge_id < tsk_tables->edges.num_rows; edge_id++) {
+        tsk_id_t parent_id = tsk_tables->edges.parent[edge_id];
+        tsk_id_t child_id = tsk_tables->edges.child[edge_id];
+        double parent_time = tsk_tables->nodes.time[parent_id];
+        double child_time = tsk_tables->nodes.time[child_id];
+        double branch_length = parent_time - child_time;
+        double genomic_span = tsk_tables->edges.right[edge_id] - tsk_tables->edges.left[edge_id];
+        total_branch_length += branch_length * (genomic_span / tsk_tables->sequence_length);
+    }
+    
+    // Estimate expected mutations with buffer
+    int estimated_mutations = (int)(total_branch_length * theta) + 50;
+    if (estimated_mutations > MAXMUTS) estimated_mutations = MAXMUTS;
+    if (estimated_mutations < 10) estimated_mutations = 10;  // Minimum allocation
+    
+    // Allocate mutations array dynamically
+    temp_mutation_t *mutations = malloc(sizeof(temp_mutation_t) * estimated_mutations);
+    if (mutations == NULL) {
+        fprintf(stderr, "Error: Failed to allocate memory for mutations array\\n");
+        return -1;
+    }
+    
     int mutation_count = 0;
+    int mutations_capacity = estimated_mutations;
     
     // Iterate through all edges and place mutations independently
     for (tsk_id_t edge_id = 0; edge_id < tsk_tables->edges.num_rows; edge_id++) {
@@ -321,9 +345,25 @@ int tskit_place_mutations_edge_based(double theta) {
             
             // Collect mutations for later sorting
             for (int i = 0; i < num_mutations; i++) {
-                if (mutation_count >= MAXMUTS) {
-                    fprintf(stderr, "Error: Too many mutations (limit: %d)\n", MAXMUTS);
-                    return -1;
+                // Check if we need to expand capacity
+                if (mutation_count >= mutations_capacity) {
+                    int new_capacity = mutations_capacity * 2;
+                    if (new_capacity > MAXMUTS) new_capacity = MAXMUTS;
+                    
+                    if (mutation_count >= MAXMUTS) {
+                        fprintf(stderr, "Error: Too many mutations (limit: %d)\\n", MAXMUTS);
+                        free(mutations);
+                        return -1;
+                    }
+                    
+                    temp_mutation_t *new_mutations = realloc(mutations, sizeof(temp_mutation_t) * new_capacity);
+                    if (new_mutations == NULL) {
+                        fprintf(stderr, "Error: Failed to expand mutations array\\n");
+                        free(mutations);
+                        return -1;
+                    }
+                    mutations = new_mutations;
+                    mutations_capacity = new_capacity;
                 }
                 
                 // Generate position uniformly within this edge's interval
@@ -347,20 +387,24 @@ int tskit_place_mutations_edge_based(double theta) {
             // Create a new site for each mutation
             tsk_id_t site_id = tskit_add_site(mutations[i].position, "0");  // ancestral state is "0"
             if (site_id < 0) {
-                fprintf(stderr, "Error: Failed to add site at position %f\n", mutations[i].position);
+                fprintf(stderr, "Error: Failed to add site at position %f\\n", mutations[i].position);
+                free(mutations);
                 return -1;
             }
             
             // Add the mutation at this site on the appropriate node
             int ret = tskit_add_mutation(site_id, mutations[i].node_id, "1");  // derived state is "1"
             if (ret < 0) {
-                fprintf(stderr, "Error: Failed to add mutation at site %lld on node %lld\n", 
+                fprintf(stderr, "Error: Failed to add mutation at site %lld on node %lld\\n", 
                         (long long)site_id, (long long)mutations[i].node_id);
+                free(mutations);
                 return -1;
             }
         }
     }
     
+    // Clean up allocated memory
+    free(mutations);
     return 0;
 }
 
