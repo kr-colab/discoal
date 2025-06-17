@@ -18,6 +18,10 @@ void cleanupMuts(rootedNode *node);
 void cleanupNodeArrays();
 rootedNode *newRootedNode(double cTime, int popn);
 
+// Node memory management
+void markParentRecorded(rootedNode *child, rootedNode *parent);
+void tryFreeNode(rootedNode *node);
+
 void coalesceAtTimePopn(double cTime, int popn);
 void coalesceAtTimePopnSweep(double cTime, int popn, int sp);
 void migrateAtTime(double cTime,int srcPopn, int destPopn);

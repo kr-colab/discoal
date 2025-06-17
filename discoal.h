@@ -59,6 +59,11 @@ typedef struct rootedNode
 	// Tskit node ID for tree sequence recording
 	tsk_id_t tskit_node_id;
 	
+	// Node state tracking for safe memory management
+	unsigned char parentsRecorded;  // Bit flags: left parent (bit 0), right parent (bit 1)
+	unsigned char isFullyRecorded;  // 1 when all genealogical info is in tskit
+	unsigned char inActiveSet;      // 1 if still in nodes[0..alleleNumber-1]
+	
 	// DEPRECATED FIELDS - temporarily kept for compilation, will be removed
 	double blProb;           // DEPRECATED - not used with tskit
 	double *muts;            // DEPRECATED - mutations handled by tskit
@@ -156,6 +161,9 @@ long int  trajectoryCapacity;
 float *currentTrajectory;
 long int currentTrajectoryStep, totalTrajectorySteps;
 
+// Node memory management statistics
+int freedNodeCount;
+
 // Memory-mapped trajectory support
 char trajectoryFilename[256];  // Current trajectory file
 int trajectoryFd;              // File descriptor for mmap
@@ -181,6 +189,7 @@ int hidePartialSNP;
 // Tree sequence recording
 int tskitOutputMode;
 char tskitOutputFilename[1024];
+int minimalTreeSeq;  // Flag for minimal tree sequence recording (coalescence only)
 
 
 #endif

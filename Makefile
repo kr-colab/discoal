@@ -47,6 +47,37 @@ discoal_legacy_backup:
 		exit 1; \
 	fi
 
+# Build version from mem branch for comparison testing
+discoal_mem_branch:
+	@echo "Building version from mem branch..."
+	@mkdir -p /tmp/discoal_mem_build
+	@if git show mem:discoal_multipop.c > /tmp/discoal_mem_build/discoal_multipop.c 2>/dev/null && \
+	   git show mem:discoalFunctions.c > /tmp/discoal_mem_build/discoalFunctions.c 2>/dev/null && \
+	   git show mem:discoal.h > /tmp/discoal_mem_build/discoal.h 2>/dev/null && \
+	   git show mem:discoalFunctions.h > /tmp/discoal_mem_build/discoalFunctions.h 2>/dev/null && \
+	   git show mem:ranlibComplete.c > /tmp/discoal_mem_build/ranlibComplete.c 2>/dev/null && \
+	   git show mem:alleleTraj.c > /tmp/discoal_mem_build/alleleTraj.c 2>/dev/null && \
+	   git show mem:alleleTraj.h > /tmp/discoal_mem_build/alleleTraj.h 2>/dev/null && \
+	   git show mem:ranlib.h > /tmp/discoal_mem_build/ranlib.h 2>/dev/null && \
+	   git show mem:ancestrySegment.c > /tmp/discoal_mem_build/ancestrySegment.c 2>/dev/null && \
+	   git show mem:ancestrySegment.h > /tmp/discoal_mem_build/ancestrySegment.h 2>/dev/null && \
+	   git show mem:ancestrySegmentAVL.c > /tmp/discoal_mem_build/ancestrySegmentAVL.c 2>/dev/null && \
+	   git show mem:ancestrySegmentAVL.h > /tmp/discoal_mem_build/ancestrySegmentAVL.h 2>/dev/null && \
+	   git show mem:ancestryVerify.c > /tmp/discoal_mem_build/ancestryVerify.c 2>/dev/null && \
+	   git show mem:ancestryVerify.h > /tmp/discoal_mem_build/ancestryVerify.h 2>/dev/null && \
+	   git show mem:activeSegment.c > /tmp/discoal_mem_build/activeSegment.c 2>/dev/null && \
+	   git show mem:activeSegment.h > /tmp/discoal_mem_build/activeSegment.h 2>/dev/null && \
+	   git show mem:ancestryWrapper.h > /tmp/discoal_mem_build/ancestryWrapper.h 2>/dev/null; then \
+		cd /tmp/discoal_mem_build && $(CC) $(CFLAGS) -o discoal_mem_branch discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon && mv discoal_mem_branch $(CURDIR)/ && cd ../..; \
+		rm -rf /tmp/discoal_mem_build; \
+		echo "mem branch version built successfully"; \
+	else \
+		echo "ERROR: Could not build version from mem branch"; \
+		echo "This is required for testing. Please ensure mem branch exists."; \
+		rm -rf /tmp/discoal_mem_build; \
+		exit 1; \
+	fi
+
 #
 # tests - for comprehensive population genetics testing
 #
@@ -73,6 +104,16 @@ test_reps: discoal_legacy_backup discoal_edited
 test_msprime: discoal_edited
 	@echo "Running msprime comparison suite..."
 	cd testing && ./msprime_comparison_suite.sh
+
+# Compare current tskit-integration branch with mem branch
+test_tskit_vs_mem: discoal_edited discoal_mem_branch
+	@echo "Comparing tskit-integration branch (current) vs mem branch..."
+	@echo "This will show the differences between the memory optimizations and tskit integration"
+	@# Temporarily rename binaries for the test suite
+	@mv discoal_mem_branch discoal_legacy_backup
+	cd testing && ./comprehensive_validation_suite.sh
+	@# Restore original name
+	@mv discoal_legacy_backup discoal_mem_branch
 
 # Unit test-related targets
 TEST_DIR = test/unit
@@ -143,5 +184,5 @@ run_all_tests: test_runner
 #
 
 clean:
-	rm -f discoal discoal_edited discoal_legacy_backup *.o test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_coalescence_recombination test_memory_management test_runner alleleTrajTest
+	rm -f discoal discoal_edited discoal_legacy_backup discoal_mem_branch *.o test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_coalescence_recombination test_memory_management test_runner alleleTrajTest
 	rm -f discoaldoc.aux discoaldoc.bbl discoaldoc.blg discoaldoc.log discoaldoc.out
