@@ -13,7 +13,7 @@
 tsk_table_collection_t *tsk_tables = NULL;
 
 // Mapping between discoal node IDs and tskit node IDs
-// We'll use the allNodes array index as the key
+// We'll use the totNodeNumber as the key
 tsk_id_t *node_id_map = NULL;
 int node_id_map_capacity = 0;
 
@@ -424,4 +424,49 @@ int tskit_populate_discoal_mutations(void) {
     // In tskit-only mode, use genotype matrix directly for output
     return 0;
 
+}
+
+// Record sweep mutations for nodes that carry them
+int tskit_record_sweep_mutations(double sweepSite) {
+    tsk_id_t site_id = TSK_NULL;
+    int mutation_count = 0;
+    int i;
+    
+    if (tsk_tables == NULL || sweepSite < 0.0) {
+        return -1;
+    }
+    
+    // First, check if any nodes carry the sweep mutation
+    int has_sweep_carriers = 0;
+    for (i = 0; i < alleleNumber; i++) {
+        if (nodes[i]->carriesSweepMutation) {
+            has_sweep_carriers = 1;
+            break;
+        }
+    }
+    
+    if (!has_sweep_carriers) {
+        return 0;  // No sweep mutations to add
+    }
+    
+    // Add the site for the sweep mutation
+    site_id = tskit_add_site(sweepSite, "0");
+    if (site_id < 0) {
+        fprintf(stderr, "Error: Failed to add sweep site at position %f\n", sweepSite);
+        return -1;
+    }
+    
+    // Add mutations for all nodes that carry the sweep mutation
+    for (i = 0; i < alleleNumber; i++) {
+        if (nodes[i]->carriesSweepMutation) {
+            tsk_id_t node_id = get_tskit_node_id(nodes[i]);
+            if (node_id >= 0) {
+                if (tskit_add_mutation(site_id, node_id, "1") >= 0) {
+                    mutation_count++;
+                }
+            }
+        }
+    }
+    
+    return mutation_count;
 }

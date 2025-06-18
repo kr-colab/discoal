@@ -20,7 +20,9 @@ rootedNode *newRootedNode(double cTime, int popn);
 
 // Node memory management
 void markParentRecorded(rootedNode *child, rootedNode *parent);
+void markLeafNodeRecorded(rootedNode *node);
 void tryFreeNode(rootedNode *node);
+void cleanupRemainingNodes();
 
 void coalesceAtTimePopn(double cTime, int popn);
 void coalesceAtTimePopnSweep(double cTime, int popn, int sp);

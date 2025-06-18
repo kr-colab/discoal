@@ -70,4 +70,7 @@ int tskit_place_mutations_directly(double theta);
 // Populate discoal mutation arrays from tskit data (for ms output compatibility)
 int tskit_populate_discoal_mutations(void);
 
+// Record sweep mutations for nodes that carry them
+int tskit_record_sweep_mutations(double sweepSite);
+
 #endif

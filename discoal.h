@@ -21,7 +21,7 @@
 #define MAXPOPS 121          /* Maximum number of populations */
 
 /* No longer needed after dynamic memory optimizations:
-   - MAXNODES: nodes/allNodes arrays are now dynamic
+   - MAXNODES: nodes array is now dynamic
    - SMALLCHUNKS: was never used  
    - MAXBREAKS: breakPoints array is now dynamic
    - MAXLEAFS: was never used
@@ -63,12 +63,9 @@ typedef struct rootedNode
 	unsigned char parentsRecorded;  // Bit flags: left parent (bit 0), right parent (bit 1)
 	unsigned char isFullyRecorded;  // 1 when all genealogical info is in tskit
 	unsigned char inActiveSet;      // 1 if still in nodes[0..alleleNumber-1]
+	unsigned char carriesSweepMutation;  // 1 if this node carries the beneficial mutation
 	
 	// DEPRECATED FIELDS - temporarily kept for compilation, will be removed
-	double blProb;           // DEPRECATED - not used with tskit
-	double *muts;            // DEPRECATED - mutations handled by tskit
-	int mutationNumber;      // DEPRECATED - mutations handled by tskit
-	int mutsCapacity;        // DEPRECATED - mutations handled by tskit
 	int ndes[2];             // DEPRECATED - never used
 	int *leafs;              // DEPRECATED - never used
 	double times[2];         // DEPRECATED - never used
@@ -110,9 +107,6 @@ tsk_id_t *sample_node_ids;
 int sample_node_count;
 int sample_node_capacity;
 
-// DEPRECATED: allNodes array - temporarily aliased to nodes for compilation
-rootedNode  **allNodes;  // Will be removed - use nodes array instead
-int allNodesCapacity;    // Will be removed
 
 // int activeMaterial[MAXSITES];  // DEPRECATED - replaced by segment structure
 ActiveMaterial activeMaterialSegments;  // New segment-based structure
