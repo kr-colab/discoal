@@ -317,6 +317,9 @@ rootedNode *newRootedNode(double cTime, int popn) {
 	return temp;
 }
 
+// Forward declaration
+void addToRemovedList(rootedNode *node);
+
 // Mark that a parent has recorded its connection to this child
 void markParentRecorded(rootedNode *child, rootedNode *parent) {
 	if (child == NULL) return;
@@ -332,8 +335,17 @@ void markParentRecorded(rootedNode *child, rootedNode *parent) {
 	int recordedParents = ((child->parentsRecorded & 0x01) ? 1 : 0) + 
 	                     ((child->parentsRecorded & 0x02) ? 1 : 0);
 	
+	// Only mark as fully recorded if:
+	// 1. All expected parents are recorded
+	// 2. Node is not in active set
+	// 3. All segments on the node are recorded
 	if (recordedParents == expectedParents && !child->inActiveSet) {
-		child->isFullyRecorded = 1;
+		// Check if all segments are recorded
+		if (areAllSegmentsRecorded(child->ancestryRoot)) {
+			child->isFullyRecorded = 1;
+			// If node is fully recorded and not in active set, add to removed list
+			addToRemovedList(child);
+		}
 	}
 }
 
@@ -360,6 +372,78 @@ void tryFreeNode(rootedNode *node) {
 	
 	// Update statistics
 	freedNodeCount++;
+}
+
+// Global list to track nodes that have been removed from active set but not yet freed
+// This allows us to safely free them later when we're sure they're not being used
+#define MAX_REMOVED_NODES 10000
+static rootedNode *removedNodes[MAX_REMOVED_NODES];
+static int removedNodeCount = 0;
+
+// Add a node to the removed list for later freeing
+void addToRemovedList(rootedNode *node) {
+	if (node == NULL || removedNodeCount >= MAX_REMOVED_NODES) return;
+	
+	// Check if already in removed list
+	for (int i = 0; i < removedNodeCount; i++) {
+		if (removedNodes[i] == node) return;  // Already tracked
+	}
+	
+	// Mark as not in active set
+	node->inActiveSet = 0;
+	
+	// Add to removed list
+	removedNodes[removedNodeCount++] = node;
+}
+
+// Sweep through removed nodes and free any that are fully recorded
+// This implements a mark-and-sweep approach for safe memory management
+int sweepAndFreeRemovedNodes() {
+	int freedCount = 0;
+	int newRemovedCount = 0;
+	
+	// Go through removed nodes and free those that are marked as fully recorded
+	for (int i = 0; i < removedNodeCount; i++) {
+		rootedNode *node = removedNodes[i];
+		if (node == NULL) continue;
+		
+		// Only process nodes that are marked as fully recorded
+		// This marking happens in markParentRecorded when all edges are recorded
+		if (node->isFullyRecorded) {
+			// Extra safety check: ensure it's really not in the active array
+			int inActiveArray = 0;
+			for (int j = 0; j < alleleNumber; j++) {
+				if (nodes[j] == node) {
+					inActiveArray = 1;
+					fprintf(stderr, "WARNING: Fully recorded node still in active array!\n");
+					break;
+				}
+			}
+			
+			if (!inActiveArray) {
+				// Safe to free - node is fully recorded and not active
+				if (node->ancestryRoot) {
+					freeSegmentTree(node->ancestryRoot);
+					node->ancestryRoot = NULL;
+				}
+				free(node);
+				freedCount++;
+				freedNodeCount++;
+			} else {
+				// This shouldn't happen - keep for debugging
+				removedNodes[newRemovedCount++] = node;
+			}
+		} else {
+			// Not fully recorded yet - this shouldn't happen either
+			// since we only add fully recorded nodes to the list
+			removedNodes[newRemovedCount++] = node;
+		}
+	}
+	
+	// Update the removed count
+	removedNodeCount = newRemovedCount;
+	
+	return freedCount;
 }
 
 ////////  Migration Stuff ///////////
@@ -518,6 +602,7 @@ void coalesceAtTimePopn(double cTime, int popn){
 						while (seg != NULL) {
 							tskit_add_edges(parent_tsk_id, desc_tsk_id,
 								(double)seg->start, (double)seg->end);
+							markSegmentRecorded(seg);  // Mark segment as recorded
 							seg = seg->next;
 						}
 					}
@@ -529,6 +614,7 @@ void coalesceAtTimePopn(double cTime, int popn){
 					while (seg != NULL) {
 						tskit_add_edges(parent_tsk_id, first_child_id,
 							(double)seg->start, (double)seg->end);
+						markSegmentRecorded(seg);  // Mark segment as recorded
 						seg = seg->next;
 					}
 				}
@@ -540,6 +626,7 @@ void coalesceAtTimePopn(double cTime, int popn){
 				while (seg != NULL) {
 					tskit_add_edges(parent_tsk_id, first_child_id, 
 						(double)seg->start, (double)seg->end);
+					markSegmentRecorded(seg);  // Mark segment as recorded
 					seg = seg->next;
 				}
 			}
@@ -561,6 +648,7 @@ void coalesceAtTimePopn(double cTime, int popn){
 						while (seg != NULL) {
 							tskit_add_edges(parent_tsk_id, desc_tsk_id,
 								(double)seg->start, (double)seg->end);
+							markSegmentRecorded(seg);  // Mark segment as recorded
 							seg = seg->next;
 						}
 					}
@@ -572,6 +660,7 @@ void coalesceAtTimePopn(double cTime, int popn){
 					while (seg != NULL) {
 						tskit_add_edges(parent_tsk_id, second_child_id,
 							(double)seg->start, (double)seg->end);
+						markSegmentRecorded(seg);  // Mark segment as recorded
 						seg = seg->next;
 					}
 				}
@@ -583,6 +672,7 @@ void coalesceAtTimePopn(double cTime, int popn){
 				while (seg != NULL) {
 					tskit_add_edges(parent_tsk_id, second_child_id,
 						(double)seg->start, (double)seg->end);
+					markSegmentRecorded(seg);  // Mark segment as recorded
 					seg = seg->next;
 				}
 			}
@@ -679,22 +769,8 @@ void coalesceAtTimePopn(double cTime, int popn){
 		int lChildIsLeaf = (lChild->leftChild == NULL && lChild->rightChild == NULL);
 		int rChildIsLeaf = (rChild->leftChild == NULL && rChild->rightChild == NULL);
 		
-		// Free logic:
-		// - Always free leaf nodes (sample nodes)
-		// - Free coalescent nodes when safe
-		// - Don't free recombinant nodes unless they're leaves
-		
-		if (lChildIsLeaf) {
-			tryFreeNode(lChild);
-		} else if (lChildIsCoal) {
-			tryFreeNode(lChild);
-		}
-		
-		if (rChildIsLeaf) {
-			tryFreeNode(rChild);
-		} else if (rChildIsCoal) {
-			tryFreeNode(rChild);
-		}
+		// With periodic sweep approach, we don't need immediate freeing
+		// Just mark nodes as removed and let the sweep handle it
 	}
 	
 	//update active anc. material (addNode was moved earlier)
@@ -912,6 +988,7 @@ int recombineAtTimePopn(double cTime, int popn){
 				while (seg != NULL) {
 					tskit_add_edges(lparent_tsk_id, child_tsk_id, 
 						(double)seg->start, (double)seg->end);
+					markSegmentRecorded(seg);  // Mark segment as recorded
 					seg = seg->next;
 				}
 			}
@@ -922,6 +999,7 @@ int recombineAtTimePopn(double cTime, int popn){
 				while (seg != NULL) {
 					tskit_add_edges(rparent_tsk_id, child_tsk_id,
 						(double)seg->start, (double)seg->end);
+					markSegmentRecorded(seg);  // Mark segment as recorded
 					seg = seg->next;
 				}
 			}
@@ -1037,6 +1115,7 @@ void geneConversionAtTimePopn(double cTime, int popn){
 				while (seg != NULL) {
 					tskit_add_edges(rparent_tsk_id, child_tsk_id,
 						(double)seg->start, (double)seg->end);
+					markSegmentRecorded(seg);  // Mark segment as recorded
 					seg = seg->next;
 				}
 			}
@@ -1274,6 +1353,8 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 	double cTime, cRate[npops], rRate[npops], gcRate[npops], mRate[npops],totRate, waitTime, bp,r, r2;
 	double totCRate, totRRate, totGCRate,totMRate, eSum;
 	int  i,j;
+	int coalescenceCounter = 0;  // Counter for coalescent events only
+	const int SWEEP_INTERVAL = 10;  // Sweep every 10 coalescent events
 
 	if(startTime == endTime){
 		return(endTime);
@@ -1368,6 +1449,12 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 							 eSum += cRate[++i];
 							}
 						coalesceAtTimePopn(cTime,i);
+						
+						// Increment coalescence counter and sweep
+						coalescenceCounter++;
+						if (coalescenceCounter % SWEEP_INTERVAL == 0) {
+							sweepAndFreeRemovedNodes();
+						}
 					
 					
 					}
@@ -1375,6 +1462,10 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 			}
 		}
 	}
+	
+	// Final sweep at the end of the phase
+	sweepAndFreeRemovedNodes();
+	
 	return(cTime);
 }
 
@@ -2514,6 +2605,7 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 						while (seg != NULL) {
 							tskit_add_edges(parent_tsk_id, desc_tsk_id,
 								(double)seg->start, (double)seg->end);
+							markSegmentRecorded(seg);  // Mark segment as recorded
 							seg = seg->next;
 						}
 					}
@@ -2557,6 +2649,7 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 						while (seg != NULL) {
 							tskit_add_edges(parent_tsk_id, desc_tsk_id,
 								(double)seg->start, (double)seg->end);
+							markSegmentRecorded(seg);  // Mark segment as recorded
 							seg = seg->next;
 						}
 					}
@@ -2664,22 +2757,8 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 		int lChildIsLeaf = (lChild->leftChild == NULL && lChild->rightChild == NULL);
 		int rChildIsLeaf = (rChild->leftChild == NULL && rChild->rightChild == NULL);
 		
-		// Free logic:
-		// - Always free leaf nodes (sample nodes)
-		// - Free coalescent nodes when safe
-		// - Don't free recombinant nodes unless they're leaves
-		
-		if (lChildIsLeaf) {
-			tryFreeNode(lChild);
-		} else if (lChildIsCoal) {
-			tryFreeNode(lChild);
-		}
-		
-		if (rChildIsLeaf) {
-			tryFreeNode(rChild);
-		} else if (rChildIsCoal) {
-			tryFreeNode(rChild);
-		}
+		// With periodic sweep approach, we don't need immediate freeing
+		// Just mark nodes as removed and let the sweep handle it
 	}
 	
 	//update active anc. material
@@ -2854,6 +2933,19 @@ void ensureNodesCapacity(int requiredSize) {
 
 
 void cleanupNodeArrays() {
+	// First free any nodes still in the removed list
+	for (int i = 0; i < removedNodeCount; i++) {
+		if (removedNodes[i] != NULL) {
+			if (removedNodes[i]->ancestryRoot != NULL) {
+				freeSegmentTree(removedNodes[i]->ancestryRoot);
+				removedNodes[i]->ancestryRoot = NULL;
+			}
+			free(removedNodes[i]);
+			removedNodes[i] = NULL;
+		}
+	}
+	removedNodeCount = 0;
+	
 	if (nodes != NULL) {
 		// Free any remaining nodes and their ancestry segments
 		for (int i = 0; i < alleleNumber; i++) {
@@ -2976,10 +3068,9 @@ void removeNode(rootedNode *aNode){
 	
 	// Mark as no longer in active set
 	aNode->inActiveSet = 0;
-	// Temporarily disabled node freeing
-	// if (aNode->isFullyRecorded) {
-	//     tryFreeNode(aNode);
-	// }
+	
+	// Note: Node will be added to removed list automatically when it becomes
+	// fully recorded (in markParentRecorded), not here
 }
 
 /* addNodeAtIndex - variation on the theme here. adds

@@ -122,6 +122,18 @@ test_comprehensive_head: test_binaries_head
 	@echo "Legacy = HEAD of current branch (before optimizations)"
 	cd testing && ./comprehensive_validation_suite.sh
 
+test_binaries_mem: discoal_edited discoal_mem_branch
+	@echo "Built both optimized and mem branch versions for testing"
+	cp discoal_mem_branch discoal_legacy_backup 
+	@echo "copying discoal_mem_branch to discoal_legacy_backup for testing"
+
+test_comprehensive_mem: test_binaries_mem
+	@echo "Running comprehensive validation suite (optimized vs HEAD)..."
+	@echo "This will compare the performance improvements of our optimizations"
+	@echo "Optimized = current working directory with trajectory optimizations"
+	@echo "Legacy = mem branch (before optimizations)"
+	cd testing && ./comprehensive_validation_suite.sh
+
 test_msprime: discoal_edited
 	@echo "Running msprime comparison suite..."
 	cd testing && ./msprime_comparison_suite.sh
