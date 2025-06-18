@@ -341,12 +341,15 @@ void markParentRecorded(rootedNode *child, rootedNode *parent) {
 void tryFreeNode(rootedNode *node) {
 	if (node == NULL || !node->isFullyRecorded) return;
 	
-	// Additional safety check: ensure not in active set
+	// Critical safety check: ensure not in active set
+	if (node->inActiveSet) return;
+	
+	// Additional safety check: ensure not in nodes array
 	for (int i = 0; i < alleleNumber; i++) {
 		if (nodes[i] == node) return;  // Still active!
 	}
 	
-	// Free ancestry segments
+	// Free ancestry segments using reference counting
 	if (node->ancestryRoot) {
 		freeSegmentTree(node->ancestryRoot);
 		node->ancestryRoot = NULL;
@@ -621,10 +624,10 @@ void coalesceAtTimePopn(double cTime, int popn){
 					markParentRecorded(current, temp);
 					rootedNode *next = (current->leftChild != NULL) ? 
 					                  current->leftChild : current->rightChild;
-					// Try to free intermediate nodes in the chain
-					if (current != first_child) {
-						tryFreeNode(current);
-					}
+					// Temporarily disabled node freeing
+					// if (current != first_child) {
+					//     tryFreeNode(current);
+					// }
 					current = next;
 				}
 				// Mark the true descendants
@@ -650,10 +653,10 @@ void coalesceAtTimePopn(double cTime, int popn){
 					markParentRecorded(current, temp);
 					rootedNode *next = (current->leftChild != NULL) ? 
 					                  current->leftChild : current->rightChild;
-					// Try to free intermediate nodes in the chain
-					if (current != second_child) {
-						tryFreeNode(current);
-					}
+					// Temporarily disabled node freeing
+					// if (current != second_child) {
+					//     tryFreeNode(current);
+					// }
 					current = next;
 				}
 				// Mark the true descendants
@@ -667,9 +670,31 @@ void coalesceAtTimePopn(double cTime, int popn){
 			markParentRecorded(second_child, temp);
 		}
 		
-		// Try to free the immediate children (they're removed from active set)
-		tryFreeNode(lChild);
-		tryFreeNode(rChild);
+		// Try to free children based on their node type
+		// A coalescent node has both left and right children
+		int lChildIsCoal = isCoalNode(lChild);
+		int rChildIsCoal = isCoalNode(rChild);
+		
+		// Check if nodes are leaves (no children at all)
+		int lChildIsLeaf = (lChild->leftChild == NULL && lChild->rightChild == NULL);
+		int rChildIsLeaf = (rChild->leftChild == NULL && rChild->rightChild == NULL);
+		
+		// Free logic:
+		// - Always free leaf nodes (sample nodes)
+		// - Free coalescent nodes when safe
+		// - Don't free recombinant nodes unless they're leaves
+		
+		if (lChildIsLeaf) {
+			tryFreeNode(lChild);
+		} else if (lChildIsCoal) {
+			tryFreeNode(lChild);
+		}
+		
+		if (rChildIsLeaf) {
+			tryFreeNode(rChild);
+		} else if (rChildIsCoal) {
+			tryFreeNode(rChild);
+		}
 	}
 	
 	//update active anc. material (addNode was moved earlier)
@@ -909,6 +934,12 @@ int recombineAtTimePopn(double cTime, int popn){
 		// It needs both parents to record before it can be freed
 		aNode->inActiveSet = 0;
 		
+		// Mark parent recording if using tskit
+		if (tskitOutputMode || minimalTreeSeq) {
+			markParentRecorded(aNode, lParent);
+			markParentRecorded(aNode, rParent);
+		}
+		
 		return xOver;
 	}
 	return 666;
@@ -1009,6 +1040,15 @@ void geneConversionAtTimePopn(double cTime, int popn){
 					seg = seg->next;
 				}
 			}
+		}
+		
+		// Mark that the child node is no longer in active set
+		aNode->inActiveSet = 0;
+		
+		// Mark parent recording if using tskit
+		if (tskitOutputMode || minimalTreeSeq) {
+			markParentRecorded(aNode, lParent);
+			markParentRecorded(aNode, rParent);
 		}
 	}
 }
@@ -2262,6 +2302,15 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 				}
 			}
 			
+			// Mark that the child node is no longer in active set
+			aNode->inActiveSet = 0;
+			
+			// Mark parent recording if using tskit
+			if (tskitOutputMode || minimalTreeSeq) {
+				markParentRecorded(aNode, lParent);
+				markParentRecorded(aNode, rParent);
+			}
+			
 			//sweepPopnSizes[sp]++;
 			return xOver;
 		}
@@ -2389,6 +2438,15 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 					tskit_add_edges(rparent_tsk_id, child_tsk_id, (double)tractEnd, (double)nSites);
 				}
 			}
+		}
+		
+		// Mark that the child node is no longer in active set
+		aNode->inActiveSet = 0;
+		
+		// Mark parent recording if using tskit
+		if (tskitOutputMode || minimalTreeSeq) {
+			markParentRecorded(aNode, lParent);
+			markParentRecorded(aNode, rParent);
 		}
 	}
 }
@@ -2524,6 +2582,103 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 					seg = seg->next;
 				}
 			}
+		}
+	}
+	
+	// Mark parent recording and try to free nodes if using tskit
+	if (tskitOutputMode || minimalTreeSeq) {
+		// Use the same first/second child logic as edge recording
+		rootedNode *first_child, *second_child;
+		if (lchild_tsk_id < rchild_tsk_id) {
+			first_child = lChild;
+			second_child = rChild;
+		} else {
+			first_child = rChild;
+			second_child = lChild;
+		}
+		
+		// For first child - mark parent recorded
+		if (minimalTreeSeq && first_child->ancestryRoot != NULL) {
+			rootedNode *trueDescendants[10];
+			int numDesc = findTrueDescendants(first_child, trueDescendants, 10);
+			
+			if (numDesc > 0 && trueDescendants[0] != first_child) {
+				// Mark all nodes in the bypass chain
+				rootedNode *current = first_child;
+				while (current != NULL && current != trueDescendants[0]) {
+					markParentRecorded(current, temp);
+					rootedNode *next = (current->leftChild != NULL) ? 
+					                  current->leftChild : current->rightChild;
+					// Temporarily disabled node freeing
+					// if (current != first_child) {
+					//     tryFreeNode(current);
+					// }
+					current = next;
+				}
+				// Mark the true descendants
+				for (int d = 0; d < numDesc; d++) {
+					markParentRecorded(trueDescendants[d], temp);
+				}
+			} else {
+				markParentRecorded(first_child, temp);
+			}
+		} else {
+			markParentRecorded(first_child, temp);
+		}
+		
+		// For second child - mark parent recorded
+		if (minimalTreeSeq && second_child->ancestryRoot != NULL) {
+			rootedNode *trueDescendants[10];
+			int numDesc = findTrueDescendants(second_child, trueDescendants, 10);
+			
+			if (numDesc > 0 && trueDescendants[0] != second_child) {
+				// Mark all nodes in the bypass chain
+				rootedNode *current = second_child;
+				while (current != NULL && current != trueDescendants[0]) {
+					markParentRecorded(current, temp);
+					rootedNode *next = (current->leftChild != NULL) ? 
+					                  current->leftChild : current->rightChild;
+					// Temporarily disabled node freeing
+					// if (current != second_child) {
+					//     tryFreeNode(current);
+					// }
+					current = next;
+				}
+				// Mark the true descendants
+				for (int d = 0; d < numDesc; d++) {
+					markParentRecorded(trueDescendants[d], temp);
+				}
+			} else {
+				markParentRecorded(second_child, temp);
+			}
+		} else {
+			markParentRecorded(second_child, temp);
+		}
+		
+		// Try to free children based on their node type
+		// A coalescent node has both left and right children
+		int lChildIsCoal = isCoalNode(lChild);
+		int rChildIsCoal = isCoalNode(rChild);
+		
+		// Check if nodes are leaves (no children at all)
+		int lChildIsLeaf = (lChild->leftChild == NULL && lChild->rightChild == NULL);
+		int rChildIsLeaf = (rChild->leftChild == NULL && rChild->rightChild == NULL);
+		
+		// Free logic:
+		// - Always free leaf nodes (sample nodes)
+		// - Free coalescent nodes when safe
+		// - Don't free recombinant nodes unless they're leaves
+		
+		if (lChildIsLeaf) {
+			tryFreeNode(lChild);
+		} else if (lChildIsCoal) {
+			tryFreeNode(lChild);
+		}
+		
+		if (rChildIsLeaf) {
+			tryFreeNode(rChild);
+		} else if (rChildIsCoal) {
+			tryFreeNode(rChild);
 		}
 	}
 	
@@ -2700,6 +2855,18 @@ void ensureNodesCapacity(int requiredSize) {
 
 void cleanupNodeArrays() {
 	if (nodes != NULL) {
+		// Free any remaining nodes and their ancestry segments
+		for (int i = 0; i < alleleNumber; i++) {
+			if (nodes[i] != NULL) {
+				// Free ancestry segments using reference counting
+				if (nodes[i]->ancestryRoot != NULL) {
+					freeSegmentTree(nodes[i]->ancestryRoot);
+					nodes[i]->ancestryRoot = NULL;
+				}
+				free(nodes[i]);
+				nodes[i] = NULL;
+			}
+		}
 		free(nodes);
 		nodes = NULL;
 		nodesCapacity = 0;
@@ -2807,11 +2974,12 @@ void removeNode(rootedNode *aNode){
 		sweepPopnSizes[aNode->sweepPopn]-=1;
 	removeNodeAt(i);
 	
-	// Mark as no longer in active set and try to free
+	// Mark as no longer in active set
 	aNode->inActiveSet = 0;
-	if (aNode->isFullyRecorded) {
-		tryFreeNode(aNode);
-	}
+	// Temporarily disabled node freeing
+	// if (aNode->isFullyRecorded) {
+	//     tryFreeNode(aNode);
+	// }
 }
 
 /* addNodeAtIndex - variation on the theme here. adds
