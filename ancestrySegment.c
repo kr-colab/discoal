@@ -382,6 +382,28 @@ int verifySegmentTree(AncestrySegment *root, int nSites) {
     return 1;
 }
 
+// Check if all segments in the tree have been recorded
+int areAllSegmentsRecorded(AncestrySegment *root) {
+    if (!root) return 1;  // Empty tree is considered fully recorded
+    
+    AncestrySegment *current = root;
+    while (current) {
+        if (!current->isRecorded) {
+            return 0;  // Found an unrecorded segment
+        }
+        current = current->next;
+    }
+    
+    return 1;  // All segments are recorded
+}
+
+// Mark a segment as recorded
+void markSegmentRecorded(AncestrySegment *seg) {
+    if (seg) {
+        seg->isRecorded = 1;
+    }
+}
+
 // Split ancestry tree for gene conversion
 // Returns converted tract and everything else
 gcSplitResult splitSegmentTreeForGeneConversion(AncestrySegment *root, int startPos, int endPos) {

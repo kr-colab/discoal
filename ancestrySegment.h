@@ -11,6 +11,7 @@ typedef struct AncestrySegment {
     int isLeaf;  // 1 if this is a leaf segment, 0 otherwise
     int refCount;  // Reference count for sharing
     void *avlTree;  // Optional AVL tree for fast lookups (only on root)
+    int isRecorded;  // 1 if this segment has been recorded as edge in tskit, 0 otherwise
 } AncestrySegment;
 
 // Basic operations
@@ -49,5 +50,9 @@ gcSplitResult splitSegmentTreeForGeneConversion(AncestrySegment *root, int start
 // Debug operations
 void printSegmentTree(AncestrySegment *root, int depth);
 int verifySegmentTree(AncestrySegment *root, int nSites);
+
+// Recording status operations
+int areAllSegmentsRecorded(AncestrySegment *root);
+void markSegmentRecorded(AncestrySegment *seg);
 
 #endif
