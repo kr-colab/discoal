@@ -101,6 +101,27 @@ test_reps: discoal_legacy_backup discoal_edited
 	echo "Running with $$reps replicates..."; \
 	cd testing && ./statistical_validation_suite.sh $$reps
 
+# Build version from HEAD of current branch as legacy_backup for comparison
+discoal_legacy_backup_head:
+	@echo "Building version from HEAD of current branch as legacy_backup..."
+	@mkdir -p /tmp/discoal_head_build
+	@git archive HEAD | tar -x -C /tmp/discoal_head_build
+	@cd /tmp/discoal_head_build && $(CC) $(CFLAGS) -o discoal_legacy_backup discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c tskitInterface.c $(TSKIT_SOURCES) -lm -fcommon && mv discoal_legacy_backup $(CURDIR)/
+	@rm -rf /tmp/discoal_head_build
+	@echo "HEAD version built successfully as discoal_legacy_backup"
+
+# Build both versions for HEAD comparison testing
+test_binaries_head: discoal_edited discoal_legacy_backup_head
+	@echo "Built both optimized and HEAD versions for testing"
+
+# Run comprehensive test comparing optimized vs HEAD of branch
+test_comprehensive_head: test_binaries_head
+	@echo "Running comprehensive validation suite (optimized vs HEAD)..."
+	@echo "This will compare the performance improvements of our optimizations"
+	@echo "Optimized = current working directory with trajectory optimizations"
+	@echo "Legacy = HEAD of current branch (before optimizations)"
+	cd testing && ./comprehensive_validation_suite.sh
+
 test_msprime: discoal_edited
 	@echo "Running msprime comparison suite..."
 	cd testing && ./msprime_comparison_suite.sh

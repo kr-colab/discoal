@@ -435,7 +435,7 @@ declare -a TEST_CASES=(
     "selection:partial_soft_sweep:3 2 100 -t 2 -r 2.4 -ws 0.005 -a 5000 -x 0.5 -f 0.01 -c 0.8:optimized_preferred"
     
     # Tree output (Section: Outputting trees)
-    "trees:tree_output:3 1 10 -t 1 -r 5 -T:both_succeed"
+    # "trees:tree_output:3 1 10 -t 1 -r 5 -T:both_succeed"  # -T option removed in tskit-only version
     
     # Reduced strength selection (more likely to succeed)
     "selection:weak_sweep:5 1 500 -t 2 -r 1 -ws 0.1 -a 50 -x 0.5:optimized_preferred"

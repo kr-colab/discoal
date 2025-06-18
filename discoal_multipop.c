@@ -316,6 +316,14 @@ int main(int argc, const char * argv[]){
 		//assign root
 	//	root = nodes[0];
 		//add Mutations
+		// First record any sweep mutations
+		if (sweepMode != 'n' && sweepSite >= 0.0) {
+			if (tskit_record_sweep_mutations(sweepSite) < 0) {
+				fprintf(stderr, "Error: Failed to record sweep mutations in tskit\n");
+				exit(1);
+			}
+		}
+		
 		// Always use tskit for mutation placement
 		extern double theta;
 		if (untilMode==0) {
@@ -334,12 +342,10 @@ int main(int argc, const char * argv[]){
 				}
 			}
 		} else {
-			// For untilMode, still use traditional approach for now
-			dropMutationsUntilTime(uTime);
-			if (tskit_record_mutations() < 0) {
-				fprintf(stderr, "Error: Failed to record mutations in tskit\n");
-				exit(1);
-			}
+			// For untilMode, need to implement tskit-based solution
+			// TODO: Implement tskit-based mutation placement until time
+			fprintf(stderr, "Error: -u option not yet supported with tskit-only mode\n");
+			exit(1);
 		}
 
 		if(condRecMode == 0){
