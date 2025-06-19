@@ -107,7 +107,7 @@ tsk_id_t tskit_add_node(double time, int population, int is_sample) {
     
     node_id = tsk_node_table_add_row(&tsk_tables->nodes, 
                                      flags, 
-                                     time / 2.0,  // Scale time by 0.5 to match msprime convention
+                                     time,  
                                      tsk_population, 
                                      TSK_NULL,  // individual
                                      NULL, 0);  // metadata
@@ -196,10 +196,10 @@ int tskit_finalize(const char *filename) {
         return ret;
     }
     
-    // Note: We're not simplifying because with recombination, it's natural
-    // to have multiple roots - different genomic regions may not fully coalesce
+    // Note: We simplify before mutation placement to ensure mutations are only
+    // placed on edges ancestral to samples
     
-    // Build index after simplification
+    // Build index
     ret = tsk_table_collection_build_index(tsk_tables, 0);
     if (ret != 0) {
         fprintf(stderr, "Error building index: %s\n", tsk_strerror(ret));
@@ -337,7 +337,9 @@ int tskit_place_mutations_edge_based(double theta) {
         // Calculate expected number of mutations on this edge
         // theta is the population-scaled mutation rate for the entire sequence
         // For a fraction of the sequence: mutations ~ Poisson(branch_length * (genomic_span / sequence_length) * theta)
-        double expected_mutations = branch_length * (genomic_span / tsk_tables->sequence_length) * theta;
+        // Note: branch_length is in units of 2N generations, but theta=4Nμ assumes time in generations
+        // So we need to multiply by 0.5 to account for the time scaling
+        double expected_mutations = branch_length * (genomic_span / tsk_tables->sequence_length) * theta * 0.5;
         
         if (expected_mutations > 0.0) {
             // Draw number of mutations from Poisson distribution
@@ -379,7 +381,7 @@ int tskit_place_mutations_edge_based(double theta) {
     
     // Second pass: sort mutations by position and add to tskit
     if (mutation_count > 0) {
-        // Sort mutations by position using efficient qsort - O(M log M) instead of O(M²)
+        // Sort mutations by position 
         qsort(mutations, mutation_count, sizeof(mutations[0]), compare_mutations_by_position);
         
         // Add sites and mutations in sorted order

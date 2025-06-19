@@ -70,6 +70,119 @@ void addBreakPoint(int bp) {
 	breakNumber += 1;
 }
 
+// Population list management functions for O(1) node selection
+
+void initializePopLists() {
+	for (int p = 0; p < MAXPOPS; p++) {
+		popLists[p].nodes = NULL;
+		popLists[p].count = 0;
+		popLists[p].capacity = 0;
+	}
+}
+
+void cleanupPopLists() {
+	for (int p = 0; p < MAXPOPS; p++) {
+		if (popLists[p].nodes != NULL) {
+			free(popLists[p].nodes);
+			popLists[p].nodes = NULL;
+			popLists[p].count = 0;
+			popLists[p].capacity = 0;
+		}
+	}
+}
+
+void addNodeToPopList(rootedNode *node, int popn) {
+	if (popn < 0 || popn >= MAXPOPS) return;  // Handle negative/invalid populations
+	
+	PopulationNodeList *list = &popLists[popn];
+	
+	// Grow array if needed
+	if (list->count >= list->capacity) {
+		int newCap = list->capacity ? list->capacity * 2 : 16;
+		rootedNode **newNodes = realloc(list->nodes, newCap * sizeof(rootedNode*));
+		if (newNodes == NULL) {
+			fprintf(stderr, "Error: Failed to allocate memory for population list\n");
+			exit(1);
+		}
+		list->nodes = newNodes;
+		list->capacity = newCap;
+	}
+	
+	node->popListIndex = list->count;
+	list->nodes[list->count++] = node;
+}
+
+void removeNodeFromPopList(rootedNode *node) {
+	int popn = node->population;
+	if (popn < 0 || popn >= MAXPOPS) return;  // Handle negative/invalid populations
+	
+	PopulationNodeList *list = &popLists[popn];
+	int index = node->popListIndex;
+	
+	if (index < 0 || index >= list->count) return;
+	
+	// Swap with last element
+	if (index < list->count - 1) {
+		list->nodes[index] = list->nodes[list->count - 1];
+		list->nodes[index]->popListIndex = index;
+	}
+	
+	list->count--;
+	node->popListIndex = -1;
+}
+
+// Fast O(1) node selection from population
+rootedNode *pickNodePopnFast(int popn) {
+	if (popn < 0 || popn >= MAXPOPS) {
+		fprintf(stderr, "Error: Invalid population %d in pickNodePopnFast\n", popn);
+		exit(1);
+	}
+	
+	PopulationNodeList *list = &popLists[popn];
+	if (list->count == 0) {
+		fprintf(stderr, "Error: No nodes in population %d\n", popn);
+		exit(1);
+	}
+	
+	int index = ignuin(0, list->count - 1);
+	return list->nodes[index];
+}
+
+// Verify population lists match reality (for debugging)
+void verifyPopLists() {
+	// Count nodes in each population the old way
+	int realCounts[MAXPOPS] = {0};
+	for (int i = 0; i < alleleNumber; i++) {
+		if (nodes[i]->population >= 0 && nodes[i]->population < MAXPOPS) {
+			realCounts[nodes[i]->population]++;
+		}
+	}
+	
+	// Compare with population lists
+	for (int p = 0; p < npops; p++) {
+		if (popLists[p].count != realCounts[p]) {
+			fprintf(stderr, "Population list mismatch for pop %d: list has %d, reality has %d\n",
+				p, popLists[p].count, realCounts[p]);
+			exit(1);
+		}
+		
+		// Verify each node in the list
+		for (int i = 0; i < popLists[p].count; i++) {
+			rootedNode *node = popLists[p].nodes[i];
+			if (node->population != p) {
+				fprintf(stderr, "Node in wrong population list: node pop=%d, list pop=%d\n",
+					node->population, p);
+				exit(1);
+			}
+			if (node->popListIndex != i) {
+				fprintf(stderr, "Node has wrong popListIndex: %d vs %d\n",
+					node->popListIndex, i);
+				exit(1);
+			}
+		}
+	}
+}
+
 void initialize(){
 	int i,j,p, count=0;
 	int leafID=0;
@@ -80,6 +193,7 @@ void initialize(){
 	totChunkNumber = 0;
 	initializeBreakPoints();
 	initializeNodeArrays();
+	initializePopLists();  // Initialize population lists for O(1) node selection
 	for(p=0;p<npops;p++){
 		popnSizes[p]=sampleSizes[p];
 		for( i = 0; i < sampleSizes[p]; i++){
@@ -98,6 +212,9 @@ void initialize(){
 			tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
 			set_tskit_node_id(nodes[count], tsk_id);
 			addSampleNodeId(tsk_id);
+			
+			// Add to population list
+			addNodeToPopList(nodes[count], p);
 			
 			count += 1;
 		}
@@ -198,6 +315,7 @@ void initializeTwoSite(){
 	totChunkNumber = 0;
 	initializeBreakPoints();
 	initializeNodeArrays();
+	initializePopLists();  // Initialize population lists for O(1) node selection
 	for(p=0;p<npops;p++){
 		popnSizes[p]=sampleSizes[p];
 		for( i = 0; i < sampleSizes[p]; i++){
@@ -218,6 +336,10 @@ void initializeTwoSite(){
 			tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
 			set_tskit_node_id(nodes[count], tsk_id);
 			addSampleNodeId(tsk_id);
+			
+			// Add to population list
+			addNodeToPopList(nodes[count], p);
+			
 			count += 1;
 		}
 	}
@@ -313,6 +435,9 @@ rootedNode *newRootedNode(double cTime, int popn) {
 
 	// Initialize tskit node ID
 	temp->tskit_node_id = TSK_NULL;
+	
+	// Initialize population list index
+	temp->popListIndex = -1;
 
 	return temp;
 }
@@ -453,7 +578,14 @@ void migrateAtTime(double cTime,int srcPopn, int destPopn){
 	rootedNode *temp;
 	
 	temp = pickNodePopn(srcPopn);
+	
+	// Remove from source population list
+	removeNodeFromPopList(temp);
+	
 	temp->population = destPopn;
+	
+	// Add to destination population list
+	addNodeToPopList(temp, destPopn);
 
 	popnSizes[srcPopn]-=1;
 	popnSizes[destPopn]+=1;
@@ -483,7 +615,14 @@ void migrateExceptSite(double site, double scalar, int srcPopn, int destPopn){
 	if(isAncestralHere(temp,site) == 0 || ranf() < scalar) doMig = 1; //migration of site is 10% rate of other sites
 	if(doMig == 1)
 	{
+		// Remove from source population list
+		removeNodeFromPopList(temp);
+		
 		temp->population = destPopn;
+		
+		// Add to destination population list
+		addNodeToPopList(temp, destPopn);
+		
 		popnSizes[srcPopn]-=1;
 		popnSizes[destPopn]+=1;
 		if (srcPopn==0)
@@ -2817,39 +2956,28 @@ void makeGametesMS(int argc,const char *argv[]){
 /*pickNodePopn-- picks an allele at random from active nodes from a specific popn 
 */
 rootedNode *pickNodePopn(int popn){
-	int i, popnSize, indexArray[alleleNumber], index;
-
-	//get popnSize -- may later decide to keep this is some sort of variable that is passed
-	popnSize = 0;
-	for(i = 0 ; i < alleleNumber; i++){
-		if(nodes[i]->population == popn){
-			indexArray[popnSize] = i;  //store indexes as we go
-			popnSize++;
-		}
-	}
-	if(popnSize == 0){
-		fprintf(stderr,"error encountered in pickNodePopn\n");
-		fprintf(stderr,"tried to pick allele from popn %d, but popnSize is %d! Rho=%f\n",popn,popnSize,rho);
-		exit(1);
-	}
-	//choose random index
-	index = indexArray[ignuin(0, popnSize - 1)];
-
-	return(nodes[index]);
+	// Use optimized O(1) population list-based selection
+	return pickNodePopnFast(popn);
 }
 
 void mergePopns(int popnSrc, int popnDest){
-	int i;
-	for(i = 0 ; i < alleleNumber; i++){
-		if(nodes[i]->population == popnSrc){
-			nodes[i]->population = popnDest;
-			popnSizes[popnDest]++;
-			popnSizes[popnSrc]--;
-		//	sweepPopnSizes[popnDest]++;
-		//	sweepPopnSizes[popnSrc]--;
-			
-		}
+	// Use population lists for efficient merging
+	PopulationNodeList *srcList = &popLists[popnSrc];
+	
+	// Move all nodes from source to destination
+	for (int i = 0; i < srcList->count; i++) {
+		rootedNode *node = srcList->nodes[i];
+		node->population = popnDest;
+		addNodeToPopList(node, popnDest);
 	}
+	
+	// Update population sizes
+	popnSizes[popnDest] += popnSizes[popnSrc];
+	popnSizes[popnSrc] = 0;
+	
+	// Clear source list
+	srcList->count = 0;
+	
 	//set migration rates to zero
 	migMat[popnSrc][popnDest] = 0.0;
 	migMat[popnDest][popnSrc] = 0.0;
@@ -2965,6 +3093,9 @@ void cleanupNodeArrays() {
 	}
 	// Cleanup sample node tracking
 	cleanupSampleNodeIds();
+	
+	// Cleanup population lists
+	cleanupPopLists();
 }
 
 // Sample node tracking functions (always available)
@@ -3032,6 +3163,9 @@ void addNode(rootedNode *aNode){
 	// Store tskit ID directly in the node
 	set_tskit_node_id(aNode, tsk_id);
 	
+	// Add to population list
+	addNodeToPopList(aNode, aNode->population);
+	
 	alleleNumber += 1;
 	totNodeNumber += 1;
 	popnSizes[aNode->population]+=1;
@@ -3064,6 +3198,10 @@ void removeNode(rootedNode *aNode){
 	popnSizes[aNode->population]-=1;
 	if (aNode->population==0)
 		sweepPopnSizes[aNode->sweepPopn]-=1;
+	
+	// Remove from population list
+	removeNodeFromPopList(aNode);
+	
 	removeNodeAt(i);
 	
 	// Mark as no longer in active set
