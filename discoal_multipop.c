@@ -532,9 +532,9 @@ int main(int argc, const char * argv[]){
 	cleanupNodeArrays();
 	
 	// Debug: print freed node count
-	if (freedNodeCount > 0) {
-		fprintf(stderr, "Debug: Freed %d nodes during simulation\n", freedNodeCount);
-	}
+	// if (freedNodeCount > 0) {
+	//	fprintf(stderr, "Debug: Freed %d nodes during simulation\n", freedNodeCount);
+	// }
 	
 	return(0);
 }
