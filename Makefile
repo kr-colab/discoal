@@ -138,6 +138,22 @@ test_msprime: discoal_edited
 	@echo "Running msprime comparison suite..."
 	cd testing && ./msprime_comparison_suite.sh
 
+test_nicestats: discoal_legacy_backup discoal_edited niceStats
+	@echo "Running niceStats comparison suite (1000 replicates in 10 chunks)..."
+	cd testing && ./nicestats_comparison_suite.sh 1000 50
+
+test_nicestats_quick: discoal_legacy_backup discoal_edited niceStats
+	@echo "Running quick niceStats comparison (100 replicates in 5 chunks)..."
+	cd testing && ./nicestats_comparison_suite.sh 100 5
+
+test_nicestats_large: discoal_legacy_backup discoal_edited niceStats
+	@echo "Running large niceStats comparison (10000 replicates in 20 chunks)..."
+	cd testing && ./nicestats_comparison_suite.sh 10000 20
+
+test_nicestats_mem: discoal_mem_branch discoal_edited niceStats
+	@echo "Running niceStats comparison suite (current vs mem branch)..."
+	cd testing && ./nicestats_comparison_suite.sh 1000 10 ../discoal_mem_branch
+
 # Compare current tskit-integration branch with mem branch
 test_tskit_vs_mem: discoal_edited discoal_mem_branch
 	@echo "Comparing tskit-integration branch (current) vs mem branch..."
@@ -213,9 +229,16 @@ run_all_tests: test_runner
 	./test_runner
 
 #
+# msUtils targets
+#
+
+niceStats: extern/msUtils/niceStats.c extern/msUtils/msGeneralStats.c
+	$(CC) $(CFLAGS) -o niceStats extern/msUtils/niceStats.c extern/msUtils/msGeneralStats.c -lm
+
+#
 # clean
 #
 
 clean:
-	rm -f discoal discoal_edited discoal_legacy_backup discoal_mem_branch *.o test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_coalescence_recombination test_memory_management test_runner alleleTrajTest
+	rm -f discoal discoal_edited discoal_legacy_backup discoal_mem_branch *.o test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_coalescence_recombination test_memory_management test_runner alleleTrajTest niceStats
 	rm -f discoaldoc.aux discoaldoc.bbl discoaldoc.blg discoaldoc.log discoaldoc.out
