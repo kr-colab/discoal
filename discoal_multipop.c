@@ -23,6 +23,7 @@
 #include "discoalFunctions.h"
 #include "alleleTraj.h"
 #include "tskitInterface.h"
+#include "version.h"
 
 
 
@@ -97,11 +98,14 @@ int main(int argc, const char * argv[]){
 	int lastBreak;
 	double probAccept;
 	
-	
-	
 	getParameters(argc,argv);
 	double N = EFFECTIVE_POPN_SIZE; // effective population size
 	setall(seed1, seed2 );
+	
+	// Store command line for tskit provenance after parsing (now we know if -ts was used)
+	if (tskitOutputMode) {
+		tskit_store_command_line(argc, argv);
+	}
 	
 	// Register signal handlers for cleanup
 	signal(SIGINT, cleanup_and_exit);
@@ -991,6 +995,7 @@ void getParameters(int argc,const char **argv){
 
 
 void usage(){
+	fprintf(stderr,"discoal version %s\n", DISCOAL_VERSION);
 	fprintf(stderr,"usage: discoal sampleSize numReplicates nSites -ws tau\n");
 	fprintf(stderr,"parameters: \n");
 

@@ -6,8 +6,11 @@
 #include <string.h>
 #include <assert.h>
 #include <math.h>
+#include <time.h>
+#include <sys/utsname.h>
 #include "tskitInterface.h"
 #include "ranlib.h"
+#include "version.h"
 
 // Global tskit table collection
 tsk_table_collection_t *tsk_tables = NULL;
@@ -37,6 +40,16 @@ int tskit_initialize(double sequence_length) {
     
     // Set sequence length
     tsk_tables->sequence_length = sequence_length;
+    
+    // Set time units to indicate coalescent scaling
+    const char *time_units_str = "coalescent units (2N generations)";
+    ret = tsk_table_collection_set_time_units(tsk_tables, time_units_str, strlen(time_units_str));
+    if (ret != 0) {
+        tsk_table_collection_free(tsk_tables);
+        free(tsk_tables);
+        tsk_tables = NULL;
+        return ret;
+    }
     
     // Add population records for all populations in discoal
     // We need to add enough populations to cover the maximum population ID used
@@ -181,6 +194,154 @@ int tskit_add_mutation(tsk_id_t site, tsk_id_t node, const char *derived_state) 
 }
 
 // Finalize and write tree sequence
+// Global variable to store command line
+static char *global_command_line = NULL;
+
+// Function to store command line (called from main)
+void tskit_store_command_line(int argc, const char **argv) {
+    if (global_command_line != NULL) {
+        free(global_command_line);
+    }
+    
+    // Calculate total length needed
+    size_t total_len = 0;
+    for (int i = 0; i < argc; i++) {
+        total_len += strlen(argv[i]) + 1; // +1 for space
+    }
+    
+    global_command_line = malloc(total_len);
+    if (global_command_line == NULL) {
+        return;
+    }
+    
+    // Build command string
+    global_command_line[0] = '\0';
+    for (int i = 0; i < argc; i++) {
+        if (i > 0) strcat(global_command_line, " ");
+        strcat(global_command_line, argv[i]);
+    }
+}
+
+// Add provenance record
+static int add_provenance(void) {
+    char timestamp[64];
+    char provenance_json[8192];
+    struct utsname sys_info;
+    int ret;
+    
+    // Get current time in ISO 8601 format
+    time_t now = time(NULL);
+    struct tm *utc_tm = gmtime(&now);
+    strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%SZ", utc_tm);
+    
+    // Get system information
+    uname(&sys_info);
+    
+    // Get simulation parameters from global variables
+    extern int sampleSize;
+    extern int nSites;
+    extern double theta;
+    extern double rho;
+    extern int npops;
+    extern int seed1, seed2;
+    extern double *currentSize;  // Current population sizes
+    extern double alpha;         // Selection coefficient
+    extern double f0;            // Starting frequency
+    extern double sweepSite;     // Sweep position
+    extern char sweepMode;       // Type of sweep
+    extern int activeSweepFlag;  // Whether sweep is active
+    extern double migMat[MAXPOPS][MAXPOPS];  // Migration matrix
+    
+    // Get tskit version
+    char tskit_version[32] = "C-API";  // tskit C API doesn't expose version easily
+    
+    // Use stored command line or reconstruct from globals
+    const char *command_str = global_command_line ? global_command_line : "discoal [command line not available]";
+    
+    // Build parameters object
+    char params_str[4096];
+    snprintf(params_str, sizeof(params_str),
+        "\"sample_size\": %d,"
+        "\"num_sites\": %d,"
+        "\"theta\": %.6f,"
+        "\"rho\": %.6f,"
+        "\"num_populations\": %d,"
+        "\"random_seeds\": [%d, %d]",
+        sampleSize, nSites, theta, rho, npops, seed1, seed2);
+    
+    // Add population sizes if multiple populations
+    if (npops > 1 && currentSize != NULL) {
+        char pop_sizes[512];
+        strcat(params_str, ",\"population_sizes\": [");
+        for (int i = 0; i < npops; i++) {
+            char size_str[64];
+            snprintf(size_str, sizeof(size_str), "%.6f%s", currentSize[i], 
+                     (i < npops - 1) ? ", " : "]");
+            strcat(params_str, size_str);
+        }
+    }
+    
+    // Add selection parameters if applicable
+    if (alpha != 0.0) {
+        char selection_str[512];
+        snprintf(selection_str, sizeof(selection_str),
+            ",\"selection\": {"
+            "\"coefficient\": %.6f,"
+            "\"sweep_site\": %.6f,"
+            "\"starting_frequency\": %.6f,"
+            "\"sweep_mode\": \"%c\""
+            "}",
+            alpha, sweepSite, f0, sweepMode);
+        strcat(params_str, selection_str);
+    }
+    
+    // Build complete provenance record
+    snprintf(provenance_json, sizeof(provenance_json),
+        "{"
+        "\"schema_version\": \"1.0.0\","
+        "\"software\": {"
+            "\"name\": \"discoal\","
+            "\"version\": \"" DISCOAL_VERSION "\""
+        "},"
+        "\"parameters\": {"
+            "%s,"
+            "\"command\": \"%s\""
+        "},"
+        "\"environment\": {"
+            "\"os\": {"
+                "\"system\": \"%s\","
+                "\"node\": \"%s\","
+                "\"release\": \"%s\","
+                "\"version\": \"%s\","
+                "\"machine\": \"%s\""
+            "},"
+            "\"libraries\": {"
+                "\"tskit\": {\"version\": \"%s\"}"
+            "}"
+        "}"
+        "}",
+        params_str,
+        command_str,
+        sys_info.sysname,
+        sys_info.nodename,
+        sys_info.release,
+        sys_info.version,
+        sys_info.machine,
+        tskit_version);
+    
+    // Add to provenance table
+    ret = tsk_provenance_table_add_row(&tsk_tables->provenances, 
+        timestamp, strlen(timestamp),
+        provenance_json, strlen(provenance_json));
+    
+    if (ret < 0) {
+        fprintf(stderr, "Error adding provenance: %s\n", tsk_strerror(ret));
+        return ret;
+    }
+    
+    return 0;
+}
+
 int tskit_finalize(const char *filename) {
     int ret;
     
@@ -188,6 +349,12 @@ int tskit_finalize(const char *filename) {
         return -1;
     }
     
+    // Add provenance record
+    ret = add_provenance();
+    if (ret != 0) {
+        fprintf(stderr, "Warning: Failed to add provenance record\n");
+        // Continue anyway - provenance is not critical
+    }
     
     // Sort tables (required for valid tree sequences)
     ret = tsk_table_collection_sort(tsk_tables, NULL, 0);
