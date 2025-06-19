@@ -551,6 +551,30 @@ int sweepAndFreeRemovedNodes() {
 					freeSegmentTree(node->ancestryRoot);
 					node->ancestryRoot = NULL;
 				}
+				
+				// NULL out any parent pointers to this node before freeing
+				if (node->leftParent) {
+					if (node->leftParent->leftChild == node) node->leftParent->leftChild = NULL;
+					if (node->leftParent->rightChild == node) node->leftParent->rightChild = NULL;
+				}
+				if (node->rightParent) {
+					if (node->rightParent->leftChild == node) node->rightParent->leftChild = NULL;
+					if (node->rightParent->rightChild == node) node->rightParent->rightChild = NULL;
+				}
+				
+				// NULL out any child pointers from this node (defensive)
+				if (node->leftChild) {
+					if (node->leftChild->leftParent == node) node->leftChild->leftParent = NULL;
+					if (node->leftChild->rightParent == node) node->leftChild->rightParent = NULL;
+				}
+				if (node->rightChild) {
+					if (node->rightChild->leftParent == node) node->rightChild->leftParent = NULL;
+					if (node->rightChild->rightParent == node) node->rightChild->rightParent = NULL;
+				}
+				
+				// Debug: print info about node being freed
+				// fprintf(stderr, "Freeing node %p (time=%f, pop=%d)\n", 
+				//         node, node->time, node->population);
 				free(node);
 				freedCount++;
 				freedNodeCount++;
@@ -1091,6 +1115,11 @@ int recombineAtTimePopn(double cTime, int popn){
 		lParent->ancestryRoot = splitLeft(aNode->ancestryRoot, xOver);
 		rParent->ancestryRoot = splitRight(aNode->ancestryRoot, xOver);
 		
+		// Free the original tree - it's no longer needed after splitting
+		// The parents have their own segments from the split operations
+		freeSegmentTree(aNode->ancestryRoot);
+		aNode->ancestryRoot = NULL;
+		
 		// Update stats from tree when in tree-only mode
 		updateAncestryStatsFromTree(lParent);
 		updateAncestryStatsFromTree(rParent);
@@ -1203,6 +1232,10 @@ void geneConversionAtTimePopn(double cTime, int popn){
 			gcSplitResult gcSplit = splitSegmentTreeForGeneConversion(aNode->ancestryRoot, xOver, xOver + tractL);
 			lParent->ancestryRoot = gcSplit.converted;     // Gets the converted tract
 			rParent->ancestryRoot = gcSplit.unconverted;   // Gets everything else
+			
+			// Free the original tree - it's no longer needed after splitting
+			freeSegmentTree(aNode->ancestryRoot);
+			aNode->ancestryRoot = NULL;
 		} else {
 			lParent->ancestryRoot = NULL;
 			rParent->ancestryRoot = NULL;
@@ -2610,6 +2643,10 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 			gcSplitResult gcSplit = splitSegmentTreeForGeneConversion(aNode->ancestryRoot, xOver, xOver + tractL);
 			lParent->ancestryRoot = gcSplit.converted;     // Gets the converted tract
 			rParent->ancestryRoot = gcSplit.unconverted;   // Gets everything else
+			
+			// Free the original tree - it's no longer needed after splitting
+			freeSegmentTree(aNode->ancestryRoot);
+			aNode->ancestryRoot = NULL;
 		} else {
 			lParent->ancestryRoot = NULL;
 			rParent->ancestryRoot = NULL;

@@ -399,7 +399,8 @@ int areAllSegmentsRecorded(AncestrySegment *root) {
 
 // Mark a segment as recorded
 void markSegmentRecorded(AncestrySegment *seg) {
-    if (seg) {
+    if (seg && seg->refCount == 1) {
+        // Only mark as recorded if this segment is not shared
         seg->isRecorded = 1;
     }
 }
