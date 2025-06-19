@@ -324,12 +324,41 @@ int main(int argc, const char * argv[]){
 				exit(1);
 			}
 			
-			// Simplify to remove non-ancestral material
-			ret = tsk_table_collection_simplify(tsk_tables, NULL, 0, 0, NULL);
-			if (ret != 0) {
-				fprintf(stderr, "Error simplifying tables after ancestry simulation: %s\n", tsk_strerror(ret));
+			// Get the sample node IDs before simplification
+			tsk_id_t *samples = malloc(sample_node_count * sizeof(tsk_id_t));
+			if (samples == NULL) {
+				fprintf(stderr, "Error: Failed to allocate memory for samples\n");
 				exit(1);
 			}
+			for (int i = 0; i < sample_node_count; i++) {
+				samples[i] = sample_node_ids[i];
+			}
+			
+			// Simplify to remove non-ancestral material
+			tsk_id_t *node_map = malloc(tsk_tables->nodes.num_rows * sizeof(tsk_id_t));
+			if (node_map == NULL) {
+				fprintf(stderr, "Error: Failed to allocate memory for node map\n");
+				free(samples);
+				exit(1);
+			}
+			
+			ret = tsk_table_collection_simplify(tsk_tables, samples, sample_node_count, 0, node_map);
+			if (ret != 0) {
+				fprintf(stderr, "Error simplifying tables after ancestry simulation: %s\n", tsk_strerror(ret));
+				free(samples);
+				free(node_map);
+				exit(1);
+			}
+			
+			// Update the sample node IDs to reflect the new node numbers after simplification
+			for (int i = 0; i < sample_node_count; i++) {
+				if (samples[i] != TSK_NULL && node_map[samples[i]] != TSK_NULL) {
+					sample_node_ids[i] = node_map[samples[i]];
+				}
+			}
+			
+			free(samples);
+			free(node_map);
 		}
 		
 		//assign root
