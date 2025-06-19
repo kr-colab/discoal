@@ -1493,7 +1493,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 	double totCRate, totRRate, totGCRate,totMRate, eSum;
 	int  i,j;
 	int coalescenceCounter = 0;  // Counter for coalescent events only
-	const int SWEEP_INTERVAL = 10;  // Sweep every 10 coalescent events
+	const int SWEEP_INTERVAL = 50;  // Sweep every 50 coalescent events (minimal frequency)
 
 	if(startTime == endTime){
 		return(endTime);
@@ -1592,6 +1592,9 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 						// Increment coalescence counter and sweep
 						coalescenceCounter++;
 						if (coalescenceCounter % SWEEP_INTERVAL == 0) {
+							// Flush buffered edges before freeing nodes to avoid referencing freed nodes
+							extern int tskit_flush_edges_periodic(void);
+							tskit_flush_edges_periodic();
 							sweepAndFreeRemovedNodes();
 						}
 					
@@ -1603,6 +1606,9 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 	}
 	
 	// Final sweep at the end of the phase
+	// Flush buffered edges before freeing nodes
+	extern int tskit_flush_edges_periodic(void);
+	tskit_flush_edges_periodic();
 	sweepAndFreeRemovedNodes();
 	
 	return(cTime);

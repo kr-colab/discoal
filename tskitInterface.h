@@ -30,14 +30,25 @@ extern tsk_table_collection_t *tsk_tables;
 extern tsk_id_t *node_id_map;
 extern int node_id_map_capacity;
 
+// Edge buffering for squashing optimization
+extern tsk_edge_t *buffered_edges;
+extern int num_buffered_edges;
+extern int max_buffered_edges;
+
 // Initialize tskit recording
 int tskit_initialize(double sequence_length);
 
 // Record a new node (called when creating nodes in discoal)
 tsk_id_t tskit_add_node(double time, int population, int is_sample);
 
-// Record edges during coalescence
+// Record edges during coalescence (with buffering/squashing)
 int tskit_add_edges(tsk_id_t parent, tsk_id_t child, double left, double right);
+
+// Flush buffered edges (apply squashing and add to table)
+int tskit_flush_edges(void);
+
+// Special flush for periodic node sweeping (to track frequency)
+int tskit_flush_edges_periodic(void);
 
 // Record a site
 tsk_id_t tskit_add_site(double position, const char *ancestral_state);
@@ -75,5 +86,9 @@ int tskit_record_sweep_mutations(double sweepSite);
 
 // Store command line for provenance (called from main)
 void tskit_store_command_line(int argc, const char **argv);
+
+// Functions to enable/disable edge squashing (for performance comparison)
+void tskit_enable_edge_squashing(void);
+void tskit_disable_edge_squashing(void);
 
 #endif
