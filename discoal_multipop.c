@@ -313,6 +313,25 @@ int main(int argc, const char * argv[]){
 		if(alleleNumber > 1){
 			currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, MAXTIME, currentSize);
 		}
+		
+		// Sort and simplify the tree sequence after ancestry simulation is complete
+		// This removes all non-ancestral nodes and edges before mutation placement
+		if (tsk_tables != NULL) {
+			// Sort tables (required before simplification)
+			int ret = tsk_table_collection_sort(tsk_tables, NULL, 0);
+			if (ret != 0) {
+				fprintf(stderr, "Error sorting tables after ancestry simulation: %s\n", tsk_strerror(ret));
+				exit(1);
+			}
+			
+			// Simplify to remove non-ancestral material
+			ret = tsk_table_collection_simplify(tsk_tables, NULL, 0, 0, NULL);
+			if (ret != 0) {
+				fprintf(stderr, "Error simplifying tables after ancestry simulation: %s\n", tsk_strerror(ret));
+				exit(1);
+			}
+		}
+		
 		//assign root
 	//	root = nodes[0];
 		//add Mutations

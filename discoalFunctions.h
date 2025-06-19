@@ -6,6 +6,14 @@ void initializeBreakPoints();
 void ensureBreakPointsCapacity();
 void cleanupBreakPoints();
 
+// Population list management functions for O(1) node selection
+void initializePopLists();
+void cleanupPopLists();
+void addNodeToPopList(rootedNode *node, int popn);
+void removeNodeFromPopList(rootedNode *node);
+rootedNode *pickNodePopnFast(int popn);
+void verifyPopLists();
+
 // Sample node tracking functions for tskit mode
 void initializeSampleNodeIds();
 void ensureSampleNodeCapacity(int required_size);

@@ -65,6 +65,9 @@ typedef struct rootedNode
 	unsigned char inActiveSet;      // 1 if still in nodes[0..alleleNumber-1]
 	unsigned char carriesSweepMutation;  // 1 if this node carries the beneficial mutation
 	
+	// Population list tracking for O(1) node selection
+	int popListIndex;        // Index in population's node array (-1 if not in list)
+	
 	// DEPRECATED FIELDS - temporarily kept for compilation, will be removed
 	int ndes[2];             // DEPRECATED - never used
 	int *leafs;              // DEPRECATED - never used
@@ -87,6 +90,16 @@ typedef struct event
 	double admixProp; // admixture proportion from population popID2
 }
 event;
+
+/******************************************************************************/
+/* Population node list structure for O(1) node selection                     */
+/******************************************************************************/
+
+typedef struct {
+    rootedNode **nodes;      // Array of node pointers
+    int count;              // Number of active nodes in this population
+    int capacity;           // Current array capacity
+} PopulationNodeList;
 
 
 
@@ -123,6 +136,9 @@ double mig[MAXPOPS];
 
 int sampleS, sampleFD, sampleHaps, rejectCount, sampleRMin, offset, winNumber, \
 	popnSizes[MAXPOPS],sweepPopnSizes[MAXPOPS];
+
+// Population node lists for O(1) node selection
+PopulationNodeList popLists[MAXPOPS];
 
 
 const char *mFile;
