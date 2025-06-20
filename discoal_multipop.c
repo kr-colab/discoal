@@ -1039,6 +1039,11 @@ void getParameters(int argc,const char **argv){
 
 
 void usage(){
+	fprintf(stderr, "▗▄▄▄ ▗▄▄▄▖ ▗▄▄▖ ▗▄▄▖ ▗▄▖  ▗▄▖ ▗▖   \n");
+	fprintf(stderr, "▐▌  █  █  ▐▌   ▐▌   ▐▌ ▐▌▐▌ ▐▌▐▌   \n");
+	fprintf(stderr, "▐▌  █  █   ▝▀▚▖▐▌   ▐▌ ▐▌▐▛▀▜▌▐▌   \n");
+	fprintf(stderr, "▐▙▄▄▀▗▄█▄▖▗▄▄▞▘▝▚▄▄▖▝▚▄▞▘▐▌ ▐▌▐▙▄▄\n\n\n");
+	
 	fprintf(stderr,"discoal version %s\n", DISCOAL_VERSION);
 	fprintf(stderr,"usage: discoal sampleSize numReplicates nSites -ws tau\n");
 	fprintf(stderr,"parameters: \n");
