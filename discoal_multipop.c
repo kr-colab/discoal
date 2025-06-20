@@ -844,6 +844,7 @@ void getParameters(int argc,const char **argv){
 					eventNumber++;
 					break;
 					case 'd' :
+					case 'j' :  // -ej is equivalent to -ed (for ms compatibility)
 					tDiv =  atof(argv[++args]);
 						ensureEventsCapacity();
 					events[eventNumber].time = tDiv * 2.0;
