@@ -26,9 +26,7 @@
 #include "alleleTraj.h"
 #include "tskitInterface.h"
 #include "version.h"
-#ifdef USE_SEGMENT_POOL
 #include "segmentPool.h"
-#endif
 
 
 
@@ -128,14 +126,9 @@ int main(int argc, const char * argv[]){
 	
 	// Initialize global trajectory generator (lazy approach)
 
-#ifdef USE_SEGMENT_POOL
 	// Initialize segment pool with size based on parameters
-	fprintf(stderr, "DEBUG: sampleSize=%d, rho=%f, nSites=%d\n", sampleSize, rho, nSites);
 	size_t initial_pool_size = calculateInitialPoolSize(sampleSize, rho, nSites);
 	initSegmentPool(initial_pool_size);
-	fprintf(stderr, "Segment pool initialized with %zu segments (%.1f MB)\n", 
-	        initial_pool_size, (initial_pool_size * sizeof(AncestrySegment)) / (1024.0 * 1024.0));
-#endif
 
 	// fprintf(stderr, "Starting simulation with %d replicates\n", sampleNumber);
 	while(i < sampleNumber){
@@ -179,10 +172,8 @@ int main(int argc, const char * argv[]){
 			// Clean up removed nodes list
 			cleanupRemovedNodes();
 			
-#ifdef USE_SEGMENT_POOL
 			// Fast O(1) reset of segment pool between replicates
 			resetSegmentPool();
-#endif
 			
 			cleanupBreakPoints();
 			// fprintf(stderr, "BreakPoints cleanup done\n");
@@ -599,11 +590,8 @@ int main(int argc, const char * argv[]){
 	//	fprintf(stderr, "Debug: Freed %d nodes during simulation\n", freedNodeCount);
 	// }
 	
-#ifdef USE_SEGMENT_POOL
-	// Print pool statistics if needed
-	printPoolStatistics(stderr);
+	// Clean up segment pool
 	destroySegmentPool();
-#endif
 	
 	return(0);
 }
