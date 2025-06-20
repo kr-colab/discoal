@@ -33,6 +33,11 @@ AncestrySegment* newSegment(int start, int end, tsk_id_t tskit_node_id, Ancestry
 
 void freeSegmentTree(AncestrySegment *root) {
     if (!root) return;
+    static int tree_frees = 0;
+    tree_frees++;
+    // if (tree_frees % 100 == 0) {
+    //     fprintf(stderr, "freeSegmentTree: %d trees freed\n", tree_frees);
+    // }
     releaseSegment(root);
 }
 
@@ -104,29 +109,106 @@ AncestrySegment* retainSegment(AncestrySegment *seg) {
     return seg;
 }
 
+// Stack node for iterative traversal
+typedef struct SegmentStackNode {
+    AncestrySegment *segment;
+    struct SegmentStackNode *next;
+} SegmentStackNode;
+
 void releaseSegment(AncestrySegment *seg) {
     if (!seg) return;
     
-    seg->refCount--;
-    if (seg->refCount <= 0) {
-        // Release next segment in the list
-        if (seg->next) {
-            releaseSegment(seg->next);
+    static int release_calls = 0;
+    static int segments_freed = 0;
+    static int max_stack_depth = 0;
+    
+    release_calls++;
+    
+    // Initialize stack with root segment
+    SegmentStackNode *stack = NULL;
+    SegmentStackNode *node = (SegmentStackNode*)malloc(sizeof(SegmentStackNode));
+    node->segment = seg;
+    node->next = NULL;
+    stack = node;
+    
+    int current_stack_depth = 1;
+    
+    while (stack) {
+        // Pop from stack
+        SegmentStackNode *top = stack;
+        AncestrySegment *current = top->segment;
+        stack = top->next;
+        free(top);
+        current_stack_depth--;
+        
+        if (!current) continue;
+        
+        // Decrement reference count
+        current->refCount--;
+        
+        if (current->refCount <= 0) {
+            // Process the entire 'next' chain for this segment
+            AncestrySegment *chain_current = current;
+            int chain_length = 0;
+            
+            while (chain_current) {
+                chain_length++;
+                AncestrySegment *next = chain_current->next;
+                
+                // Push children onto stack for later processing
+                if (chain_current->left) {
+                    node = (SegmentStackNode*)malloc(sizeof(SegmentStackNode));
+                    node->segment = chain_current->left;
+                    node->next = stack;
+                    stack = node;
+                    current_stack_depth++;
+                    if (current_stack_depth > max_stack_depth) {
+                        max_stack_depth = current_stack_depth;
+                    }
+                }
+                if (chain_current->right) {
+                    node = (SegmentStackNode*)malloc(sizeof(SegmentStackNode));
+                    node->segment = chain_current->right;
+                    node->next = stack;
+                    stack = node;
+                    current_stack_depth++;
+                    if (current_stack_depth > max_stack_depth) {
+                        max_stack_depth = current_stack_depth;
+                    }
+                }
+                
+                // Free AVL tree if present
+                if (chain_current->avlTree) {
+                    freeAVLTree((AVLTree*)chain_current->avlTree);
+                    chain_current->avlTree = NULL;
+                }
+                
+                // Free current segment
+                free(chain_current);
+                segments_freed++;
+                
+                // Handle next segment in chain
+                if (next && next->refCount > 0) {
+                    next->refCount--;
+                    if (next->refCount > 0) {
+                        break;  // Next segment still has references
+                    }
+                }
+                chain_current = next;
+            }
+            
+            // Debug output disabled for production
+            // if (chain_length > 500) {
+            //     fprintf(stderr, "  Freed long segment chain of length %d\n", chain_length);
+            // }
         }
-        // Release child segments
-        if (seg->left) {
-            releaseSegment(seg->left);
-        }
-        if (seg->right) {
-            releaseSegment(seg->right);
-        }
-        // Free AVL tree if present
-        if (seg->avlTree) {
-            freeAVLTree((AVLTree*)seg->avlTree);
-            seg->avlTree = NULL;
-        }
-        free(seg);
     }
+    
+    // Debug output disabled for production
+    // if (release_calls % 10000 == 0) {
+    //     fprintf(stderr, "releaseSegment: %d calls, %d segments freed, max stack depth: %d\n", 
+    //             release_calls, segments_freed, max_stack_depth);
+    // }
 }
 
 // Create a shallow copy that shares the segment data
