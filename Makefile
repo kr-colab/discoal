@@ -2,6 +2,14 @@ CC = gcc
 CFLAGS = -O3 -march=native -I. -I./extern/tskit -I./extern/tskit/kastore
 TEST_CFLAGS = -O2 -I. -I./test/unit -I./extern/tskit -I./extern/tskit/kastore
 
+# Optional: Enable segment pool optimization
+ifdef USE_SEGMENT_POOL
+CFLAGS += -DUSE_SEGMENT_POOL
+POOL_SOURCES = segmentPool.c
+else
+POOL_SOURCES =
+endif
+
 # Tskit source files
 TSKIT_SOURCES = extern/tskit/tskit/core.c \
                 extern/tskit/tskit/tables.c \
@@ -14,12 +22,12 @@ all: discoal
 # executable 
 #
 
-discoal: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h activeSegment.c activeSegment.h tskitInterface.c tskitInterface.h $(TSKIT_SOURCES)
-	$(CC) $(CFLAGS) -o discoal discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.c tskitInterface.c $(TSKIT_SOURCES) -lm -fcommon
+discoal: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h activeSegment.c activeSegment.h tskitInterface.c tskitInterface.h $(POOL_SOURCES) $(TSKIT_SOURCES)
+	$(CC) $(CFLAGS) -o discoal discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.c tskitInterface.c $(POOL_SOURCES) $(TSKIT_SOURCES) -lm -fcommon
 
 # Build edited version for testing (same as main but explicit name)
-discoal_edited: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h activeSegment.c activeSegment.h tskitInterface.c tskitInterface.h $(TSKIT_SOURCES)
-	$(CC) $(CFLAGS) -o discoal_edited discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.c tskitInterface.c $(TSKIT_SOURCES) -lm -fcommon
+discoal_edited: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h activeSegment.c activeSegment.h tskitInterface.c tskitInterface.h $(POOL_SOURCES) $(TSKIT_SOURCES)
+	$(CC) $(CFLAGS) -o discoal_edited discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.c tskitInterface.c $(POOL_SOURCES) $(TSKIT_SOURCES) -lm -fcommon
 
 # Build debug version with ancestry verification
 discoal_debug: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h activeSegment.c activeSegment.h $(TSKIT_SOURCES)

@@ -4,9 +4,16 @@
 #include <limits.h>
 #include "ancestrySegment.h"
 #include "ancestrySegmentAVL.h"
+#ifdef USE_SEGMENT_POOL
+#include "segmentPool.h"
+#endif
 
 AncestrySegment* newSegment(int start, int end, tsk_id_t tskit_node_id, AncestrySegment *left, AncestrySegment *right) {
+#ifdef USE_SEGMENT_POOL
+    AncestrySegment *seg = allocSegmentFromPool();
+#else
     AncestrySegment *seg = (AncestrySegment*)calloc(1, sizeof(AncestrySegment));
+#endif
     if (!seg) {
         fprintf(stderr, "Memory allocation failed for AncestrySegment\n");
         exit(1);
@@ -162,7 +169,11 @@ void releaseSegment(AncestrySegment *seg) {
                 }
                 
                 // Free current segment
+#ifdef USE_SEGMENT_POOL
+                freeSegmentToPool(chain_current);
+#else
                 free(chain_current);
+#endif
                 
                 // Handle next segment in chain
                 if (next && next->refCount > 0) {
