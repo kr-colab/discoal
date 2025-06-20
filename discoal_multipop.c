@@ -130,7 +130,7 @@ int main(int argc, const char * argv[]){
 		// fprintf(stderr, "Replicate %d/%d\n", i+1, sampleNumber);
 		// fprintf(stderr, "Loop start: i=%d, sampleNumber=%d, continuing=%d\n", i, sampleNumber, i < sampleNumber);
 		// fprintf(stderr, "REP %d\n", i+1);
-		// fprintf(stderr, "DEBUG: Starting replicate %d of %d (condRecMode=%d)\n", i+1, sampleNumber, condRecMode);
+		// fprintf(stderr, "DEBUG: Starting replicate %d of %d\n", i+1, sampleNumber);
 		// Clean up from previous replicate if not the first one
 		if (i > 0) {
 			// fprintf(stderr, "DEBUG: Cleaning up after replicate %d, nodesCapacity=%d\n", i, nodesCapacity);
@@ -445,40 +445,23 @@ int main(int argc, const char * argv[]){
 			exit(1);
 		}
 		
-		// Only populate discoal mutation arrays if we need ms output
-		// (i.e., not in conditional recombination mode)
-		if (condRecMode == 0) {
-			if (tskit_populate_discoal_mutations() < 0) {
-				fprintf(stderr, "Error: Failed to populate discoal mutations from tskit\n");
-				exit(1);
-			}
+		// Populate discoal mutation arrays if we need ms output
+		if (tskit_populate_discoal_mutations() < 0) {
+			fprintf(stderr, "Error: Failed to populate discoal mutations from tskit\n");
+			exit(1);
 		}
 
-		if(condRecMode == 0){
-			// Hudson style output
-			//errorCheckMutations();
-			// Only generate MS output if not using tskit-only output mode
-			if (!tskitOutputMode) {
-				// fprintf(stderr, "About to call makeGametesMS for rep %d\n", i+1);
-				makeGametesMS(argc,argv);
-			}
-			//printf("rep: %d\n",i);
-			// fprintf(stderr, "DEBUG: Incrementing i from %d to %d (normal mode)\n", i, i+1);
-			i++;
-			// fprintf(stderr, "End of rep %d, i=%d, sampleNumber=%d\n", i, i, sampleNumber);
+		// Hudson style output
+		//errorCheckMutations();
+		// Only generate MS output if not using tskit-only output mode
+		if (!tskitOutputMode) {
+			// fprintf(stderr, "About to call makeGametesMS for rep %d\n", i+1);
+			makeGametesMS(argc,argv);
 		}
-		else{
-			// fprintf(stderr, "DEBUG: In condRecMode, condRecMet=%d\n", condRecMet);
-			if(condRecMet == 1){
-                                i++;
-				// Only generate MS output if not using tskit-only output mode
-				if (!tskitOutputMode) {
-					makeGametesMS(argc,argv);
-				}
-				condRecMet = 0;
-			}
-	
-		}
+		//printf("rep: %d\n",i);
+		// fprintf(stderr, "DEBUG: Incrementing i from %d to %d\n", i, i+1);
+		i++;
+		// fprintf(stderr, "End of rep %d, i=%d, sampleNumber=%d\n", i, i, sampleNumber);
 		
 		// Debug: Print memory statistics (commented out for production)
 		// if (tskitOutputMode || minimalTreeSeq) {
@@ -557,10 +540,6 @@ int main(int argc, const char * argv[]){
 		//         totalSimCount + 1, i, totalSimCount, sampleNumber);
                 totalSimCount += 1;
 	}
-        if(condRecMode == 1)
-        {
-            fprintf(stderr, "Needed run %d simulations to get %d with a recombination event within the specified bounds.\n", totalSimCount, i);
-        }
 	// Clean up any remaining trajectory storage
 	if (trajectoryFd != -1) {
 		if (currentTrajectory && currentTrajectory != MAP_FAILED) {
@@ -737,7 +716,6 @@ void getParameters(int argc,const char **argv){
 	eventNumber++;
 	currentSize = malloc(sizeof(double) * MAXPOPS);
 
-	condRecMode= 0;
 	while(args < argc){
 		// Check if argument starts with '-'
 		if (argv[args][0] != '-') {
@@ -1016,12 +994,6 @@ void getParameters(int argc,const char **argv){
 			break;
 			case 'N' :
 			EFFECTIVE_POPN_SIZE = parseIntArg(argc, argv, &args, "-N");
-			break;
-			case 'C' :
-			condRecMode= 1;
-			condRecMet = 0;
-			lSpot = parseIntArg(argc, argv, &args, "-C");
-			rSpot = parseIntArg(argc, argv, &args, "-C");
 			break;
 			case 'R' :
 			recurSweepMode = 1;

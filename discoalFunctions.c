@@ -1941,9 +1941,6 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 						bp = recombineAtTimePopnSweep(cTime + (ttau),0, 0, sweepSite, (1.0-x));
 						if(bp != 666){
 							addBreakPoint(bp);
-							if(bp >= lSpot && bp < rSpot){
-								condRecMet = 1;
-							}
 						}
 					}
 					else{
@@ -1953,9 +1950,6 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 							bp = recombineAtTimePopnSweep(cTime + (ttau),0, 1, sweepSite, x);
 							if(bp != 666){
 								addBreakPoint(bp);
-								if(bp >= lSpot && bp < rSpot){
-									condRecMet = 1;
-								}
 							}
 						}
 						else{
@@ -2190,9 +2184,6 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 						bp = recombineAtTimePopnSweep(cTime + (ttau),0, 0, sweepSite, (1.0-x));
 						if(bp != 666){
 							addBreakPoint(bp);
-							if(bp >= lSpot && bp < rSpot){
-								condRecMet = 1;
-							}
 						}
 					}
 					else{
@@ -2202,9 +2193,6 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 							bp = recombineAtTimePopnSweep(cTime + (ttau),0, 1, sweepSite, x);
 							if(bp != 666){
 								addBreakPoint(bp);
-								if(bp >= lSpot && bp < rSpot){
-									condRecMet = 1;
-								}
 							}
 						}
 						else{

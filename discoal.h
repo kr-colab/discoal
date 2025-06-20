@@ -179,8 +179,6 @@ size_t trajectoryFileSize;     // Size of mmap'd region
 struct event *events;          /* Dynamic array of demographic events */
 int eventsCapacity;            /* Allocated capacity for events array */
 
-int lSpot, rSpot, condRecMode;
-int condRecMet;
 int activeSweepFlag;
 int recurSweepMode;
 int partialSweepMode,softSweepMode;
