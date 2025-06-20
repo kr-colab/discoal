@@ -111,6 +111,11 @@ make test_<name>    # Run specific unit test
   - Removed redundant wrapper (tskit_place_mutations_directly)
   - Consolidated makeGametesMS by removing unnecessary wrapper
 - Fixed comprehensive validation suite (-es option test removed, speedup calculation fixed)
+- Cleaned up ancestry segment code:
+  - Fixed critical AVL tree threshold bug (was 30, should be 3)
+  - Removed unused splitResult struct and static functions
+  - Removed debug code and associated variables
+  - Improved code maintainability
 
 ### Active Development
 - [ ] Document memory optimization techniques in README
