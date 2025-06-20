@@ -201,17 +201,18 @@ void initialize(){
 			nodes[count]->nancSites = nSites;
 			nodes[count]->lLim=0;
 			nodes[count]->rLim=nSites-1;
-			// Initialize ancestry segment tree for leaf node
-			nodes[count]->ancestryRoot = newSegment(0, nSites, NULL, NULL);
+			
+			// Always track sample node ID in tskit (create node first)
+			tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
+			set_tskit_node_id(nodes[count], tsk_id);
+			addSampleNodeId(tsk_id);
+			
+			// Initialize ancestry segment tree for leaf node with tskit node ID
+			nodes[count]->ancestryRoot = newSegment(0, nSites, tsk_id, NULL, NULL);
 
 			if(p>0)nodes[count]->sweepPopn = 0;
 			nodes[count]->id=leafID++;
 			nodes[count]->inActiveSet = 1;  // Sample nodes start in active set
-			
-			// Always track sample node ID in tskit
-			tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
-			set_tskit_node_id(nodes[count], tsk_id);
-			addSampleNodeId(tsk_id);
 			
 			// Add to population list
 			addNodeToPopList(nodes[count], p);
@@ -323,19 +324,20 @@ void initializeTwoSite(){
 			nodes[count]->nancSites = nSites;
 			nodes[count]->lLim=0;
 			nodes[count]->rLim=nSites-1;
-			// Initialize ancestry segment tree for leaf node
-			nodes[count]->ancestryRoot = newSegment(0, nSites, NULL, NULL);
+			
+			// Track sample node ID in tskit (create node first)
+			tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
+			set_tskit_node_id(nodes[count], tsk_id);
+			addSampleNodeId(tsk_id);
+			
+			// Initialize ancestry segment tree for leaf node with tskit node ID
+			nodes[count]->ancestryRoot = newSegment(0, nSites, tsk_id, NULL, NULL);
 			if(p>0)nodes[count]->sweepPopn = 0;
 			nodes[count]->id=leafID++;
 			nodes[count]->inActiveSet = 1;  // Sample nodes start in active set
 			//do stuff for leafs containers
 			//nodes->leafs = calloc(sizeof(int) * sampleSize);
 			//nodes->leafs[nodes[count]->id] = 1;
-			
-			// Track sample node ID in tskit
-			tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
-			set_tskit_node_id(nodes[count], tsk_id);
-			addSampleNodeId(tsk_id);
 			
 			// Add to population list
 			addNodeToPopList(nodes[count], p);
@@ -659,31 +661,85 @@ void migrateExceptSite(double site, double scalar, int srcPopn, int destPopn){
 
 ////////
 
-// Helper function to find true descendants by following single-child chains
-static int findTrueDescendants(rootedNode *node, rootedNode **descendants, int maxDescendants) {
+// Structure to hold a node and its ancestry segments for edge recording
+typedef struct {
+    rootedNode *node;
+    AncestrySegment *segments;
+} NodeWithSegments;
+
+// Helper function to find descendant nodes by tracing through unrecorded nodes
+static int findTrueDescendants(rootedNode *node, rootedNode **results, int maxResults) {
     int count = 0;
     
-    // Base case: if this node has no children, it's a leaf (sample)
-    if (node->leftChild == NULL && node->rightChild == NULL) {
-        if (count < maxDescendants) {
-            descendants[count++] = node;
+    // If this node has a tskit ID, it's a true descendant
+    if (get_tskit_node_id(node) != TSK_NULL) {
+        if (count < maxResults) {
+            results[count] = node;
+            count++;
         }
         return count;
     }
     
-    // If this node has two children, it's a coalescence node - stop here
-    if (node->leftChild != NULL && node->rightChild != NULL) {
-        // Don't follow further - this is a coalescence node
-        if (count < maxDescendants) {
-            descendants[count++] = node;
+    // This node doesn't have a tskit ID - trace through its children
+    if (node->leftChild != NULL) {
+        int childCount = findTrueDescendants(node->leftChild, results + count, maxResults - count);
+        count += childCount;
+    }
+    
+    if (node->rightChild != NULL && node->rightChild != node->leftChild && count < maxResults) {
+        int childCount = findTrueDescendants(node->rightChild, results + count, maxResults - count);
+        count += childCount;
+    }
+    
+    return count;
+}
+
+// Helper function to find descendants with tskit nodes by tracing through unrecorded nodes
+// This properly handles genomic intervals through recombination events
+static int findDescendantsWithSegments(rootedNode *node, NodeWithSegments *results, int maxResults) {
+    int count = 0;
+    
+    // If this node has no ancestry, there's nothing to trace
+    if (node->ancestryRoot == NULL) {
+        return 0;
+    }
+    
+    // If this node has a tskit ID, we can record edges to it
+    if (get_tskit_node_id(node) != TSK_NULL) {
+        if (count < maxResults) {
+            results[count].node = node;
+            results[count].segments = node->ancestryRoot;
+            count++;
         }
         return count;
     }
     
-    // This node has exactly one child - it's a recombination node
-    // Recursively follow the chain
-    rootedNode *onlyChild = (node->leftChild != NULL) ? node->leftChild : node->rightChild;
-    return findTrueDescendants(onlyChild, descendants, maxDescendants);
+    // This node doesn't have a tskit ID (unrecorded recombination node)
+    // Trace through its children
+    if (node->leftChild != NULL) {
+        // For each child, we need to track which segments flow through
+        NodeWithSegments childResults[10];
+        int childCount = findDescendantsWithSegments(node->leftChild, childResults, 10);
+        
+        // Pass through the results from the recursive call
+        for (int i = 0; i < childCount && count < maxResults; i++) {
+            results[count] = childResults[i];
+            count++;
+        }
+    }
+    
+    if (node->rightChild != NULL && node->rightChild != node->leftChild) {
+        // Handle second child (for recombination, leftChild == rightChild)
+        NodeWithSegments childResults[10];
+        int childCount = findDescendantsWithSegments(node->rightChild, childResults, 10);
+        
+        for (int i = 0; i < childCount && count < maxResults; i++) {
+            results[count] = childResults[i];
+            count++;
+        }
+    }
+    
+    return count;
 }
 
 void coalesceAtTimePopn(double cTime, int popn){
@@ -708,25 +764,25 @@ void coalesceAtTimePopn(double cTime, int popn){
 	temp->nancSites = 0;
 	temp->lLim = nSites;
 	temp->rLim = 0;
-	// Merge ancestry segment trees
-	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
-	
-	// Update stats from tree when in tree-only mode
-	updateAncestryStatsFromTree(temp);
 	
 	// Propagate sweep mutation flag if either child carries it
 	if (lChild->carriesSweepMutation || rChild->carriesSweepMutation) {
 		temp->carriesSweepMutation = 1;
 	}
 	
-	// Add the parent node to discoal's arrays and tskit BEFORE recording edges
+	// Add the parent node to discoal's arrays and tskit BEFORE merging/recording
 	addNode(temp);
 	
-	// Always record edges in tskit for each ancestry segment
 	// Get tskit IDs for all nodes involved in coalescence  
 	tsk_id_t parent_tsk_id = get_tskit_node_id(temp);
 	tsk_id_t lchild_tsk_id = get_tskit_node_id(lChild);
 	tsk_id_t rchild_tsk_id = get_tskit_node_id(rChild);
+	
+	// Merge ancestry segment trees with parent's tskit node ID
+	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot, parent_tsk_id);
+	
+	// Update stats from tree when in tree-only mode
+	updateAncestryStatsFromTree(temp);
 	
 	extern int minimalTreeSeq;
 	
@@ -748,96 +804,32 @@ void coalesceAtTimePopn(double cTime, int popn){
 			second_child = lChild;
 		}
 		
-		// Add edges for each ancestry segment in the children
-		// First child - check if we should bypass in minimal mode
-		if (minimalTreeSeq && first_child->ancestryRoot != NULL) {
-			// Find true descendants by following single-child chains
-			rootedNode *trueDescendants[10];  // Should be enough for any chain
-			int numDesc = findTrueDescendants(first_child, trueDescendants, 10);
-			
-			// If we found different descendants than the original child, use them
-			if (numDesc > 0 && trueDescendants[0] != first_child) {
-				// Connect to each true descendant using the segments from the intermediate node
-				for (int d = 0; d < numDesc; d++) {
-					tsk_id_t desc_tsk_id = get_tskit_node_id(trueDescendants[d]);
-					if (desc_tsk_id != TSK_NULL) {
-						AncestrySegment *seg = first_child->ancestryRoot;
-						while (seg != NULL) {
-							tskit_add_edges(parent_tsk_id, desc_tsk_id,
-								(double)seg->start, (double)seg->end);
-							markSegmentRecorded(seg);  // Mark segment as recorded
-							seg = seg->next;
-						}
-					}
-				}
-			} else {
-				// No bypass needed - record edges as usual
-				if (first_child_id != TSK_NULL) {
-					AncestrySegment *seg = first_child->ancestryRoot;
-					while (seg != NULL) {
-						tskit_add_edges(parent_tsk_id, first_child_id,
-							(double)seg->start, (double)seg->end);
-						markSegmentRecorded(seg);  // Mark segment as recorded
-						seg = seg->next;
-					}
-				}
-			}
-		} else {
-			// Normal mode - record edges to child
-			if (first_child_id != TSK_NULL && first_child->ancestryRoot != NULL) {
-				AncestrySegment *seg = first_child->ancestryRoot;
-				while (seg != NULL) {
-					tskit_add_edges(parent_tsk_id, first_child_id, 
+		// Record edges using the msprime pattern - segments know their tskit node IDs
+		// Process left child's segments
+		if (lChild->ancestryRoot != NULL) {
+			AncestrySegment *seg = lChild->ancestryRoot;
+			while (seg != NULL) {
+				// Each segment knows which tskit node it represents
+				if (seg->tskit_node_id != TSK_NULL && seg->tskit_node_id != parent_tsk_id) {
+					tskit_add_edges(parent_tsk_id, seg->tskit_node_id, 
 						(double)seg->start, (double)seg->end);
-					markSegmentRecorded(seg);  // Mark segment as recorded
-					seg = seg->next;
 				}
+				markSegmentRecorded(seg);
+				seg = seg->next;
 			}
 		}
 		
-		// Second child - check if we should bypass in minimal mode
-		if (minimalTreeSeq && second_child->ancestryRoot != NULL) {
-			// Find true descendants by following single-child chains
-			rootedNode *trueDescendants[10];  // Should be enough for any chain
-			int numDesc = findTrueDescendants(second_child, trueDescendants, 10);
-			
-			// If we found different descendants than the original child, use them
-			if (numDesc > 0 && trueDescendants[0] != second_child) {
-				// Connect to each true descendant using the segments from the intermediate node
-				for (int d = 0; d < numDesc; d++) {
-					tsk_id_t desc_tsk_id = get_tskit_node_id(trueDescendants[d]);
-					if (desc_tsk_id != TSK_NULL) {
-						AncestrySegment *seg = second_child->ancestryRoot;
-						while (seg != NULL) {
-							tskit_add_edges(parent_tsk_id, desc_tsk_id,
-								(double)seg->start, (double)seg->end);
-							markSegmentRecorded(seg);  // Mark segment as recorded
-							seg = seg->next;
-						}
-					}
-				}
-			} else {
-				// No bypass needed - record edges as usual
-				if (second_child_id != TSK_NULL) {
-					AncestrySegment *seg = second_child->ancestryRoot;
-					while (seg != NULL) {
-						tskit_add_edges(parent_tsk_id, second_child_id,
-							(double)seg->start, (double)seg->end);
-						markSegmentRecorded(seg);  // Mark segment as recorded
-						seg = seg->next;
-					}
-				}
-			}
-		} else {
-			// Normal mode - record edges to child
-			if (second_child_id != TSK_NULL && second_child->ancestryRoot != NULL) {
-				AncestrySegment *seg = second_child->ancestryRoot;
-				while (seg != NULL) {
-					tskit_add_edges(parent_tsk_id, second_child_id,
+		// Process right child's segments
+		if (rChild->ancestryRoot != NULL) {
+			AncestrySegment *seg = rChild->ancestryRoot;
+			while (seg != NULL) {
+				// Each segment knows which tskit node it represents
+				if (seg->tskit_node_id != TSK_NULL && seg->tskit_node_id != parent_tsk_id) {
+					tskit_add_edges(parent_tsk_id, seg->tskit_node_id,
 						(double)seg->start, (double)seg->end);
-					markSegmentRecorded(seg);  // Mark segment as recorded
-					seg = seg->next;
 				}
+				markSegmentRecorded(seg);
+				seg = seg->next;
 			}
 		}
 	}
@@ -1115,10 +1107,13 @@ int recombineAtTimePopn(double cTime, int popn){
 		lParent->ancestryRoot = splitLeft(aNode->ancestryRoot, xOver);
 		rParent->ancestryRoot = splitRight(aNode->ancestryRoot, xOver);
 		
-		// Free the original tree - it's no longer needed after splitting
-		// The parents have their own segments from the split operations
-		freeSegmentTree(aNode->ancestryRoot);
-		aNode->ancestryRoot = NULL;
+		// In full mode, free the original tree since parents have their own segments
+		// In minimal mode, preserve the child's ancestry for tracing through during coalescence
+		extern int minimalTreeSeq;
+		if (!minimalTreeSeq) {
+			freeSegmentTree(aNode->ancestryRoot);
+			aNode->ancestryRoot = NULL;
+		}
 		
 		// Update stats from tree when in tree-only mode
 		updateAncestryStatsFromTree(lParent);
@@ -1142,7 +1137,7 @@ int recombineAtTimePopn(double cTime, int popn){
 		addNode(lParent);
 		addNode(rParent);
 		
-		// Record edges in tskit for recombination (unless in minimal tree sequence mode)
+		// Record edges in tskit for recombination (only in full mode)
 		extern int minimalTreeSeq;
 		if (!minimalTreeSeq) {
 			tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
@@ -1171,6 +1166,10 @@ int recombineAtTimePopn(double cTime, int popn){
 					seg = seg->next;
 				}
 			}
+		} else {
+			// In minimal mode, don't create tskit nodes for recombination parents
+			// They will remain with tskit_node_id = TSK_NULL
+			// During coalescence, we'll trace through to find the actual samples
 		}
 		
 	//	printf("reco-> lParent: %u rParent:%u child: %u time:%f xover:%d\n",lParent,rParent,aNode,cTime,xOver);
@@ -1233,9 +1232,13 @@ void geneConversionAtTimePopn(double cTime, int popn){
 			lParent->ancestryRoot = gcSplit.converted;     // Gets the converted tract
 			rParent->ancestryRoot = gcSplit.unconverted;   // Gets everything else
 			
-			// Free the original tree - it's no longer needed after splitting
-			freeSegmentTree(aNode->ancestryRoot);
-			aNode->ancestryRoot = NULL;
+			// In full mode, free the original tree since parents have their own segments
+			// In minimal mode, preserve the child's ancestry for tracing through during coalescence
+			extern int minimalTreeSeq;
+			if (!minimalTreeSeq) {
+				freeSegmentTree(aNode->ancestryRoot);
+				aNode->ancestryRoot = NULL;
+			}
 		} else {
 			lParent->ancestryRoot = NULL;
 			rParent->ancestryRoot = NULL;
@@ -1263,7 +1266,7 @@ void geneConversionAtTimePopn(double cTime, int popn){
 		addNode(lParent);
 		addNode(rParent);
 		
-		// Record edges in tskit for gene conversion (unless in minimal tree sequence mode)
+		// Record edges in tskit for gene conversion (only in full mode)
 		extern int minimalTreeSeq;
 		if (!minimalTreeSeq) {
 			tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
@@ -1277,6 +1280,7 @@ void geneConversionAtTimePopn(double cTime, int popn){
 				while (seg != NULL) {
 					tskit_add_edges(lparent_tsk_id, child_tsk_id,
 						(double)seg->start, (double)seg->end);
+					markSegmentRecorded(seg);  // Mark segment as recorded
 					seg = seg->next;
 				}
 			}
@@ -1526,7 +1530,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 	double totCRate, totRRate, totGCRate,totMRate, eSum;
 	int  i,j;
 	int coalescenceCounter = 0;  // Counter for coalescent events only
-	const int SWEEP_INTERVAL = 50;  // Sweep every 50 coalescent events (minimal frequency)
+	const int SWEEP_INTERVAL = 50;  // Sweep after every coalescent event (aggressive memory management)
 
 	if(startTime == endTime){
 		return(endTime);
@@ -2553,21 +2557,34 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 			addNode(lParent);
 			addNode(rParent);
 			
-			// Record edges in tskit for recombination during sweep (unless in minimal tree sequence mode)
+			// Record edges in tskit for recombination during sweep (only in full mode)
 			extern int minimalTreeSeq;
 			if (!minimalTreeSeq) {
 				tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
 				tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
 				tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
 				
-				// Left parent gets ancestral material from [0, xOver)
-				if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && xOver > 0) {
-					tskit_add_edges(lparent_tsk_id, child_tsk_id, 0.0, (double)xOver);
+				// Record edges based on actual ancestry segments
+				// Left parent gets segments left of crossover
+				if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && lParent->ancestryRoot != NULL) {
+					AncestrySegment *seg = lParent->ancestryRoot;
+					while (seg != NULL) {
+						tskit_add_edges(lparent_tsk_id, child_tsk_id,
+							(double)seg->start, (double)seg->end);
+						markSegmentRecorded(seg);
+						seg = seg->next;
+					}
 				}
 				
-				// Right parent gets ancestral material from [xOver, nSites)
-				if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && xOver < nSites) {
-					tskit_add_edges(rparent_tsk_id, child_tsk_id, (double)xOver, (double)nSites);
+				// Right parent gets segments right of crossover
+				if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && rParent->ancestryRoot != NULL) {
+					AncestrySegment *seg = rParent->ancestryRoot;
+					while (seg != NULL) {
+						tskit_add_edges(rparent_tsk_id, child_tsk_id,
+							(double)seg->start, (double)seg->end);
+						markSegmentRecorded(seg);
+						seg = seg->next;
+					}
 				}
 			}
 			
@@ -2644,9 +2661,13 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 			lParent->ancestryRoot = gcSplit.converted;     // Gets the converted tract
 			rParent->ancestryRoot = gcSplit.unconverted;   // Gets everything else
 			
-			// Free the original tree - it's no longer needed after splitting
-			freeSegmentTree(aNode->ancestryRoot);
-			aNode->ancestryRoot = NULL;
+			// In full mode, free the original tree since parents have their own segments
+			// In minimal mode, preserve the child's ancestry for tracing through during coalescence
+			extern int minimalTreeSeq;
+			if (!minimalTreeSeq) {
+				freeSegmentTree(aNode->ancestryRoot);
+				aNode->ancestryRoot = NULL;
+			}
 		} else {
 			lParent->ancestryRoot = NULL;
 			rParent->ancestryRoot = NULL;
@@ -2685,30 +2706,33 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 		addNode(lParent);
 		addNode(rParent);
 		
-		// Record edges in tskit for gene conversion during sweep (unless in minimal tree sequence mode)
+		// Record edges in tskit for gene conversion during sweep (only in full mode)
 		extern int minimalTreeSeq;
 		if (!minimalTreeSeq) {
 			tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
 			tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
 			tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
 			
-			// For gene conversion:
-			// lParent gets the converted tract [xOver, min(xOver + tractL, nSites))
-			// rParent gets everything else
-			int tractEnd = (xOver + tractL < nSites) ? xOver + tractL : nSites;
-			
-			if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && tractEnd > xOver) {
-				// lParent gets the converted tract
-				tskit_add_edges(lparent_tsk_id, child_tsk_id, (double)xOver, (double)tractEnd);
+			// Record edges based on actual ancestry segments
+			// lParent gets the converted tract segments
+			if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && lParent->ancestryRoot != NULL) {
+				AncestrySegment *seg = lParent->ancestryRoot;
+				while (seg != NULL) {
+					tskit_add_edges(lparent_tsk_id, child_tsk_id,
+						(double)seg->start, (double)seg->end);
+					markSegmentRecorded(seg);
+					seg = seg->next;
+				}
 			}
 			
-			if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL) {
-				// rParent gets everything outside the converted tract
-				if (xOver > 0) {
-					tskit_add_edges(rparent_tsk_id, child_tsk_id, 0.0, (double)xOver);
-				}
-				if (tractEnd < nSites) {
-					tskit_add_edges(rparent_tsk_id, child_tsk_id, (double)tractEnd, (double)nSites);
+			// rParent gets the unconverted segments
+			if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && rParent->ancestryRoot != NULL) {
+				AncestrySegment *seg = rParent->ancestryRoot;
+				while (seg != NULL) {
+					tskit_add_edges(rparent_tsk_id, child_tsk_id,
+						(double)seg->start, (double)seg->end);
+					markSegmentRecorded(seg);
+					seg = seg->next;
 				}
 			}
 		}
@@ -2747,115 +2771,58 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	temp->nancSites = 0;
 	temp->lLim = nSites;
 	temp->rLim = 0;
-	// Merge ancestry segment trees
-	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
-	
-	// Update stats from tree when in tree-only mode
-	updateAncestryStatsFromTree(temp);
 	
 	// Propagate sweep mutation flag if either child carries it
 	if (lChild->carriesSweepMutation || rChild->carriesSweepMutation) {
 		temp->carriesSweepMutation = 1;
 	}
 	
-	// Add the parent node to discoal's arrays and tskit BEFORE recording edges
+	// Add the parent node to discoal's arrays and tskit BEFORE merging/recording
 	addNode(temp);
 	
-	// Record edges in tskit - one edge per child spanning their full range
-	// Get tskit IDs for all nodes involved in coalescence
+	// Get tskit IDs for all nodes involved in coalescence  
 	tsk_id_t parent_tsk_id = get_tskit_node_id(temp);
+	
+	// Merge ancestry segment trees with parent's tskit node ID
+	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot, parent_tsk_id);
+	
+	// Update stats from tree when in tree-only mode
+	updateAncestryStatsFromTree(temp);
+	
+	// Record edges in tskit - one edge per child spanning their full range
+	// Get tskit IDs for children (parent already retrieved above)
 	tsk_id_t lchild_tsk_id = get_tskit_node_id(lChild);
 	tsk_id_t rchild_tsk_id = get_tskit_node_id(rChild);
 	
 	extern int minimalTreeSeq;
 	
 	if (parent_tsk_id != TSK_NULL) {
-		// Use segment-based edge recording for sweep coalescence too
-		// Left child - check if we should bypass in minimal mode
-		if (minimalTreeSeq && lChild->ancestryRoot != NULL) {
-			// Find true descendants by following single-child chains
-			rootedNode *trueDescendants[10];  // Should be enough for any chain
-			int numDesc = findTrueDescendants(lChild, trueDescendants, 10);
-			
-			// If we found different descendants than the original child, use them
-			if (numDesc > 0 && trueDescendants[0] != lChild) {
-				// Connect to each true descendant using the segments from the intermediate node
-				for (int d = 0; d < numDesc; d++) {
-					tsk_id_t desc_tsk_id = get_tskit_node_id(trueDescendants[d]);
-					if (desc_tsk_id != TSK_NULL) {
-						AncestrySegment *seg = lChild->ancestryRoot;
-						while (seg != NULL) {
-							tskit_add_edges(parent_tsk_id, desc_tsk_id,
-								(double)seg->start, (double)seg->end);
-							markSegmentRecorded(seg);  // Mark segment as recorded
-							seg = seg->next;
-						}
-					}
-				}
-			} else {
-				// No bypass needed - record edges as usual
-				if (lchild_tsk_id != TSK_NULL) {
-					AncestrySegment *seg = lChild->ancestryRoot;
-					while (seg != NULL) {
-						tskit_add_edges(parent_tsk_id, lchild_tsk_id,
-							(double)seg->start, (double)seg->end);
-						seg = seg->next;
-					}
-				}
-			}
-		} else {
-			// Normal mode - record edges to child
-			if (lchild_tsk_id != TSK_NULL && lChild->ancestryRoot != NULL) {
-				AncestrySegment *seg = lChild->ancestryRoot;
-				while (seg != NULL) {
-					tskit_add_edges(parent_tsk_id, lchild_tsk_id, 
+		// Record edges using the msprime pattern - segments know their tskit node IDs
+		// Process left child's segments
+		if (lChild->ancestryRoot != NULL) {
+			AncestrySegment *seg = lChild->ancestryRoot;
+			while (seg != NULL) {
+				// Each segment knows which tskit node it represents
+				if (seg->tskit_node_id != TSK_NULL && seg->tskit_node_id != parent_tsk_id) {
+					tskit_add_edges(parent_tsk_id, seg->tskit_node_id, 
 						(double)seg->start, (double)seg->end);
-					seg = seg->next;
 				}
+				markSegmentRecorded(seg);
+				seg = seg->next;
 			}
 		}
 		
-		// Right child - check if we should bypass in minimal mode
-		if (minimalTreeSeq && rChild->ancestryRoot != NULL) {
-			// Find true descendants by following single-child chains
-			rootedNode *trueDescendants[10];  // Should be enough for any chain
-			int numDesc = findTrueDescendants(rChild, trueDescendants, 10);
-			
-			// If we found different descendants than the original child, use them
-			if (numDesc > 0 && trueDescendants[0] != rChild) {
-				// Connect to each true descendant using the segments from the intermediate node
-				for (int d = 0; d < numDesc; d++) {
-					tsk_id_t desc_tsk_id = get_tskit_node_id(trueDescendants[d]);
-					if (desc_tsk_id != TSK_NULL) {
-						AncestrySegment *seg = rChild->ancestryRoot;
-						while (seg != NULL) {
-							tskit_add_edges(parent_tsk_id, desc_tsk_id,
-								(double)seg->start, (double)seg->end);
-							markSegmentRecorded(seg);  // Mark segment as recorded
-							seg = seg->next;
-						}
-					}
-				}
-			} else {
-				// No bypass needed - record edges as usual
-				if (rchild_tsk_id != TSK_NULL) {
-					AncestrySegment *seg = rChild->ancestryRoot;
-					while (seg != NULL) {
-						tskit_add_edges(parent_tsk_id, rchild_tsk_id,
-							(double)seg->start, (double)seg->end);
-						seg = seg->next;
-					}
-				}
-			}
-		} else {
-			// Normal mode - record edges to child
-			if (rchild_tsk_id != TSK_NULL && rChild->ancestryRoot != NULL) {
-				AncestrySegment *seg = rChild->ancestryRoot;
-				while (seg != NULL) {
-					tskit_add_edges(parent_tsk_id, rchild_tsk_id,
+		// Process right child's segments
+		if (rChild->ancestryRoot != NULL) {
+			AncestrySegment *seg = rChild->ancestryRoot;
+			while (seg != NULL) {
+				// Each segment knows which tskit node it represents
+				if (seg->tskit_node_id != TSK_NULL && seg->tskit_node_id != parent_tsk_id) {
+					tskit_add_edges(parent_tsk_id, seg->tskit_node_id,
 						(double)seg->start, (double)seg->end);
-					seg = seg->next;
 				}
+				markSegmentRecorded(seg);
+				seg = seg->next;
 			}
 		}
 	}
@@ -3201,10 +3168,24 @@ void addNode(rootedNode *aNode){
 	nodes[alleleNumber] = aNode;
 	aNode->inActiveSet = 1;  // Mark as being in active set
 	
-	// Always record node immediately to tskit
-	tsk_id_t tsk_id = tskit_add_node(aNode->time, aNode->population, 0);  // is_sample=0
-	// Store tskit ID directly in the node
-	set_tskit_node_id(aNode, tsk_id);
+	// Record node to tskit (unless in minimal mode and this is a recombination parent)
+	extern int minimalTreeSeq;
+	int isRecombParent = (aNode->leftChild != NULL && aNode->rightChild != NULL && 
+	                      aNode->leftChild == aNode->rightChild);
+	
+	if (minimalTreeSeq && isRecombParent) {
+		fprintf(stderr, "Debug: NOT creating tskit node for recomb parent at time %f\n", aNode->time);
+	}
+	
+	if (!minimalTreeSeq || !isRecombParent) {
+		// Create tskit node for non-recombination nodes or in full mode
+		tsk_id_t tsk_id = tskit_add_node(aNode->time, aNode->population, 0);  // is_sample=0
+		set_tskit_node_id(aNode, tsk_id);
+		fprintf(stderr, "Debug: Created tskit node %d for node at time %f\n", tsk_id, aNode->time);
+	} else {
+		// In minimal mode, recombination parents don't get tskit nodes
+		set_tskit_node_id(aNode, TSK_NULL);
+	}
 	
 	// Add to population list
 	addNodeToPopList(aNode, aNode->population);
@@ -3449,6 +3430,8 @@ void makeGametesMS_tskit(int argc, const char *argv[]) {
 	tsk_size_t num_samples = tsk_treeseq_get_num_samples(&ts);
 	tsk_size_t num_sites = tsk_treeseq_get_num_sites(&ts);
 	
+	fprintf(stderr, "Debug: Tree sequence has %zu samples, expected %d\n", num_samples, sample_node_count);
+	
 	// Print segsites header
 	printf("\n//\nsegsites: %zu", (size_t)num_sites);
 	
@@ -3474,6 +3457,16 @@ void makeGametesMS_tskit(int argc, const char *argv[]) {
 			tsk_treeseq_free(&ts);
 			return;
 		}
+		
+		// Debug: Check if all sample nodes exist in the tree sequence
+		fprintf(stderr, "Debug: Sample node IDs: ");
+		for (int i = 0; i < sample_node_count; i++) {
+			fprintf(stderr, "%d ", sample_node_ids[i]);
+			if (sample_node_ids[i] == TSK_NULL || sample_node_ids[i] >= (tsk_id_t)num_samples) {
+				fprintf(stderr, "(INVALID) ");
+			}
+		}
+		fprintf(stderr, "\n");
 		
 		// Use tskit's efficient variant API for genotype generation
 		tsk_variant_t variant;
