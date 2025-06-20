@@ -2923,11 +2923,6 @@ static inline unsigned int hashMutation(double mut) {
 	return (unsigned int)(u.i % MUTATION_HASH_SIZE);
 }
 
-/*makeGametesMS-- MS style sample output */
-void makeGametesMS(int argc,const char *argv[]){
-	// Always use tskit genotype matrix for output generation
-	makeGametesMS_tskit(argc, argv);
-}
 
 
 
@@ -3397,8 +3392,8 @@ unsigned int devrand(void) {
 
 // Muts dynamic memory management functions
 
-// Tskit output generation using genotype matrix (always available)
-void makeGametesMS_tskit(int argc, const char *argv[]) {
+/*makeGametesMS-- MS style sample output using tskit genotype matrix */
+void makeGametesMS(int argc, const char *argv[]) {
 	if (tsk_tables == NULL) {
 		fprintf(stderr, "Error: No tskit tables available for output generation\n");
 		return;

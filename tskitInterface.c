@@ -598,17 +598,6 @@ void set_tskit_node_id(rootedNode *node, tsk_id_t tsk_id) {
 
 }
 
-// Record all mutations after they've been placed on the tree
-int tskit_record_mutations(void) {
-    if (tsk_tables == NULL) {
-        return -1;
-    }
-    
-    // TODO: Implement tskit-only mutation recording
-    // In tskit-only mode, mutations should be recorded directly during simulation
-    return 0;
-
-}
 
 // Structure for temporary mutation storage
 typedef struct {
@@ -754,23 +743,7 @@ int tskit_place_mutations_edge_based(double theta) {
     return 0;
 }
 
-// Original function name kept for backward compatibility
-int tskit_place_mutations_directly(double theta) {
-    // Use edge-based algorithm
-    return tskit_place_mutations_edge_based(theta);
-}
 
-// Populate discoal mutation arrays from tskit data (for ms output compatibility)
-int tskit_populate_discoal_mutations(void) {
-    if (tsk_tables == NULL) {
-        return -1;
-    }
-    
-    // TODO: Implement tskit-only mutation population
-    // In tskit-only mode, use genotype matrix directly for output
-    return 0;
-
-}
 
 // Record sweep mutations for nodes that carry them
 int tskit_record_sweep_mutations(double sweepSite) {
