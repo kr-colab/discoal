@@ -188,6 +188,7 @@ void initialize(){
 	int leafID=0;
 	int tmpCount = 0;
 	
+	// fprintf(stderr, "DEBUG: initialize() called for replicate\n");
 	
 	/* Initialize the arrays */
 	totChunkNumber = 0;
@@ -230,6 +231,7 @@ void initialize(){
 	alleleNumber = sampleSize;
 	totNodeNumber = sampleSize;
 	freedNodeCount = 0;  // Initialize freed node counter
+	// fprintf(stderr, "DEBUG: initialize() done, alleleNumber=%d\n", alleleNumber);
 	//ancient pop samples?
 	if(ancSampleFlag == 1){
 		//go through ancient sample events
@@ -407,6 +409,8 @@ void initializeTwoSite(){
 }
 
 
+static int total_nodes_allocated = 0;
+
 rootedNode *newRootedNode(double cTime, int popn) {
 	rootedNode *temp;
 
@@ -414,6 +418,8 @@ rootedNode *newRootedNode(double cTime, int popn) {
 	if(temp==NULL){
 		printf("fucked: out o' memory from rootedNode alloc\n");
 	}
+	total_nodes_allocated++;
+	// fprintf(stderr, "DEBUG: Allocated node %p, total allocated: %d\n", temp, total_nodes_allocated);
 	temp->rightParent = NULL;
 	temp->leftParent = NULL;
 	temp->rightChild = NULL;
@@ -832,6 +838,17 @@ void coalesceAtTimePopn(double cTime, int popn){
 				seg = seg->next;
 			}
 		}
+		
+		// CRITICAL: Mark the parent's segments as recorded too!
+		// The parent has new segments from mergeAncestryTrees that need to be marked
+		// otherwise the parent node can never be freed
+		if (temp->ancestryRoot != NULL) {
+			AncestrySegment *seg = temp->ancestryRoot;
+			while (seg != NULL) {
+				markSegmentRecorded(seg);
+				seg = seg->next;
+			}
+		}
 	}
 	
 	// Verify consistency in debug mode
@@ -923,6 +940,25 @@ void coalesceAtTimePopn(double cTime, int popn){
 		// Check if nodes are leaves (no children at all)
 		int lChildIsLeaf = (lChild->leftChild == NULL && lChild->rightChild == NULL);
 		int rChildIsLeaf = (rChild->leftChild == NULL && rChild->rightChild == NULL);
+		
+		// Leaf nodes need special handling since they have no children to record
+		if (lChildIsLeaf) {
+			// Mark all segments as recorded since leaf nodes have simple ancestry
+			if (lChild->ancestryRoot) {
+				markSegmentRecorded(lChild->ancestryRoot);
+			}
+			lChild->isFullyRecorded = 1;
+			addToRemovedList(lChild);
+		}
+		
+		if (rChildIsLeaf) {
+			// Mark all segments as recorded since leaf nodes have simple ancestry
+			if (rChild->ancestryRoot) {
+				markSegmentRecorded(rChild->ancestryRoot);
+			}
+			rChild->isFullyRecorded = 1;
+			addToRemovedList(rChild);
+		}
 		
 		// With periodic sweep approach, we don't need immediate freeing
 		// Just mark nodes as removed and let the sweep handle it
@@ -1107,13 +1143,10 @@ int recombineAtTimePopn(double cTime, int popn){
 		lParent->ancestryRoot = splitLeft(aNode->ancestryRoot, xOver);
 		rParent->ancestryRoot = splitRight(aNode->ancestryRoot, xOver);
 		
-		// In full mode, free the original tree since parents have their own segments
-		// In minimal mode, preserve the child's ancestry for tracing through during coalescence
-		extern int minimalTreeSeq;
-		if (!minimalTreeSeq) {
-			freeSegmentTree(aNode->ancestryRoot);
-			aNode->ancestryRoot = NULL;
-		}
+		// Always free the original tree since split functions create new segments
+		// With our segment-based approach, we don't need to preserve the child's tree
+		freeSegmentTree(aNode->ancestryRoot);
+		aNode->ancestryRoot = NULL;
 		
 		// Update stats from tree when in tree-only mode
 		updateAncestryStatsFromTree(lParent);
@@ -1232,13 +1265,10 @@ void geneConversionAtTimePopn(double cTime, int popn){
 			lParent->ancestryRoot = gcSplit.converted;     // Gets the converted tract
 			rParent->ancestryRoot = gcSplit.unconverted;   // Gets everything else
 			
-			// In full mode, free the original tree since parents have their own segments
-			// In minimal mode, preserve the child's ancestry for tracing through during coalescence
-			extern int minimalTreeSeq;
-			if (!minimalTreeSeq) {
-				freeSegmentTree(aNode->ancestryRoot);
-				aNode->ancestryRoot = NULL;
-			}
+			// Always free the original tree since split functions create new segments
+			// With our segment-based approach, we don't need to preserve the child's tree
+			freeSegmentTree(aNode->ancestryRoot);
+			aNode->ancestryRoot = NULL;
 		} else {
 			lParent->ancestryRoot = NULL;
 			rParent->ancestryRoot = NULL;
@@ -1530,7 +1560,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 	double totCRate, totRRate, totGCRate,totMRate, eSum;
 	int  i,j;
 	int coalescenceCounter = 0;  // Counter for coalescent events only
-	const int SWEEP_INTERVAL = 50;  // Sweep after every coalescent event (aggressive memory management)
+	const int SWEEP_INTERVAL = 10;  // Sweep every 10 coalescent events
 
 	if(startTime == endTime){
 		return(endTime);
@@ -2661,13 +2691,10 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 			lParent->ancestryRoot = gcSplit.converted;     // Gets the converted tract
 			rParent->ancestryRoot = gcSplit.unconverted;   // Gets everything else
 			
-			// In full mode, free the original tree since parents have their own segments
-			// In minimal mode, preserve the child's ancestry for tracing through during coalescence
-			extern int minimalTreeSeq;
-			if (!minimalTreeSeq) {
-				freeSegmentTree(aNode->ancestryRoot);
-				aNode->ancestryRoot = NULL;
-			}
+			// Always free the original tree since split functions create new segments
+			// With our segment-based approach, we don't need to preserve the child's tree
+			freeSegmentTree(aNode->ancestryRoot);
+			aNode->ancestryRoot = NULL;
 		} else {
 			lParent->ancestryRoot = NULL;
 			rParent->ancestryRoot = NULL;
@@ -2825,6 +2852,17 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 				seg = seg->next;
 			}
 		}
+		
+		// CRITICAL: Mark the parent's segments as recorded too!
+		// The parent has new segments from mergeAncestryTrees that need to be marked
+		// otherwise the parent node can never be freed
+		if (temp->ancestryRoot != NULL) {
+			AncestrySegment *seg = temp->ancestryRoot;
+			while (seg != NULL) {
+				markSegmentRecorded(seg);
+				seg = seg->next;
+			}
+		}
 	}
 	
 	// Mark parent recording and try to free nodes if using tskit
@@ -2905,6 +2943,25 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 		// Check if nodes are leaves (no children at all)
 		int lChildIsLeaf = (lChild->leftChild == NULL && lChild->rightChild == NULL);
 		int rChildIsLeaf = (rChild->leftChild == NULL && rChild->rightChild == NULL);
+		
+		// Leaf nodes need special handling since they have no children to record
+		if (lChildIsLeaf) {
+			// Mark all segments as recorded since leaf nodes have simple ancestry
+			if (lChild->ancestryRoot) {
+				markSegmentRecorded(lChild->ancestryRoot);
+			}
+			lChild->isFullyRecorded = 1;
+			addToRemovedList(lChild);
+		}
+		
+		if (rChildIsLeaf) {
+			// Mark all segments as recorded since leaf nodes have simple ancestry
+			if (rChild->ancestryRoot) {
+				markSegmentRecorded(rChild->ancestryRoot);
+			}
+			rChild->isFullyRecorded = 1;
+			addToRemovedList(rChild);
+		}
 		
 		// With periodic sweep approach, we don't need immediate freeing
 		// Just mark nodes as removed and let the sweep handle it
@@ -3038,13 +3095,19 @@ void addAncientSample(int lineageNumber, int popnDest, double addTime, int still
 }
 
 void initializeNodeArrays() {
+	// Always initialize sample node tracking (needed for each replicate)
+	initializeSampleNodeIds();
+	
+	// Only allocate if not already allocated (prevents leaks in multiple replicates)
+	if (nodes != NULL) {
+		return;  // Already initialized
+	}
+	
 	int initialCapacity = 1000;  // Start small
 	
 	nodesCapacity = initialCapacity;
 	nodes = malloc(sizeof(rootedNode*) * nodesCapacity);
 	
-	// Always initialize sample node tracking
-	initializeSampleNodeIds();
 	if (nodes == NULL) {
 		fprintf(stderr, "Error: Failed to allocate initial node arrays\n");
 		exit(1);
@@ -3070,8 +3133,8 @@ void ensureNodesCapacity(int requiredSize) {
 }
 
 
-void cleanupNodeArrays() {
-	// First free any nodes still in the removed list
+// Clean up nodes in the removed list (called between replicates)
+void cleanupRemovedNodes() {
 	for (int i = 0; i < removedNodeCount; i++) {
 		if (removedNodes[i] != NULL) {
 			if (removedNodes[i]->ancestryRoot != NULL) {
@@ -3083,6 +3146,11 @@ void cleanupNodeArrays() {
 		}
 	}
 	removedNodeCount = 0;
+}
+
+void cleanupNodeArrays() {
+	// First free any nodes still in the removed list
+	cleanupRemovedNodes();
 	
 	if (nodes != NULL) {
 		// Free any remaining nodes and their ancestry segments
@@ -3110,6 +3178,12 @@ void cleanupNodeArrays() {
 
 // Sample node tracking functions (always available)
 void initializeSampleNodeIds() {
+	// Only allocate if not already allocated (prevents leaks in multiple replicates)
+	if (sample_node_ids != NULL) {
+		sample_node_count = 0;  // Just reset the count
+		return;
+	}
+	
 	sample_node_capacity = 1000;  // Start with reasonable size
 	sample_node_count = 0;
 	sample_node_ids = malloc(sizeof(tsk_id_t) * sample_node_capacity);
@@ -3174,14 +3248,14 @@ void addNode(rootedNode *aNode){
 	                      aNode->leftChild == aNode->rightChild);
 	
 	if (minimalTreeSeq && isRecombParent) {
-		fprintf(stderr, "Debug: NOT creating tskit node for recomb parent at time %f\n", aNode->time);
+		// fprintf(stderr, "Debug: NOT creating tskit node for recomb parent at time %f\n", aNode->time);
 	}
 	
 	if (!minimalTreeSeq || !isRecombParent) {
 		// Create tskit node for non-recombination nodes or in full mode
 		tsk_id_t tsk_id = tskit_add_node(aNode->time, aNode->population, 0);  // is_sample=0
 		set_tskit_node_id(aNode, tsk_id);
-		fprintf(stderr, "Debug: Created tskit node %d for node at time %f\n", tsk_id, aNode->time);
+		// fprintf(stderr, "Debug: Created tskit node %d for node at time %f\n", tsk_id, aNode->time);
 	} else {
 		// In minimal mode, recombination parents don't get tskit nodes
 		set_tskit_node_id(aNode, TSK_NULL);
@@ -3202,10 +3276,12 @@ void removeNodeAt(int index){
 	int i;
 	rootedNode *temp;
 
-	for (i = index ; i < alleleNumber; i++){
+	for (i = index ; i < alleleNumber - 1; i++){
 		temp =  nodes[i + 1];
 		nodes[i] = temp;
 	}
+	// NULL out the last position to avoid duplicate pointers
+	nodes[alleleNumber - 1] = NULL;
 	alleleNumber -= 1;
 	
 	
@@ -3406,6 +3482,7 @@ unsigned int devrand(void) {
 
 // Tskit output generation using genotype matrix (always available)
 void makeGametesMS_tskit(int argc, const char *argv[]) {
+	// fprintf(stderr, "DEBUG: makeGametesMS_tskit called\n");
 	if (tsk_tables == NULL) {
 		fprintf(stderr, "Error: No tskit tables available for output generation\n");
 		return;
@@ -3430,7 +3507,8 @@ void makeGametesMS_tskit(int argc, const char *argv[]) {
 	tsk_size_t num_samples = tsk_treeseq_get_num_samples(&ts);
 	tsk_size_t num_sites = tsk_treeseq_get_num_sites(&ts);
 	
-	fprintf(stderr, "Debug: Tree sequence has %zu samples, expected %d\n", num_samples, sample_node_count);
+	// fprintf(stderr, "DEBUG: num_samples=%zu, num_sites=%zu\n", (size_t)num_samples, (size_t)num_sites);
+	// fprintf(stderr, "Debug: Tree sequence has %zu samples, expected %d\n", num_samples, sample_node_count);
 	
 	// Print segsites header
 	printf("\n//\nsegsites: %zu", (size_t)num_sites);
@@ -3459,14 +3537,14 @@ void makeGametesMS_tskit(int argc, const char *argv[]) {
 		}
 		
 		// Debug: Check if all sample nodes exist in the tree sequence
-		fprintf(stderr, "Debug: Sample node IDs: ");
-		for (int i = 0; i < sample_node_count; i++) {
-			fprintf(stderr, "%d ", sample_node_ids[i]);
-			if (sample_node_ids[i] == TSK_NULL || sample_node_ids[i] >= (tsk_id_t)num_samples) {
-				fprintf(stderr, "(INVALID) ");
-			}
-		}
-		fprintf(stderr, "\n");
+		// fprintf(stderr, "Debug: Sample node IDs: ");
+		// for (int i = 0; i < sample_node_count; i++) {
+		// 	fprintf(stderr, "%d ", sample_node_ids[i]);
+		// 	if (sample_node_ids[i] == TSK_NULL || sample_node_ids[i] >= (tsk_id_t)num_samples) {
+		// 		fprintf(stderr, "(INVALID) ");
+		// 	}
+		// }
+		// fprintf(stderr, "\n");
 		
 		// Use tskit's efficient variant API for genotype generation
 		tsk_variant_t variant;

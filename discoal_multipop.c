@@ -125,7 +125,58 @@ int main(int argc, const char * argv[]){
 	
 	// Initialize global trajectory generator (lazy approach)
 
+	// fprintf(stderr, "Starting simulation with %d replicates\n", sampleNumber);
 	while(i < sampleNumber){
+		// fprintf(stderr, "Replicate %d/%d\n", i+1, sampleNumber);
+		// fprintf(stderr, "Loop start: i=%d, sampleNumber=%d, continuing=%d\n", i, sampleNumber, i < sampleNumber);
+		// fprintf(stderr, "REP %d\n", i+1);
+		// fprintf(stderr, "DEBUG: Starting replicate %d of %d (condRecMode=%d)\n", i+1, sampleNumber, condRecMode);
+		// Clean up from previous replicate if not the first one
+		if (i > 0) {
+			// fprintf(stderr, "DEBUG: Cleaning up after replicate %d, nodesCapacity=%d\n", i, nodesCapacity);
+			// fprintf(stderr, "Starting cleanup for rep %d\n", i+1);
+			// fprintf(stderr, "Starting cleanup for rep %d, totNodeNumber=%d\n", i+1, totNodeNumber);
+			// fprintf(stderr, "Debug: Cleaning up %d total nodes from previous replicate\n", totNodeNumber);
+			// fprintf(stderr, "Starting node cleanup, totNodeNumber=%d\n", totNodeNumber);
+			// Clean all nodes in the array, not just up to totNodeNumber
+			// This ensures we don't leave any nodes from previous replicates
+			int non_null_count = 0;
+			for (int cleanup_i = 0; cleanup_i < nodesCapacity; cleanup_i++) {
+				if (nodes[cleanup_i] != NULL) non_null_count++;
+				// if (cleanup_i % 500 == 0) {
+				// 	fprintf(stderr, "Cleaning node %d/%d\n", cleanup_i, cleanup_limit);
+				// }
+				if (nodes[cleanup_i] != NULL) {
+					// Free ancestry segments if they exist
+					if (nodes[cleanup_i]->ancestryRoot) {
+						// if (cleanup_i >= 1000 && cleanup_i < 1010) {
+						// 	fprintf(stderr, "  Freeing ancestry tree for node %d\n", cleanup_i);
+						// }
+						freeSegmentTree(nodes[cleanup_i]->ancestryRoot);
+						nodes[cleanup_i]->ancestryRoot = NULL;
+					}
+					// Free the node itself
+					free(nodes[cleanup_i]);
+					nodes[cleanup_i] = NULL;
+				}
+			}
+			// fprintf(stderr, "DEBUG: Found %d non-null nodes to clean\n", non_null_count);
+			// fprintf(stderr, "Node cleanup completed\n");
+			// fprintf(stderr, "Node cleanup done\n");
+			
+			// Clean up removed nodes list
+			cleanupRemovedNodes();
+			
+			cleanupBreakPoints();
+			// fprintf(stderr, "BreakPoints cleanup done\n");
+			cleanupPopLists();
+			// fprintf(stderr, "PopLists cleanup done\n");
+			cleanupSampleNodeIds();  // Clean up sample node IDs between replicates
+			// fprintf(stderr, "SampleNodeIds cleanup done\n");
+			// fprintf(stderr, "Cleanup done for rep %d\n", i+1);
+		}
+		
+		// fprintf(stderr, "About to initialize trajectory variables\n");
 		// Initialize all trajectory-related variables
 		initializeTrajectoryVariables(N);
 		
@@ -134,17 +185,21 @@ int main(int argc, const char * argv[]){
 		// if (tskitOutputMode && i == 0) {
 		//	fprintf(stderr, "Initializing tskit with sequence length %d (replicate %d)\n", nSites, i+1);
 		// }
+		// fprintf(stderr, "DEBUG: About to call tskit_initialize\n");
 		int ret = tskit_initialize((double)nSites);
 		if (ret != 0) {
 			fprintf(stderr, "Error initializing tskit: %s\n", tsk_strerror(ret));
 			exit(1);
 		}
+		// fprintf(stderr, "DEBUG: tskit_initialize returned %d\n", ret);
 		
-		
+		// fprintf(stderr, "Calling initialize() for rep %d\n", i+1);
 		initialize();
 
 		j=0;
 		activeSweepFlag = 0;
+		// fprintf(stderr, "Before event loop: i=%d, eventNumber=%d, alleleNumber=%d\n", i, eventNumber, alleleNumber);
+		// fprintf(stderr, "DEBUG: Before event loop, eventNumber=%d, alleleNumber=%d\n", eventNumber, alleleNumber);
 		for(j=0;j<eventNumber && alleleNumber > 1;j++){
 			currentEventNumber=j; //need this annoying global for trajectory generation
 			if(j == eventNumber - 1){
@@ -321,6 +376,7 @@ int main(int argc, const char * argv[]){
 		// Sort and simplify the tree sequence after ancestry simulation is complete
 		// This removes all non-ancestral nodes and edges before mutation placement
 		if (tsk_tables != NULL) {
+			// fprintf(stderr, "Debug: Sorting tskit tables\n");
 			// Sort tables (required before simplification)
 			int ret = tsk_table_collection_sort(tsk_tables, NULL, 0);
 			if (ret != 0) {
@@ -339,6 +395,7 @@ int main(int argc, const char * argv[]){
 			}
 			
 			// Simplify to remove non-ancestral material
+			// fprintf(stderr, "Debug: Starting simplification with %d samples\n", sample_node_count);
 			tsk_id_t *node_map = malloc(tsk_tables->nodes.num_rows * sizeof(tsk_id_t));
 			if (node_map == NULL) {
 				fprintf(stderr, "Error: Failed to allocate memory for node map\n");
@@ -353,6 +410,7 @@ int main(int argc, const char * argv[]){
 				free(node_map);
 				exit(1);
 			}
+			// fprintf(stderr, "Debug: Simplification completed successfully\n");
 			
 			// Update the sample node IDs to reflect the new node numbers after simplification
 			for (int i = 0; i < sample_node_count; i++) {
@@ -364,6 +422,9 @@ int main(int argc, const char * argv[]){
 			free(samples);
 			free(node_map);
 		}
+		
+		// fprintf(stderr, "After event loop: i=%d, alleleNumber=%d\n", i, alleleNumber);
+		// fprintf(stderr, "DEBUG: After event loop, alleleNumber=%d\n", alleleNumber);
 		
 		//assign root
 	//	root = nodes[0];
@@ -398,12 +459,16 @@ int main(int argc, const char * argv[]){
 			//errorCheckMutations();
 			// Only generate MS output if not using tskit-only output mode
 			if (!tskitOutputMode) {
+				// fprintf(stderr, "About to call makeGametesMS for rep %d\n", i+1);
 				makeGametesMS(argc,argv);
 			}
 			//printf("rep: %d\n",i);
+			// fprintf(stderr, "DEBUG: Incrementing i from %d to %d (normal mode)\n", i, i+1);
 			i++;
+			// fprintf(stderr, "End of rep %d, i=%d, sampleNumber=%d\n", i, i, sampleNumber);
 		}
 		else{
+			// fprintf(stderr, "DEBUG: In condRecMode, condRecMet=%d\n", condRecMet);
 			if(condRecMet == 1){
                                 i++;
 				// Only generate MS output if not using tskit-only output mode
@@ -421,24 +486,12 @@ int main(int argc, const char * argv[]){
 		// 	        i, totNodeNumber, freedNodeCount, totNodeNumber - freedNodeCount);
 		// }
 		
-		// Clean up nodes for next replicate (tskit-only mode)
-		// In tskit-only mode, we need minimal cleanup since tskit handles most memory
-		for (int cleanup_i = 0; cleanup_i < alleleNumber && cleanup_i < 1000; cleanup_i++) {
-			if (nodes[cleanup_i] != NULL) {
-				// Free ancestry segments if they exist
-				if (nodes[cleanup_i]->ancestryRoot) {
-					freeSegmentTree(nodes[cleanup_i]->ancestryRoot);
-					nodes[cleanup_i]->ancestryRoot = NULL;
-				}
-				// Free the node itself
-				free(nodes[cleanup_i]);
-				nodes[cleanup_i] = NULL;
-			}
-		}
-		cleanupBreakPoints();
+		// Cleanup is now done at the beginning of each replicate to prevent overwrites
+		// No cleanup needed here between replicates
 		
 		// Clean up trajectory after each simulation
 		if (trajectoryFd != -1) {
+			// fprintf(stderr, "Cleaning up trajectory\n");
 			if (currentTrajectory && currentTrajectory != MAP_FAILED) {
 				munmap(currentTrajectory, trajectoryFileSize);
 			}
@@ -499,6 +552,9 @@ int main(int argc, const char * argv[]){
 		// Clean up tskit for this replicate
 		tskit_cleanup();
 		
+		// fprintf(stderr, "After tskit_cleanup: i=%d\n", i);
+		// fprintf(stderr, "Debug: Completed replicate %d (i=%d, totalSimCount=%d, sampleNumber=%d)\n", 
+		//         totalSimCount + 1, i, totalSimCount, sampleNumber);
                 totalSimCount += 1;
 	}
         if(condRecMode == 1)
@@ -521,8 +577,33 @@ int main(int argc, const char * argv[]){
 	free(currentSize);
 		free(events);
 	
-	// Clean up node arrays
-	cleanupNodeArrays();
+	// Final cleanup after all replicates
+	// fprintf(stderr, "Debug: Final cleanup of nodes\n");
+	// int nodes_freed = 0;
+	// Clean all nodes in the array
+	for (int cleanup_i = 0; cleanup_i < nodesCapacity; cleanup_i++) {
+		if (nodes[cleanup_i] != NULL) {
+			// nodes_freed++;
+			// Free ancestry segments if they exist
+			if (nodes[cleanup_i]->ancestryRoot) {
+				freeSegmentTree(nodes[cleanup_i]->ancestryRoot);
+				nodes[cleanup_i]->ancestryRoot = NULL;
+			}
+			// Free the node itself
+			free(nodes[cleanup_i]);
+			nodes[cleanup_i] = NULL;
+		}
+	}
+	// fprintf(stderr, "Debug: Freed %d nodes in final cleanup\n", nodes_freed);
+	cleanupBreakPoints();
+	cleanupPopLists();
+	
+	// Free the node arrays themselves (but not the nodes, we already did that)
+	if (nodes != NULL) {
+		free(nodes);
+		nodes = NULL;
+	}
+	cleanupSampleNodeIds();
 	
 	// Debug: print freed node count
 	// if (freedNodeCount > 0) {
