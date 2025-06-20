@@ -12,7 +12,6 @@ void cleanupPopLists();
 void addNodeToPopList(rootedNode *node, int popn);
 void removeNodeFromPopList(rootedNode *node);
 rootedNode *pickNodePopnFast(int popn);
-void verifyPopLists();
 
 // Sample node tracking functions for tskit mode
 void initializeSampleNodeIds();
@@ -24,6 +23,7 @@ void initializeMuts(rootedNode *node, int capacity);
 void ensureMutsCapacity(rootedNode *node, int requiredSize);
 void cleanupMuts(rootedNode *node);
 void cleanupNodeArrays();
+void cleanupRemovedNodes();
 rootedNode *newRootedNode(double cTime, int popn);
 
 // Node memory management
