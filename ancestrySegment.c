@@ -33,11 +33,6 @@ AncestrySegment* newSegment(int start, int end, tsk_id_t tskit_node_id, Ancestry
 
 void freeSegmentTree(AncestrySegment *root) {
     if (!root) return;
-    static int tree_frees = 0;
-    tree_frees++;
-    // if (tree_frees % 100 == 0) {
-    //     fprintf(stderr, "freeSegmentTree: %d trees freed\n", tree_frees);
-    // }
     releaseSegment(root);
 }
 
@@ -118,12 +113,6 @@ typedef struct SegmentStackNode {
 void releaseSegment(AncestrySegment *seg) {
     if (!seg) return;
     
-    static int release_calls = 0;
-    static int segments_freed = 0;
-    static int max_stack_depth = 0;
-    
-    release_calls++;
-    
     // Initialize stack with root segment
     SegmentStackNode *stack = NULL;
     SegmentStackNode *node = (SegmentStackNode*)malloc(sizeof(SegmentStackNode));
@@ -131,15 +120,12 @@ void releaseSegment(AncestrySegment *seg) {
     node->next = NULL;
     stack = node;
     
-    int current_stack_depth = 1;
-    
     while (stack) {
         // Pop from stack
         SegmentStackNode *top = stack;
         AncestrySegment *current = top->segment;
         stack = top->next;
         free(top);
-        current_stack_depth--;
         
         if (!current) continue;
         
@@ -161,20 +147,12 @@ void releaseSegment(AncestrySegment *seg) {
                     node->segment = chain_current->left;
                     node->next = stack;
                     stack = node;
-                    current_stack_depth++;
-                    if (current_stack_depth > max_stack_depth) {
-                        max_stack_depth = current_stack_depth;
-                    }
                 }
                 if (chain_current->right) {
                     node = (SegmentStackNode*)malloc(sizeof(SegmentStackNode));
                     node->segment = chain_current->right;
                     node->next = stack;
                     stack = node;
-                    current_stack_depth++;
-                    if (current_stack_depth > max_stack_depth) {
-                        max_stack_depth = current_stack_depth;
-                    }
                 }
                 
                 // Free AVL tree if present
@@ -185,7 +163,6 @@ void releaseSegment(AncestrySegment *seg) {
                 
                 // Free current segment
                 free(chain_current);
-                segments_freed++;
                 
                 // Handle next segment in chain
                 if (next && next->refCount > 0) {
@@ -196,19 +173,8 @@ void releaseSegment(AncestrySegment *seg) {
                 }
                 chain_current = next;
             }
-            
-            // Debug output disabled for production
-            // if (chain_length > 500) {
-            //     fprintf(stderr, "  Freed long segment chain of length %d\n", chain_length);
-            // }
         }
     }
-    
-    // Debug output disabled for production
-    // if (release_calls % 10000 == 0) {
-    //     fprintf(stderr, "releaseSegment: %d calls, %d segments freed, max stack depth: %d\n", 
-    //             release_calls, segments_freed, max_stack_depth);
-    // }
 }
 
 // Create a shallow copy that shares the segment data
@@ -217,34 +183,6 @@ AncestrySegment* shallowCopySegment(AncestrySegment *seg) {
     
     // For immutable segments, we can just retain and return
     return retainSegment(seg);
-}
-
-// Helper function to create a segment list covering an interval
-static AncestrySegment* createSegmentList(int start, int end, uint16_t count) {
-    if (start >= end) return NULL;
-    return newSegment(start, end, TSK_NULL, NULL, NULL);  // Use TSK_NULL as placeholder
-}
-
-// Helper function to coalesce adjacent segments with same count
-static AncestrySegment* coalesceSegments(AncestrySegment *head) {
-    if (!head || !head->next) return head;
-    
-    AncestrySegment *current = head;
-    while (current && current->next) {
-        if (current->end == current->next->start && 
-            current->count == current->next->count) {
-            // Merge with next segment
-            AncestrySegment *toRemove = current->next;
-            current->end = toRemove->end;
-            current->next = toRemove->next;
-            free(toRemove);
-            // Don't advance current, check if we can merge with the new next
-        } else {
-            current = current->next;
-        }
-    }
-    
-    return head;
 }
 
 // Helper function to add a segment to the result list
@@ -364,7 +302,7 @@ AncestrySegment* mergeAncestryTrees(AncestrySegment *leftTree, AncestrySegment *
         }
         
         // Build AVL tree for fast lookups if we have 3 or more segments
-        if (segmentCount >= 30) {
+        if (segmentCount >= 3) {
             result->avlTree = buildAVLFromList(result);
         }
     }

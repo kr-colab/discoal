@@ -35,12 +35,7 @@ AncestrySegment* mergeAncestryTrees(AncestrySegment *left, AncestrySegment *righ
 AncestrySegment* splitLeft(AncestrySegment *root, int breakpoint);
 AncestrySegment* splitRight(AncestrySegment *root, int breakpoint);
 
-// Structures for split operations
-typedef struct {
-    AncestrySegment *left;
-    AncestrySegment *right;
-} splitResult;
-
+// Structure for gene conversion split operation
 typedef struct {
     AncestrySegment *converted;
     AncestrySegment *unconverted;
