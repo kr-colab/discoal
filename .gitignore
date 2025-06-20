@@ -63,3 +63,4 @@ env/
 docs/api/generated/
 
 reference_code/*
+extern/msUtils/*
