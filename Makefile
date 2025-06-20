@@ -14,16 +14,16 @@ all: discoal
 # executable 
 #
 
-discoal: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h ancestryVerify.c ancestryVerify.h activeSegment.c activeSegment.h tskitInterface.c tskitInterface.h $(TSKIT_SOURCES)
-	$(CC) $(CFLAGS) -o discoal discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c tskitInterface.c $(TSKIT_SOURCES) -lm -fcommon
+discoal: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h activeSegment.c activeSegment.h tskitInterface.c tskitInterface.h $(TSKIT_SOURCES)
+	$(CC) $(CFLAGS) -o discoal discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.c tskitInterface.c $(TSKIT_SOURCES) -lm -fcommon
 
 # Build edited version for testing (same as main but explicit name)
-discoal_edited: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h ancestryVerify.c ancestryVerify.h activeSegment.c activeSegment.h tskitInterface.c tskitInterface.h $(TSKIT_SOURCES)
-	$(CC) $(CFLAGS) -o discoal_edited discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c tskitInterface.c $(TSKIT_SOURCES) -lm -fcommon
+discoal_edited: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h activeSegment.c activeSegment.h tskitInterface.c tskitInterface.h $(TSKIT_SOURCES)
+	$(CC) $(CFLAGS) -o discoal_edited discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.c tskitInterface.c $(TSKIT_SOURCES) -lm -fcommon
 
 # Build debug version with ancestry verification
-discoal_debug: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h ancestryVerify.c ancestryVerify.h activeSegment.c activeSegment.h $(TSKIT_SOURCES)
-	$(CC) -O2 -I. -I./extern/tskit -I./extern/tskit/kastore -DDEBUG_ANCESTRY -o discoal_debug discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c tskitInterface.c $(TSKIT_SOURCES) -lm -fcommon
+discoal_debug: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h activeSegment.c activeSegment.h $(TSKIT_SOURCES)
+	$(CC) -O2 -I. -I./extern/tskit -I./extern/tskit/kastore -DDEBUG_ANCESTRY -o discoal_debug discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.c tskitInterface.c $(TSKIT_SOURCES) -lm -fcommon
 
 # Build legacy version from master-backup branch for comparison testing
 discoal_legacy_backup:
@@ -63,12 +63,10 @@ discoal_mem_branch:
 	   git show mem:ancestrySegment.h > /tmp/discoal_mem_build/ancestrySegment.h 2>/dev/null && \
 	   git show mem:ancestrySegmentAVL.c > /tmp/discoal_mem_build/ancestrySegmentAVL.c 2>/dev/null && \
 	   git show mem:ancestrySegmentAVL.h > /tmp/discoal_mem_build/ancestrySegmentAVL.h 2>/dev/null && \
-	   git show mem:ancestryVerify.c > /tmp/discoal_mem_build/ancestryVerify.c 2>/dev/null && \
-	   git show mem:ancestryVerify.h > /tmp/discoal_mem_build/ancestryVerify.h 2>/dev/null && \
 	   git show mem:activeSegment.c > /tmp/discoal_mem_build/activeSegment.c 2>/dev/null && \
 	   git show mem:activeSegment.h > /tmp/discoal_mem_build/activeSegment.h 2>/dev/null && \
 	   git show mem:ancestryWrapper.h > /tmp/discoal_mem_build/ancestryWrapper.h 2>/dev/null; then \
-		cd /tmp/discoal_mem_build && $(CC) $(CFLAGS) -o discoal_mem_branch discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon && mv discoal_mem_branch $(CURDIR)/ && cd ../..; \
+		cd /tmp/discoal_mem_build && $(CC) $(CFLAGS) -o discoal_mem_branch discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.c -lm -fcommon && mv discoal_mem_branch $(CURDIR)/ && cd ../..; \
 		rm -rf /tmp/discoal_mem_build; \
 		echo "mem branch version built successfully"; \
 	else \
