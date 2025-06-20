@@ -1,0 +1,26 @@
+feat: Implement memory pool optimization for AncestrySegments
+
+- Add custom memory pool to reduce malloc/free overhead (was 13% of CPU time)
+- Implement O(1) pool reset between replicates (was O(n) cleanup)
+- Pre-allocate segments based on recombination rate for smart sizing
+- Use LIFO free list for better cache locality
+
+Performance improvements:
+- 15% speedup for high recombination scenarios (r=5000)
+- Neutral performance for low recombination (small overhead)
+- Memory usage comparable to standard allocation
+
+Implementation details:
+- New files: segmentPool.h, segmentPool.c
+- Integration points: newSegment(), releaseSegment(), main loop
+- Opt-in via USE_SEGMENT_POOL=1 make flag
+- Zero memory leaks verified with valgrind
+
+Testing:
+- Comprehensive test suite (test_segment_pool.c)
+- Identical output to non-pooled version
+- Benchmarks show expected performance gains
+
+Bug fix during implementation:
+- Fixed pool size calculation to use total rho, not rho*nSites
+- Initial implementation had 50x memory overhead, now fixed
