@@ -18,6 +18,8 @@
 #include <signal.h>
 #include <sys/mman.h>
 #include <fcntl.h>
+#include <limits.h>
+#include <errno.h>
 #include "ranlib.h"
 #include "discoal.h"
 #include "discoalFunctions.h"
@@ -29,9 +31,7 @@
 
 int locusNumber; 
 int leftRhoFlag=0;
-int untilMode = 0;
 const char *fileName;
-double uTime;
 double *currentSize;
 long seed1, seed2;
 double nextTime, currentFreq;
@@ -378,26 +378,19 @@ int main(int argc, const char * argv[]){
 		
 		// Always use tskit for mutation placement
 		extern double theta;
-		if (untilMode==0) {
-			// Use edge-based algorithm for tskit mutations
-			if (tskit_place_mutations_edge_based(theta) < 0) {
-				fprintf(stderr, "Error: Failed to place mutations in tskit\n");
+		// Use edge-based algorithm for tskit mutations
+		if (tskit_place_mutations_edge_based(theta) < 0) {
+			fprintf(stderr, "Error: Failed to place mutations in tskit\n");
+			exit(1);
+		}
+		
+		// Only populate discoal mutation arrays if we need ms output
+		// (i.e., not in conditional recombination mode)
+		if (condRecMode == 0) {
+			if (tskit_populate_discoal_mutations() < 0) {
+				fprintf(stderr, "Error: Failed to populate discoal mutations from tskit\n");
 				exit(1);
 			}
-			
-			// Only populate discoal mutation arrays if we need ms output
-			// (i.e., not in conditional recombination mode)
-			if (condRecMode == 0) {
-				if (tskit_populate_discoal_mutations() < 0) {
-					fprintf(stderr, "Error: Failed to populate discoal mutations from tskit\n");
-					exit(1);
-				}
-			}
-		} else {
-			// For untilMode, need to implement tskit-based solution
-			// TODO: Implement tskit-based mutation placement until time
-			fprintf(stderr, "Error: -u option not yet supported with tskit-only mode\n");
-			exit(1);
 		}
 
 		if(condRecMode == 0){
@@ -539,6 +532,44 @@ int main(int argc, const char * argv[]){
 	return(0);
 }
 
+// Helper function to safely get next argument with bounds checking
+static const char* getNextArg(int argc, const char **argv, int *args, const char *option) {
+	(*args)++;
+	if (*args >= argc) {
+		fprintf(stderr, "Error: Option %s requires an argument\n", option);
+		usage();
+		exit(1);
+	}
+	return argv[*args];
+}
+
+// Helper function to safely parse integer argument
+static int parseIntArg(int argc, const char **argv, int *args, const char *option) {
+	const char *arg = getNextArg(argc, argv, args, option);
+	char *endptr;
+	long val = strtol(arg, &endptr, 10);
+	
+	if (*endptr != '\0' || val > INT_MAX || val < INT_MIN) {
+		fprintf(stderr, "Error: Invalid integer argument for %s: '%s'\n", option, arg);
+		exit(1);
+	}
+	
+	return (int)val;
+}
+
+// Helper function to safely parse double argument
+static double parseDoubleArg(int argc, const char **argv, int *args, const char *option) {
+	const char *arg = getNextArg(argc, argv, args, option);
+	char *endptr;
+	double val = strtod(arg, &endptr);
+	
+	if (*endptr != '\0') {
+		fprintf(stderr, "Error: Invalid numeric argument for %s: '%s'\n", option, arg);
+		exit(1);
+	}
+	
+	return val;
+}
 
 
 void getParameters(int argc,const char **argv){
@@ -627,6 +658,19 @@ void getParameters(int argc,const char **argv){
 
 	condRecMode= 0;
 	while(args < argc){
+		// Check if argument starts with '-'
+		if (argv[args][0] != '-') {
+			fprintf(stderr, "Error: Unexpected argument '%s'\n", argv[args]);
+			fprintf(stderr, "All options must start with '-'. Try '%s' without arguments for usage.\n", argv[0]);
+			exit(1);
+		}
+		
+		// Check for empty option after '-'
+		if (argv[args][1] == '\0') {
+			fprintf(stderr, "Error: Empty option '-'\n");
+			exit(1);
+		}
+		
 		switch(argv[args][1]){
 			case 'F' :
 			if (!tskitOutputMode) {
@@ -639,10 +683,10 @@ void getParameters(int argc,const char **argv){
 			break;
 			case 'S' :
 			runMode = 'S';
-			fileName = argv[++args];
+			fileName = getNextArg(argc, argv, &args, "-S");
 			break;
 			case 's' :
-			segSites =  atoi(argv[++args]);
+			segSites = parseIntArg(argc, argv, &args, "-s");
 			break;
 			case 't' :
 			if (argv[args][2] == 's') {  // -ts flag for tree sequence
@@ -660,40 +704,40 @@ void getParameters(int argc,const char **argv){
 				strcpy(tskitOutputFilename, argv[args]);
 			}
 			else {  // -t flag for theta
-				theta = atof(argv[++args]);
+				theta = parseDoubleArg(argc, argv, &args, "-t");
 			}
 			break;
 			case 'i' :
-			deltaTMod = atof(argv[++args]);
+			deltaTMod = parseDoubleArg(argc, argv, &args, "-i");
 			break;
 			case 'r' :
-			rho = atof (argv[++args]);
+			rho = parseDoubleArg(argc, argv, &args, "-r");
 			break;
 			case 'g' :
                         if (argv[args][2] == 'r')
                         {
-			  gammaCoRatio = atof (argv[++args]);
-			  gcMean = atoi (argv[++args]);
+			  gammaCoRatio = parseDoubleArg(argc, argv, &args, "-gr");
+			  gcMean = parseIntArg(argc, argv, &args, "-gr");
                           gammaCoRatioMode = 1;
                         }
                         else
                         {
-			  my_gamma = atof (argv[++args]);
-			  gcMean = atoi (argv[++args]);
+			  my_gamma = parseDoubleArg(argc, argv, &args, "-g");
+			  gcMean = parseIntArg(argc, argv, &args, "-g");
                         }
 			break;
 			case 'a' :
-			alpha = atof(argv[++args]);
+			alpha = parseDoubleArg(argc, argv, &args, "-a");
 			break;
 			case 'x' :
-			sweepSite = atof(argv[++args]);
+			sweepSite = parseDoubleArg(argc, argv, &args, "-x");
 			break;
 			case 'M' :
 			if(npops==1){
 				fprintf(stderr,"Error: attempting to set migration but only one population! Be sure that 'm' flags are specified after 'p' flag\n");
 				exit(1);
 			}
-			migR = atof(argv[++args]);
+			migR = parseDoubleArg(argc, argv, &args, "-M");
 			for(i=0;i<npops;i++){
 				for(j=0;j<npops;j++){
 					if(i!=j){
@@ -712,20 +756,20 @@ void getParameters(int argc,const char **argv){
 					fprintf(stderr,"Error: attempting to set migration but only one population! Be sure that 'm' flags are specified after 'p' flag\n");
 					exit(1);
 				}
-				i = atoi(argv[++args]);
-				j = atoi(argv[++args]);
-				migR = atof(argv[++args]);
+				i = parseIntArg(argc, argv, &args, "-m");
+				j = parseIntArg(argc, argv, &args, "-m");
+				migR = parseDoubleArg(argc, argv, &args, "-m");
 				migMatConst[i][j]=migR;
 				migFlag = 1;
 			break;
 			case 'p' :
-			npops = atoi(argv[++args]);
+			npops = parseIntArg(argc, argv, &args, "-p");
 			if(npops > MAXPOPS){
 				fprintf(stderr,"Error: too many populations defined. Current maximum number = %d. Change MAXPOPS define in discoal.h and recompile... if you dare\n",MAXPOPS);
 				exit(1);
 			}
 			for(i=0;i<npops;i++){
-				sampleSizes[i]=atoi(argv[++args]);
+				sampleSizes[i] = parseIntArg(argc, argv, &args, "-p");
 				currentSize[i] = 1.0;
 			}
 			
@@ -885,22 +929,18 @@ void getParameters(int argc,const char **argv){
 				break;
 			}
                         break;
-			case 'U' :
-			untilMode= 1;
-			uTime=atof(argv[++args])*2.0;
-			break; 
 			case 'd' :
-			seed1=atoi(argv[++args]);
-			seed2=atoi(argv[++args]);
+			seed1 = parseIntArg(argc, argv, &args, "-d");
+			seed2 = parseIntArg(argc, argv, &args, "-d");
 			break;
 			case 'N' :
-			EFFECTIVE_POPN_SIZE=atoi(argv[++args]);
+			EFFECTIVE_POPN_SIZE = parseIntArg(argc, argv, &args, "-N");
 			break;
 			case 'C' :
 			condRecMode= 1;
 			condRecMet = 0;
-			lSpot=atoi(argv[++args]);
-			rSpot=atoi(argv[++args]);
+			lSpot = parseIntArg(argc, argv, &args, "-C");
+			rSpot = parseIntArg(argc, argv, &args, "-C");
 			break;
 			case 'R' :
 			recurSweepMode = 1;
@@ -943,11 +983,15 @@ void getParameters(int argc,const char **argv){
 			assert(events[eventNumber-1].lineageNumber < sampleSize);
 			break;
 			case 'T' :
-			fprintf(stderr, "Error: -T tree output mode has been removed.\\n");
-			fprintf(stderr, "Use -ts <filename.trees> for tree sequence output instead.\\n");
+			fprintf(stderr, "Error: -T tree output mode has been removed.\n");
+			fprintf(stderr, "Use -ts <filename.trees> for tree sequence output instead.\n");
 			exit(1);
 			break;
-			 
+			default:
+			fprintf(stderr, "Error: Unknown option '-%c'\n", argv[args][1]);
+			fprintf(stderr, "Try '%s' without arguments for usage information.\n", argv[0]);
+			exit(1);
+			break;
 		}
 		args++;
 	}
@@ -1036,7 +1080,6 @@ void usage(){
 	fprintf(stderr,"\t -Pc low high (prior on partialSweepFinalFreq; sweep models only)\n");
 	fprintf(stderr,"\t -Pe1 lowTime highTime lowSize highSize (priors on first demographic move time and size)\n");
 	fprintf(stderr,"\t -Pe2 lowTime highTime lowSize highSize (priors on second demographic move time and size)\n");
-	//fprintf(stderr,"\t -U time (only record mutations back to specified time)\n");
 	fprintf(stderr,"\t -R rhhRate (recurrent hitch hiking mode at the locus; rhh is rate per 2N individuals / generation)\n");
 	fprintf(stderr,"\t -L rhhRate (recurrent hitch hiking mode to the side of locus; leftRho is ~Unif(0,4Ns); rhh is rate per 2N individuals / generation)\n");
 	fprintf(stderr,"\t -h (hide selected SNP in partial sweep mode)\n");
