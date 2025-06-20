@@ -94,6 +94,10 @@ int hasAncestry(AncestrySegment *root, int site) {
 // Reference counting operations
 AncestrySegment* retainSegment(AncestrySegment *seg) {
     if (seg) {
+        if (seg->refCount >= UINT16_MAX) {
+            fprintf(stderr, "Error: AncestrySegment reference count overflow\n");
+            exit(1);
+        }
         seg->refCount++;
     }
     return seg;

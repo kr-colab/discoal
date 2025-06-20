@@ -327,6 +327,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - Updated many options to use safe parsing (especially critical ones like -p, -m, -d)
    - Foundation for future improvements (long options, structured help, etc.)
 
+28. **Data Structure Memory Optimization** (completed)
+   - Optimized AncestrySegment structure:
+     - Changed isLeaf from int to uint8_t (saved 3 bytes)
+     - Changed isRecorded from int to uint8_t (saved 3 bytes)
+     - Changed refCount from int to uint16_t (saved 2 bytes)
+     - Added overflow protection for refCount (max 65535)
+     - Reduced size from 64 to 48 bytes (25% reduction)
+   - Optimized rootedNode structure:
+     - Removed deprecated fields: ndes[2], leafs, times[2] (saved 32 bytes)
+     - Changed population from int to int16_t (saved 2 bytes) 
+     - Changed sweepPopn from int to int16_t (saved 2 bytes)
+     - Reduced size from 128 to 96 bytes (25% reduction)
+   - Memory impact for large simulations:
+     - 100K nodes: saves 3.1 MB
+     - 1M nodes: saves 30.5 MB
+     - Combined with 1M segments: saves additional 15.3 MB
+   - All optimizations maintain full compatibility
+
 ### Test Results Summary (After tskit Scaling Fixes)
 - **msprime Comparison Suite**: All 10/10 tests now pass (previously 0/10)
   - Fixed systematic bias in mutation placement 
@@ -368,6 +386,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - [x] Implement tree sequence provenance recording ✓
 - [x] Add version management system with semantic versioning ✓
 - [x] Fix MS output compatibility with simplification ✓
+- [x] Optimize core data structures for memory efficiency ✓
 - [ ] Document memory optimization techniques in main README
 - [ ] Phase 4: Memory layout optimizations for better cache efficiency
 - [ ] Investigate periodic tskit simplification to reduce end-of-simulation cost

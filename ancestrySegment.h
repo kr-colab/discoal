@@ -7,11 +7,11 @@ typedef struct AncestrySegment {
     int start, end;  // genomic interval [start, end)
     struct AncestrySegment *left, *right;  // child segments (for tree structure)
     struct AncestrySegment *next;  // linked list for segments at same level
-    uint16_t count;  // number of lineages
-    int isLeaf;  // 1 if this is a leaf segment, 0 otherwise
-    int refCount;  // Reference count for sharing
     void *avlTree;  // Optional AVL tree for fast lookups (only on root)
-    int isRecorded;  // 1 if this segment has been recorded as edge in tskit, 0 otherwise
+    uint16_t count;  // number of lineages
+    uint16_t refCount;  // Reference count for sharing (max 65535)
+    uint8_t isLeaf;  // 1 if this is a leaf segment, 0 otherwise
+    uint8_t isRecorded;  // 1 if this segment has been recorded as edge in tskit, 0 otherwise
 } AncestrySegment;
 
 // Basic operations

@@ -51,7 +51,9 @@ typedef struct rootedNode
 	
 	// Ancestry information
 	int nancSites, lLim, rLim;  // Calculated from ancestry tree
-	int id, population, sweepPopn;
+	int id;
+	int16_t population;      // MAXPOPS is 121, so 16-bit is sufficient
+	int16_t sweepPopn;       // MAXPOPS is 121, so 16-bit is sufficient
 	
 	// Ancestry segment tree for tracking which sites this node is ancestral to
 	AncestrySegment *ancestryRoot;
@@ -67,11 +69,6 @@ typedef struct rootedNode
 	
 	// Population list tracking for O(1) node selection
 	int popListIndex;        // Index in population's node array (-1 if not in list)
-	
-	// DEPRECATED FIELDS - temporarily kept for compilation, will be removed
-	int ndes[2];             // DEPRECATED - never used
-	int *leafs;              // DEPRECATED - never used
-	double times[2];         // DEPRECATED - never used
 }
 rootedNode;
 
