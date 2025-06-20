@@ -8,7 +8,6 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include "ancestryVerify.h"
 #include "ancestryWrapper.h"
 #include "activeSegment.h"
 #include <time.h>
@@ -50,8 +49,6 @@ void ensureBreakPointsCapacity() {
 		}
 		breakPoints = newBreakPoints;
 		breakPointsCapacity = newCapacity;
-		// Optional: Print growth information for debugging
-		// fprintf(stderr, "Debug: Grew breakPoints capacity to %d\n", breakPointsCapacity);
 	}
 }
 
@@ -148,47 +145,10 @@ rootedNode *pickNodePopnFast(int popn) {
 	return list->nodes[index];
 }
 
-// Verify population lists match reality (for debugging)
-void verifyPopLists() {
-	// Count nodes in each population the old way
-	int realCounts[MAXPOPS] = {0};
-	for (int i = 0; i < alleleNumber; i++) {
-		if (nodes[i]->population >= 0 && nodes[i]->population < MAXPOPS) {
-			realCounts[nodes[i]->population]++;
-		}
-	}
-	
-	// Compare with population lists
-	for (int p = 0; p < npops; p++) {
-		if (popLists[p].count != realCounts[p]) {
-			fprintf(stderr, "Population list mismatch for pop %d: list has %d, reality has %d\n",
-				p, popLists[p].count, realCounts[p]);
-			exit(1);
-		}
-		
-		// Verify each node in the list
-		for (int i = 0; i < popLists[p].count; i++) {
-			rootedNode *node = popLists[p].nodes[i];
-			if (node->population != p) {
-				fprintf(stderr, "Node in wrong population list: node pop=%d, list pop=%d\n",
-					node->population, p);
-				exit(1);
-			}
-			if (node->popListIndex != i) {
-				fprintf(stderr, "Node has wrong popListIndex: %d vs %d\n",
-					node->popListIndex, i);
-				exit(1);
-			}
-		}
-	}
-}
-
 void initialize(){
 	int i,j,p, count=0;
 	int leafID=0;
 	int tmpCount = 0;
-	
-	// fprintf(stderr, "DEBUG: initialize() called for replicate\n");
 	
 	/* Initialize the arrays */
 	totChunkNumber = 0;
@@ -231,7 +191,6 @@ void initialize(){
 	alleleNumber = sampleSize;
 	totNodeNumber = sampleSize;
 	freedNodeCount = 0;  // Initialize freed node counter
-	// fprintf(stderr, "DEBUG: initialize() done, alleleNumber=%d\n", alleleNumber);
 	//ancient pop samples?
 	if(ancSampleFlag == 1){
 		//go through ancient sample events
@@ -263,10 +222,6 @@ void initialize(){
 			}
 		}
 		eventFlag = 0;
-	}
-	//mask mode?
-	if (mask){
-//		getMasking(mFile);
 	}
 	
 	//priors on parameters?
@@ -337,9 +292,6 @@ void initializeTwoSite(){
 			if(p>0)nodes[count]->sweepPopn = 0;
 			nodes[count]->id=leafID++;
 			nodes[count]->inActiveSet = 1;  // Sample nodes start in active set
-			//do stuff for leafs containers
-			//nodes->leafs = calloc(sizeof(int) * sampleSize);
-			//nodes->leafs[nodes[count]->id] = 1;
 			
 			// Add to population list
 			addNodeToPopList(nodes[count], p);
@@ -364,10 +316,6 @@ void initializeTwoSite(){
 		}
 		
 		eventFlag = 0;
-	}
-	//mask mode?
-	if (mask){
-//		getMasking(mFile);
 	}
 	
 	//priors on parameters?
@@ -435,9 +383,6 @@ rootedNode *newRootedNode(double cTime, int popn) {
 	temp->inActiveSet = 0;  // Will be set to 1 for sample nodes
 	temp->carriesSweepMutation = 0;  // No sweep mutation by default
 	
-//	temp->leafs = malloc(sizeof(int) * sampleSize);
-//	for(i=0;i<nSites;i++)temp->ancSites[i]=1;
-
 	// Initialize ancestry segment tree to NULL (will be set during initialization)
 	temp->ancestryRoot = NULL;
 
@@ -851,16 +796,6 @@ void coalesceAtTimePopn(double cTime, int popn){
 		}
 	}
 	
-	// Verify consistency in debug mode
-	#ifdef DEBUG_ANCESTRY
-	if (!verifyAncestryConsistency(temp, nSites)) {
-		fprintf(stderr, "Ancestry verification failed after coalescence\n");
-		exit(1);
-	}
-	#endif
-	
-	//printNode(temp);
-	//printf("coal-> lChild: %u rChild: %u parent: %u time: %f\n",lChild,rChild,temp,cTime);
 	
 	// Mark parent recording and try to free nodes if using tskit
 	if (tskitOutputMode || minimalTreeSeq) {
@@ -999,7 +934,6 @@ void coalesceAtTimePopnTrackLeafs(double cTime, int popn){
 		temp->leafs[i] =  lChild->leafs[i] + rChild->leafs[i];
 	}
 	
-	//printNode(temp);
 	addNode(temp);
 	//update active anc. material
 	updateActiveMaterial(temp);
@@ -1206,7 +1140,6 @@ int recombineAtTimePopn(double cTime, int popn){
 		}
 		
 	//	printf("reco-> lParent: %u rParent:%u child: %u time:%f xover:%d\n",lParent,rParent,aNode,cTime,xOver);
-		//printNode(aNode);
 		
 		// Mark that the child node is no longer in active set
 		// It needs both parents to record before it can be freed
@@ -2048,8 +1981,6 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 										else{
 											//recurrent adaptive mutation:
 											//node in pop zero's sweep group exits sweep
-											//fprintf(stderr,"recurrent mutation at time %f; freq=%f\n", cTime+(ttau),x);
-											//fprintf(stderr,"recurMut prob: %g; uA: %f, sweepPopnSizes[1]:%d; x:%f; tInc: %g; sizeRatio: %f\npopnSizes[0]: %d; popnSizes[1]: %d\n", pRecurMut,uA,sweepPopnSizes[1],x,tInc,sizeRatio,popnSizes[0],popnSizes[1]);
 											recurrentMutAtTime(cTime+(ttau),0, 1);
 										}
 									}
@@ -2299,8 +2230,6 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 										else{
 											//recurrent adaptive mutation:
 											//node in pop zero's sweep group exits sweep
-											//fprintf(stderr,"recurrent mutation at time %f; freq=%f\n", cTime+(ttau),x);
-											//fprintf(stderr,"recurMut prob: %g; uA: %f, sweepPopnSizes[1]:%d; x:%f; tInc: %g; sizeRatio: %f\npopnSizes[0]: %d; popnSizes[1]: %d\n", pRecurMut,uA,sweepPopnSizes[1],x,tInc,sizeRatio,popnSizes[0],popnSizes[1]);
 											recurrentMutAtTime(cTime+(ttau),0, 1);
 										}
 									}
@@ -3252,15 +3181,10 @@ void addNode(rootedNode *aNode){
 	int isRecombParent = (aNode->leftChild != NULL && aNode->rightChild != NULL && 
 	                      aNode->leftChild == aNode->rightChild);
 	
-	if (minimalTreeSeq && isRecombParent) {
-		// fprintf(stderr, "Debug: NOT creating tskit node for recomb parent at time %f\n", aNode->time);
-	}
-	
 	if (!minimalTreeSeq || !isRecombParent) {
 		// Create tskit node for non-recombination nodes or in full mode
 		tsk_id_t tsk_id = tskit_add_node(aNode->time, aNode->population, 0);  // is_sample=0
 		set_tskit_node_id(aNode, tsk_id);
-		// fprintf(stderr, "Debug: Created tskit node %d for node at time %f\n", tsk_id, aNode->time);
 	} else {
 		// In minimal mode, recombination parents don't get tskit nodes
 		set_tskit_node_id(aNode, TSK_NULL);
@@ -3487,7 +3411,6 @@ unsigned int devrand(void) {
 
 // Tskit output generation using genotype matrix (always available)
 void makeGametesMS_tskit(int argc, const char *argv[]) {
-	// fprintf(stderr, "DEBUG: makeGametesMS_tskit called\n");
 	if (tsk_tables == NULL) {
 		fprintf(stderr, "Error: No tskit tables available for output generation\n");
 		return;
@@ -3512,8 +3435,6 @@ void makeGametesMS_tskit(int argc, const char *argv[]) {
 	tsk_size_t num_samples = tsk_treeseq_get_num_samples(&ts);
 	tsk_size_t num_sites = tsk_treeseq_get_num_sites(&ts);
 	
-	// fprintf(stderr, "DEBUG: num_samples=%zu, num_sites=%zu\n", (size_t)num_samples, (size_t)num_sites);
-	// fprintf(stderr, "Debug: Tree sequence has %zu samples, expected %d\n", num_samples, sample_node_count);
 	
 	// Print segsites header
 	printf("\n//\nsegsites: %zu", (size_t)num_sites);
@@ -3540,16 +3461,6 @@ void makeGametesMS_tskit(int argc, const char *argv[]) {
 			tsk_treeseq_free(&ts);
 			return;
 		}
-		
-		// Debug: Check if all sample nodes exist in the tree sequence
-		// fprintf(stderr, "Debug: Sample node IDs: ");
-		// for (int i = 0; i < sample_node_count; i++) {
-		// 	fprintf(stderr, "%d ", sample_node_ids[i]);
-		// 	if (sample_node_ids[i] == TSK_NULL || sample_node_ids[i] >= (tsk_id_t)num_samples) {
-		// 		fprintf(stderr, "(INVALID) ");
-		// 	}
-		// }
-		// fprintf(stderr, "\n");
 		
 		// Use tskit's efficient variant API for genotype generation
 		tsk_variant_t variant;
