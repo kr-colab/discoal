@@ -69,17 +69,8 @@ tsk_id_t get_tskit_node_id(rootedNode *node);
 void set_tskit_node_id(rootedNode *node, tsk_id_t tsk_id);
 void set_tskit_node_id_at_index(int index, tsk_id_t tsk_id);
 
-// Record all mutations after they've been placed on the tree
-int tskit_record_mutations(void);
-
 // Place mutations using edge-based algorithm (similar to msprime's design)
 int tskit_place_mutations_edge_based(double theta);
-
-// Place mutations directly on tskit edges (uses edge-based algorithm)
-int tskit_place_mutations_directly(double theta);
-
-// Populate discoal mutation arrays from tskit data (for ms output compatibility)
-int tskit_populate_discoal_mutations(void);
 
 // Record sweep mutations for nodes that carry them
 int tskit_record_sweep_mutations(double sweepSite);

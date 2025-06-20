@@ -56,8 +56,6 @@ void sortNodeMutations(rootedNode *node);
 void sortAllMutations();
 void makeGametesMS(int argc,const char *argv[]);
 
-void makeGametesMS_tskit(int argc, const char *argv[]);
-
 
 void dropMutationsRecurse();
 void recurseTreePushMutation(rootedNode *aNode, float site);

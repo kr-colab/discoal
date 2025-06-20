@@ -437,17 +437,10 @@ int main(int argc, const char * argv[]){
 			}
 		}
 		
-		// Always use tskit for mutation placement
+		// Place mutations using tskit edge-based algorithm
 		extern double theta;
-		// Use edge-based algorithm for tskit mutations
 		if (tskit_place_mutations_edge_based(theta) < 0) {
 			fprintf(stderr, "Error: Failed to place mutations in tskit\n");
-			exit(1);
-		}
-		
-		// Populate discoal mutation arrays if we need ms output
-		if (tskit_populate_discoal_mutations() < 0) {
-			fprintf(stderr, "Error: Failed to populate discoal mutations from tskit\n");
 			exit(1);
 		}
 
