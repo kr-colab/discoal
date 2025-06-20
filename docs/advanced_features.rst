@@ -105,16 +105,6 @@ Output format:
 
 Each line shows: ``[number_of_sites]newick_tree``
 
-Recording Recent Mutations
---------------------------
-
-Only record mutations more recent than a specified time:
-
-.. code-block:: bash
-
-   # Only mutations from last 0.1 time units
-   ./discoal 20 10 10000 -t 50 -U 0.1
-
 Memory and Performance
 ----------------------
 
