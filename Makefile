@@ -2,13 +2,8 @@ CC = gcc
 CFLAGS = -O3 -march=native -I. -I./extern/tskit -I./extern/tskit/kastore
 TEST_CFLAGS = -O2 -I. -I./test/unit -I./extern/tskit -I./extern/tskit/kastore
 
-# Optional: Enable segment pool optimization
-ifdef USE_SEGMENT_POOL
-CFLAGS += -DUSE_SEGMENT_POOL
+# Segment pool is now standard
 POOL_SOURCES = segmentPool.c
-else
-POOL_SOURCES =
-endif
 
 # Tskit source files
 TSKIT_SOURCES = extern/tskit/tskit/core.c \

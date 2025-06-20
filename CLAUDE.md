@@ -38,11 +38,11 @@ When opening this project:
    - Per-population node lists: O(1) selection
    - discoal runs ~28x faster than msprime
    - High recombination scenarios now feasible
-   - **NEW: Segment Pool Optimization** (Dec 20, 2024)
-     - Custom memory pool for AncestrySegment allocations
-     - O(1) pool reset between replicates (was O(n))
-     - Reduces malloc/free overhead (was 13% of CPU time)
-     - Enable with: `USE_SEGMENT_POOL=1 make discoal`
+   - **Segment Pool** - Default memory allocator for AncestrySegments
+     - Pre-allocated memory blocks with O(1) allocation/free
+     - 10-15% performance improvement for high recombination
+     - O(1) pool reset between replicates
+     - Automatic expansion when needed
 
 4. **Bug Fixes**
    - Zero memory leaks (verified with valgrind)
@@ -121,13 +121,14 @@ make test_<name>    # Run specific unit test
   - Removed unused splitResult struct and static functions
   - Removed debug code and associated variables
   - Improved code maintainability
-- **Implemented segment memory pool optimization**:
+- **Implemented segment memory pool as default allocation strategy**:
   - Created segmentPool.h/c with pre-allocated memory management
   - Integrated pool into newSegment() and releaseSegment()
   - Added O(1) reset between replicates (huge win for cleanup)
-  - 15% performance gain for high recombination scenarios
+  - 10-15% performance gain for high recombination scenarios
   - Fixed initial pool sizing bug (was using rho*nSites*nSites)
   - Zero memory leaks, comparable memory usage to standard allocation
+  - Removed all conditional compilation - pool is now standard
 
 ### Active Development
 - [ ] Document memory optimization techniques in README
@@ -139,18 +140,9 @@ make test_<name>    # Run specific unit test
 - Reference counting for segment sharing
 - Memory-mapped files for trajectories
 - Node recycling with mark-and-sweep GC
-- **Segment Pool** (optional, Dec 2024):
+- **Segment Pool** (default allocator):
   - Pre-allocated memory pool for AncestrySegments
   - LIFO free list for cache locality
   - O(1) reset between replicates
   - Smart sizing based on recombination rate
-  - Enable with: `USE_SEGMENT_POOL=1 make discoal`
-
-### Segment Pool Implementation
-- Files: `segmentPool.h`, `segmentPool.c`
-- Integration points:
-  - `newSegment()` uses pool allocation
-  - `releaseSegment()` returns to pool
-  - Pool reset between replicates
-- Testing: `test_segment_pool.c`
-- Expected performance gain: 8-10% overall, up to 30% for high recombination
+  - Automatic expansion when needed

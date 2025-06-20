@@ -254,9 +254,15 @@ size_t calculateInitialPoolSize(int sampleSize, double rho, int nSites) {
     // Total initial size
     size_t initial = base + recomb_segments;
     
-    // Apply bounds
-    if (initial < DEFAULT_POOL_SIZE) initial = DEFAULT_POOL_SIZE;
-    if (initial > 1000000) initial = 1000000;  // Cap at 1M for initial allocation
+    // For very low allocation scenarios, use smaller pool to reduce overhead
+    if (rho < 50 && sampleSize <= 50) {
+        initial = 1000;  // Minimal pool for low-recombination scenarios
+    } else if (initial < DEFAULT_POOL_SIZE) {
+        initial = DEFAULT_POOL_SIZE;
+    }
+    
+    // Cap at 1M for initial allocation
+    if (initial > 1000000) initial = 1000000;
     
     return initial;
 }
