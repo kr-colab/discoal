@@ -3106,7 +3106,7 @@ void initializeNodeArrays() {
 	int initialCapacity = 1000;  // Start small
 	
 	nodesCapacity = initialCapacity;
-	nodes = malloc(sizeof(rootedNode*) * nodesCapacity);
+	nodes = calloc(nodesCapacity, sizeof(rootedNode*));
 	
 	if (nodes == NULL) {
 		fprintf(stderr, "Error: Failed to allocate initial node arrays\n");
@@ -3125,6 +3125,11 @@ void ensureNodesCapacity(int requiredSize) {
 		if (newNodes == NULL) {
 			fprintf(stderr, "Error: Failed to reallocate nodes array (requested: %d pointers)\n", newCapacity);
 			exit(1);
+		}
+		
+		// Initialize the new portion of the array to NULL
+		for (int i = nodesCapacity; i < newCapacity; i++) {
+			newNodes[i] = NULL;
 		}
 		
 		nodes = newNodes;
@@ -3186,7 +3191,7 @@ void initializeSampleNodeIds() {
 	
 	sample_node_capacity = 1000;  // Start with reasonable size
 	sample_node_count = 0;
-	sample_node_ids = malloc(sizeof(tsk_id_t) * sample_node_capacity);
+	sample_node_ids = calloc(sample_node_capacity, sizeof(tsk_id_t));
 	
 	if (sample_node_ids == NULL) {
 		fprintf(stderr, "Error: Failed to allocate sample node IDs array\n");
