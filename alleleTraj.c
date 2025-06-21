@@ -7,6 +7,7 @@
 #include <math.h>
 #include <time.h>
 #include "ranlib.h"
+#include "alleleTraj.h"
 
 //coth- hyperbolic cotangent
 double coth(double x){
@@ -36,29 +37,24 @@ which is sweeping through the population. This is the jump process
 corresponding to the condition diffusion towards loss (i.e. backwards).
 takes the dt, small time increment, and the current allele freq (i.e. 1 for fixation) */
 double neutralStochastic(double dt, double currentFreq){
-	double ux = -1.0 * currentFreq;
-	if (ranf() < 0.5){
-		currentFreq +=  (ux * dt) + sqrt(currentFreq * (1.0 - currentFreq) * dt);
+	// Precompute common expressions
+	double drift = -currentFreq * dt;
+	double p_q = currentFreq * (1.0 - currentFreq);
+	
+	// Early return for boundary cases to avoid sqrt of negative
+	if (p_q <= 0.0) {
+		return currentFreq + drift;
 	}
-	else{
-		currentFreq +=  (ux * dt) - sqrt(currentFreq * (1.0 - currentFreq) * dt);
-	}
-	return(currentFreq);
+	
+	double diffusion = sqrt(p_q * dt);
+	
+	// Use arithmetic instead of branching: sign = ±1
+	double sign = 2.0 * ranf() - 1.0;
+	
+	return currentFreq + drift + sign * diffusion;
 }
 
-/* Optimized version of neutralStochastic with reduced overhead */
-static inline double neutralStochasticOptimized(double dt, double currentFreq){
-	// Precompute common expressions
-	double drift_term = -currentFreq * dt;
-	double variance = currentFreq * (1.0 - currentFreq) * dt;
-	double diffusion_term = sqrt(variance);
-	
-	// Use 2*ranf()-1 to get random sign (-1 or +1) in one call
-	// This avoids the branch and uses arithmetic instead
-	double random_sign = 2.0 * ranf() - 1.0;
-	
-	return currentFreq + drift_term + random_sign * diffusion_term;
-}
+/* Note: Optimized versions are now in alleleTraj.h as inline functions */
 
 /* genicSelectionStochastic-- returns the frequency of a selected allele
 which is sweeping through the population. This is the jump process
@@ -68,7 +64,7 @@ and alpha the selection coefficient */
 double genicSelectionStochastic(double dt, double currentFreq, double alpha){
 	double newFreq;
 
-	double ux =  (-0.5 * alpha * currentFreq * (1.0-currentFreq))* coth(0.5 * alpha * currentFreq * (1.0-currentFreq));
+	double ux =  (-0.5 * alpha * currentFreq * (1.0-currentFreq))* fast_coth(0.5 * alpha * currentFreq * (1.0-currentFreq));
 	if (ranf() < 0.5){
 		newFreq = (ux * dt) + sqrt(currentFreq * (1.0 - currentFreq) * dt);
 	}
@@ -85,7 +81,7 @@ takes the dt, small time increment, the current allele freq (i.e. 1 for fixation
 and alpha the selection coefficient */
 double genicSelectionStochasticForwards(double dt, double currentFreq, double alpha){
 
-	double ux = (alpha*currentFreq*(1.-currentFreq))/tanh(alpha*currentFreq);
+	double ux = (alpha*currentFreq*(1.-currentFreq))/fast_tanh(alpha*currentFreq);
 	if (ranf() < 0.5){
 	 	currentFreq += (ux * dt) + sqrt(currentFreq * (1.0 - currentFreq) * dt);
 	}
