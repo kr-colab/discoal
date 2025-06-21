@@ -5,12 +5,32 @@ void initialize();
 void initializeBreakPoints();
 void ensureBreakPointsCapacity();
 void cleanupBreakPoints();
+
+// Population list management functions for O(1) node selection
+void initializePopLists();
+void cleanupPopLists();
+void addNodeToPopList(rootedNode *node, int popn);
+void removeNodeFromPopList(rootedNode *node);
+rootedNode *pickNodePopnFast(int popn);
+
+// Sample node tracking functions for tskit mode
+void initializeSampleNodeIds();
+void ensureSampleNodeCapacity(int required_size);
+void addSampleNodeId(tsk_id_t tskit_node_id);
+void cleanupSampleNodeIds();
 void addBreakPoint(int bp);
 void initializeMuts(rootedNode *node, int capacity);
 void ensureMutsCapacity(rootedNode *node, int requiredSize);
 void cleanupMuts(rootedNode *node);
 void cleanupNodeArrays();
+void cleanupRemovedNodes();
 rootedNode *newRootedNode(double cTime, int popn);
+
+// Node memory management
+void markParentRecorded(rootedNode *child, rootedNode *parent);
+void markLeafNodeRecorded(rootedNode *node);
+void tryFreeNode(rootedNode *node);
+void cleanupRemainingNodes();
 
 void coalesceAtTimePopn(double cTime, int popn);
 void coalesceAtTimePopnSweep(double cTime, int popn, int sp);
@@ -35,6 +55,8 @@ int hasMutation(rootedNode *aNode, double site);
 void sortNodeMutations(rootedNode *node);
 void sortAllMutations();
 void makeGametesMS(int argc,const char *argv[]);
+
+
 void dropMutationsRecurse();
 void recurseTreePushMutation(rootedNode *aNode, float site);
 void errorCheckMutations();
@@ -71,8 +93,6 @@ double sweepPhaseEventsConditionalTrajectory(int *bpArray, double startTime, dou
 
 		
 double totalTimeInTree();
-void dropMutationsUntilTime(double t);
-double totalTimeInTreeUntilTime(double t);
 
 int recombineAtTimePopn(double cTime, int popn);
 void geneConversionAtTimePopn(double cTime, int popn);

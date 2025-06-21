@@ -435,7 +435,7 @@ declare -a TEST_CASES=(
     "selection:partial_soft_sweep:3 2 100 -t 2 -r 2.4 -ws 0.005 -a 5000 -x 0.5 -f 0.01 -c 0.8:optimized_preferred"
     
     # Tree output (Section: Outputting trees)
-    "trees:tree_output:3 1 10 -t 1 -r 5 -T:both_succeed"
+    # "trees:tree_output:3 1 10 -t 1 -r 5 -T:both_succeed"  # -T option removed in tskit-only version
     
     # Reduced strength selection (more likely to succeed)
     "selection:weak_sweep:5 1 500 -t 2 -r 1 -ws 0.1 -a 50 -x 0.5:optimized_preferred"
@@ -453,7 +453,7 @@ declare -a TEST_CASES=(
     "stress:mega_recomb_long:6 1 500000 -t 3 -r 5000:both_succeed"
     "stress:extreme_recomb:4 1 1000000 -t 2 -r 10000:both_succeed"
     "stress:multipop_high_recomb:10 2 100000 -t 5 -r 1500 -ej 0.5 2 1:both_succeed"
-    "stress:admix_high_recomb:8 3 250000 -t 4 -r 3000 -es 0.2 2 0.7 -ej 0.8 3 1:both_succeed"
+    # "stress:admix_high_recomb:8 3 250000 -t 4 -r 3000 -es 0.2 2 0.7 -ej 0.8 3 1:both_succeed"  # -es (population split) not supported in discoal
     
     # Gene conversion stress tests
     "gc:high_gc_rate:8 1 600 -t 3 -r 2 -g 5 15:both_succeed"
@@ -569,7 +569,7 @@ if [ ${#TIME_COMPARISONS[@]} -gt 0 ]; then
     faster_count=0
     slower_count=0
     same_count=0
-    total_speedup=0
+    total_speedup="0"
     
     for comparison in "${TIME_COMPARISONS[@]}"; do
         result=$(echo $comparison | cut -d: -f3)
@@ -578,8 +578,12 @@ if [ ${#TIME_COMPARISONS[@]} -gt 0 ]; then
         case $result in
             faster)
                 faster_count=$((faster_count + 1))
-                # Add speedup values for averaging
-                total_speedup=$(echo "$total_speedup + $value" | bc)
+                # Add speedup values for averaging if value is valid
+                if [ -n "$value" ] && [[ "$value" =~ ^[0-9]+\.?[0-9]*$ ]]; then
+                    if command -v bc &> /dev/null; then
+                        total_speedup=$(echo "$total_speedup + $value" | bc 2>/dev/null || echo "$total_speedup")
+                    fi
+                fi
                 ;;
             slower)
                 slower_count=$((slower_count + 1))
@@ -594,20 +598,19 @@ if [ ${#TIME_COMPARISONS[@]} -gt 0 ]; then
     echo "  Tests where optimized is slower: $slower_count"
     echo "  Tests with same performance: $same_count"
     
-    if [ $faster_count -gt 0 ]; then
-        avg_speedup=$(echo "scale=2; $total_speedup / $faster_count" | bc)
-        echo "  Average speedup when faster: ${avg_speedup}x"
+    if [ $faster_count -gt 0 ] && command -v bc &> /dev/null && [ "$total_speedup" != "0" ]; then
+        avg_speedup=$(echo "scale=2; $total_speedup / $faster_count" | bc 2>/dev/null)
+        if [ -n "$avg_speedup" ]; then
+            echo "  Average speedup when faster: ${avg_speedup}x"
+        else
+            echo "  Tests were faster but speedup values unavailable"
+        fi
+    elif [ $faster_count -gt 0 ]; then
+        echo "  Tests were faster but speedup calculation unavailable"
     fi
 else
     echo "  No performance comparisons available"
 fi
-
-echo ""
-echo "🔬 Key Findings:"
-echo "  • Trajectory optimization resolves memory overflow issues in sweep scenarios"
-echo "  • Maintains perfect output compatibility for successful scenarios"
-echo "  • Enables complex demographic + selection models previously impossible"
-echo "  • Memory usage remains reasonable across all test categories"
 
 echo ""
 echo "📁 Detailed results and memory profiles saved in: $TEST_DIR"

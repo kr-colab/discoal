@@ -4,15 +4,17 @@
 #include <limits.h>
 #include "ancestrySegment.h"
 #include "ancestrySegmentAVL.h"
+#include "segmentPool.h"
 
-AncestrySegment* newSegment(int start, int end, AncestrySegment *left, AncestrySegment *right) {
-    AncestrySegment *seg = (AncestrySegment*)calloc(1, sizeof(AncestrySegment));
+AncestrySegment* newSegment(int start, int end, tsk_id_t tskit_node_id, AncestrySegment *left, AncestrySegment *right) {
+    AncestrySegment *seg = allocSegmentFromPool();
     if (!seg) {
         fprintf(stderr, "Memory allocation failed for AncestrySegment\n");
         exit(1);
     }
     seg->start = start;
     seg->end = end;
+    seg->tskit_node_id = tskit_node_id;  // Store the tskit node ID
     seg->left = left;
     seg->right = right;
     seg->next = NULL;
@@ -50,7 +52,7 @@ AncestrySegment* copySegmentTree(AncestrySegment *root) {
     
     while (current) {
         // For child segments, retain them instead of copying
-        AncestrySegment *newSeg = newSegment(current->start, current->end, 
+        AncestrySegment *newSeg = newSegment(current->start, current->end, current->tskit_node_id,
                                             retainSegment(current->left), 
                                             retainSegment(current->right));
         newSeg->count = current->count;
@@ -94,33 +96,85 @@ int hasAncestry(AncestrySegment *root, int site) {
 // Reference counting operations
 AncestrySegment* retainSegment(AncestrySegment *seg) {
     if (seg) {
+        if (seg->refCount >= UINT16_MAX) {
+            fprintf(stderr, "Error: AncestrySegment reference count overflow\n");
+            exit(1);
+        }
         seg->refCount++;
     }
     return seg;
 }
 
+// Stack node for iterative traversal
+typedef struct SegmentStackNode {
+    AncestrySegment *segment;
+    struct SegmentStackNode *next;
+} SegmentStackNode;
+
 void releaseSegment(AncestrySegment *seg) {
     if (!seg) return;
     
-    seg->refCount--;
-    if (seg->refCount <= 0) {
-        // Release next segment in the list
-        if (seg->next) {
-            releaseSegment(seg->next);
+    // Initialize stack with root segment
+    SegmentStackNode *stack = NULL;
+    SegmentStackNode *node = (SegmentStackNode*)malloc(sizeof(SegmentStackNode));
+    node->segment = seg;
+    node->next = NULL;
+    stack = node;
+    
+    while (stack) {
+        // Pop from stack
+        SegmentStackNode *top = stack;
+        AncestrySegment *current = top->segment;
+        stack = top->next;
+        free(top);
+        
+        if (!current) continue;
+        
+        // Decrement reference count
+        current->refCount--;
+        
+        if (current->refCount <= 0) {
+            // Process the entire 'next' chain for this segment
+            AncestrySegment *chain_current = current;
+            int chain_length = 0;
+            
+            while (chain_current) {
+                chain_length++;
+                AncestrySegment *next = chain_current->next;
+                
+                // Push children onto stack for later processing
+                if (chain_current->left) {
+                    node = (SegmentStackNode*)malloc(sizeof(SegmentStackNode));
+                    node->segment = chain_current->left;
+                    node->next = stack;
+                    stack = node;
+                }
+                if (chain_current->right) {
+                    node = (SegmentStackNode*)malloc(sizeof(SegmentStackNode));
+                    node->segment = chain_current->right;
+                    node->next = stack;
+                    stack = node;
+                }
+                
+                // Free AVL tree if present
+                if (chain_current->avlTree) {
+                    freeAVLTree((AVLTree*)chain_current->avlTree);
+                    chain_current->avlTree = NULL;
+                }
+                
+                // Free current segment
+                freeSegmentToPool(chain_current);
+                
+                // Handle next segment in chain
+                if (next && next->refCount > 0) {
+                    next->refCount--;
+                    if (next->refCount > 0) {
+                        break;  // Next segment still has references
+                    }
+                }
+                chain_current = next;
+            }
         }
-        // Release child segments
-        if (seg->left) {
-            releaseSegment(seg->left);
-        }
-        if (seg->right) {
-            releaseSegment(seg->right);
-        }
-        // Free AVL tree if present
-        if (seg->avlTree) {
-            freeAVLTree((AVLTree*)seg->avlTree);
-            seg->avlTree = NULL;
-        }
-        free(seg);
     }
 }
 
@@ -132,37 +186,9 @@ AncestrySegment* shallowCopySegment(AncestrySegment *seg) {
     return retainSegment(seg);
 }
 
-// Helper function to create a segment list covering an interval
-static AncestrySegment* createSegmentList(int start, int end, uint16_t count) {
-    if (start >= end) return NULL;
-    return newSegment(start, end, NULL, NULL);
-}
-
-// Helper function to coalesce adjacent segments with same count
-static AncestrySegment* coalesceSegments(AncestrySegment *head) {
-    if (!head || !head->next) return head;
-    
-    AncestrySegment *current = head;
-    while (current && current->next) {
-        if (current->end == current->next->start && 
-            current->count == current->next->count) {
-            // Merge with next segment
-            AncestrySegment *toRemove = current->next;
-            current->end = toRemove->end;
-            current->next = toRemove->next;
-            free(toRemove);
-            // Don't advance current, check if we can merge with the new next
-        } else {
-            current = current->next;
-        }
-    }
-    
-    return head;
-}
-
 // Helper function to add a segment to the result list
 static void addSegmentToResult(AncestrySegment **result, AncestrySegment **tail, 
-                               int start, int end, uint16_t count) {
+                               int start, int end, uint16_t count, tsk_id_t parent_tskit_node_id) {
     if (start >= end || count == 0) return;  // Skip empty or zero-count segments
     
     // Check if we can merge with the previous segment
@@ -170,7 +196,7 @@ static void addSegmentToResult(AncestrySegment **result, AncestrySegment **tail,
         (*tail)->end = end;  // Extend previous segment
     } else {
         // Create new segment
-        AncestrySegment *newSeg = newSegment(start, end, NULL, NULL);
+        AncestrySegment *newSeg = newSegment(start, end, parent_tskit_node_id, NULL, NULL);
         newSeg->count = count;
         
         if (!*result) {
@@ -184,15 +210,37 @@ static void addSegmentToResult(AncestrySegment **result, AncestrySegment **tail,
 }
 
 // Merge two ancestry trees (for coalescence)
-AncestrySegment* mergeAncestryTrees(AncestrySegment *leftTree, AncestrySegment *rightTree) {
-    if (!leftTree) return copySegmentTree(rightTree);
-    if (!rightTree) return copySegmentTree(leftTree);
+AncestrySegment* mergeAncestryTrees(AncestrySegment *leftTree, AncestrySegment *rightTree, tsk_id_t parent_tskit_node_id) {
+    if (!leftTree && !rightTree) return NULL;
+    
+    // If only one tree exists, create segments with parent node ID
+    if (!leftTree) {
+        AncestrySegment *result = NULL;
+        AncestrySegment *tail = NULL;
+        AncestrySegment *current = rightTree;
+        while (current) {
+            addSegmentToResult(&result, &tail, current->start, current->end, current->count, parent_tskit_node_id);
+            current = current->next;
+        }
+        return result;
+    }
+    
+    if (!rightTree) {
+        AncestrySegment *result = NULL;
+        AncestrySegment *tail = NULL;
+        AncestrySegment *current = leftTree;
+        while (current) {
+            addSegmentToResult(&result, &tail, current->start, current->end, current->count, parent_tskit_node_id);
+            current = current->next;
+        }
+        return result;
+    }
     
     // Optimized case: both trees have single segments covering all sites
     if (leftTree && rightTree && leftTree->start == 0 && rightTree->start == 0 && 
         leftTree->end == rightTree->end && !leftTree->next && !rightTree->next) {
         // Common case: both cover all sites with no recombination
-        AncestrySegment *merged = newSegment(0, leftTree->end, 
+        AncestrySegment *merged = newSegment(0, leftTree->end, parent_tskit_node_id,
                                            retainSegment(leftTree), 
                                            retainSegment(rightTree));
         merged->count = leftTree->count + rightTree->count;
@@ -234,7 +282,7 @@ AncestrySegment* mergeAncestryTrees(AncestrySegment *leftTree, AncestrySegment *
         
         // Add segment if count > 0
         if (count > 0) {
-            addSegmentToResult(&result, &tail, pos, nextPos, count);
+            addSegmentToResult(&result, &tail, pos, nextPos, count, parent_tskit_node_id);
         }
         
         // Move to next position
@@ -255,7 +303,7 @@ AncestrySegment* mergeAncestryTrees(AncestrySegment *leftTree, AncestrySegment *
         }
         
         // Build AVL tree for fast lookups if we have 3 or more segments
-        if (segmentCount >= 30) {
+        if (segmentCount >= 3) {
             result->avlTree = buildAVLFromList(result);
         }
     }
@@ -291,10 +339,10 @@ AncestrySegment* splitLeft(AncestrySegment *root, int breakpoint) {
     while (current && current->start < breakpoint) {
         if (current->end <= breakpoint) {
             // Entire segment is to the left
-            addSegmentToResult(&result, &tail, current->start, current->end, current->count);
+            addSegmentToResult(&result, &tail, current->start, current->end, current->count, current->tskit_node_id);
         } else {
             // Segment spans the breakpoint
-            addSegmentToResult(&result, &tail, current->start, breakpoint, current->count);
+            addSegmentToResult(&result, &tail, current->start, breakpoint, current->count, current->tskit_node_id);
         }
         current = current->next;
     }
@@ -334,10 +382,10 @@ AncestrySegment* splitRight(AncestrySegment *root, int breakpoint) {
         if (current->end > breakpoint) {
             if (current->start >= breakpoint) {
                 // Entire segment is to the right
-                addSegmentToResult(&result, &tail, current->start, current->end, current->count);
+                addSegmentToResult(&result, &tail, current->start, current->end, current->count, current->tskit_node_id);
             } else {
                 // Segment spans the breakpoint
-                addSegmentToResult(&result, &tail, breakpoint, current->end, current->count);
+                addSegmentToResult(&result, &tail, breakpoint, current->end, current->count, current->tskit_node_id);
             }
         }
         current = current->next;
@@ -382,6 +430,29 @@ int verifySegmentTree(AncestrySegment *root, int nSites) {
     return 1;
 }
 
+// Check if all segments in the tree have been recorded
+int areAllSegmentsRecorded(AncestrySegment *root) {
+    if (!root) return 1;  // Empty tree is considered fully recorded
+    
+    AncestrySegment *current = root;
+    while (current) {
+        if (!current->isRecorded) {
+            return 0;  // Found an unrecorded segment
+        }
+        current = current->next;
+    }
+    
+    return 1;  // All segments are recorded
+}
+
+// Mark a segment as recorded
+void markSegmentRecorded(AncestrySegment *seg) {
+    if (seg && seg->refCount == 1) {
+        // Only mark as recorded if this segment is not shared
+        seg->isRecorded = 1;
+    }
+}
+
 // Split ancestry tree for gene conversion
 // Returns converted tract and everything else
 gcSplitResult splitSegmentTreeForGeneConversion(AncestrySegment *root, int startPos, int endPos) {
@@ -402,17 +473,17 @@ gcSplitResult splitSegmentTreeForGeneConversion(AncestrySegment *root, int start
         if (current->end <= startPos || current->start >= endPos) {
             // Segment is completely outside conversion tract
             addSegmentToResult(&result.unconverted, &unconvTail, 
-                             current->start, current->end, current->count);
+                             current->start, current->end, current->count, current->tskit_node_id);
         } else if (current->start >= startPos && current->end <= endPos) {
             // Segment is completely inside conversion tract
             addSegmentToResult(&result.converted, &convTail,
-                             current->start, current->end, current->count);
+                             current->start, current->end, current->count, current->tskit_node_id);
         } else {
             // Segment overlaps with conversion tract boundary
             if (current->start < startPos) {
                 // Part before conversion tract
                 addSegmentToResult(&result.unconverted, &unconvTail,
-                                 current->start, startPos, current->count);
+                                 current->start, startPos, current->count, current->tskit_node_id);
             }
             
             // Part inside conversion tract
@@ -420,13 +491,13 @@ gcSplitResult splitSegmentTreeForGeneConversion(AncestrySegment *root, int start
             int convEnd = (current->end < endPos) ? current->end : endPos;
             if (convStart < convEnd) {
                 addSegmentToResult(&result.converted, &convTail,
-                                 convStart, convEnd, current->count);
+                                 convStart, convEnd, current->count, current->tskit_node_id);
             }
             
             if (current->end > endPos) {
                 // Part after conversion tract
                 addSegmentToResult(&result.unconverted, &unconvTail,
-                                 endPos, current->end, current->count);
+                                 endPos, current->end, current->count, current->tskit_node_id);
             }
         }
         current = current->next;

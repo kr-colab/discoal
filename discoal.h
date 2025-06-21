@@ -8,18 +8,20 @@
 #include "ancestrySegment.h"
 #include "activeSegment.h"
 
+#include <tskit.h>
+
 /******************************************************************************/
 /* Global constants and limits                                                */
 /*                                                                            */
 
 /* Still needed for various static arrays and limits */
 #define MAXSITES 100000000   /* Maximum number of sites - used for input validation */
-#define MAXMUTS 40000        /* Maximum mutations for output formatting */
+#define MAXMUTS 400000        /* Maximum mutations for output formatting */
 #define MAXTIME 100000.0     /* Sentinel value representing "infinite" time */
 #define MAXPOPS 121          /* Maximum number of populations */
 
 /* No longer needed after dynamic memory optimizations:
-   - MAXNODES: nodes/allNodes arrays are now dynamic
+   - MAXNODES: nodes array is now dynamic
    - SMALLCHUNKS: was never used  
    - MAXBREAKS: breakPoints array is now dynamic
    - MAXLEAFS: was never used
@@ -41,17 +43,32 @@
 
 typedef struct rootedNode
 {
+	// Essential pointers for tree structure
 	struct rootedNode *leftParent, *rightParent, *leftChild, *rightChild;
-	double time, branchLength, blProb;
-	double *muts;
-	int nancSites, lLim, rLim;  // Still needed, calculated from ancestry tree
-	int id, mutationNumber, population, sweepPopn;
-	int mutsCapacity;  // Track allocated capacity for muts
-	int ndes[2],*leafs;
-	double times[2];
+	
+	// Essential time and branch information
+	double time, branchLength;
+	
+	// Ancestry information
+	int nancSites, lLim, rLim;  // Calculated from ancestry tree
+	int id;
+	int16_t population;      // MAXPOPS is 121, so 16-bit is sufficient
+	int16_t sweepPopn;       // MAXPOPS is 121, so 16-bit is sufficient
+	
 	// Ancestry segment tree for tracking which sites this node is ancestral to
 	AncestrySegment *ancestryRoot;
-
+	
+	// Tskit node ID for tree sequence recording
+	tsk_id_t tskit_node_id;
+	
+	// Node state tracking for safe memory management
+	unsigned char parentsRecorded;  // Bit flags: left parent (bit 0), right parent (bit 1)
+	unsigned char isFullyRecorded;  // 1 when all genealogical info is in tskit
+	unsigned char inActiveSet;      // 1 if still in nodes[0..alleleNumber-1]
+	unsigned char carriesSweepMutation;  // 1 if this node carries the beneficial mutation
+	
+	// Population list tracking for O(1) node selection
+	int popListIndex;        // Index in population's node array (-1 if not in list)
 }
 rootedNode;
 
@@ -71,6 +88,16 @@ typedef struct event
 }
 event;
 
+/******************************************************************************/
+/* Population node list structure for O(1) node selection                     */
+/******************************************************************************/
+
+typedef struct {
+    rootedNode **nodes;      // Array of node pointers
+    int count;              // Number of active nodes in this population
+    int capacity;           // Current array capacity
+} PopulationNodeList;
+
 
 
 
@@ -82,8 +109,14 @@ event;
 /* ancestral dna. There are also parameters controlling the coalescent        */
 /* process                                                                    */
 
-rootedNode  **nodes, **allNodes;
-int nodesCapacity, allNodesCapacity;
+// Track only active nodes and sample node IDs (tskit mode)
+rootedNode  **nodes;
+int nodesCapacity;
+// Array to track tskit IDs for sample nodes
+tsk_id_t *sample_node_ids;
+int sample_node_count;
+int sample_node_capacity;
+
 
 // int activeMaterial[MAXSITES];  // DEPRECATED - replaced by segment structure
 ActiveMaterial activeMaterialSegments;  // New segment-based structure
@@ -100,6 +133,9 @@ double mig[MAXPOPS];
 
 int sampleS, sampleFD, sampleHaps, rejectCount, sampleRMin, offset, winNumber, \
 	popnSizes[MAXPOPS],sweepPopnSizes[MAXPOPS];
+
+// Population node lists for O(1) node selection
+PopulationNodeList popLists[MAXPOPS];
 
 
 const char *mFile;
@@ -132,6 +168,9 @@ long int  trajectoryCapacity;
 float *currentTrajectory;
 long int currentTrajectoryStep, totalTrajectorySteps;
 
+// Node memory management statistics
+int freedNodeCount;
+
 // Memory-mapped trajectory support
 char trajectoryFilename[256];  // Current trajectory file
 int trajectoryFd;              // File descriptor for mmap
@@ -140,20 +179,22 @@ size_t trajectoryFileSize;     // Size of mmap'd region
 struct event *events;          /* Dynamic array of demographic events */
 int eventsCapacity;            /* Allocated capacity for events array */
 
-int lSpot, rSpot, condRecMode;
-int condRecMet;
 int activeSweepFlag;
 int recurSweepMode;
 int partialSweepMode,softSweepMode;
 double partialSweepFinalFreq;
 
 double deltaTMod;
-int treeOutputMode;
 
 int ancSampleSize, ancPopID, ancSampleFlag;
 int ancSampleTime;
 
 int hidePartialSNP;
+
+// Tree sequence recording
+int tskitOutputMode;
+char tskitOutputFilename[1024];
+int minimalTreeSeq;  // Flag for minimal tree sequence recording (coalescence only)
 
 
 #endif
