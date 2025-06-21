@@ -1,0 +1,11 @@
+name: discoal_dev
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - msprime
+  - pip
+  - pip:
+      - sphinx>=8
+      - sphinx-rtd-theme
+prefix: /home/adkern/miniforge3/envs/discoal_dev

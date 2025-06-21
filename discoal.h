@@ -4,22 +4,30 @@
 #ifndef __DISCOAL_GLOBALS__
 #define __DISCOAL_GLOBALS__
 
-/******************************************************************************/
-/* here are just some defines to allocate initial global arrays and stuff     */
-/* like that                                                                  */
+#include <stdint.h>
+#include "ancestrySegment.h"
+#include "activeSegment.h"
 
-#define MAXNODES 20000000
-#define MAXSITES 220020
-#define SMALLCHUNKS 100000
-#define MAXBREAKS 1000000
-#define MAXMUTS 40000
-#define MAXTIME 100000.0
-#define MAXPOPS 121
+/******************************************************************************/
+/* Global constants and limits                                                */
+/*                                                                            */
+
+/* Still needed for various static arrays and limits */
+#define MAXSITES 100000000   /* Maximum number of sites - used for input validation */
+#define MAXMUTS 40000        /* Maximum mutations for output formatting */
+#define MAXTIME 100000.0     /* Sentinel value representing "infinite" time */
+#define MAXPOPS 121          /* Maximum number of populations */
+
+/* No longer needed after dynamic memory optimizations:
+   - MAXNODES: nodes/allNodes arrays are now dynamic
+   - SMALLCHUNKS: was never used  
+   - MAXBREAKS: breakPoints array is now dynamic
+   - MAXLEAFS: was never used
+   - MAXEVENTS: events array is now dynamic
+*/
 
 #define MAX(a, b)  (((a) > (b)) ? (a) : (b))
 #define MIN(a, b)  (((a) > (b)) ? (b) : (a))
-#define MAXEVENTS 250
-#define MAXLEAFS 200
 
 /******************************************************************************/
 
@@ -35,16 +43,14 @@ typedef struct rootedNode
 {
 	struct rootedNode *leftParent, *rightParent, *leftChild, *rightChild;
 	double time, branchLength, blProb;
-	double muts[MAXMUTS];
-	#ifdef BIG
-	uint16_t ancSites[MAXSITES];
-	#else
-	uint8_t ancSites[MAXSITES];
-	#endif
-	int nancSites, lLim, rLim;
+	double *muts;
+	int nancSites, lLim, rLim;  // Still needed, calculated from ancestry tree
 	int id, mutationNumber, population, sweepPopn;
+	int mutsCapacity;  // Track allocated capacity for muts
 	int ndes[2],*leafs;
 	double times[2];
+	// Ancestry segment tree for tracking which sites this node is ancestral to
+	AncestrySegment *ancestryRoot;
 
 }
 rootedNode;
@@ -76,14 +82,16 @@ event;
 /* ancestral dna. There are also parameters controlling the coalescent        */
 /* process                                                                    */
 
-rootedNode  *nodes[MAXNODES], *allNodes[MAXNODES];
+rootedNode  **nodes, **allNodes;
+int nodesCapacity, allNodesCapacity;
 
-int activeMaterial[MAXSITES];
+// int activeMaterial[MAXSITES];  // DEPRECATED - replaced by segment structure
+ActiveMaterial activeMaterialSegments;  // New segment-based structure
 
 int sampleSize, sampleNumber, breakNumber, segSites,alleleNumber, \
 	totNodeNumber, totChunkNumber, npops, eventFlag, nSites, activeSites,\
 	mask, finiteOutputFlag, outputStyle, effectiveSampleSize, runMode, gcMean,\
-	breakPoints[MAXBREAKS],sampleSizes[MAXPOPS];
+	*breakPoints, breakPointsCapacity, sampleSizes[MAXPOPS];
 
 double  leftRho, rho, theta, tDiv, alpha, sweepSite, tau, my_gamma, \
  	lambda, timeRecovery,bottleNeckRatio, bottleNeckDuration, \
@@ -116,12 +124,21 @@ double recurSweepRate;
 
 int EFFECTIVE_POPN_SIZE;
 
+// Trajectory support
 #define TRAJSTEPSTART 500000000
+#define TRAJ_GROWTH_FACTOR 2
 long int  maxTrajSteps;
+long int  trajectoryCapacity;
 float *currentTrajectory;
 long int currentTrajectoryStep, totalTrajectorySteps;
 
-struct event events[MAXEVENTS];
+// Memory-mapped trajectory support
+char trajectoryFilename[256];  // Current trajectory file
+int trajectoryFd;              // File descriptor for mmap
+size_t trajectoryFileSize;     // Size of mmap'd region
+
+struct event *events;          /* Dynamic array of demographic events */
+int eventsCapacity;            /* Allocated capacity for events array */
 
 int lSpot, rSpot, condRecMode;
 int condRecMet;

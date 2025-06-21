@@ -1,18 +1,73 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <stdint.h>
 #include <assert.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include "ancestryVerify.h"
+#include "ancestryWrapper.h"
+#include "activeSegment.h"
+#include <time.h>
 #include "discoal.h"
 #include "discoalFunctions.h"
 #include "ranlib.h"
 #include "alleleTraj.h"
 
 
+// Initial capacity for breakPoints array
+#define INITIAL_BREAKPOINTS_CAPACITY 1000
+
+void initializeBreakPoints() {
+	// Clean up any existing allocation first
+	if (breakPoints != NULL) {
+		free(breakPoints);
+		breakPoints = NULL;
+	}
+	
+	breakPointsCapacity = INITIAL_BREAKPOINTS_CAPACITY;
+	breakPoints = malloc(sizeof(int) * breakPointsCapacity);
+	if (breakPoints == NULL) {
+		fprintf(stderr, "Error: Failed to allocate memory for breakPoints array\n");
+		exit(1);
+	}
+	breakPoints[0] = 666; // Initialize with original marker value
+	breakNumber = 0;
+}
+
+void ensureBreakPointsCapacity() {
+	if (breakNumber >= breakPointsCapacity) {
+		int newCapacity = breakPointsCapacity * 2;
+		int *newBreakPoints = realloc(breakPoints, sizeof(int) * newCapacity);
+		if (newBreakPoints == NULL) {
+			fprintf(stderr, "Error: Failed to reallocate memory for breakPoints array (capacity: %d -> %d)\n", 
+					breakPointsCapacity, newCapacity);
+			exit(1);
+		}
+		breakPoints = newBreakPoints;
+		breakPointsCapacity = newCapacity;
+		// Optional: Print growth information for debugging
+		// fprintf(stderr, "Debug: Grew breakPoints capacity to %d\n", breakPointsCapacity);
+	}
+}
+
+void cleanupBreakPoints() {
+	if (breakPoints != NULL) {
+		free(breakPoints);
+		breakPoints = NULL;
+		breakPointsCapacity = 0;
+		breakNumber = 0;
+	}
+}
+
+void addBreakPoint(int bp) {
+	ensureBreakPointsCapacity();
+	breakPoints[breakNumber] = bp;
+	breakNumber += 1;
+}
 
 void initialize(){
 	int i,j,p, count=0;
@@ -22,7 +77,8 @@ void initialize(){
 	
 	/* Initialize the arrays */
 	totChunkNumber = 0;
-	breakPoints[0] = 666;
+	initializeBreakPoints();
+	initializeNodeArrays();
 	for(p=0;p<npops;p++){
 		popnSizes[p]=sampleSizes[p];
 		for( i = 0; i < sampleSizes[p]; i++){
@@ -30,7 +86,8 @@ void initialize(){
 			nodes[count]->nancSites = nSites;
 			nodes[count]->lLim=0;
 			nodes[count]->rLim=nSites-1;
-			for(j=0;j<nSites;j++)nodes[count]->ancSites[j]=1;
+			// Initialize ancestry segment tree for leaf node
+			nodes[count]->ancestryRoot = newSegment(0, nSites, NULL, NULL);
 
 			if(p>0)nodes[count]->sweepPopn = 0;
 			nodes[count]->id=leafID++;
@@ -41,8 +98,8 @@ void initialize(){
 
 
 	breakNumber = 0;
-	//setup active material array
-	for(i=0;i<nSites;i++) activeMaterial[i] = 1;
+	// Initialize segment-based active material (all sites start as active)
+	initializeActiveMaterial(&activeMaterialSegments, nSites);
 	
 	//set initial counts
 	alleleNumber = sampleSize;
@@ -131,7 +188,8 @@ void initializeTwoSite(){
 	int leafID=0;
 	/* initialize the arrays */
 	totChunkNumber = 0;
-	breakPoints[0] = 666;
+	initializeBreakPoints();
+	initializeNodeArrays();
 	for(p=0;p<npops;p++){
 		popnSizes[p]=sampleSizes[p];
 		for( i = 0; i < sampleSizes[p]; i++){
@@ -139,7 +197,8 @@ void initializeTwoSite(){
 			nodes[count]->nancSites = nSites;
 			nodes[count]->lLim=0;
 			nodes[count]->rLim=nSites-1;
-			for(j=0;j<nSites;j++)nodes[count]->ancSites[j]=1;
+			// Initialize ancestry segment tree for leaf node
+			nodes[count]->ancestryRoot = newSegment(0, nSites, NULL, NULL);
 			if(p>0)nodes[count]->sweepPopn = 0;
 			nodes[count]->id=leafID++;
 			//do stuff for leafs containers
@@ -151,8 +210,8 @@ void initializeTwoSite(){
 	}
 	
 	breakNumber = 0;
-	//setup active material array
-	for(i=0;i<nSites;i++) activeMaterial[i] = 1;
+	// Initialize segment-based active material (all sites start as active)
+	initializeActiveMaterial(&activeMaterialSegments, nSites);
 	
 	//set initial counts
 	alleleNumber = sampleSize;
@@ -226,8 +285,14 @@ rootedNode *newRootedNode(double cTime, int popn) {
 	temp->mutationNumber = 0;
 	temp->population = popn;
 	temp->sweepPopn = -1;
+	
+	// Initialize muts array dynamically
+	initializeMuts(temp, 10);  // Start small, grow as needed
 //	temp->leafs = malloc(sizeof(int) * sampleSize);
 //	for(i=0;i<nSites;i++)temp->ancSites[i]=1;
+
+	// Initialize ancestry segment tree to NULL (will be set during initialization)
+	temp->ancestryRoot = NULL;
 
 	return temp;
 }
@@ -304,15 +369,20 @@ void coalesceAtTimePopn(double cTime, int popn){
 	temp->nancSites = 0;
 	temp->lLim = nSites;
 	temp->rLim = 0;
-	for(i=0;i<nSites;i++){
-		temp->ancSites[i] = lChild->ancSites[i] + rChild->ancSites[i];
-		if(temp->ancSites[i] > 0 && temp->ancSites[i] < sampleSize){
-			temp->nancSites += 1;
-			temp->rLim=i;
-			temp->lLim=MIN(temp->lLim,i);
-			
-		}
+	// Merge ancestry segment trees
+	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
+	
+	// Update stats from tree when in tree-only mode
+	updateAncestryStatsFromTree(temp);
+	
+	// Verify consistency in debug mode
+	#ifdef DEBUG_ANCESTRY
+	if (!verifyAncestryConsistency(temp, nSites)) {
+		fprintf(stderr, "Ancestry verification failed after coalescence\n");
+		exit(1);
 	}
+	#endif
+	
 	//printNode(temp);
 	//printf("coal-> lChild: %u rChild: %u parent: %u time: %f\n",lChild,rChild,temp,cTime);
 	addNode(temp);
@@ -344,15 +414,8 @@ void coalesceAtTimePopnTrackLeafs(double cTime, int popn){
 	temp->nancSites = 0;
 	temp->lLim = nSites;
 	temp->rLim = 0;
-	for(i=0;i<nSites;i++){
-		temp->ancSites[i] = lChild->ancSites[i] + rChild->ancSites[i];
-		if(temp->ancSites[i] > 0 && temp->ancSites[i] < sampleSize){
-			temp->nancSites += 1;
-			temp->rLim=i;
-			temp->lLim=MIN(temp->lLim,i);
-			
-		}
-	}
+	// Merge ancestry segment trees
+	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
 	//deal with leafs
 	for(i=0;i<sampleSize;i++){
 		temp->leafs[i] =  lChild->leafs[i] + rChild->leafs[i];
@@ -366,22 +429,61 @@ void coalesceAtTimePopnTrackLeafs(double cTime, int popn){
 }*/
 
 
+// Helper function to update nancSites, lLim, rLim from ancestry tree
+void updateAncestryStatsFromTree(rootedNode *node) {
+	if (!node || !node->ancestryRoot) return;
+	
+	node->nancSites = 0;
+	node->lLim = nSites;
+	node->rLim = 0;
+	
+	// Walk the segment list instead of querying every site
+	AncestrySegment *seg = node->ancestryRoot;
+	while (seg) {
+		// Check if this segment is polymorphic (has ancestry but not fixed)
+		if (seg->count > 0 && seg->count < sampleSize) {
+			// Add all sites in this polymorphic segment
+			node->nancSites += (seg->end - seg->start);
+			
+			// Update left boundary
+			if (seg->start < node->lLim) {
+				node->lLim = seg->start;
+			}
+			// Update right boundary (end is exclusive, so last site is end-1)
+			if (seg->end - 1 > node->rLim) {
+				node->rLim = seg->end - 1;
+			}
+		}
+		seg = seg->next;
+	}
+}
+
 /*updateActiveMaterial- does bookkeeping on the material that has found it's MRCA-- added for efficiency */
 void updateActiveMaterial(rootedNode *aNode){
-	int i;
-	activeSites = 0;
-	for(i=0;i<nSites;i++){
-		if(aNode->ancSites[i]==sampleSize){
-			activeMaterial[i]=0;
-		}
-		//set global activeSites
-		activeSites+=activeMaterial[i];	
+	// Use segment-based approach to update active material
+	// This removes regions where the node has ancestry from all samples
+	updateActiveMaterialFromAncestry(&activeMaterialSegments, aNode->ancestryRoot, 
+	                                sampleSize, nSites);
+	
+	// Update global active site count
+	activeSites = getActiveSiteCount(&activeMaterialSegments);
+	
+	#ifdef DEBUG_ACTIVE_MATERIAL
+	fprintf(stderr, "DEBUG updateActiveMaterial: node at time %f, %d sites still active\n", 
+	        aNode->time, activeSites);
+	printActiveSegments(&activeMaterialSegments);
+	#endif
+	
+	#ifdef DEBUG_TREE_ONLY
+	if (activeSites == 0) {
+		fprintf(stderr, "DEBUG: All sites have found MRCA\n");
 	}
+	#endif
 }
 
 /* asks whether a potential breakpoint is in material that hasn't found MRCA yet*/
 int isActive(int site){
-	return(activeMaterial[site]);
+	return isActiveSite(&activeMaterialSegments, site);
 }
 
 int siteBetweenChunks(rootedNode *aNode, int xOverSite){
@@ -398,25 +500,19 @@ int siteBetweenChunks(rootedNode *aNode, int xOverSite){
 int isAncestralHere(rootedNode *aNode, float site){
 	int bp;
 	bp = floor(site * nSites);
-	if(aNode->ancSites[bp] > 0 && aNode->ancSites[bp] < sampleSize)
-		return(1);
-	else
-		return(0);
+	return isPolymorphicAt(aNode, bp, sampleSize);
 }
 
 int hasMaterialHere(rootedNode *aNode, float site){
 	int bp;
 	bp = floor(site * nSites);
-	if(aNode->ancSites[bp] > 0)
-		return(1);
-	else
-		return(0);
+	return hasAncestryAt(aNode, bp);
 }
 
 int nAncestorsHere(rootedNode *aNode, float site){
 	int bp;
 	bp = floor(site * nSites);
-	return(aNode->ancSites[bp]);
+	return getAncestryAt(aNode, bp);
 }
 
 int isLeaf(rootedNode *aNode){
@@ -448,6 +544,11 @@ int recombineAtTimePopn(double cTime, int popn){
 //	printf("there xover: %d t1: %d t2: %d\n",xOver,siteBetweenChunks(aNode, xOver),isActive(xOver));
 		
 	if (siteBetweenChunks(aNode, xOver) == 1 &&  isActive(xOver) == 1  ){
+		// Early exit if no ancestral material
+		if(aNode->nancSites == 0 || aNode->lLim > aNode->rLim) {
+			return xOver;
+		}
+		
 		removeNode(aNode); 
 		lParent = newRootedNode(cTime,popn);
 		rParent = newRootedNode(cTime,popn);
@@ -458,42 +559,19 @@ int recombineAtTimePopn(double cTime, int popn){
 		rParent->leftChild = aNode;
 		lParent->population = aNode->population;
 		rParent->population = aNode->population;
-		lParent->nancSites=0;
-		rParent->nancSites=0;
-		lParent->lLim= nSites;
-		lParent->rLim=0;
-		rParent->lLim = nSites;
-		rParent->rLim=0;
-		for(i=0;i<nSites;i++){
-			if(i<xOver){
-				lParent->ancSites[i] = aNode->ancSites[i];
-				rParent->ancSites[i] = 0;
-			}
-			else{
-				lParent->ancSites[i] = 0;
-				rParent->ancSites[i] = aNode->ancSites[i];
-			}
-
-			if(lParent->ancSites[i] > 0 && lParent->ancSites[i] < sampleSize){
-				lParent->nancSites += 1;
-				lParent->rLim=i;
-				lParent->lLim=MIN(lParent->lLim,i);
-			}
-
-			if(rParent->ancSites[i] > 0 && rParent->ancSites[i] < sampleSize){
-				rParent->nancSites += 1;
-				rParent->rLim=i;
-				rParent->lLim=MIN(rParent->lLim,i);
-			}
-		}
-	//	if(lParent->lLim < lParent->rLim)
-			addNode(lParent);
-	//	else
-	//		free(lParent);
-	//	if(rParent->lLim < rParent->rLim)
-			addNode(rParent);
-	//	else
-	//		free(rParent)
+		
+		
+		// Split ancestry segment tree at crossover point
+		lParent->ancestryRoot = splitLeft(aNode->ancestryRoot, xOver);
+		rParent->ancestryRoot = splitRight(aNode->ancestryRoot, xOver);
+		
+		// Update stats from tree when in tree-only mode
+		updateAncestryStatsFromTree(lParent);
+		updateAncestryStatsFromTree(rParent);
+		
+		addNode(lParent);
+		addNode(rParent);
+		
 	//	printf("reco-> lParent: %u rParent:%u child: %u time:%f xover:%d\n",lParent,rParent,aNode,cTime,xOver);
 		//printNode(aNode);
 		return xOver;
@@ -533,28 +611,24 @@ void geneConversionAtTimePopn(double cTime, int popn){
 		lParent->rLim=0;
 		rParent->lLim = nSites;
 		rParent->rLim=0;
-		for(i=0;i<nSites;i++){
-			if(i<xOver || i >= xOver+tractL){
-				lParent->ancSites[i] = 0;
-				rParent->ancSites[i] = aNode->ancSites[i];
-			}
-			else{
-				lParent->ancSites[i] = aNode->ancSites[i];
-				rParent->ancSites[i] = 0;
-			}
-
-			if(lParent->ancSites[i] > 0 && lParent->ancSites[i] < sampleSize){
-				lParent->nancSites += 1;
-				lParent->rLim=i;
-				lParent->lLim=MIN(lParent->lLim,i);
-			}
-
-			if(rParent->ancSites[i] > 0 && rParent->ancSites[i] < sampleSize){
-				rParent->nancSites += 1;
-				rParent->rLim=i;
-				rParent->lLim=MIN(rParent->lLim,i);
-			}
+		
+		
+		// For gene conversion, handle the ancestry segments
+		// Gene conversion creates a tract where one parent gets a segment and the other gets the rest
+		if (aNode->ancestryRoot) {
+			// Split the tree for gene conversion tract
+			gcSplitResult gcSplit = splitSegmentTreeForGeneConversion(aNode->ancestryRoot, xOver, xOver + tractL);
+			lParent->ancestryRoot = gcSplit.converted;     // Gets the converted tract
+			rParent->ancestryRoot = gcSplit.unconverted;   // Gets everything else
+		} else {
+			lParent->ancestryRoot = NULL;
+			rParent->ancestryRoot = NULL;
 		}
+		
+		// Update stats from the ancestry trees
+		updateAncestryStatsFromTree(lParent);
+		updateAncestryStatsFromTree(rParent);
+		
 		addNode(lParent);
 		addNode(rParent);
 	}
@@ -598,8 +672,7 @@ double neutralPhase(int *bpArray,double startTime, double endTime, double sizeRa
 			//	printf("R %f active: %f\n",cTime, activeChromosomePercent());
 				bp = recombineAtTimePopn(cTime,0);
 				if (bp != 666){
-					bpArray[breakNumber] = bp;
-					breakNumber += 1; 
+					addBreakPoint(bp);
 				}
 			}
 			else{
@@ -614,8 +687,7 @@ double neutralPhase(int *bpArray,double startTime, double endTime, double sizeRa
 						if(r < ((rRate[0]+gcRate[0]+cRate[0]+rRate[1]) / totRate)){
 							bp = recombineAtTimePopn(cTime,1);
 							if (bp != 666){
-								bpArray[breakNumber] = bp;
-								breakNumber += 1; 
+								addBreakPoint(bp);
 							}
 						}
 						else{
@@ -672,8 +744,7 @@ double neutralPhaseMig(int *bpArray,double startTime, double endTime, double siz
 			//	printf("R %f active: %f\n",cTime, activeChromosomePercent());
 				bp = recombineAtTimePopn(cTime,0);
 				if (bp != 666){
-					bpArray[breakNumber] = bp;
-					breakNumber += 1; 
+					addBreakPoint(bp);
 				}
 			}
 			else{
@@ -684,8 +755,7 @@ double neutralPhaseMig(int *bpArray,double startTime, double endTime, double siz
 					if(r < ((rRate[0]+cRate[0]+rRate[1]) / totRate)){
 						bp = recombineAtTimePopn(cTime,1);
 						if (bp != 666){
-							bpArray[breakNumber] = bp;
-							breakNumber += 1; 
+							addBreakPoint(bp);
 						}
 					}
 					else{
@@ -744,8 +814,7 @@ double neutralPhaseMigExclude(int *bpArray,double startTime, double endTime, dou
 			//	printf("R %f active: %f\n",cTime, activeChromosomePercent());
 				bp = recombineAtTimePopn(cTime,0);
 				if (bp != 666){
-					bpArray[breakNumber] = bp;
-					breakNumber += 1; 
+					addBreakPoint(bp);
 				}
 			}
 			else{
@@ -756,8 +825,7 @@ double neutralPhaseMigExclude(int *bpArray,double startTime, double endTime, dou
 					if(r < ((rRate[0]+cRate[0]+rRate[1]) / totRate)){
 						bp = recombineAtTimePopn(cTime,1);
 						if (bp != 666){
-							bpArray[breakNumber] = bp;
-							breakNumber += 1; 
+							addBreakPoint(bp);
 						}
 					}
 					else{
@@ -837,8 +905,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 				while(eSum/totRRate < r2) eSum += rRate[++i];
 				bp = recombineAtTimePopn(cTime,i);
 				if (bp != 666){
-					bpArray[breakNumber] = bp;
-					breakNumber += 1; 
+					addBreakPoint(bp);
 				}
 			}
 			else{
@@ -892,6 +959,54 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 	return(cTime);
 }
 
+void ensureTrajectoryCapacity(long int requiredSize) {
+	// This function is now deprecated - we use file-based trajectories
+	// Keeping it for compatibility but it just checks size limits
+	if (requiredSize >= 500000000) {  // Match legacy limit
+		fprintf(stderr, "trajectory too bigly. step= %ld. killing myself gently\n", requiredSize);
+		exit(1);
+	}
+}
+
+
+// Function to mmap an accepted trajectory file
+void mmapAcceptedTrajectory(const char *filename, long int numSteps) {
+	// Clean up any previous trajectory
+	if (trajectoryFd != -1) {
+		if (currentTrajectory && currentTrajectory != MAP_FAILED) {
+			munmap(currentTrajectory, trajectoryFileSize);
+		}
+		close(trajectoryFd);
+		trajectoryFd = -1;
+	}
+	
+	// Open the trajectory file
+	trajectoryFd = open(filename, O_RDONLY);
+	if (trajectoryFd == -1) {
+		perror("Failed to open trajectory file for mmap");
+		exit(1);
+	}
+	
+	// Calculate file size
+	trajectoryFileSize = numSteps * sizeof(float);
+	
+	// Memory map the file
+	currentTrajectory = (float *)mmap(NULL, trajectoryFileSize, PROT_READ, 
+	                                  MAP_PRIVATE, trajectoryFd, 0);
+	if (currentTrajectory == MAP_FAILED) {
+		perror("Failed to mmap trajectory file");
+		close(trajectoryFd);
+		exit(1);
+	}
+}
+
+// Function to clean up rejected trajectory files
+void cleanupRejectedTrajectory(const char *filename) {
+	if (filename && filename[0] != '\0') {
+		unlink(filename);
+	}
+}
+
 /*proposeTrajectory-- this function creates a sweep trajectory and deals with
 complications like changing population size, or soft sweeps, etc 
 returns the acceptance probability of the trajectory */
@@ -904,6 +1019,21 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 	int i, insweepphase;
 	long int j;
 	float x;
+	
+	// For sweep simulations, write directly to a temporary file
+	char tempFilename[256];
+	snprintf(tempFilename, sizeof(tempFilename), "/tmp/discoal_traj_%d_%ld_%d.tmp", 
+	         getpid(), time(NULL), rand());
+	
+	FILE *trajFile = fopen(tempFilename, "wb");
+	if (!trajFile) {
+		perror("Failed to create trajectory file");
+		exit(1);
+	}
+	
+	// Use buffered writes for efficiency
+	float writeBuffer[1024];
+	int bufferPos = 0;
 	
 	tIncOrig = 1.0 / (deltaTMod * EFFECTIVE_POPN_SIZE);
 	j=0;
@@ -939,31 +1069,57 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 					x = detSweepFreq(ttau, alpha * currentSizeRatio);
 					break;
 					case 's':
-					x = 1.0 - genicSelectionStochasticForwards(tInc, (1.0 - x), alpha * currentSizeRatio);
+					x = 1.0 - genicSelectionStochasticForwardsOptimized(tInc, (1.0 - x), alpha * currentSizeRatio);
 					break;
 					case 'N':
-					x = neutralStochastic(tInc, x);
+					x = neutralStochasticOptimized(tInc, x);
 					break;
 				}
 			}
 			else{
 				insweepphase = 0;
 				tInc = 1.0 / (deltaTMod * N );
-				x = neutralStochastic(tInc, x);
+				x = neutralStochasticOptimized(tInc, x);
 			}
 			//printf("j: %ld x: %f\n",j,x);
-			if(j>=maxTrajSteps){
-				printf("trajectory too bigly. step= %ld freq = %f. killing myself gently\n",j, x);
+			
+			// Check trajectory size to prevent runaway
+			if (j >= 500000000) {  // Match legacy limit
+				fprintf(stderr, "trajectory too bigly. step= %ld. killing myself gently\n", j);
+				fclose(trajFile);
+				unlink(tempFilename);
 				exit(1);
 			}
-			currentTrajectory[j++]=x;
+			
+			// Write to buffer
+			writeBuffer[bufferPos++] = x;
+			if (bufferPos >= 1024) {
+				// Flush buffer to file
+				fwrite(writeBuffer, sizeof(float), bufferPos, trajFile);
+				bufferPos = 0;
+			}
+			j++;
 		}
 	}
-	currentTrajectoryStep=0;
-	totalTrajectorySteps=j;
+	
+	// Flush any remaining data in buffer
+	if (bufferPos > 0) {
+		fwrite(writeBuffer, sizeof(float), bufferPos, trajFile);
+	}
+	fclose(trajFile);
+	
+	// Store the filename and trajectory length globally
+	strncpy(trajectoryFilename, tempFilename, sizeof(trajectoryFilename) - 1);
+	currentTrajectoryStep = 0;
+	totalTrajectorySteps = j;
+	
+	// Note: We don't mmap here because this function may be called multiple times
+	// during rejection sampling. The accepted trajectory will be mmap'd later.
+	
 	return(currentSizeRatio/Nmax);
 	
 }
+
 
 /*sweepPhaseEventsGeneralPopNumber-- this does the compressed time sweep thing. 
   generalized to account for popnSize changes returns the time after the sweep.
@@ -1048,12 +1204,12 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 
 					break;
 					case 's':
-					x = 1.0 - genicSelectionStochasticForwards(tInc, (1.0 - x), alpha * sizeRatio[0]);
+					x = 1.0 - genicSelectionStochasticForwardsOptimized(tInc, (1.0 - x), alpha * sizeRatio[0]);
 				//	printf("x here:%f ttau: %f alpha*sizeRatio: %f\n",x,ttau,alpha*sizeRatio[0]);
 					break;
 					case 'N':
 				//	printf("here\n");
-					x = neutralStochastic(tInc, x);
+					x = neutralStochasticOptimized(tInc, x);
 					break;
 				}
 				//	printf("x:%g ttau: %f\n",x,ttau );
@@ -1127,8 +1283,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 					if(r < sum / sweepPopTotRate){
 						bp = recombineAtTimePopnSweep(cTime + (ttau),0, 0, sweepSite, (1.0-x));
 						if(bp != 666){
-							bpArray[breakNumber] = bp;
-							breakNumber += 1; 
+							addBreakPoint(bp);
 							if(bp >= lSpot && bp < rSpot){
 								condRecMet = 1;
 							}
@@ -1140,13 +1295,11 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 							//recombination in B and bookkeeping
 							bp = recombineAtTimePopnSweep(cTime + (ttau),0, 1, sweepSite, x);
 							if(bp != 666){
-								bpArray[breakNumber] = bp;
-								breakNumber += 1; 
+								addBreakPoint(bp);
 								if(bp >= lSpot && bp < rSpot){
 									condRecMet = 1;
 								}
 							}
-
 						}
 						else{
 							sum+= pGCB;
@@ -1194,8 +1347,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 				while(eSum/totRRate < r2) eSum += rRate[++i];
 				bp = recombineAtTimePopn(cTime,i);
 				if (bp != 666){
-					bpArray[breakNumber] = bp;
-					breakNumber += 1; 
+					addBreakPoint(bp);
 				}
 			}
 			else{
@@ -1309,7 +1461,12 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 		while(eventProb > eventRand && x > (1.0 / (2*N)) && (cTime+ttau) < endTime ){
 			ttau += tIncOrig;
 
-			x = currentTrajectory[currentTrajectoryStep++];
+			if (currentTrajectoryStep >= totalTrajectorySteps) {
+			fprintf(stderr, "Error: trajectory step %ld exceeds total steps %ld\n", 
+					currentTrajectoryStep, totalTrajectorySteps);
+			exit(1);
+		}
+		x = currentTrajectory[currentTrajectoryStep++];
 
 			//calculate event probs
 			//first 4 events are probs of events in population 0
@@ -1375,8 +1532,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 					if(r < sum / sweepPopTotRate){
 						bp = recombineAtTimePopnSweep(cTime + (ttau),0, 0, sweepSite, (1.0-x));
 						if(bp != 666){
-							bpArray[breakNumber] = bp;
-							breakNumber += 1; 
+							addBreakPoint(bp);
 							if(bp >= lSpot && bp < rSpot){
 								condRecMet = 1;
 							}
@@ -1388,13 +1544,11 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 							//recombination in B and bookkeeping
 							bp = recombineAtTimePopnSweep(cTime + (ttau),0, 1, sweepSite, x);
 							if(bp != 666){
-								bpArray[breakNumber] = bp;
-								breakNumber += 1; 
+								addBreakPoint(bp);
 								if(bp >= lSpot && bp < rSpot){
 									condRecMet = 1;
 								}
 							}
-
 						}
 						else{
 							sum+= pGCB;
@@ -1445,8 +1599,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 						while(eSum/totRRate < r2) eSum += rRate[++i];
 						bp = recombineAtTimePopn(cTime,i);
 						if (bp != 666){
-							bpArray[breakNumber] = bp;
-							breakNumber += 1; 
+							addBreakPoint(bp);
 						}
 					}
 					else{
@@ -1490,6 +1643,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 //	printf("sp: %d %d\n",	sweepPopnSizes[0], 	sweepPopnSizes[1]);
 	return(cTime+(ttau));
 }
+
 
 /*recurrentSweepPhaseGeneralPopNumber--coalescent, recombination, gc events, and sweeps! until
 specified time. returns endTime. can handle multiple popns*/
@@ -1548,8 +1702,7 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 				while(eSum/totRRate < r2) eSum += rRate[++i];
 				bp = recombineAtTimePopn(cTime,i);
 				if (bp != 666){
-					bpArray[breakNumber] = bp;
-					breakNumber += 1; 
+					addBreakPoint(bp);
 				}
 			}
 			else{
@@ -1667,28 +1820,7 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 			lParent->rLim=0;
 			rParent->lLim = nSites;
 			rParent->rLim=0;
-			for(i=0;i<nSites;i++){
-				if(i<xOver){
-					lParent->ancSites[i] = aNode->ancSites[i];
-					rParent->ancSites[i] = 0;
-				}
-				else{
-					lParent->ancSites[i] = 0;
-					rParent->ancSites[i] = aNode->ancSites[i];
-				}
-
-				if(lParent->ancSites[i] > 0 && lParent->ancSites[i] < sampleSize){
-					lParent->nancSites += 1;
-					lParent->rLim=i;
-					lParent->lLim=MIN(lParent->lLim,i);
-				}
-
-				if(rParent->ancSites[i] > 0 && rParent->ancSites[i] < sampleSize){
-					rParent->nancSites += 1;
-					rParent->rLim=i;
-					rParent->lLim=MIN(rParent->lLim,i);
-				}
-			}
+			
 			//determine sweep popn affinity
 			//left side?
 		//	printf("here-- popnFreq:%f sweepSite:%f xOver: %d test: %d \n",popnFreq,sweepSite,xOver,sweepSite < (float) xOver / nSites);
@@ -1705,6 +1837,15 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 				else lParent->sweepPopn = (sp == 0) ? 1:0;
 			}
 		//	printf("lParentsp:%d rParentsp:%d\n",lParent->sweepPopn,rParent->sweepPopn);
+			
+			// Split ancestry segment tree at crossover point
+			lParent->ancestryRoot = splitLeft(aNode->ancestryRoot, xOver);
+			rParent->ancestryRoot = splitRight(aNode->ancestryRoot, xOver);
+			
+			// Update stats from ancestry trees
+			updateAncestryStatsFromTree(lParent);
+			updateAncestryStatsFromTree(rParent);
+			
 			//add in the nodes
 			addNode(lParent);
 			addNode(rParent);
@@ -1763,28 +1904,22 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 		lParent->rLim=0;
 		rParent->lLim = nSites;
 		rParent->rLim=0;
-		for(i=0;i<nSites;i++){
-			if(i<xOver || i >= xOver+tractL){
-				lParent->ancSites[i] = 0;
-				rParent->ancSites[i] = aNode->ancSites[i];
-			}
-			else{
-				lParent->ancSites[i] = aNode->ancSites[i];
-				rParent->ancSites[i] = 0;
-			}
-
-			if(lParent->ancSites[i] > 0 && lParent->ancSites[i] < sampleSize){
-				lParent->nancSites += 1;
-				lParent->rLim=i;
-				lParent->lLim=MIN(lParent->lLim,i);
-			}
-
-			if(rParent->ancSites[i] > 0 && rParent->ancSites[i] < sampleSize){
-				rParent->nancSites += 1;
-				rParent->rLim=i;
-				rParent->lLim=MIN(rParent->lLim,i);
-			}
+		
+		
+		// For gene conversion during sweep, handle the ancestry segments
+		if (aNode->ancestryRoot) {
+			// Split the tree for gene conversion tract
+			gcSplitResult gcSplit = splitSegmentTreeForGeneConversion(aNode->ancestryRoot, xOver, xOver + tractL);
+			lParent->ancestryRoot = gcSplit.converted;     // Gets the converted tract
+			rParent->ancestryRoot = gcSplit.unconverted;   // Gets everything else
+		} else {
+			lParent->ancestryRoot = NULL;
+			rParent->ancestryRoot = NULL;
 		}
+		
+		// Update stats from the ancestry trees
+		updateAncestryStatsFromTree(lParent);
+		updateAncestryStatsFromTree(rParent);
 			//determine sweep popn affinity
 			//left side?
 		//	printf("here-- popnFreq:%f sweepSite:%f xOver: %d test: %d \n",popnFreq,sweepSite,xOver,sweepSite < (float) xOver / nSites);
@@ -1830,15 +1965,10 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	temp->nancSites = 0;
 	temp->lLim = nSites;
 	temp->rLim = 0;
-	for(i=0;i<nSites;i++){
-		temp->ancSites[i] = lChild->ancSites[i] + rChild->ancSites[i];
-		if(temp->ancSites[i] > 0 && temp->ancSites[i] < sampleSize){
-			temp->nancSites += 1;
-			temp->rLim=i;
-			temp->lLim=MIN(temp->lLim,i);
-			
-		}
-	}
+	// Merge ancestry segment trees
+	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
+	// Update stats from tree when in tree-only mode
+	updateAncestryStatsFromTree(temp);
 	//printNode(temp);
 	addNode(temp);
 	//update active anc. material
@@ -1967,17 +2097,61 @@ void recurseTreePushMutation(rootedNode *aNode, float site){
 	}
 }
 void addMutation(rootedNode *aNode, double site){
+	ensureMutsCapacity(aNode, aNode->mutationNumber + 1);
 	aNode->muts[aNode->mutationNumber] = site;
 	aNode->mutationNumber += 1;
 
 }
 
-int hasMutation(rootedNode *aNode, double site){
+/* Sort mutations on a single node */
+void sortNodeMutations(rootedNode *node) {
+	if (node != NULL && node->mutationNumber > 1) {
+		qsort(node->muts, node->mutationNumber, sizeof(double), compare_doubles);
+	}
+}
+
+/* Sort mutations on all nodes after mutation placement */
+void sortAllMutations() {
 	int i;
-	for (i = 0; i < aNode->mutationNumber; i++){
-		if (aNode->muts[i] == site) return 1;
+	for (i = 0; i < totNodeNumber; i++) {
+		if (allNodes[i] != NULL) {
+			sortNodeMutations(allNodes[i]);
+		}
+	}
+}
+
+/* Binary search implementation for sorted mutations */
+static int hasMutationBinary(rootedNode *aNode, double site) {
+	int left = 0;
+	int right = aNode->mutationNumber - 1;
+	
+	while (left <= right) {
+		int mid = left + (right - left) / 2;
+		if (aNode->muts[mid] == site) {
+			return 1;
+		} else if (aNode->muts[mid] < site) {
+			left = mid + 1;
+		} else {
+			right = mid - 1;
+		}
 	}
 	return 0;
+}
+
+int hasMutation(rootedNode *aNode, double site){
+	if (aNode->mutationNumber == 0) return 0;
+	
+	/* Use linear search for small arrays (faster due to cache locality) */
+	if (aNode->mutationNumber < 10) {
+		int i;
+		for (i = 0; i < aNode->mutationNumber; i++){
+			if (aNode->muts[i] == site) return 1;
+		}
+		return 0;
+	}
+	
+	/* Use binary search for larger arrays */
+	return hasMutationBinary(aNode, site);
 }
 
 //findRootAtSite-- returns the index of the node that is the root at a given site
@@ -2047,27 +2221,76 @@ void newickRecurse(rootedNode *aNode, float site, float tempTime){
 	}
 }
 
+/* Hash table entry for mutation duplicate detection */
+typedef struct MutHashEntry {
+	double mutation;
+	struct MutHashEntry *next;
+} MutHashEntry;
+
+#define MUTATION_HASH_SIZE 40009  /* Prime number larger than MAXMUTS to ensure good performance */
+
+/* Hash function for mutations - uses bit representation of double */
+static inline unsigned int hashMutation(double mut) {
+	union { double d; uint64_t i; } u;
+	u.d = mut;
+	/* Mix the bits to get better distribution */
+	u.i ^= (u.i >> 32);
+	u.i *= 0x9e3779b97f4a7c15ULL;  /* Golden ratio constant */
+	return (unsigned int)(u.i % MUTATION_HASH_SIZE);
+}
+
 /*makeGametesMS-- MS style sample output */
 void makeGametesMS(int argc,const char *argv[]){
-	int i,j, size, count, k, mutNumber;
+	int i,j, size, mutNumber;
 	double allMuts[MAXMUTS];
+	MutHashEntry *hashTable[MUTATION_HASH_SIZE];
+	MutHashEntry *entry, *newEntry;
 
-	/* get unique list of muts */
+	/* Sort all mutations before output generation for binary search */
+	sortAllMutations();
+
+	/* Initialize hash table */
+	for (i = 0; i < MUTATION_HASH_SIZE; i++) {
+		hashTable[i] = NULL;
+	}
+
+	/* get unique list of muts using hash table for O(n) duplicate detection */
 	size = 0;
 	for (i = 0; i < sampleSize; i++){
 		for (j = 0; j < allNodes[i]->mutationNumber; j++){
-			count = 0;
-			for( k = 0; k < size; k++){
-			//	printf("%f %f %d\n",allMuts[k],allNodes[i]->muts[j],allMuts[k] == allNodes[i]->muts[j]);
-				if (allMuts[k] == allNodes[i]->muts[j]){
-					count += 1;
+			double mut = allNodes[i]->muts[j];
+			unsigned int hash = hashMutation(mut);
+			
+			/* Check if mutation already exists in hash table */
+			int found = 0;
+			for (entry = hashTable[hash]; entry != NULL; entry = entry->next) {
+				if (entry->mutation == mut) {
+					found = 1;
+					break;
 				}
 			}
-			if (count == 0){
-                                assert(size < MAXMUTS);
-				allMuts[size] = allNodes[i]->muts[j];
+			
+			if (!found) {
+				assert(size < MAXMUTS);
+				allMuts[size] = mut;
 				size++;
+				
+				/* Add to hash table */
+				newEntry = (MutHashEntry*)malloc(sizeof(MutHashEntry));
+				newEntry->mutation = mut;
+				newEntry->next = hashTable[hash];
+				hashTable[hash] = newEntry;
 			}
+		}
+	}
+	
+	/* Clean up hash table */
+	for (i = 0; i < MUTATION_HASH_SIZE; i++) {
+		entry = hashTable[i];
+		while (entry != NULL) {
+			MutHashEntry *temp = entry;
+			entry = entry->next;
+			free(temp);
 		}
 	}
 	
@@ -2079,22 +2302,43 @@ void makeGametesMS(int argc,const char *argv[]){
 		fprintf(stdout,"%6.6lf ",allMuts[i] );
 	fprintf(stdout,"\n");
 
-/* go through sites, if there is a mut is allMuts print out segSite */
-	for (i = 0; i < sampleSize; i++){
-		for (j = 0; j < mutNumber; j++){
-			if(isAncestralHere(allNodes[i],allMuts[j] )){
-				if (hasMutation(allNodes[i],allMuts[ j])){
-					printf("1");
+/* Phase 3 optimization: Pre-compute presence matrix */
+	char *presenceMatrix = NULL;
+	if (mutNumber > 0) {
+		presenceMatrix = (char*)calloc(sampleSize * mutNumber, sizeof(char));
+		if (presenceMatrix == NULL) {
+			fprintf(stderr, "Error: Failed to allocate presence matrix\n");
+			exit(1);
+		}
+		
+		/* Pre-compute all ancestry and mutation information */
+		for (i = 0; i < sampleSize; i++) {
+			for (j = 0; j < mutNumber; j++) {
+				int idx = i * mutNumber + j;
+				if (isAncestralHere(allNodes[i], allMuts[j])) {
+					if (hasMutation(allNodes[i], allMuts[j])) {
+						presenceMatrix[idx] = '1';
+					} else {
+						presenceMatrix[idx] = '0';
+					}
+				} else {
+					presenceMatrix[idx] = 'N';
 				}
-				else{
-					printf("0");
-				}
-			}
-			else{
-				printf("N");
 			}
 		}
+	}
+	
+	/* Output using pre-computed matrix */
+	for (i = 0; i < sampleSize; i++) {
+		for (j = 0; j < mutNumber; j++) {
+			printf("%c", presenceMatrix[i * mutNumber + j]);
+		}
 		printf("\n");
+	}
+	
+	/* Clean up */
+	if (presenceMatrix) {
+		free(presenceMatrix);
 	}  
 }
 
@@ -2263,10 +2507,74 @@ void addAncientSample(int lineageNumber, int popnDest, double addTime, int still
 	
 }
 
+void initializeNodeArrays() {
+	int initialCapacity = 1000;  // Start small
+	
+	nodesCapacity = initialCapacity;
+	allNodesCapacity = initialCapacity;
+	
+	nodes = malloc(sizeof(rootedNode*) * nodesCapacity);
+	allNodes = malloc(sizeof(rootedNode*) * allNodesCapacity);
+	
+	if (nodes == NULL || allNodes == NULL) {
+		fprintf(stderr, "Error: Failed to allocate initial node arrays\n");
+		exit(1);
+	}
+}
+
+void ensureNodesCapacity(int requiredSize) {
+	if (requiredSize >= nodesCapacity) {
+		int newCapacity = nodesCapacity;
+		while (newCapacity <= requiredSize) {
+			newCapacity *= 2;
+		}
+		
+		rootedNode **newNodes = realloc(nodes, sizeof(rootedNode*) * newCapacity);
+		if (newNodes == NULL) {
+			fprintf(stderr, "Error: Failed to reallocate nodes array (requested: %d pointers)\n", newCapacity);
+			exit(1);
+		}
+		
+		nodes = newNodes;
+		nodesCapacity = newCapacity;
+	}
+}
+
+void ensureAllNodesCapacity(int requiredSize) {
+	if (requiredSize >= allNodesCapacity) {
+		int newCapacity = allNodesCapacity;
+		while (newCapacity <= requiredSize) {
+			newCapacity *= 2;
+		}
+		
+		rootedNode **newAllNodes = realloc(allNodes, sizeof(rootedNode*) * newCapacity);
+		if (newAllNodes == NULL) {
+			fprintf(stderr, "Error: Failed to reallocate allNodes array (requested: %d pointers)\n", newCapacity);
+			exit(1);
+		}
+		
+		allNodes = newAllNodes;
+		allNodesCapacity = newCapacity;
+	}
+}
+
+void cleanupNodeArrays() {
+	if (nodes != NULL) {
+		free(nodes);
+		nodes = NULL;
+		nodesCapacity = 0;
+	}
+	if (allNodes != NULL) {
+		free(allNodes);
+		allNodes = NULL;
+		allNodesCapacity = 0;
+	}
+}
 
 void addNode(rootedNode *aNode){
-        assert(alleleNumber < MAXNODES);
-        assert(totNodeNumber < MAXNODES);
+	ensureNodesCapacity(alleleNumber + 1);
+	ensureAllNodesCapacity(totNodeNumber + 1);
+	
 	nodes[alleleNumber] = aNode;
 	allNodes[totNodeNumber] = aNode;
 	alleleNumber += 1;
@@ -2364,11 +2672,9 @@ rootedNode *pickNodePopnSweep(int popn,int sp){
 
 
 void printNode(rootedNode *aNode){
-	int i;
 	printf("node: %p time: %f lLim: %d rLim: %d nancSites: %d popn: %d sweepPopn: %d\n",aNode, aNode->time,aNode->lLim,\
 		aNode->rLim, aNode->nancSites, aNode->population, aNode->sweepPopn);
-	for(i=0;i<nSites;i++)printf("%d",aNode->ancSites[i]);
-	printf("\n");
+	// ancSites array removed - ancestry now tracked via tree
 }
 
 void freeTree(rootedNode *aNode){
@@ -2376,6 +2682,12 @@ void freeTree(rootedNode *aNode){
 	//printf("final nodeNumber = %d\n",totNodeNumber);
 	//cleanup nodes
 	for (i = 0; i < totNodeNumber; i++){
+		cleanupMuts(allNodes[i]);      // Free muts array
+		// Free ancestry segment tree
+		if (allNodes[i]->ancestryRoot) {
+			freeSegmentTree(allNodes[i]->ancestryRoot);
+			allNodes[i]->ancestryRoot = NULL;
+		}
 		free(allNodes[i]);
 		allNodes[i] = NULL;
 	} 
@@ -2474,4 +2786,49 @@ unsigned int devrand(void) {
 		exit(-1); /* Failed! */ 
 	close(fn); 
 	return r;
+}
+
+
+// Muts dynamic memory management functions
+void initializeMuts(rootedNode *node, int capacity) {
+	if (capacity <= 0) {
+		capacity = 10;  // Start with small capacity, will grow as needed
+	}
+	
+	node->mutsCapacity = capacity;
+	node->muts = malloc(sizeof(double) * capacity);
+	
+	if (node->muts == NULL) {
+		fprintf(stderr, "Error: Failed to allocate memory for muts array (capacity: %d)\n", capacity);
+		exit(1);
+	}
+}
+
+void ensureMutsCapacity(rootedNode *node, int requiredSize) {
+	if (requiredSize > node->mutsCapacity) {
+		int newCapacity = node->mutsCapacity;
+		
+		// Double capacity until we have enough
+		while (newCapacity < requiredSize) {
+			newCapacity *= 2;
+		}
+		
+		double *newMuts = realloc(node->muts, sizeof(double) * newCapacity);
+		if (newMuts == NULL) {
+			fprintf(stderr, "Error: Failed to reallocate memory for muts array (capacity: %d -> %d)\n", 
+					node->mutsCapacity, newCapacity);
+			exit(1);
+		}
+		
+		node->muts = newMuts;
+		node->mutsCapacity = newCapacity;
+	}
+}
+
+void cleanupMuts(rootedNode *node) {
+	if (node->muts != NULL) {
+		free(node->muts);
+		node->muts = NULL;
+		node->mutsCapacity = 0;
+	}
 }

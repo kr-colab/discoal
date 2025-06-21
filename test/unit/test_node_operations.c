@@ -2,6 +2,7 @@
 #include "../../discoal.h"
 #include "../../discoalFunctions.h"
 
+#ifndef TEST_RUNNER_MODE
 void setUp(void) {
     // Initialize any test setup
     initialize();
@@ -11,6 +12,7 @@ void tearDown(void) {
     // Clean up after tests
     // Free any allocated memory
 }
+#endif
 
 void test_newRootedNode(void) {
     // Test basic node creation
@@ -75,15 +77,15 @@ void test_nodePopnSize(void) {
     removeNode(node2);
 }
 
+#ifndef TEST_RUNNER_MODE
 int main(void) {
-    printf("\nRunning Node Operations Tests\n");
-    printf("----------------------------\n");
+    UNITY_BEGIN();
     
     RUN_TEST(test_newRootedNode);
     RUN_TEST(test_addRemoveNode);
     RUN_TEST(test_pickNodePopn);
     RUN_TEST(test_nodePopnSize);
     
-    printf("\nAll tests passed!\n");
-    return 0;
-} 
+    return UNITY_END();
+}
+#endif 

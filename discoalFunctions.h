@@ -2,6 +2,14 @@
 #define __DISCOAL_H__
 
 void initialize();
+void initializeBreakPoints();
+void ensureBreakPointsCapacity();
+void cleanupBreakPoints();
+void addBreakPoint(int bp);
+void initializeMuts(rootedNode *node, int capacity);
+void ensureMutsCapacity(rootedNode *node, int requiredSize);
+void cleanupMuts(rootedNode *node);
+void cleanupNodeArrays();
 rootedNode *newRootedNode(double cTime, int popn);
 
 void coalesceAtTimePopn(double cTime, int popn);
@@ -15,6 +23,7 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 
 
 void updateActiveMaterial(rootedNode *aNode);
+void updateAncestryStatsFromTree(rootedNode *node);
 int isActive(int site);
 int isAncestralHere(rootedNode *aNode, float site);
 int nAncestorsHere(rootedNode *aNode, float site);
@@ -23,6 +32,8 @@ int siteBetweenChunks(rootedNode *aNode, int xOverSite);
 void dropMutations();
 void addMutation(rootedNode *aNode, double site);
 int hasMutation(rootedNode *aNode, double site);
+void sortNodeMutations(rootedNode *node);
+void sortAllMutations();
 void makeGametesMS(int argc,const char *argv[]);
 void dropMutationsRecurse();
 void recurseTreePushMutation(rootedNode *aNode, float site);
@@ -34,6 +45,15 @@ void addAncientSample(int lineageNumber, int popnDest, double addTime, int still
 
 
 void recurrentMutAtTime(double cTime,int srcPopn, int sp);
+
+void ensureTrajectoryCapacity(long int requiredSize);
+
+// Memory-mapped trajectory functions
+void mmapAcceptedTrajectory(const char *filename, long int numSteps);
+void cleanupRejectedTrajectory(const char *filename);
+void initializeNodeArrays();
+void ensureNodesCapacity(int requiredSize);
+void ensureAllNodesCapacity(int requiredSize);
 
 double sweepPhaseEventsGeneralPopNumber(int *bpArray, double startTime, double endTime, double sweepSite,\
 			double initialFreq, double *finalFreq, int *stillSweeping, double alpha,\
@@ -47,6 +67,7 @@ double proposeTrajectory(int currentEventNumber, float *currentTrajectory, doubl
 double sweepPhaseEventsConditionalTrajectory(int *bpArray, double startTime, double endTime, double sweepSite,\
 	double initialFreq, double *finalFreq, int *stillSweeping, double alpha,\
 	double *sizeRatio, char sweepMode,double f0, double uA);
+
 
 		
 double totalTimeInTree();

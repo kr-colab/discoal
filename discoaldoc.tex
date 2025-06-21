@@ -27,7 +27,7 @@
 %\bibliographystyle{plainnat}
 \title{\textbf{\texttt{discoal}}-- a coalescent simulator with selection}
 \author{Andrew D. Kern \\
-\texttt{kern@biology.rutgers.edu}\\
+\texttt{adkern@uoregon.edu}\\
 }
 
 
@@ -45,10 +45,7 @@ changes.
 
 \texttt{discoal} gets its name from the contraction of ``discrete'' and ``coalescent'', because it 
 handles recombination along the chromosome, and its associated programatic bookkeeping, by modeling 
-a discrete number of ancestral sites. This leads to a trade off favoring speed over memory usage. For larger samples
-and sites modeled, do not be surprised if \texttt{discoal} eats up a lot of available RAM, but it will
-do so to increase the speed at which samples can be generated. This is particularly noticeable for larger 
-recombination rates.  
+a discrete number of ancestral sites. The current optimized version uses dynamic memory allocation and segment-based tracking for efficient memory usage, allowing simulations of large genomic regions (up to 100 million sites) with reasonable memory requirements. Memory usage now scales efficiently with the actual complexity of the simulation rather than pre-allocating for maximum possible sizes.  
 
 \section*{Download and Compile}
 The source code for \texttt{discoal} is available for download from \url{https://github.com/kern-lab}. Unpack the archive as you would any zip file and to compile you can use the following commands at a terminal:
@@ -59,7 +56,7 @@ $ make discoal
 \end{verbatim}
 
 \texttt{discoal} should build on most unix-like systems without a problem. We have built it on numerous linux systems as
-well as OS X machines.  
+well as OS X machines. Note that recent memory optimizations have increased the maximum sample size from 254 to 65,535, eliminating the need for special compilation flags for large samples.
 
 \section*{Basic usage}
 As we said above, using \texttt{discoal} is very familiar for people used to \texttt{ms} style commands. At its
@@ -67,7 +64,7 @@ most basic a \texttt{discoal} command line looks like the following
 \begin{verbatim}
 $ ./discoal sampleSize numReplicates nSites -t theta
 \end{verbatim}
-Here there are four arguments we are passing to \texttt{discoal}: sampleSize -- the size of each sample, numReplicates -- the
+Here there are four arguments we are passing to \texttt{discoal}: sampleSize -- the size of each sample (maximum 65,535), numReplicates -- the
 number of independent samples to generate, nSites-- the number of sites in the sequence to be modeled, and then following the \texttt{-t}
 flag $\theta = 4N_0u$, the population mutation rate where $N_0$ is the population size currently and $u$ is the mutation rate per generation for the entire locus. This is identical to 
 the command lines handed to \texttt{ms} with the addition of the nSites parameter. A representative run with its associated output might look like the following:
@@ -225,7 +222,7 @@ We have added a feature into \texttt{discoal} that allows for a subset of the sa
 
 \begin{itemize}
 
-	\item Currently \texttt{discoal} uses static memory allocations for vectors that encode ancestry information for nodes during simulation. This means that we have hard coded a limit on the number of sites allowed to be simulated to 220020. If the user wishes to simulate larger regions they will need to change the \texttt{MAXSITES} define in \texttt{discoal.h} and recompile. 
+	\item The maximum number of sites that can be simulated is limited by the \texttt{MAXSITES} define, currently set to 100,000,000 sites. This limit exists primarily for input validation. The optimized version of \texttt{discoal} uses dynamic memory allocation and segment-based tracking, allowing efficient simulation of large genomic regions up to this limit. 
 
 
 	\item \texttt{discoal} models sweep trajectories during population size changes with a stochastic jump process. If you ask for deterministic sweeps with population size changes it will throw an error.
@@ -234,7 +231,7 @@ We have added a feature into \texttt{discoal} that allows for a subset of the sa
 
 
 \section*{Further support}
-If you are having trouble compiling or running the software don't hesitate to contact me via email (kern@biology.rutgers.edu)
+If you are having trouble compiling or running the software don't hesitate to contact me via email (adkern@uoregon.edu)
 
 
 \bibliography{texrefs}

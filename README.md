@@ -1,9 +1,27 @@
+[![Documentation Status](https://readthedocs.org/projects/discoal/badge/?version=latest)](https://discoal.readthedocs.io/en/latest/?badge=latest)
+
 # discoal
 discoal is a coalescent simulation program capable of simulating models with recombination, selective sweeps, and demographic changes including population splits and admixture events.
 
+**Recent improvements**: Memory optimizations have increased the maximum sample size from 254 to 65,535 samples, eliminated the need for the `-DBIG` compilation flag, and reduced memory usage by 15-99% across different simulation scenarios.
+
+## Documentation
+
+Full documentation is available at [https://discoal.readthedocs.io](https://discoal.readthedocs.io)
+
+The documentation includes:
+- Installation instructions
+- Detailed usage guides and examples
+- Complete parameter reference
+- Advanced features and workflows
+
+A PDF version is also available in `discoaldoc.pdf`.
+
+## Quick Start
+
 To install discoal, clone this repository, cd into the directory, then assuming you have gcc and make installed on your system, simply type `make discoal`.
 
-By all means read the documentation in `discoaldoc.pdf`, but for the impatient, typing `./discoal` will bring up a verbose usage statement:
+For a quick reference, typing `./discoal` will bring up a verbose usage statement:
 ```
 $ ./discoal
 usage: discoal sampleSize numReplicates nSites -ws tau

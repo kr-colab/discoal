@@ -1,0 +1,15 @@
+# Ignore test result directories (timestamped)
+*_test_*
+*_validation_*
+*_memory_test_*
+
+# Ignore individual test output files
+*.out
+*_memory.txt
+*_filtered.out
+
+# Keep test scripts and documentation
+!*.sh
+!*.md
+!README.md
+!TEST_SUITE_DOCUMENTATION.mdcomprehensive_results.log
