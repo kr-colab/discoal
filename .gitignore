@@ -63,4 +63,6 @@ env/
 docs/api/generated/
 
 reference_code/*
+CLAUDE.md
+CLAUDE.local.md
 extern/msUtils/*
