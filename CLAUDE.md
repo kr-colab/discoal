@@ -130,6 +130,22 @@ make test_<name>    # Run specific unit test
   - Zero memory leaks, comparable memory usage to standard allocation
   - Removed all conditional compilation - pool is now standard
 
+### Recent Changes (2025-01-21)
+- **Implemented xoshiro256++ RNG as default**:
+  - Replaced legacy L'Ecuyer RNG with modern xoshiro256++
+  - 2.3x faster pure RNG performance
+  - Added fast hyperbolic function approximations (8x faster coth, 3x faster tanh)
+  - 10-15% overall speedup for typical simulations
+  - Maintains exact compatibility with existing seed behavior
+  - Legacy RNG available via `make discoal_legacy_rng`
+- **Fixed Makefile target issues**:
+  - Removed non-existent ancestryVerify.c dependency from discoal_xoshiro
+  - Updated targets to use consistent dependencies with tskit integration
+- **Performance analysis**:
+  - Identified that trajectory generation time scales inversely with selection strength
+  - Variable parameters (-Pa, -Pu) performance dominated by trajectory length variance
+  - RNG improvements most visible with fixed parameters or high recombination
+
 ### Active Development
 - [ ] Document memory optimization techniques in README
 - [ ] Phase 4: Memory layout optimizations for cache efficiency

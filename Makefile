@@ -17,16 +17,16 @@ all: discoal
 # executable 
 #
 
-discoal: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h activeSegment.c activeSegment.h tskitInterface.c tskitInterface.h $(POOL_SOURCES) $(TSKIT_SOURCES)
-	$(CC) $(CFLAGS) -o discoal discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.c tskitInterface.c $(POOL_SOURCES) $(TSKIT_SOURCES) -lm -fcommon
+discoal: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h activeSegment.c activeSegment.h tskitInterface.c tskitInterface.h xoshiro256pp_compat.c $(POOL_SOURCES) $(TSKIT_SOURCES)
+	$(CC) $(CFLAGS) -DUSE_XOSHIRO256PP -o discoal discoal_multipop.c discoalFunctions.c xoshiro256pp_compat.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.c tskitInterface.c $(POOL_SOURCES) $(TSKIT_SOURCES) -lm -fcommon
 
-# Build with xoshiro256++ RNG
-discoal_xoshiro: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h ancestryVerify.c ancestryVerify.h activeSegment.c activeSegment.h xoshiro256pp_compat.c
-	$(CC) $(CFLAGS) -DUSE_XOSHIRO256PP -o discoal_xoshiro discoal_multipop.c discoalFunctions.c xoshiro256pp_compat.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
+# Build with legacy L'Ecuyer RNG (for comparison/testing)
+discoal_legacy_rng: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h activeSegment.c activeSegment.h tskitInterface.c tskitInterface.h $(POOL_SOURCES) $(TSKIT_SOURCES)
+	$(CC) $(CFLAGS) -o discoal_legacy_rng discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.c tskitInterface.c $(POOL_SOURCES) $(TSKIT_SOURCES) -lm -fcommon
 
 # Build edited version for testing (same as main but explicit name)
-discoal_edited: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h activeSegment.c activeSegment.h tskitInterface.c tskitInterface.h $(POOL_SOURCES) $(TSKIT_SOURCES)
-	$(CC) $(CFLAGS) -o discoal_edited discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.c tskitInterface.c $(POOL_SOURCES) $(TSKIT_SOURCES) -lm -fcommon
+discoal_edited: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h activeSegment.c activeSegment.h tskitInterface.c tskitInterface.h xoshiro256pp_compat.c $(POOL_SOURCES) $(TSKIT_SOURCES)
+	$(CC) $(CFLAGS) -DUSE_XOSHIRO256PP -o discoal_edited discoal_multipop.c discoalFunctions.c xoshiro256pp_compat.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.c tskitInterface.c $(POOL_SOURCES) $(TSKIT_SOURCES) -lm -fcommon
 
 # Build debug version with ancestry verification
 discoal_debug: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h activeSegment.c activeSegment.h $(TSKIT_SOURCES)
@@ -159,6 +159,15 @@ test_nicestats_large: discoal_legacy_backup discoal_edited niceStats
 test_nicestats_mem: discoal_mem_branch discoal_edited niceStats
 	@echo "Running niceStats comparison suite (current vs mem branch)..."
 	cd testing && ./nicestats_comparison_suite.sh 1000 10 ../discoal_mem_branch
+
+test_nicestats_xoshiro: discoal discoal_xoshiro niceStats
+	@echo "Running niceStats comparison suite (legacy RNG vs xoshiro256++)..."
+	@# Use discoal as legacy and discoal_xoshiro as edited for comparison
+	@cp discoal discoal_legacy_backup
+	@cp discoal_xoshiro discoal_edited
+	cd testing && ./nicestats_comparison_suite.sh 1000 50
+	@# Clean up temporary copies
+	@rm -f discoal_legacy_backup discoal_edited
 
 # Compare current tskit-integration branch with mem branch
 test_tskit_vs_mem: discoal_edited discoal_mem_branch
