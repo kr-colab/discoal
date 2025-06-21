@@ -13,9 +13,11 @@
 #include <string.h>
 #include <math.h>
 #include <time.h>
-#include <fcntl.h>
 #include <unistd.h>
 #include <assert.h>
+#include <signal.h>
+#include <sys/mman.h>
+#include <fcntl.h>
 #include "ranlib.h"
 #include "discoal.h"
 #include "discoalFunctions.h"
@@ -34,6 +36,38 @@ long seed1, seed2;
 
 void getParameters(int argc,const char **argv);
 void usage();
+void cleanup_and_exit(int sig);
+
+// Signal handler for cleanup
+void cleanup_and_exit(int sig) {
+	// Clean up trajectory storage if it exists
+	if (trajectoryFd != -1) {
+		if (currentTrajectory && currentTrajectory != MAP_FAILED) {
+			munmap(currentTrajectory, trajectoryFileSize);
+		}
+		close(trajectoryFd);
+		if (trajectoryFilename[0] != '\0') {
+			unlink(trajectoryFilename);
+		}
+	}
+	exit(sig);
+}
+
+// Helper function to ensure events array has enough capacity
+void ensureEventsCapacity() {
+	if (eventNumber >= eventsCapacity) {
+		int newCapacity = eventsCapacity * 2;
+		struct event *newEvents = (struct event*) realloc(events, newCapacity * sizeof(struct event));
+		if (newEvents == NULL) {
+			fprintf(stderr, "Error: Failed to reallocate events array\n");
+			exit(1);
+		}
+		events = newEvents;
+		eventsCapacity = newCapacity;
+		// Initialize new elements to zero
+		memset(&events[eventNumber], 0, (newCapacity - eventNumber) * sizeof(struct event));
+	}
+}
 
 int main(int argc, const char * argv[]){
 	int i,j,k, totalSimCount;
@@ -46,6 +80,11 @@ int main(int argc, const char * argv[]){
 	getParameters(argc,argv);
 	double N = EFFECTIVE_POPN_SIZE; // effective population size
 	setall(seed1, seed2 );
+	
+	// Register signal handlers for cleanup
+	signal(SIGINT, cleanup_and_exit);
+	signal(SIGTERM, cleanup_and_exit);
+	signal(SIGSEGV, cleanup_and_exit);
 
 	//Hudson style header
 	for(i=0;i<argc;i++)printf("%s ",argv[i]);
@@ -53,8 +92,12 @@ int main(int argc, const char * argv[]){
 	
 	i = 0;
         totalSimCount = 0;
-	currentTrajectory = malloc(sizeof(float) * TRAJSTEPSTART);
-	assert(currentTrajectory);
+	trajectoryCapacity = TRAJSTEPSTART;
+	trajectoryFd = -1;  // Initialize to invalid
+	trajectoryFilename[0] = '\0';  // Empty filename
+	currentTrajectory = NULL;  // Will be mmap'd when needed
+	
+	// Initialize global trajectory generator (lazy approach)
 
 	while(i < sampleNumber){
 		currentTime=0;
@@ -62,7 +105,7 @@ int main(int argc, const char * argv[]){
 		currentSize[0]=1.0;
 		currentFreq = 1.0 - (1.0 / (2.0 * N * currentSize[0])); //just to initialize the value
 //		printf("popnsize[0]:%d",popnSizes[0]);
-		maxTrajSteps = TRAJSTEPSTART;
+		maxTrajSteps = trajectoryCapacity;
 		
 		
 		
@@ -88,24 +131,24 @@ int main(int argc, const char * argv[]){
 				//	for(j=0;j<npops;j++) printf("%f\n",migMat[i][j]);
 				if(activeSweepFlag == 0){
 					if(recurSweepMode ==0){
-						currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+						currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
 					}
 					else{
-						currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+						currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
 					}
 				}
 				else{
 					if(recurSweepMode ==0){
-						currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
 					 		currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
 						if (currentTime < nextTime)
-                                               		currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+                                               		currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
 					}
 					else{
-						currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
 					 		currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
 						if (currentTime < nextTime)
-                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
 					}
 				}
 			//	printf("pn0:%d pn1:%d alleleNumber: %d sp1: %d sp2: %d \n", popnSizes[0],popnSizes[1], alleleNumber,sweepPopnSizes[1],
@@ -123,11 +166,26 @@ int main(int argc, const char * argv[]){
 			//	printf("event%d currentTime: %f nextTime: %f popnSize: %f\n",j,currentTime,nextTime,currentSize);
 
 				//generate a proposed trajectory
+				char previousTrajectoryFile[256] = "";
 				probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, currentSize, sweepMode, currentFreq, &currentFreq, alpha, f0, currentTime);
 				while(ranf()>probAccept){
+					// Clean up rejected trajectory
+					if (previousTrajectoryFile[0] != '\0') {
+						cleanupRejectedTrajectory(previousTrajectoryFile);
+					}
+					strcpy(previousTrajectoryFile, trajectoryFilename);
+					
 					probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, currentSize, sweepMode, currentFreq, &currentFreq, alpha, f0, currentTime);
 					//printf("probAccept: %lf\n",probAccept);
 				}
+				
+				// Clean up any remaining rejected trajectory
+				if (previousTrajectoryFile[0] != '\0' && strcmp(previousTrajectoryFile, trajectoryFilename) != 0) {
+					cleanupRejectedTrajectory(previousTrajectoryFile);
+				}
+				
+				// Now mmap the accepted trajectory
+				mmapAcceptedTrajectory(trajectoryFilename, totalTrajectorySteps);
 				
 				currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
 					 currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
@@ -135,7 +193,7 @@ int main(int argc, const char * argv[]){
 				//printf("pn0:%d pn1:%d alleleNumber: %d sp1: %d sp2: %d \n", popnSizes[0],popnSizes[1], alleleNumber,sweepPopnSizes[1],
 				//			sweepPopnSizes[0]);
 				if (currentTime < nextTime)
-                                        currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+                                        currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
 						
 				break;
 				case 'p': //merging populations
@@ -145,24 +203,24 @@ int main(int argc, const char * argv[]){
 
 				if(activeSweepFlag == 0){
 					if(recurSweepMode ==0){
-						currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+						currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
 					}
 					else{
-						currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+						currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
 					}
 				}
 				else{
 					if(recurSweepMode ==0){
-						currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
 						 	currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
 						if (currentTime < nextTime)
-                                        		currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+                                        		currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
 					}
 					else{
-						currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
 					 		currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
 						if (currentTime < nextTime)
-                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
 					}
 				}
 				break;
@@ -171,24 +229,24 @@ int main(int argc, const char * argv[]){
 				admixPopns(events[j].popID, events[j].popID2, events[j].popID3, events[j].admixProp);
 				if(activeSweepFlag == 0){
 					if(recurSweepMode ==0){
-						currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+						currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
 					}
 					else{
-						currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
+						currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
 					}
 				}
 				else{
 					if(recurSweepMode ==0){
-						currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
 						 	currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
 						if (currentTime < nextTime)
-	                                        	currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+	                                        	currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
 					}
 					else{
-						currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
 					 		currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
 						if (currentTime < nextTime)
-                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
+                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
 					}
 				}
 				break;
@@ -199,24 +257,24 @@ int main(int argc, const char * argv[]){
 				//printAllActiveNodes();
 				if(activeSweepFlag == 0){
 					if(recurSweepMode ==0){
-						currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+						currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
 					}
 					else{
-						currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
+						currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
 					}
 				}
 				else{
 					if(recurSweepMode ==0){
-						currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
 						 	currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
 						if (currentTime < nextTime)
-	                                        	currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, currentSize);
+	                                        	currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
 					}
 					else{
-						currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
 					 		currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
 						if (currentTime < nextTime)
-                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(&breakPoints[0], currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
+                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
 					}
 				}
 				break;
@@ -225,7 +283,7 @@ int main(int argc, const char * argv[]){
 		}
 		//finish up the coalescing action!
 		if(alleleNumber > 1){
-			currentTime = neutralPhaseGeneralPopNumber(&breakPoints[0], currentTime, MAXTIME, currentSize);
+			currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, MAXTIME, currentSize);
 		}
 		//assign root
 	//	root = nodes[0];
@@ -273,14 +331,45 @@ int main(int argc, const char * argv[]){
 		}
 		
 		freeTree(nodes[0]);
+		cleanupBreakPoints();
+		
+		// Clean up trajectory after each simulation
+		if (trajectoryFd != -1) {
+			if (currentTrajectory && currentTrajectory != MAP_FAILED) {
+				munmap(currentTrajectory, trajectoryFileSize);
+			}
+			close(trajectoryFd);
+			if (trajectoryFilename[0] != '\0') {
+				unlink(trajectoryFilename);
+			}
+			trajectoryFd = -1;
+			trajectoryFilename[0] = '\0';
+			currentTrajectory = NULL;
+		}
+		
                 totalSimCount += 1;
 	}
         if(condRecMode == 1)
         {
             fprintf(stderr, "Needed run %d simulations to get %d with a recombination event within the specified bounds.\n", totalSimCount, i);
         }
-	free(currentTrajectory);
+	// Clean up any remaining trajectory storage
+	if (trajectoryFd != -1) {
+		if (currentTrajectory && currentTrajectory != MAP_FAILED) {
+			munmap(currentTrajectory, trajectoryFileSize);
+		}
+		close(trajectoryFd);
+		if (trajectoryFilename[0] != '\0') {
+			unlink(trajectoryFilename);
+		}
+	}
+	
 	free(currentSize);
+		free(events);
+	
+	// Clean up node arrays
+	cleanupNodeArrays();
+	
 	return(0);
 }
 
@@ -297,11 +386,9 @@ void getParameters(int argc,const char **argv){
 	}
 
 	sampleSize = atoi(argv[1]);
-	if(sampleSize > 254){
-		#ifndef BIG
-		printf("Error: sampleSize > 254. recompile discoal and set the -DBIG flag\n");
+	if(sampleSize > 65535){
+		printf("Error: sampleSize > 65535. This exceeds the maximum supported by uint16_t ancestry counts.\n");
 		exit(666);
-		#endif
 	}
 	sampleNumber = atoi(argv[2]);
 	nSites = atoi(argv[3]);
@@ -352,6 +439,14 @@ void getParameters(int argc,const char **argv){
 	ancSampleFlag = 0;
 	ancSampleSize = 0;
 	hidePartialSNP = 0;
+	
+	// Initialize events array with initial capacity
+	eventsCapacity = 50;  // Start with reasonable capacity
+	events = (struct event*) calloc(eventsCapacity, sizeof(struct event));
+	if (events == NULL) {
+		fprintf(stderr, "Error: Failed to allocate events array\n");
+		exit(1);
+	}
 	
 	//set up first bogus event
 	eventNumber = 0;
@@ -444,6 +539,7 @@ void getParameters(int argc,const char **argv){
 			case 'e' :
 				switch(argv[args][2]){
 					case 'n':
+					ensureEventsCapacity();
 					events[eventNumber].time = atof(argv[++args]) * 2.0;
 					events[eventNumber].popID = atoi(argv[++args]);
 					events[eventNumber].popnSize = atof(argv[++args]);
@@ -452,6 +548,7 @@ void getParameters(int argc,const char **argv){
 					break;
 					case 'd' :
 					tDiv =  atof(argv[++args]);
+						ensureEventsCapacity();
 					events[eventNumber].time = tDiv * 2.0;
 					events[eventNumber].popID = atoi(argv[++args]);
 					events[eventNumber].popID2 = atoi(argv[++args]);
@@ -459,6 +556,7 @@ void getParameters(int argc,const char **argv){
 					eventNumber++;
 					break;
 					case 'a' :
+						ensureEventsCapacity();
 					events[eventNumber].time = atof(argv[++args]) * 2.0;
 					events[eventNumber].popID = atoi(argv[++args]);
 					events[eventNumber].popID2 = atoi(argv[++args]);
@@ -482,6 +580,7 @@ void getParameters(int argc,const char **argv){
 					break;
 					}
 				tau = atof(argv[++args]) * 2.0;
+					ensureEventsCapacity();
 				events[eventNumber].time = tau;
 				events[eventNumber].type = 's'; //sweep event
 				eventNumber++;
@@ -502,10 +601,11 @@ void getParameters(int argc,const char **argv){
 				tau = atof(argv[++args]) * 2.0;
 				leftRho = atof(argv[++args]) * 2.0;
 				leftRhoFlag=1;
+					ensureEventsCapacity();
 				events[eventNumber].time = tau;
 				events[eventNumber].type = 's'; //sweep event
 				eventNumber++;
-				break;
+					break;
 			case 'f':
 			f0 = atof(argv[++args]);
 			softSweepMode = 1;
@@ -573,6 +673,7 @@ void getParameters(int argc,const char **argv){
 					pE1THigh=atof(argv[++args])*2.0;
 					pE1SLow=atof(argv[++args]);
 					pE1SHigh=atof(argv[++args]);
+						ensureEventsCapacity();
 					events[eventNumber].type = 'n';
 					eventNumber++;
 					break;
@@ -582,6 +683,7 @@ void getParameters(int argc,const char **argv){
 					pE2THigh=atof(argv[++args])*2.0;
 					pE2SLow=atof(argv[++args]);
 					pE2SHigh=atof(argv[++args]);
+						ensureEventsCapacity();
 					events[eventNumber].type = 'n';
 					eventNumber++;
 					break;
@@ -639,6 +741,7 @@ void getParameters(int argc,const char **argv){
 			hidePartialSNP = 1;
 			break;
 			case 'A' :
+				ensureEventsCapacity();
 			events[eventNumber].lineageNumber = atoi(argv[++args]);
 			events[eventNumber].popID = atoi(argv[++args]);	 
 			events[eventNumber].time = atof(argv[++args]) * 2.0; 
@@ -646,7 +749,7 @@ void getParameters(int argc,const char **argv){
 			events[eventNumber].type = 'A'; //ancient sample
 			ancSampleFlag = 1;
 			eventNumber++;
-			assert(events[eventNumber].lineageNumber < sampleSize);
+			assert(events[eventNumber-1].lineageNumber < sampleSize);
 			break;
 			 
 		}
@@ -745,3 +848,4 @@ void usage(){
 	
 	exit(1);
 }
+
