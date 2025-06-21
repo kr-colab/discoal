@@ -18,25 +18,30 @@
 #include <signal.h>
 #include <sys/mman.h>
 #include <fcntl.h>
+#include <limits.h>
+#include <errno.h>
 #include "ranlib.h"
 #include "discoal.h"
 #include "discoalFunctions.h"
 #include "alleleTraj.h"
+#include "tskitInterface.h"
+#include "version.h"
+#include "segmentPool.h"
 
 
 
 int locusNumber; 
 int leftRhoFlag=0;
-int untilMode = 0;
 const char *fileName;
-double uTime;
 double *currentSize;
 long seed1, seed2;
+double nextTime, currentFreq;
 //float *currentTrajectory;
 
 void getParameters(int argc,const char **argv);
 void usage();
 void cleanup_and_exit(int sig);
+void initializeTrajectoryVariables(double N);
 
 // Signal handler for cleanup
 void cleanup_and_exit(int sig) {
@@ -51,6 +56,25 @@ void cleanup_and_exit(int sig) {
 		}
 	}
 	exit(sig);
+}
+
+// Initialize all trajectory-related variables
+void initializeTrajectoryVariables(double N) {
+	// Initialize time-related variables
+	currentTime = 0;
+	nextTime = 999;
+	
+	// Initialize population size
+	currentSize[0] = 1.0;
+	
+	// Initialize frequency (just to initialize the value)
+	currentFreq = 1.0 - (1.0 / (2.0 * N * currentSize[0]));
+	
+	// Initialize trajectory steps
+	maxTrajSteps = trajectoryCapacity;
+	
+	// Initialize sweep flag
+	activeSweepFlag = 0;
 }
 
 // Helper function to ensure events array has enough capacity
@@ -73,13 +97,16 @@ int main(int argc, const char * argv[]){
 	int i,j,k, totalSimCount;
 	float tempSite;
 	int lastBreak;
-	double nextTime, currentFreq, probAccept;
-	
-	
+	double probAccept;
 	
 	getParameters(argc,argv);
 	double N = EFFECTIVE_POPN_SIZE; // effective population size
 	setall(seed1, seed2 );
+	
+	// Store command line for tskit provenance after parsing (now we know if -ts was used)
+	if (tskitOutputMode) {
+		tskit_store_command_line(argc, argv);
+	}
 	
 	// Register signal handlers for cleanup
 	signal(SIGINT, cleanup_and_exit);
@@ -99,20 +126,88 @@ int main(int argc, const char * argv[]){
 	
 	// Initialize global trajectory generator (lazy approach)
 
+	// Initialize segment pool with size based on parameters
+	size_t initial_pool_size = calculateInitialPoolSize(sampleSize, rho, nSites);
+	initSegmentPool(initial_pool_size);
+
+	// fprintf(stderr, "Starting simulation with %d replicates\n", sampleNumber);
 	while(i < sampleNumber){
-		currentTime=0;
-		nextTime=999;
-		currentSize[0]=1.0;
-		currentFreq = 1.0 - (1.0 / (2.0 * N * currentSize[0])); //just to initialize the value
-//		printf("popnsize[0]:%d",popnSizes[0]);
-		maxTrajSteps = trajectoryCapacity;
+		// fprintf(stderr, "Replicate %d/%d\n", i+1, sampleNumber);
+		// fprintf(stderr, "Loop start: i=%d, sampleNumber=%d, continuing=%d\n", i, sampleNumber, i < sampleNumber);
+		// fprintf(stderr, "REP %d\n", i+1);
+		// fprintf(stderr, "DEBUG: Starting replicate %d of %d\n", i+1, sampleNumber);
+		// Clean up from previous replicate if not the first one
+		if (i > 0) {
+			// fprintf(stderr, "DEBUG: Cleaning up after replicate %d, nodesCapacity=%d\n", i, nodesCapacity);
+			// fprintf(stderr, "Starting cleanup for rep %d\n", i+1);
+			// fprintf(stderr, "Starting cleanup for rep %d, totNodeNumber=%d\n", i+1, totNodeNumber);
+			// fprintf(stderr, "Debug: Cleaning up %d total nodes from previous replicate\n", totNodeNumber);
+			// fprintf(stderr, "Starting node cleanup, totNodeNumber=%d\n", totNodeNumber);
+			// Clean all nodes in the array, not just up to totNodeNumber
+			// This ensures we don't leave any nodes from previous replicates
+			int non_null_count = 0;
+			for (int cleanup_i = 0; cleanup_i < nodesCapacity; cleanup_i++) {
+				if (nodes[cleanup_i] != NULL) non_null_count++;
+				// if (cleanup_i % 500 == 0) {
+				// 	fprintf(stderr, "Cleaning node %d/%d\n", cleanup_i, cleanup_limit);
+				// }
+				if (nodes[cleanup_i] != NULL) {
+					// Free ancestry segments if they exist
+					if (nodes[cleanup_i]->ancestryRoot) {
+						// if (cleanup_i >= 1000 && cleanup_i < 1010) {
+						// 	fprintf(stderr, "  Freeing ancestry tree for node %d\n", cleanup_i);
+						// }
+						freeSegmentTree(nodes[cleanup_i]->ancestryRoot);
+						nodes[cleanup_i]->ancestryRoot = NULL;
+					}
+					// Free the node itself
+					free(nodes[cleanup_i]);
+					nodes[cleanup_i] = NULL;
+				}
+			}
+			// fprintf(stderr, "DEBUG: Found %d non-null nodes to clean\n", non_null_count);
+			// fprintf(stderr, "Node cleanup completed\n");
+			// fprintf(stderr, "Node cleanup done\n");
+			
+			// Clean up removed nodes list
+			cleanupRemovedNodes();
+			
+			// Fast O(1) reset of segment pool between replicates
+			resetSegmentPool();
+			
+			cleanupBreakPoints();
+			// fprintf(stderr, "BreakPoints cleanup done\n");
+			cleanupPopLists();
+			// fprintf(stderr, "PopLists cleanup done\n");
+			cleanupSampleNodeIds();  // Clean up sample node IDs between replicates
+			// fprintf(stderr, "SampleNodeIds cleanup done\n");
+			// fprintf(stderr, "Cleanup done for rep %d\n", i+1);
+		}
 		
+		// fprintf(stderr, "About to initialize trajectory variables\n");
+		// Initialize all trajectory-related variables
+		initializeTrajectoryVariables(N);
 		
+		// Always initialize tskit for each replicate (must be before initialize())
+		// Debug output commented out for production
+		// if (tskitOutputMode && i == 0) {
+		//	fprintf(stderr, "Initializing tskit with sequence length %d (replicate %d)\n", nSites, i+1);
+		// }
+		// fprintf(stderr, "DEBUG: About to call tskit_initialize\n");
+		int ret = tskit_initialize((double)nSites);
+		if (ret != 0) {
+			fprintf(stderr, "Error initializing tskit: %s\n", tsk_strerror(ret));
+			exit(1);
+		}
+		// fprintf(stderr, "DEBUG: tskit_initialize returned %d\n", ret);
 		
+		// fprintf(stderr, "Calling initialize() for rep %d\n", i+1);
 		initialize();
 
 		j=0;
 		activeSweepFlag = 0;
+		// fprintf(stderr, "Before event loop: i=%d, eventNumber=%d, alleleNumber=%d\n", i, eventNumber, alleleNumber);
+		// fprintf(stderr, "DEBUG: Before event loop, eventNumber=%d, alleleNumber=%d\n", eventNumber, alleleNumber);
 		for(j=0;j<eventNumber && alleleNumber > 1;j++){
 			currentEventNumber=j; //need this annoying global for trajectory generation
 			if(j == eventNumber - 1){
@@ -285,56 +380,102 @@ int main(int argc, const char * argv[]){
 		if(alleleNumber > 1){
 			currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, MAXTIME, currentSize);
 		}
+		
+		// Sort and simplify the tree sequence after ancestry simulation is complete
+		// This removes all non-ancestral nodes and edges before mutation placement
+		if (tsk_tables != NULL) {
+			// fprintf(stderr, "Debug: Sorting tskit tables\n");
+			// Sort tables (required before simplification)
+			int ret = tsk_table_collection_sort(tsk_tables, NULL, 0);
+			if (ret != 0) {
+				fprintf(stderr, "Error sorting tables after ancestry simulation: %s\n", tsk_strerror(ret));
+				exit(1);
+			}
+			
+			// Get the sample node IDs before simplification
+			tsk_id_t *samples = malloc(sample_node_count * sizeof(tsk_id_t));
+			if (samples == NULL) {
+				fprintf(stderr, "Error: Failed to allocate memory for samples\n");
+				exit(1);
+			}
+			for (int i = 0; i < sample_node_count; i++) {
+				samples[i] = sample_node_ids[i];
+			}
+			
+			// Simplify to remove non-ancestral material
+			// fprintf(stderr, "Debug: Starting simplification with %d samples\n", sample_node_count);
+			tsk_id_t *node_map = malloc(tsk_tables->nodes.num_rows * sizeof(tsk_id_t));
+			if (node_map == NULL) {
+				fprintf(stderr, "Error: Failed to allocate memory for node map\n");
+				free(samples);
+				exit(1);
+			}
+			
+			ret = tsk_table_collection_simplify(tsk_tables, samples, sample_node_count, 0, node_map);
+			if (ret != 0) {
+				fprintf(stderr, "Error simplifying tables after ancestry simulation: %s\n", tsk_strerror(ret));
+				free(samples);
+				free(node_map);
+				exit(1);
+			}
+			// fprintf(stderr, "Debug: Simplification completed successfully\n");
+			
+			// Update the sample node IDs to reflect the new node numbers after simplification
+			for (int i = 0; i < sample_node_count; i++) {
+				if (samples[i] != TSK_NULL && node_map[samples[i]] != TSK_NULL) {
+					sample_node_ids[i] = node_map[samples[i]];
+				}
+			}
+			
+			free(samples);
+			free(node_map);
+		}
+		
+		// fprintf(stderr, "After event loop: i=%d, alleleNumber=%d\n", i, alleleNumber);
+		// fprintf(stderr, "DEBUG: After event loop, alleleNumber=%d\n", alleleNumber);
+		
 		//assign root
 	//	root = nodes[0];
 		//add Mutations
-		if(untilMode==0)
-			dropMutations();
-		else
-			dropMutationsUntilTime(uTime);	
-
-		if(condRecMode == 0){
-			if(treeOutputMode == 1){
-				//output newick trees
-                qsort(breakPoints, breakNumber, sizeof(breakPoints[0]), compare_floats);
-				lastBreak = 0;
-				printf("\n//\n");
-				for(k=0;k<breakNumber;k++){
-					tempSite = ((float) breakPoints[k] / nSites) - (0.5/nSites) ; //padding
-					if(breakPoints[k] - lastBreak > 0){
-						printf("[%d]",breakPoints[k] - lastBreak);
-                        //printf("%g\n",allNodes[findRootAtSite(breakPoints[k])]->time);
-                        printTreeAtSite(tempSite); 
-						lastBreak = breakPoints[k];
-					}
-				}
-				printf("[%d]",nSites- lastBreak);
-				//printf("%g\n",allNodes[findRootAtSite(1.0-(1.0/nSites))]->time);
-				printTreeAtSite(1.0 - (1.0/nSites)); 
-
+		// First record any sweep mutations
+		if (sweepMode != 'n' && sweepSite >= 0.0) {
+			if (tskit_record_sweep_mutations(sweepSite) < 0) {
+				fprintf(stderr, "Error: Failed to record sweep mutations in tskit\n");
+				exit(1);
 			}
-			else{
-				//Hudson style output
-				//errorCheckMutations();
-				makeGametesMS(argc,argv);
-			}
-			//printf("rep: %d\n",i);
-                        i++;
-		}
-		else{
-			if(condRecMet == 1){
-                                i++;
-				makeGametesMS(argc,argv);
-				condRecMet = 0;
-			}
-	
 		}
 		
-		freeTree(nodes[0]);
-		cleanupBreakPoints();
+		// Place mutations using tskit edge-based algorithm
+		extern double theta;
+		if (tskit_place_mutations_edge_based(theta) < 0) {
+			fprintf(stderr, "Error: Failed to place mutations in tskit\n");
+			exit(1);
+		}
+
+		// Hudson style output
+		//errorCheckMutations();
+		// Only generate MS output if not using tskit-only output mode
+		if (!tskitOutputMode) {
+			// fprintf(stderr, "About to call makeGametesMS for rep %d\n", i+1);
+			makeGametesMS(argc,argv);
+		}
+		//printf("rep: %d\n",i);
+		// fprintf(stderr, "DEBUG: Incrementing i from %d to %d\n", i, i+1);
+		i++;
+		// fprintf(stderr, "End of rep %d, i=%d, sampleNumber=%d\n", i, i, sampleNumber);
+		
+		// Debug: Print memory statistics (commented out for production)
+		// if (tskitOutputMode || minimalTreeSeq) {
+		// 	fprintf(stderr, "Replicate %d: Total nodes created: %d, Nodes freed during sim: %d, Net nodes: %d\n", 
+		// 	        i, totNodeNumber, freedNodeCount, totNodeNumber - freedNodeCount);
+		// }
+		
+		// Cleanup is now done at the beginning of each replicate to prevent overwrites
+		// No cleanup needed here between replicates
 		
 		// Clean up trajectory after each simulation
 		if (trajectoryFd != -1) {
+			// fprintf(stderr, "Cleaning up trajectory\n");
 			if (currentTrajectory && currentTrajectory != MAP_FAILED) {
 				munmap(currentTrajectory, trajectoryFileSize);
 			}
@@ -347,12 +488,59 @@ int main(int argc, const char * argv[]){
 			currentTrajectory = NULL;
 		}
 		
+		// Finalize and write tskit tree sequence for this replicate
+		if (tskitOutputMode) {
+			// Create replicate-specific filename with larger buffer to prevent overflow
+			char replicate_filename[1200];  // Extra space for _repN suffix
+			if (sampleNumber == 1) {
+				// Single replicate - use original filename
+				strncpy(replicate_filename, tskitOutputFilename, sizeof(replicate_filename) - 1);
+				replicate_filename[sizeof(replicate_filename) - 1] = '\0';
+			} else {
+				// Multiple replicates - append replicate number
+				// i was already incremented, so it gives us the correct 1-based replicate number
+				int replicate_num = i;
+				char *dot = strrchr(tskitOutputFilename, '.');
+				if (dot) {
+					// Insert replicate number before extension
+					int prefix_len = dot - tskitOutputFilename;
+					int ret = snprintf(replicate_filename, sizeof(replicate_filename), 
+						"%.*s_rep%d%s", prefix_len, tskitOutputFilename, replicate_num, dot);
+					if (ret >= sizeof(replicate_filename)) {
+						fprintf(stderr, "Error: Output filename too long\\n");
+						exit(1);
+					}
+				} else {
+					// No extension - append replicate number
+					int ret = snprintf(replicate_filename, sizeof(replicate_filename), 
+						"%s_rep%d", tskitOutputFilename, replicate_num);
+					if (ret >= sizeof(replicate_filename)) {
+						fprintf(stderr, "Error: Output filename too long\\n");
+						exit(1);
+					}
+				}
+			}
+			
+			if (i == 0) {
+				fprintf(stderr, "Writing tree sequence to %s\n", replicate_filename);
+			}
+			int ret = tskit_finalize(replicate_filename);
+			if (ret != 0) {
+				fprintf(stderr, "Error writing tree sequence: %s\n", tsk_strerror(ret));
+			}
+		} else {
+			// No file output - just need to sort tables for internal consistency
+			// (tskit_finalize with NULL filename would fail)
+		}
+		
+		// Clean up tskit for this replicate
+		tskit_cleanup();
+		
+		// fprintf(stderr, "After tskit_cleanup: i=%d\n", i);
+		// fprintf(stderr, "Debug: Completed replicate %d (i=%d, totalSimCount=%d, sampleNumber=%d)\n", 
+		//         totalSimCount + 1, i, totalSimCount, sampleNumber);
                 totalSimCount += 1;
 	}
-        if(condRecMode == 1)
-        {
-            fprintf(stderr, "Needed run %d simulations to get %d with a recombination event within the specified bounds.\n", totalSimCount, i);
-        }
 	// Clean up any remaining trajectory storage
 	if (trajectoryFd != -1) {
 		if (currentTrajectory && currentTrajectory != MAP_FAILED) {
@@ -364,15 +552,88 @@ int main(int argc, const char * argv[]){
 		}
 	}
 	
+	// tskit finalization now handled per-replicate
+	
 	free(currentSize);
 		free(events);
 	
-	// Clean up node arrays
-	cleanupNodeArrays();
+	// Final cleanup after all replicates
+	// fprintf(stderr, "Debug: Final cleanup of nodes\n");
+	// int nodes_freed = 0;
+	// Clean all nodes in the array
+	for (int cleanup_i = 0; cleanup_i < nodesCapacity; cleanup_i++) {
+		if (nodes[cleanup_i] != NULL) {
+			// nodes_freed++;
+			// Free ancestry segments if they exist
+			if (nodes[cleanup_i]->ancestryRoot) {
+				freeSegmentTree(nodes[cleanup_i]->ancestryRoot);
+				nodes[cleanup_i]->ancestryRoot = NULL;
+			}
+			// Free the node itself
+			free(nodes[cleanup_i]);
+			nodes[cleanup_i] = NULL;
+		}
+	}
+	// fprintf(stderr, "Debug: Freed %d nodes in final cleanup\n", nodes_freed);
+	cleanupBreakPoints();
+	cleanupPopLists();
+	
+	// Free the node arrays themselves (but not the nodes, we already did that)
+	if (nodes != NULL) {
+		free(nodes);
+		nodes = NULL;
+	}
+	cleanupSampleNodeIds();
+	
+	// Debug: print freed node count
+	// if (freedNodeCount > 0) {
+	//	fprintf(stderr, "Debug: Freed %d nodes during simulation\n", freedNodeCount);
+	// }
+	
+	// Clean up segment pool
+	destroySegmentPool();
 	
 	return(0);
 }
 
+// Helper function to safely get next argument with bounds checking
+static const char* getNextArg(int argc, const char **argv, int *args, const char *option) {
+	(*args)++;
+	if (*args >= argc) {
+		fprintf(stderr, "Error: Option %s requires an argument\n", option);
+		usage();
+		exit(1);
+	}
+	return argv[*args];
+}
+
+// Helper function to safely parse integer argument
+static int parseIntArg(int argc, const char **argv, int *args, const char *option) {
+	const char *arg = getNextArg(argc, argv, args, option);
+	char *endptr;
+	long val = strtol(arg, &endptr, 10);
+	
+	if (*endptr != '\0' || val > INT_MAX || val < INT_MIN) {
+		fprintf(stderr, "Error: Invalid integer argument for %s: '%s'\n", option, arg);
+		exit(1);
+	}
+	
+	return (int)val;
+}
+
+// Helper function to safely parse double argument
+static double parseDoubleArg(int argc, const char **argv, int *args, const char *option) {
+	const char *arg = getNextArg(argc, argv, args, option);
+	char *endptr;
+	double val = strtod(arg, &endptr);
+	
+	if (*endptr != '\0') {
+		fprintf(stderr, "Error: Invalid numeric argument for %s: '%s'\n", option, arg);
+		exit(1);
+	}
+	
+	return val;
+}
 
 
 void getParameters(int argc,const char **argv){
@@ -433,12 +694,14 @@ void getParameters(int argc,const char **argv){
 	migFlag = 0;
 	deltaTMod = 40;
 	recurSweepMode = 0;
-	treeOutputMode= 0;
 	partialSweepMode = 0;
 	softSweepMode = 0;
 	ancSampleFlag = 0;
 	ancSampleSize = 0;
 	hidePartialSNP = 0;
+	tskitOutputMode = 0;
+	tskitOutputFilename[0] = '\0';
+	minimalTreeSeq = 1;  // Default to minimal tree sequence mode
 	
 	// Initialize events array with initial capacity
 	eventsCapacity = 50;  // Start with reasonable capacity
@@ -457,50 +720,87 @@ void getParameters(int argc,const char **argv){
 	eventNumber++;
 	currentSize = malloc(sizeof(double) * MAXPOPS);
 
-	condRecMode= 0;
 	while(args < argc){
+		// Check if argument starts with '-'
+		if (argv[args][0] != '-') {
+			fprintf(stderr, "Error: Unexpected argument '%s'\n", argv[args]);
+			fprintf(stderr, "All options must start with '-'. Try '%s' without arguments for usage.\n", argv[0]);
+			exit(1);
+		}
+		
+		// Check for empty option after '-'
+		if (argv[args][1] == '\0') {
+			fprintf(stderr, "Error: Empty option '-'\n");
+			exit(1);
+		}
+		
 		switch(argv[args][1]){
+			case 'F' :
+			if (!tskitOutputMode) {
+				fprintf(stderr, "Error: -F flag requires -ts to be specified first\n");
+				fprintf(stderr, "Usage: %s [options] -ts <filename.trees> -F\n", argv[0]);
+				exit(1);
+			}
+			minimalTreeSeq = 0;  // Disable minimal mode, use full recording
+			fprintf(stderr, "Note: Full tree sequence mode enabled (recording all edges including recombination)\n");
+			break;
 			case 'S' :
 			runMode = 'S';
-			fileName = argv[++args];
+			fileName = getNextArg(argc, argv, &args, "-S");
 			break;
 			case 's' :
-			segSites =  atoi(argv[++args]);
+			segSites = parseIntArg(argc, argv, &args, "-s");
 			break;
 			case 't' :
-			theta = atof(argv[++args]);
+			if (argv[args][2] == 's') {  // -ts flag for tree sequence
+				tskitOutputMode = 1;
+				args++;
+				if (args >= argc || argv[args] == NULL || argv[args][0] == '-' || strlen(argv[args]) == 0) {
+					fprintf(stderr, "Error: -ts flag requires a filename argument\n");
+					fprintf(stderr, "Usage: %s [options] -ts <filename.trees>\n", argv[0]);
+					fprintf(stderr, "Example: %s 10 1 1000 -t 5 -ts output.trees\n", argv[0]);
+					if (args < argc && argv[args] != NULL && argv[args][0] == '-') {
+						fprintf(stderr, "Note: '%s' looks like another flag, not a filename\n", argv[args]);
+					}
+					exit(1);
+				}
+				strcpy(tskitOutputFilename, argv[args]);
+			}
+			else {  // -t flag for theta
+				theta = parseDoubleArg(argc, argv, &args, "-t");
+			}
 			break;
 			case 'i' :
-			deltaTMod = atof(argv[++args]);
+			deltaTMod = parseDoubleArg(argc, argv, &args, "-i");
 			break;
 			case 'r' :
-			rho = atof (argv[++args]);
+			rho = parseDoubleArg(argc, argv, &args, "-r");
 			break;
 			case 'g' :
                         if (argv[args][2] == 'r')
                         {
-			  gammaCoRatio = atof (argv[++args]);
-			  gcMean = atoi (argv[++args]);
+			  gammaCoRatio = parseDoubleArg(argc, argv, &args, "-gr");
+			  gcMean = parseIntArg(argc, argv, &args, "-gr");
                           gammaCoRatioMode = 1;
                         }
                         else
                         {
-			  my_gamma = atof (argv[++args]);
-			  gcMean = atoi (argv[++args]);
+			  my_gamma = parseDoubleArg(argc, argv, &args, "-g");
+			  gcMean = parseIntArg(argc, argv, &args, "-g");
                         }
 			break;
 			case 'a' :
-			alpha = atof(argv[++args]);
+			alpha = parseDoubleArg(argc, argv, &args, "-a");
 			break;
 			case 'x' :
-			sweepSite = atof(argv[++args]);
+			sweepSite = parseDoubleArg(argc, argv, &args, "-x");
 			break;
 			case 'M' :
 			if(npops==1){
 				fprintf(stderr,"Error: attempting to set migration but only one population! Be sure that 'm' flags are specified after 'p' flag\n");
 				exit(1);
 			}
-			migR = atof(argv[++args]);
+			migR = parseDoubleArg(argc, argv, &args, "-M");
 			for(i=0;i<npops;i++){
 				for(j=0;j<npops;j++){
 					if(i!=j){
@@ -514,24 +814,25 @@ void getParameters(int argc,const char **argv){
 			migFlag = 1;
 			break;
 			case 'm' :
-			if(npops==1){
-				fprintf(stderr,"Error: attempting to set migration but only one population! Be sure that 'm' flags are specified after 'p' flag\n");
-				exit(1);
-			}
-			i = atoi(argv[++args]);
-			j = atoi(argv[++args]);
-			migR = atof(argv[++args]);
-			migMatConst[i][j]=migR;
-			migFlag = 1;
+			// -m flag for migration
+				if(npops==1){
+					fprintf(stderr,"Error: attempting to set migration but only one population! Be sure that 'm' flags are specified after 'p' flag\n");
+					exit(1);
+				}
+				i = parseIntArg(argc, argv, &args, "-m");
+				j = parseIntArg(argc, argv, &args, "-m");
+				migR = parseDoubleArg(argc, argv, &args, "-m");
+				migMatConst[i][j]=migR;
+				migFlag = 1;
 			break;
 			case 'p' :
-			npops = atoi(argv[++args]);
+			npops = parseIntArg(argc, argv, &args, "-p");
 			if(npops > MAXPOPS){
 				fprintf(stderr,"Error: too many populations defined. Current maximum number = %d. Change MAXPOPS define in discoal.h and recompile... if you dare\n",MAXPOPS);
 				exit(1);
 			}
 			for(i=0;i<npops;i++){
-				sampleSizes[i]=atoi(argv[++args]);
+				sampleSizes[i] = parseIntArg(argc, argv, &args, "-p");
 				currentSize[i] = 1.0;
 			}
 			
@@ -547,6 +848,7 @@ void getParameters(int argc,const char **argv){
 					eventNumber++;
 					break;
 					case 'd' :
+					case 'j' :  // -ej is equivalent to -ed (for ms compatibility)
 					tDiv =  atof(argv[++args]);
 						ensureEventsCapacity();
 					events[eventNumber].time = tDiv * 2.0;
@@ -691,25 +993,12 @@ void getParameters(int argc,const char **argv){
 				break;
 			}
                         break;
-			case 'U' :
-			untilMode= 1;
-			uTime=atof(argv[++args])*2.0;
-			break; 
 			case 'd' :
-			seed1=atoi(argv[++args]);
-			seed2=atoi(argv[++args]);
+			seed1 = parseIntArg(argc, argv, &args, "-d");
+			seed2 = parseIntArg(argc, argv, &args, "-d");
 			break;
 			case 'N' :
-			EFFECTIVE_POPN_SIZE=atoi(argv[++args]);
-			break;
-			case 'T' :
-			treeOutputMode= 1;
-			break;
-			case 'C' :
-			condRecMode= 1;
-			condRecMet = 0;
-			lSpot=atoi(argv[++args]);
-			rSpot=atoi(argv[++args]);
+			EFFECTIVE_POPN_SIZE = parseIntArg(argc, argv, &args, "-N");
 			break;
 			case 'R' :
 			recurSweepMode = 1;
@@ -751,7 +1040,16 @@ void getParameters(int argc,const char **argv){
 			eventNumber++;
 			assert(events[eventNumber-1].lineageNumber < sampleSize);
 			break;
-			 
+			case 'T' :
+			fprintf(stderr, "Error: -T tree output mode has been removed.\n");
+			fprintf(stderr, "Use -ts <filename.trees> for tree sequence output instead.\n");
+			exit(1);
+			break;
+			default:
+			fprintf(stderr, "Error: Unknown option '-%c'\n", argv[args][1]);
+			fprintf(stderr, "Try '%s' without arguments for usage information.\n", argv[0]);
+			exit(1);
+			break;
 		}
 		args++;
 	}
@@ -799,6 +1097,12 @@ void getParameters(int argc,const char **argv){
 
 
 void usage(){
+	fprintf(stderr, "▗▄▄▄ ▗▄▄▄▖ ▗▄▄▖ ▗▄▄▖ ▗▄▖  ▗▄▖ ▗▖   \n");
+	fprintf(stderr, "▐▌  █  █  ▐▌   ▐▌   ▐▌ ▐▌▐▌ ▐▌▐▌   \n");
+	fprintf(stderr, "▐▌  █  █   ▝▀▚▖▐▌   ▐▌ ▐▌▐▛▀▜▌▐▌   \n");
+	fprintf(stderr, "▐▙▄▄▀▗▄█▄▖▗▄▄▞▘▝▚▄▄▖▝▚▄▞▘▐▌ ▐▌▐▙▄▄\n\n\n");
+	
+	fprintf(stderr,"discoal version %s\n", DISCOAL_VERSION);
 	fprintf(stderr,"usage: discoal sampleSize numReplicates nSites -ws tau\n");
 	fprintf(stderr,"parameters: \n");
 
@@ -839,11 +1143,11 @@ void usage(){
 	fprintf(stderr,"\t -Pc low high (prior on partialSweepFinalFreq; sweep models only)\n");
 	fprintf(stderr,"\t -Pe1 lowTime highTime lowSize highSize (priors on first demographic move time and size)\n");
 	fprintf(stderr,"\t -Pe2 lowTime highTime lowSize highSize (priors on second demographic move time and size)\n");
-	//fprintf(stderr,"\t -U time (only record mutations back to specified time)\n");
 	fprintf(stderr,"\t -R rhhRate (recurrent hitch hiking mode at the locus; rhh is rate per 2N individuals / generation)\n");
 	fprintf(stderr,"\t -L rhhRate (recurrent hitch hiking mode to the side of locus; leftRho is ~Unif(0,4Ns); rhh is rate per 2N individuals / generation)\n");
 	fprintf(stderr,"\t -h (hide selected SNP in partial sweep mode)\n");
-	fprintf(stderr,"\t -T (tree output mode)\n");
+	fprintf(stderr,"\t -ts filename (tree sequence output mode - saves to tskit file)\n");
+	fprintf(stderr,"\t -F (full ARG mode - record all edges including recombination; use with -ts)\n");
 	fprintf(stderr,"\t -d seed1 seed2 (set random number generator seeds)\n");
 	
 	exit(1);

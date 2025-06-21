@@ -8,7 +8,6 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include "ancestryVerify.h"
 #include "ancestryWrapper.h"
 #include "activeSegment.h"
 #include <time.h>
@@ -16,6 +15,7 @@
 #include "discoalFunctions.h"
 #include "ranlib.h"
 #include "alleleTraj.h"
+#include "tskitInterface.h"
 
 
 // Initial capacity for breakPoints array
@@ -49,8 +49,6 @@ void ensureBreakPointsCapacity() {
 		}
 		breakPoints = newBreakPoints;
 		breakPointsCapacity = newCapacity;
-		// Optional: Print growth information for debugging
-		// fprintf(stderr, "Debug: Grew breakPoints capacity to %d\n", breakPointsCapacity);
 	}
 }
 
@@ -69,16 +67,94 @@ void addBreakPoint(int bp) {
 	breakNumber += 1;
 }
 
+// Population list management functions for O(1) node selection
+
+void initializePopLists() {
+	for (int p = 0; p < MAXPOPS; p++) {
+		popLists[p].nodes = NULL;
+		popLists[p].count = 0;
+		popLists[p].capacity = 0;
+	}
+}
+
+void cleanupPopLists() {
+	for (int p = 0; p < MAXPOPS; p++) {
+		if (popLists[p].nodes != NULL) {
+			free(popLists[p].nodes);
+			popLists[p].nodes = NULL;
+			popLists[p].count = 0;
+			popLists[p].capacity = 0;
+		}
+	}
+}
+
+void addNodeToPopList(rootedNode *node, int popn) {
+	if (popn < 0 || popn >= MAXPOPS) return;  // Handle negative/invalid populations
+	
+	PopulationNodeList *list = &popLists[popn];
+	
+	// Grow array if needed
+	if (list->count >= list->capacity) {
+		int newCap = list->capacity ? list->capacity * 2 : 16;
+		rootedNode **newNodes = realloc(list->nodes, newCap * sizeof(rootedNode*));
+		if (newNodes == NULL) {
+			fprintf(stderr, "Error: Failed to allocate memory for population list\n");
+			exit(1);
+		}
+		list->nodes = newNodes;
+		list->capacity = newCap;
+	}
+	
+	node->popListIndex = list->count;
+	list->nodes[list->count++] = node;
+}
+
+void removeNodeFromPopList(rootedNode *node) {
+	int popn = node->population;
+	if (popn < 0 || popn >= MAXPOPS) return;  // Handle negative/invalid populations
+	
+	PopulationNodeList *list = &popLists[popn];
+	int index = node->popListIndex;
+	
+	if (index < 0 || index >= list->count) return;
+	
+	// Swap with last element
+	if (index < list->count - 1) {
+		list->nodes[index] = list->nodes[list->count - 1];
+		list->nodes[index]->popListIndex = index;
+	}
+	
+	list->count--;
+	node->popListIndex = -1;
+}
+
+// Fast O(1) node selection from population
+rootedNode *pickNodePopnFast(int popn) {
+	if (popn < 0 || popn >= MAXPOPS) {
+		fprintf(stderr, "Error: Invalid population %d in pickNodePopnFast\n", popn);
+		exit(1);
+	}
+	
+	PopulationNodeList *list = &popLists[popn];
+	if (list->count == 0) {
+		fprintf(stderr, "Error: No nodes in population %d\n", popn);
+		exit(1);
+	}
+	
+	int index = ignuin(0, list->count - 1);
+	return list->nodes[index];
+}
+
 void initialize(){
 	int i,j,p, count=0;
 	int leafID=0;
 	int tmpCount = 0;
 	
-	
 	/* Initialize the arrays */
 	totChunkNumber = 0;
 	initializeBreakPoints();
 	initializeNodeArrays();
+	initializePopLists();  // Initialize population lists for O(1) node selection
 	for(p=0;p<npops;p++){
 		popnSizes[p]=sampleSizes[p];
 		for( i = 0; i < sampleSizes[p]; i++){
@@ -86,12 +162,22 @@ void initialize(){
 			nodes[count]->nancSites = nSites;
 			nodes[count]->lLim=0;
 			nodes[count]->rLim=nSites-1;
-			// Initialize ancestry segment tree for leaf node
-			nodes[count]->ancestryRoot = newSegment(0, nSites, NULL, NULL);
+			
+			// Always track sample node ID in tskit (create node first)
+			tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
+			set_tskit_node_id(nodes[count], tsk_id);
+			addSampleNodeId(tsk_id);
+			
+			// Initialize ancestry segment tree for leaf node with tskit node ID
+			nodes[count]->ancestryRoot = newSegment(0, nSites, tsk_id, NULL, NULL);
 
 			if(p>0)nodes[count]->sweepPopn = 0;
 			nodes[count]->id=leafID++;
-			allNodes[count] = nodes[count];
+			nodes[count]->inActiveSet = 1;  // Sample nodes start in active set
+			
+			// Add to population list
+			addNodeToPopList(nodes[count], p);
+			
 			count += 1;
 		}
 	}
@@ -104,6 +190,7 @@ void initialize(){
 	//set initial counts
 	alleleNumber = sampleSize;
 	totNodeNumber = sampleSize;
+	freedNodeCount = 0;  // Initialize freed node counter
 	//ancient pop samples?
 	if(ancSampleFlag == 1){
 		//go through ancient sample events
@@ -135,10 +222,6 @@ void initialize(){
 			}
 		}
 		eventFlag = 0;
-	}
-	//mask mode?
-	if (mask){
-//		getMasking(mFile);
 	}
 	
 	//priors on parameters?
@@ -190,6 +273,7 @@ void initializeTwoSite(){
 	totChunkNumber = 0;
 	initializeBreakPoints();
 	initializeNodeArrays();
+	initializePopLists();  // Initialize population lists for O(1) node selection
 	for(p=0;p<npops;p++){
 		popnSizes[p]=sampleSizes[p];
 		for( i = 0; i < sampleSizes[p]; i++){
@@ -197,14 +281,21 @@ void initializeTwoSite(){
 			nodes[count]->nancSites = nSites;
 			nodes[count]->lLim=0;
 			nodes[count]->rLim=nSites-1;
-			// Initialize ancestry segment tree for leaf node
-			nodes[count]->ancestryRoot = newSegment(0, nSites, NULL, NULL);
+			
+			// Track sample node ID in tskit (create node first)
+			tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
+			set_tskit_node_id(nodes[count], tsk_id);
+			addSampleNodeId(tsk_id);
+			
+			// Initialize ancestry segment tree for leaf node with tskit node ID
+			nodes[count]->ancestryRoot = newSegment(0, nSites, tsk_id, NULL, NULL);
 			if(p>0)nodes[count]->sweepPopn = 0;
 			nodes[count]->id=leafID++;
-			//do stuff for leafs containers
-			//nodes->leafs = calloc(sizeof(int) * sampleSize);
-			//nodes->leafs[nodes[count]->id] = 1;
-			allNodes[count] = nodes[count];
+			nodes[count]->inActiveSet = 1;  // Sample nodes start in active set
+			
+			// Add to population list
+			addNodeToPopList(nodes[count], p);
+			
 			count += 1;
 		}
 	}
@@ -216,6 +307,7 @@ void initializeTwoSite(){
 	//set initial counts
 	alleleNumber = sampleSize;
 	totNodeNumber = sampleSize;
+	freedNodeCount = 0;  // Initialize freed node counter
 	activeSites = nSites;
 	if (npops>1){
 		if(tDiv==666 && mig[0] == 0 && mig[1] == 0){
@@ -224,10 +316,6 @@ void initializeTwoSite(){
 		}
 		
 		eventFlag = 0;
-	}
-	//mask mode?
-	if (mask){
-//		getMasking(mFile);
 	}
 	
 	//priors on parameters?
@@ -269,6 +357,8 @@ void initializeTwoSite(){
 }
 
 
+static int total_nodes_allocated = 0;
+
 rootedNode *newRootedNode(double cTime, int popn) {
 	rootedNode *temp;
 
@@ -276,25 +366,186 @@ rootedNode *newRootedNode(double cTime, int popn) {
 	if(temp==NULL){
 		printf("fucked: out o' memory from rootedNode alloc\n");
 	}
+	total_nodes_allocated++;
+	// fprintf(stderr, "DEBUG: Allocated node %p, total allocated: %d\n", temp, total_nodes_allocated);
 	temp->rightParent = NULL;
 	temp->leftParent = NULL;
 	temp->rightChild = NULL;
 	temp->leftChild = NULL; 
 	temp->time = cTime;
 	temp->branchLength=0.0;
-	temp->mutationNumber = 0;
 	temp->population = popn;
 	temp->sweepPopn = -1;
 	
-	// Initialize muts array dynamically
-	initializeMuts(temp, 10);  // Start small, grow as needed
-//	temp->leafs = malloc(sizeof(int) * sampleSize);
-//	for(i=0;i<nSites;i++)temp->ancSites[i]=1;
-
+	// Initialize node state tracking
+	temp->parentsRecorded = 0;
+	temp->isFullyRecorded = 0;
+	temp->inActiveSet = 0;  // Will be set to 1 for sample nodes
+	temp->carriesSweepMutation = 0;  // No sweep mutation by default
+	
 	// Initialize ancestry segment tree to NULL (will be set during initialization)
 	temp->ancestryRoot = NULL;
 
+	// Initialize tskit node ID
+	temp->tskit_node_id = TSK_NULL;
+	
+	// Initialize population list index
+	temp->popListIndex = -1;
+
 	return temp;
+}
+
+// Forward declaration
+void addToRemovedList(rootedNode *node);
+
+// Mark that a parent has recorded its connection to this child
+void markParentRecorded(rootedNode *child, rootedNode *parent) {
+	if (child == NULL) return;
+	
+	if (parent == child->leftParent) {
+		child->parentsRecorded |= 0x01;  // Set bit 0
+	} else if (parent == child->rightParent) {
+		child->parentsRecorded |= 0x02;  // Set bit 1
+	}
+	
+	// Check if both parents recorded (or if single parent for coalescence)
+	int expectedParents = (child->leftParent != NULL) + (child->rightParent != NULL);
+	int recordedParents = ((child->parentsRecorded & 0x01) ? 1 : 0) + 
+	                     ((child->parentsRecorded & 0x02) ? 1 : 0);
+	
+	// Only mark as fully recorded if:
+	// 1. All expected parents are recorded
+	// 2. Node is not in active set
+	// 3. All segments on the node are recorded
+	if (recordedParents == expectedParents && !child->inActiveSet) {
+		// Check if all segments are recorded
+		if (areAllSegmentsRecorded(child->ancestryRoot)) {
+			child->isFullyRecorded = 1;
+			// If node is fully recorded and not in active set, add to removed list
+			addToRemovedList(child);
+		}
+	}
+}
+
+// Try to free a node if it's safe to do so
+void tryFreeNode(rootedNode *node) {
+	if (node == NULL || !node->isFullyRecorded) return;
+	
+	// Critical safety check: ensure not in active set
+	if (node->inActiveSet) return;
+	
+	// Additional safety check: ensure not in nodes array
+	for (int i = 0; i < alleleNumber; i++) {
+		if (nodes[i] == node) return;  // Still active!
+	}
+	
+	// Free ancestry segments using reference counting
+	if (node->ancestryRoot) {
+		freeSegmentTree(node->ancestryRoot);
+		node->ancestryRoot = NULL;
+	}
+	
+	// Free the node
+	free(node);
+	
+	// Update statistics
+	freedNodeCount++;
+}
+
+// Global list to track nodes that have been removed from active set but not yet freed
+// This allows us to safely free them later when we're sure they're not being used
+#define MAX_REMOVED_NODES 10000
+static rootedNode *removedNodes[MAX_REMOVED_NODES];
+static int removedNodeCount = 0;
+
+// Add a node to the removed list for later freeing
+void addToRemovedList(rootedNode *node) {
+	if (node == NULL || removedNodeCount >= MAX_REMOVED_NODES) return;
+	
+	// Check if already in removed list
+	for (int i = 0; i < removedNodeCount; i++) {
+		if (removedNodes[i] == node) return;  // Already tracked
+	}
+	
+	// Mark as not in active set
+	node->inActiveSet = 0;
+	
+	// Add to removed list
+	removedNodes[removedNodeCount++] = node;
+}
+
+// Sweep through removed nodes and free any that are fully recorded
+// This implements a mark-and-sweep approach for safe memory management
+int sweepAndFreeRemovedNodes() {
+	int freedCount = 0;
+	int newRemovedCount = 0;
+	
+	// Go through removed nodes and free those that are marked as fully recorded
+	for (int i = 0; i < removedNodeCount; i++) {
+		rootedNode *node = removedNodes[i];
+		if (node == NULL) continue;
+		
+		// Only process nodes that are marked as fully recorded
+		// This marking happens in markParentRecorded when all edges are recorded
+		if (node->isFullyRecorded) {
+			// Extra safety check: ensure it's really not in the active array
+			int inActiveArray = 0;
+			for (int j = 0; j < alleleNumber; j++) {
+				if (nodes[j] == node) {
+					inActiveArray = 1;
+					fprintf(stderr, "WARNING: Fully recorded node still in active array!\n");
+					break;
+				}
+			}
+			
+			if (!inActiveArray) {
+				// Safe to free - node is fully recorded and not active
+				if (node->ancestryRoot) {
+					freeSegmentTree(node->ancestryRoot);
+					node->ancestryRoot = NULL;
+				}
+				
+				// NULL out any parent pointers to this node before freeing
+				if (node->leftParent) {
+					if (node->leftParent->leftChild == node) node->leftParent->leftChild = NULL;
+					if (node->leftParent->rightChild == node) node->leftParent->rightChild = NULL;
+				}
+				if (node->rightParent) {
+					if (node->rightParent->leftChild == node) node->rightParent->leftChild = NULL;
+					if (node->rightParent->rightChild == node) node->rightParent->rightChild = NULL;
+				}
+				
+				// NULL out any child pointers from this node (defensive)
+				if (node->leftChild) {
+					if (node->leftChild->leftParent == node) node->leftChild->leftParent = NULL;
+					if (node->leftChild->rightParent == node) node->leftChild->rightParent = NULL;
+				}
+				if (node->rightChild) {
+					if (node->rightChild->leftParent == node) node->rightChild->leftParent = NULL;
+					if (node->rightChild->rightParent == node) node->rightChild->rightParent = NULL;
+				}
+				
+				// Debug: print info about node being freed
+				// fprintf(stderr, "Freeing node %p (time=%f, pop=%d)\n", 
+				//         node, node->time, node->population);
+				free(node);
+				freedCount++;
+				freedNodeCount++;
+			} else {
+				// This shouldn't happen - keep for debugging
+				removedNodes[newRemovedCount++] = node;
+			}
+		} else {
+			// Not fully recorded yet - this shouldn't happen either
+			// since we only add fully recorded nodes to the list
+			removedNodes[newRemovedCount++] = node;
+		}
+	}
+	
+	// Update the removed count
+	removedNodeCount = newRemovedCount;
+	
+	return freedCount;
 }
 
 ////////  Migration Stuff ///////////
@@ -304,7 +555,14 @@ void migrateAtTime(double cTime,int srcPopn, int destPopn){
 	rootedNode *temp;
 	
 	temp = pickNodePopn(srcPopn);
+	
+	// Remove from source population list
+	removeNodeFromPopList(temp);
+	
 	temp->population = destPopn;
+	
+	// Add to destination population list
+	addNodeToPopList(temp, destPopn);
 
 	popnSizes[srcPopn]-=1;
 	popnSizes[destPopn]+=1;
@@ -334,7 +592,14 @@ void migrateExceptSite(double site, double scalar, int srcPopn, int destPopn){
 	if(isAncestralHere(temp,site) == 0 || ranf() < scalar) doMig = 1; //migration of site is 10% rate of other sites
 	if(doMig == 1)
 	{
+		// Remove from source population list
+		removeNodeFromPopList(temp);
+		
 		temp->population = destPopn;
+		
+		// Add to destination population list
+		addNodeToPopList(temp, destPopn);
+		
 		popnSizes[srcPopn]-=1;
 		popnSizes[destPopn]+=1;
 		if (srcPopn==0)
@@ -346,6 +611,87 @@ void migrateExceptSite(double site, double scalar, int srcPopn, int destPopn){
 
 
 ////////
+
+// Structure to hold a node and its ancestry segments for edge recording
+typedef struct {
+    rootedNode *node;
+    AncestrySegment *segments;
+} NodeWithSegments;
+
+// Helper function to find descendant nodes by tracing through unrecorded nodes
+static int findTrueDescendants(rootedNode *node, rootedNode **results, int maxResults) {
+    int count = 0;
+    
+    // If this node has a tskit ID, it's a true descendant
+    if (get_tskit_node_id(node) != TSK_NULL) {
+        if (count < maxResults) {
+            results[count] = node;
+            count++;
+        }
+        return count;
+    }
+    
+    // This node doesn't have a tskit ID - trace through its children
+    if (node->leftChild != NULL) {
+        int childCount = findTrueDescendants(node->leftChild, results + count, maxResults - count);
+        count += childCount;
+    }
+    
+    if (node->rightChild != NULL && node->rightChild != node->leftChild && count < maxResults) {
+        int childCount = findTrueDescendants(node->rightChild, results + count, maxResults - count);
+        count += childCount;
+    }
+    
+    return count;
+}
+
+// Helper function to find descendants with tskit nodes by tracing through unrecorded nodes
+// This properly handles genomic intervals through recombination events
+static int findDescendantsWithSegments(rootedNode *node, NodeWithSegments *results, int maxResults) {
+    int count = 0;
+    
+    // If this node has no ancestry, there's nothing to trace
+    if (node->ancestryRoot == NULL) {
+        return 0;
+    }
+    
+    // If this node has a tskit ID, we can record edges to it
+    if (get_tskit_node_id(node) != TSK_NULL) {
+        if (count < maxResults) {
+            results[count].node = node;
+            results[count].segments = node->ancestryRoot;
+            count++;
+        }
+        return count;
+    }
+    
+    // This node doesn't have a tskit ID (unrecorded recombination node)
+    // Trace through its children
+    if (node->leftChild != NULL) {
+        // For each child, we need to track which segments flow through
+        NodeWithSegments childResults[10];
+        int childCount = findDescendantsWithSegments(node->leftChild, childResults, 10);
+        
+        // Pass through the results from the recursive call
+        for (int i = 0; i < childCount && count < maxResults; i++) {
+            results[count] = childResults[i];
+            count++;
+        }
+    }
+    
+    if (node->rightChild != NULL && node->rightChild != node->leftChild) {
+        // Handle second child (for recombination, leftChild == rightChild)
+        NodeWithSegments childResults[10];
+        int childCount = findDescendantsWithSegments(node->rightChild, childResults, 10);
+        
+        for (int i = 0; i < childCount && count < maxResults; i++) {
+            results[count] = childResults[i];
+            count++;
+        }
+    }
+    
+    return count;
+}
 
 void coalesceAtTimePopn(double cTime, int popn){
 	rootedNode *temp, *lChild, *rChild;
@@ -369,24 +715,191 @@ void coalesceAtTimePopn(double cTime, int popn){
 	temp->nancSites = 0;
 	temp->lLim = nSites;
 	temp->rLim = 0;
-	// Merge ancestry segment trees
-	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
+	
+	// Propagate sweep mutation flag if either child carries it
+	if (lChild->carriesSweepMutation || rChild->carriesSweepMutation) {
+		temp->carriesSweepMutation = 1;
+	}
+	
+	// Add the parent node to discoal's arrays and tskit BEFORE merging/recording
+	addNode(temp);
+	
+	// Get tskit IDs for all nodes involved in coalescence  
+	tsk_id_t parent_tsk_id = get_tskit_node_id(temp);
+	tsk_id_t lchild_tsk_id = get_tskit_node_id(lChild);
+	tsk_id_t rchild_tsk_id = get_tskit_node_id(rChild);
+	
+	// Merge ancestry segment trees with parent's tskit node ID
+	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot, parent_tsk_id);
 	
 	// Update stats from tree when in tree-only mode
 	updateAncestryStatsFromTree(temp);
 	
-	// Verify consistency in debug mode
-	#ifdef DEBUG_ANCESTRY
-	if (!verifyAncestryConsistency(temp, nSites)) {
-		fprintf(stderr, "Ancestry verification failed after coalescence\n");
-		exit(1);
-	}
-	#endif
+	extern int minimalTreeSeq;
 	
-	//printNode(temp);
-	//printf("coal-> lChild: %u rChild: %u parent: %u time: %f\n",lChild,rChild,temp,cTime);
-	addNode(temp);
-	//update active anc. material
+	if (parent_tsk_id != TSK_NULL) {
+		// Always use segment-based edge recording
+		// Add edges in child ID order (required by tskit)
+		tsk_id_t first_child_id, second_child_id;
+		rootedNode *first_child, *second_child;
+		
+		if (lchild_tsk_id < rchild_tsk_id) {
+			first_child_id = lchild_tsk_id;
+			first_child = lChild;
+			second_child_id = rchild_tsk_id;
+			second_child = rChild;
+		} else {
+			first_child_id = rchild_tsk_id;
+			first_child = rChild;
+			second_child_id = lchild_tsk_id;
+			second_child = lChild;
+		}
+		
+		// Record edges using the msprime pattern - segments know their tskit node IDs
+		// Process left child's segments
+		if (lChild->ancestryRoot != NULL) {
+			AncestrySegment *seg = lChild->ancestryRoot;
+			while (seg != NULL) {
+				// Each segment knows which tskit node it represents
+				if (seg->tskit_node_id != TSK_NULL && seg->tskit_node_id != parent_tsk_id) {
+					tskit_add_edges(parent_tsk_id, seg->tskit_node_id, 
+						(double)seg->start, (double)seg->end);
+				}
+				markSegmentRecorded(seg);
+				seg = seg->next;
+			}
+		}
+		
+		// Process right child's segments
+		if (rChild->ancestryRoot != NULL) {
+			AncestrySegment *seg = rChild->ancestryRoot;
+			while (seg != NULL) {
+				// Each segment knows which tskit node it represents
+				if (seg->tskit_node_id != TSK_NULL && seg->tskit_node_id != parent_tsk_id) {
+					tskit_add_edges(parent_tsk_id, seg->tskit_node_id,
+						(double)seg->start, (double)seg->end);
+				}
+				markSegmentRecorded(seg);
+				seg = seg->next;
+			}
+		}
+		
+		// CRITICAL: Mark the parent's segments as recorded too!
+		// The parent has new segments from mergeAncestryTrees that need to be marked
+		// otherwise the parent node can never be freed
+		if (temp->ancestryRoot != NULL) {
+			AncestrySegment *seg = temp->ancestryRoot;
+			while (seg != NULL) {
+				markSegmentRecorded(seg);
+				seg = seg->next;
+			}
+		}
+	}
+	
+	
+	// Mark parent recording and try to free nodes if using tskit
+	if (tskitOutputMode || minimalTreeSeq) {
+		// Use the same first/second child logic as edge recording
+		rootedNode *first_child, *second_child;
+		if (lchild_tsk_id < rchild_tsk_id) {
+			first_child = lChild;
+			second_child = rChild;
+		} else {
+			first_child = rChild;
+			second_child = lChild;
+		}
+		
+		// For first child - mark parent recorded
+		if (minimalTreeSeq && first_child->ancestryRoot != NULL) {
+			rootedNode *trueDescendants[10];
+			int numDesc = findTrueDescendants(first_child, trueDescendants, 10);
+			
+			if (numDesc > 0 && trueDescendants[0] != first_child) {
+				// Mark all nodes in the bypass chain
+				rootedNode *current = first_child;
+				while (current != NULL && current != trueDescendants[0]) {
+					markParentRecorded(current, temp);
+					rootedNode *next = (current->leftChild != NULL) ? 
+					                  current->leftChild : current->rightChild;
+					// Temporarily disabled node freeing
+					// if (current != first_child) {
+					//     tryFreeNode(current);
+					// }
+					current = next;
+				}
+				// Mark the true descendants
+				for (int d = 0; d < numDesc; d++) {
+					markParentRecorded(trueDescendants[d], temp);
+				}
+			} else {
+				markParentRecorded(first_child, temp);
+			}
+		} else {
+			markParentRecorded(first_child, temp);
+		}
+		
+		// For second child - mark parent recorded
+		if (minimalTreeSeq && second_child->ancestryRoot != NULL) {
+			rootedNode *trueDescendants[10];
+			int numDesc = findTrueDescendants(second_child, trueDescendants, 10);
+			
+			if (numDesc > 0 && trueDescendants[0] != second_child) {
+				// Mark all nodes in the bypass chain
+				rootedNode *current = second_child;
+				while (current != NULL && current != trueDescendants[0]) {
+					markParentRecorded(current, temp);
+					rootedNode *next = (current->leftChild != NULL) ? 
+					                  current->leftChild : current->rightChild;
+					// Temporarily disabled node freeing
+					// if (current != second_child) {
+					//     tryFreeNode(current);
+					// }
+					current = next;
+				}
+				// Mark the true descendants
+				for (int d = 0; d < numDesc; d++) {
+					markParentRecorded(trueDescendants[d], temp);
+				}
+			} else {
+				markParentRecorded(second_child, temp);
+			}
+		} else {
+			markParentRecorded(second_child, temp);
+		}
+		
+		// Try to free children based on their node type
+		// A coalescent node has both left and right children
+		int lChildIsCoal = isCoalNode(lChild);
+		int rChildIsCoal = isCoalNode(rChild);
+		
+		// Check if nodes are leaves (no children at all)
+		int lChildIsLeaf = (lChild->leftChild == NULL && lChild->rightChild == NULL);
+		int rChildIsLeaf = (rChild->leftChild == NULL && rChild->rightChild == NULL);
+		
+		// Leaf nodes need special handling since they have no children to record
+		if (lChildIsLeaf) {
+			// Mark all segments as recorded since leaf nodes have simple ancestry
+			if (lChild->ancestryRoot) {
+				markSegmentRecorded(lChild->ancestryRoot);
+			}
+			lChild->isFullyRecorded = 1;
+			addToRemovedList(lChild);
+		}
+		
+		if (rChildIsLeaf) {
+			// Mark all segments as recorded since leaf nodes have simple ancestry
+			if (rChild->ancestryRoot) {
+				markSegmentRecorded(rChild->ancestryRoot);
+			}
+			rChild->isFullyRecorded = 1;
+			addToRemovedList(rChild);
+		}
+		
+		// With periodic sweep approach, we don't need immediate freeing
+		// Just mark nodes as removed and let the sweep handle it
+	}
+	
+	//update active anc. material (addNode was moved earlier)
 	updateActiveMaterial(temp);
 	//popnSizes[popn]--; //decrese popnSize	
 }
@@ -421,7 +934,6 @@ void coalesceAtTimePopnTrackLeafs(double cTime, int popn){
 		temp->leafs[i] =  lChild->leafs[i] + rChild->leafs[i];
 	}
 	
-	//printNode(temp);
 	addNode(temp);
 	//update active anc. material
 	updateActiveMaterial(temp);
@@ -565,15 +1077,80 @@ int recombineAtTimePopn(double cTime, int popn){
 		lParent->ancestryRoot = splitLeft(aNode->ancestryRoot, xOver);
 		rParent->ancestryRoot = splitRight(aNode->ancestryRoot, xOver);
 		
+		// Always free the original tree since split functions create new segments
+		// With our segment-based approach, we don't need to preserve the child's tree
+		freeSegmentTree(aNode->ancestryRoot);
+		aNode->ancestryRoot = NULL;
+		
 		// Update stats from tree when in tree-only mode
 		updateAncestryStatsFromTree(lParent);
 		updateAncestryStatsFromTree(rParent);
 		
+		// Propagate sweep mutation flag based on which parent gets the sweep site
+		if (aNode->carriesSweepMutation) {
+			// Determine which parent inherits the sweep mutation based on sweep site position
+			extern double sweepSite;
+			if (sweepSite >= 0.0) {
+				if (sweepSite < (float)xOver / nSites) {
+					// Sweep site is on the left, so left parent inherits
+					lParent->carriesSweepMutation = 1;
+				} else {
+					// Sweep site is on the right, so right parent inherits
+					rParent->carriesSweepMutation = 1;
+				}
+			}
+		}
+		
 		addNode(lParent);
 		addNode(rParent);
 		
+		// Record edges in tskit for recombination (only in full mode)
+		extern int minimalTreeSeq;
+		if (!minimalTreeSeq) {
+			tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
+			tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
+			tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
+			
+			// Record edges based on actual ancestry segments, not full sequence range
+			// Left parent gets segments that are left of the crossover point
+			if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && lParent->ancestryRoot != NULL) {
+				AncestrySegment *seg = lParent->ancestryRoot;
+				while (seg != NULL) {
+					tskit_add_edges(lparent_tsk_id, child_tsk_id, 
+						(double)seg->start, (double)seg->end);
+					markSegmentRecorded(seg);  // Mark segment as recorded
+					seg = seg->next;
+				}
+			}
+			
+			// Right parent gets segments that are right of the crossover point
+			if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && rParent->ancestryRoot != NULL) {
+				AncestrySegment *seg = rParent->ancestryRoot;
+				while (seg != NULL) {
+					tskit_add_edges(rparent_tsk_id, child_tsk_id,
+						(double)seg->start, (double)seg->end);
+					markSegmentRecorded(seg);  // Mark segment as recorded
+					seg = seg->next;
+				}
+			}
+		} else {
+			// In minimal mode, don't create tskit nodes for recombination parents
+			// They will remain with tskit_node_id = TSK_NULL
+			// During coalescence, we'll trace through to find the actual samples
+		}
+		
 	//	printf("reco-> lParent: %u rParent:%u child: %u time:%f xover:%d\n",lParent,rParent,aNode,cTime,xOver);
-		//printNode(aNode);
+		
+		// Mark that the child node is no longer in active set
+		// It needs both parents to record before it can be freed
+		aNode->inActiveSet = 0;
+		
+		// Mark parent recording if using tskit
+		if (tskitOutputMode || minimalTreeSeq) {
+			markParentRecorded(aNode, lParent);
+			markParentRecorded(aNode, rParent);
+		}
+		
 		return xOver;
 	}
 	return 666;
@@ -620,6 +1197,11 @@ void geneConversionAtTimePopn(double cTime, int popn){
 			gcSplitResult gcSplit = splitSegmentTreeForGeneConversion(aNode->ancestryRoot, xOver, xOver + tractL);
 			lParent->ancestryRoot = gcSplit.converted;     // Gets the converted tract
 			rParent->ancestryRoot = gcSplit.unconverted;   // Gets everything else
+			
+			// Always free the original tree since split functions create new segments
+			// With our segment-based approach, we don't need to preserve the child's tree
+			freeSegmentTree(aNode->ancestryRoot);
+			aNode->ancestryRoot = NULL;
 		} else {
 			lParent->ancestryRoot = NULL;
 			rParent->ancestryRoot = NULL;
@@ -629,8 +1211,63 @@ void geneConversionAtTimePopn(double cTime, int popn){
 		updateAncestryStatsFromTree(lParent);
 		updateAncestryStatsFromTree(rParent);
 		
+		// Propagate sweep mutation flag based on whether sweep site is in converted tract
+		if (aNode->carriesSweepMutation) {
+			extern double sweepSite;
+			if (sweepSite >= 0.0) {
+				int sweepSitePos = (int)(sweepSite * nSites);
+				if (sweepSitePos >= xOver && sweepSitePos < xOver + tractL) {
+					// Sweep site is in the converted tract
+					lParent->carriesSweepMutation = 1;
+				} else {
+					// Sweep site is outside the converted tract
+					rParent->carriesSweepMutation = 1;
+				}
+			}
+		}
+		
 		addNode(lParent);
 		addNode(rParent);
+		
+		// Record edges in tskit for gene conversion (only in full mode)
+		extern int minimalTreeSeq;
+		if (!minimalTreeSeq) {
+			tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
+			tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
+			tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
+			
+			// Record edges based on actual ancestry segments from gene conversion
+			// lParent gets the converted tract segments
+			if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && lParent->ancestryRoot != NULL) {
+				AncestrySegment *seg = lParent->ancestryRoot;
+				while (seg != NULL) {
+					tskit_add_edges(lparent_tsk_id, child_tsk_id,
+						(double)seg->start, (double)seg->end);
+					markSegmentRecorded(seg);  // Mark segment as recorded
+					seg = seg->next;
+				}
+			}
+			
+			// rParent gets the unconverted segments
+			if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && rParent->ancestryRoot != NULL) {
+				AncestrySegment *seg = rParent->ancestryRoot;
+				while (seg != NULL) {
+					tskit_add_edges(rparent_tsk_id, child_tsk_id,
+						(double)seg->start, (double)seg->end);
+					markSegmentRecorded(seg);  // Mark segment as recorded
+					seg = seg->next;
+				}
+			}
+		}
+		
+		// Mark that the child node is no longer in active set
+		aNode->inActiveSet = 0;
+		
+		// Mark parent recording if using tskit
+		if (tskitOutputMode || minimalTreeSeq) {
+			markParentRecorded(aNode, lParent);
+			markParentRecorded(aNode, rParent);
+		}
 	}
 }
 
@@ -855,6 +1492,8 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 	double cTime, cRate[npops], rRate[npops], gcRate[npops], mRate[npops],totRate, waitTime, bp,r, r2;
 	double totCRate, totRRate, totGCRate,totMRate, eSum;
 	int  i,j;
+	int coalescenceCounter = 0;  // Counter for coalescent events only
+	const int SWEEP_INTERVAL = 10;  // Sweep every 10 coalescent events
 
 	if(startTime == endTime){
 		return(endTime);
@@ -949,6 +1588,15 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 							 eSum += cRate[++i];
 							}
 						coalesceAtTimePopn(cTime,i);
+						
+						// Increment coalescence counter and sweep
+						coalescenceCounter++;
+						if (coalescenceCounter % SWEEP_INTERVAL == 0) {
+							// Flush buffered edges before freeing nodes to avoid referencing freed nodes
+							extern int tskit_flush_edges_periodic(void);
+							tskit_flush_edges_periodic();
+							sweepAndFreeRemovedNodes();
+						}
 					
 					
 					}
@@ -956,6 +1604,13 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 			}
 		}
 	}
+	
+	// Final sweep at the end of the phase
+	// Flush buffered edges before freeing nodes
+	extern int tskit_flush_edges_periodic(void);
+	tskit_flush_edges_periodic();
+	sweepAndFreeRemovedNodes();
+	
 	return(cTime);
 }
 
@@ -1162,8 +1817,10 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 					}
 					else{
 						nodes[i]->sweepPopn = 1;
-						if(isAncestralHere(nodes[i],sweepSite) && hidePartialSNP == 0)
-							addMutation(nodes[i],sweepSite);
+						if(isAncestralHere(nodes[i],sweepSite) && hidePartialSNP == 0) {
+							// Mark that this node carries the sweep mutation
+							nodes[i]->carriesSweepMutation = 1;
+						}
 					}
 				}
 				else{
@@ -1284,9 +1941,6 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 						bp = recombineAtTimePopnSweep(cTime + (ttau),0, 0, sweepSite, (1.0-x));
 						if(bp != 666){
 							addBreakPoint(bp);
-							if(bp >= lSpot && bp < rSpot){
-								condRecMet = 1;
-							}
 						}
 					}
 					else{
@@ -1296,9 +1950,6 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 							bp = recombineAtTimePopnSweep(cTime + (ttau),0, 1, sweepSite, x);
 							if(bp != 666){
 								addBreakPoint(bp);
-								if(bp >= lSpot && bp < rSpot){
-									condRecMet = 1;
-								}
 							}
 						}
 						else{
@@ -1324,8 +1975,6 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 										else{
 											//recurrent adaptive mutation:
 											//node in pop zero's sweep group exits sweep
-											//fprintf(stderr,"recurrent mutation at time %f; freq=%f\n", cTime+(ttau),x);
-											//fprintf(stderr,"recurMut prob: %g; uA: %f, sweepPopnSizes[1]:%d; x:%f; tInc: %g; sizeRatio: %f\npopnSizes[0]: %d; popnSizes[1]: %d\n", pRecurMut,uA,sweepPopnSizes[1],x,tInc,sizeRatio,popnSizes[0],popnSizes[1]);
 											recurrentMutAtTime(cTime+(ttau),0, 1);
 										}
 									}
@@ -1429,8 +2078,10 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 					}
 					else{
 						nodes[i]->sweepPopn = 1;
-						if(isAncestralHere(nodes[i],sweepSite) && hidePartialSNP == 0)
-							addMutation(nodes[i],sweepSite);
+						if(isAncestralHere(nodes[i],sweepSite) && hidePartialSNP == 0) {
+							// Mark that this node carries the sweep mutation
+							nodes[i]->carriesSweepMutation = 1;
+						}
 					}
 				}
 				else{
@@ -1533,9 +2184,6 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 						bp = recombineAtTimePopnSweep(cTime + (ttau),0, 0, sweepSite, (1.0-x));
 						if(bp != 666){
 							addBreakPoint(bp);
-							if(bp >= lSpot && bp < rSpot){
-								condRecMet = 1;
-							}
 						}
 					}
 					else{
@@ -1545,9 +2193,6 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 							bp = recombineAtTimePopnSweep(cTime + (ttau),0, 1, sweepSite, x);
 							if(bp != 666){
 								addBreakPoint(bp);
-								if(bp >= lSpot && bp < rSpot){
-									condRecMet = 1;
-								}
 							}
 						}
 						else{
@@ -1573,8 +2218,6 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 										else{
 											//recurrent adaptive mutation:
 											//node in pop zero's sweep group exits sweep
-											//fprintf(stderr,"recurrent mutation at time %f; freq=%f\n", cTime+(ttau),x);
-											//fprintf(stderr,"recurMut prob: %g; uA: %f, sweepPopnSizes[1]:%d; x:%f; tInc: %g; sizeRatio: %f\npopnSizes[0]: %d; popnSizes[1]: %d\n", pRecurMut,uA,sweepPopnSizes[1],x,tInc,sizeRatio,popnSizes[0],popnSizes[1]);
 											recurrentMutAtTime(cTime+(ttau),0, 1);
 										}
 									}
@@ -1838,6 +2481,17 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 			}
 		//	printf("lParentsp:%d rParentsp:%d\n",lParent->sweepPopn,rParent->sweepPopn);
 			
+			// Propagate sweep mutation flag to the parent that contains the sweep site
+			if (aNode->carriesSweepMutation) {
+				if (sweepSite < (float)xOver / nSites) {
+					// Sweep site is on the left
+					lParent->carriesSweepMutation = 1;
+				} else {
+					// Sweep site is on the right
+					rParent->carriesSweepMutation = 1;
+				}
+			}
+			
 			// Split ancestry segment tree at crossover point
 			lParent->ancestryRoot = splitLeft(aNode->ancestryRoot, xOver);
 			rParent->ancestryRoot = splitRight(aNode->ancestryRoot, xOver);
@@ -1849,6 +2503,47 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 			//add in the nodes
 			addNode(lParent);
 			addNode(rParent);
+			
+			// Record edges in tskit for recombination during sweep (only in full mode)
+			extern int minimalTreeSeq;
+			if (!minimalTreeSeq) {
+				tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
+				tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
+				tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
+				
+				// Record edges based on actual ancestry segments
+				// Left parent gets segments left of crossover
+				if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && lParent->ancestryRoot != NULL) {
+					AncestrySegment *seg = lParent->ancestryRoot;
+					while (seg != NULL) {
+						tskit_add_edges(lparent_tsk_id, child_tsk_id,
+							(double)seg->start, (double)seg->end);
+						markSegmentRecorded(seg);
+						seg = seg->next;
+					}
+				}
+				
+				// Right parent gets segments right of crossover
+				if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && rParent->ancestryRoot != NULL) {
+					AncestrySegment *seg = rParent->ancestryRoot;
+					while (seg != NULL) {
+						tskit_add_edges(rparent_tsk_id, child_tsk_id,
+							(double)seg->start, (double)seg->end);
+						markSegmentRecorded(seg);
+						seg = seg->next;
+					}
+				}
+			}
+			
+			// Mark that the child node is no longer in active set
+			aNode->inActiveSet = 0;
+			
+			// Mark parent recording if using tskit
+			if (tskitOutputMode || minimalTreeSeq) {
+				markParentRecorded(aNode, lParent);
+				markParentRecorded(aNode, rParent);
+			}
+			
 			//sweepPopnSizes[sp]++;
 			return xOver;
 		}
@@ -1912,6 +2607,11 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 			gcSplitResult gcSplit = splitSegmentTreeForGeneConversion(aNode->ancestryRoot, xOver, xOver + tractL);
 			lParent->ancestryRoot = gcSplit.converted;     // Gets the converted tract
 			rParent->ancestryRoot = gcSplit.unconverted;   // Gets everything else
+			
+			// Always free the original tree since split functions create new segments
+			// With our segment-based approach, we don't need to preserve the child's tree
+			freeSegmentTree(aNode->ancestryRoot);
+			aNode->ancestryRoot = NULL;
 		} else {
 			lParent->ancestryRoot = NULL;
 			rParent->ancestryRoot = NULL;
@@ -1923,22 +2623,72 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 			//determine sweep popn affinity
 			//left side?
 		//	printf("here-- popnFreq:%f sweepSite:%f xOver: %d test: %d \n",popnFreq,sweepSite,xOver,sweepSite < (float) xOver / nSites);
-		if(sweepSite >= (float) xOver / nSites  || sweepSite < (float) (xOver+tractL) / nSites ){ //lParent has sweep site set to same as child node,rParent is then random
+		if(sweepSite >= (float) xOver / nSites  && sweepSite < (float) (xOver+tractL) / nSites ){ //lParent has sweep site set to same as child node,rParent is then random
 			lParent->sweepPopn = sp;
 			r = ranf();
 			if (r < popnFreq)rParent->sweepPopn = sp;
 			else rParent->sweepPopn = (sp == 0) ? 1:0;
+			
+			// Propagate sweep mutation flag to lParent (has the converted tract with sweep site)
+			if (aNode->carriesSweepMutation) {
+				lParent->carriesSweepMutation = 1;
+			}
 		}
 		else{ //rParent has sweep site, lParent is then random
 			rParent->sweepPopn = sp;
 			r = ranf();
 			if (r < popnFreq) lParent->sweepPopn = sp;
 			else lParent->sweepPopn = (sp == 0) ? 1:0;
+			
+			// Propagate sweep mutation flag to rParent (has the sweep site)
+			if (aNode->carriesSweepMutation) {
+				rParent->carriesSweepMutation = 1;
+			}
 		}
 		//	printf("lParentsp:%d rParentsp:%d\n",lParent->sweepPopn,rParent->sweepPopn);
 			//add in the nodes
 		addNode(lParent);
 		addNode(rParent);
+		
+		// Record edges in tskit for gene conversion during sweep (only in full mode)
+		extern int minimalTreeSeq;
+		if (!minimalTreeSeq) {
+			tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
+			tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
+			tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
+			
+			// Record edges based on actual ancestry segments
+			// lParent gets the converted tract segments
+			if (lparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && lParent->ancestryRoot != NULL) {
+				AncestrySegment *seg = lParent->ancestryRoot;
+				while (seg != NULL) {
+					tskit_add_edges(lparent_tsk_id, child_tsk_id,
+						(double)seg->start, (double)seg->end);
+					markSegmentRecorded(seg);
+					seg = seg->next;
+				}
+			}
+			
+			// rParent gets the unconverted segments
+			if (rparent_tsk_id != TSK_NULL && child_tsk_id != TSK_NULL && rParent->ancestryRoot != NULL) {
+				AncestrySegment *seg = rParent->ancestryRoot;
+				while (seg != NULL) {
+					tskit_add_edges(rparent_tsk_id, child_tsk_id,
+						(double)seg->start, (double)seg->end);
+					markSegmentRecorded(seg);
+					seg = seg->next;
+				}
+			}
+		}
+		
+		// Mark that the child node is no longer in active set
+		aNode->inActiveSet = 0;
+		
+		// Mark parent recording if using tskit
+		if (tskitOutputMode || minimalTreeSeq) {
+			markParentRecorded(aNode, lParent);
+			markParentRecorded(aNode, rParent);
+		}
 	}
 }
 
@@ -1965,12 +2715,175 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	temp->nancSites = 0;
 	temp->lLim = nSites;
 	temp->rLim = 0;
-	// Merge ancestry segment trees
-	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
+	
+	// Propagate sweep mutation flag if either child carries it
+	if (lChild->carriesSweepMutation || rChild->carriesSweepMutation) {
+		temp->carriesSweepMutation = 1;
+	}
+	
+	// Add the parent node to discoal's arrays and tskit BEFORE merging/recording
+	addNode(temp);
+	
+	// Get tskit IDs for all nodes involved in coalescence  
+	tsk_id_t parent_tsk_id = get_tskit_node_id(temp);
+	
+	// Merge ancestry segment trees with parent's tskit node ID
+	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot, parent_tsk_id);
+	
 	// Update stats from tree when in tree-only mode
 	updateAncestryStatsFromTree(temp);
-	//printNode(temp);
-	addNode(temp);
+	
+	// Record edges in tskit - one edge per child spanning their full range
+	// Get tskit IDs for children (parent already retrieved above)
+	tsk_id_t lchild_tsk_id = get_tskit_node_id(lChild);
+	tsk_id_t rchild_tsk_id = get_tskit_node_id(rChild);
+	
+	extern int minimalTreeSeq;
+	
+	if (parent_tsk_id != TSK_NULL) {
+		// Record edges using the msprime pattern - segments know their tskit node IDs
+		// Process left child's segments
+		if (lChild->ancestryRoot != NULL) {
+			AncestrySegment *seg = lChild->ancestryRoot;
+			while (seg != NULL) {
+				// Each segment knows which tskit node it represents
+				if (seg->tskit_node_id != TSK_NULL && seg->tskit_node_id != parent_tsk_id) {
+					tskit_add_edges(parent_tsk_id, seg->tskit_node_id, 
+						(double)seg->start, (double)seg->end);
+				}
+				markSegmentRecorded(seg);
+				seg = seg->next;
+			}
+		}
+		
+		// Process right child's segments
+		if (rChild->ancestryRoot != NULL) {
+			AncestrySegment *seg = rChild->ancestryRoot;
+			while (seg != NULL) {
+				// Each segment knows which tskit node it represents
+				if (seg->tskit_node_id != TSK_NULL && seg->tskit_node_id != parent_tsk_id) {
+					tskit_add_edges(parent_tsk_id, seg->tskit_node_id,
+						(double)seg->start, (double)seg->end);
+				}
+				markSegmentRecorded(seg);
+				seg = seg->next;
+			}
+		}
+		
+		// CRITICAL: Mark the parent's segments as recorded too!
+		// The parent has new segments from mergeAncestryTrees that need to be marked
+		// otherwise the parent node can never be freed
+		if (temp->ancestryRoot != NULL) {
+			AncestrySegment *seg = temp->ancestryRoot;
+			while (seg != NULL) {
+				markSegmentRecorded(seg);
+				seg = seg->next;
+			}
+		}
+	}
+	
+	// Mark parent recording and try to free nodes if using tskit
+	if (tskitOutputMode || minimalTreeSeq) {
+		// Use the same first/second child logic as edge recording
+		rootedNode *first_child, *second_child;
+		if (lchild_tsk_id < rchild_tsk_id) {
+			first_child = lChild;
+			second_child = rChild;
+		} else {
+			first_child = rChild;
+			second_child = lChild;
+		}
+		
+		// For first child - mark parent recorded
+		if (minimalTreeSeq && first_child->ancestryRoot != NULL) {
+			rootedNode *trueDescendants[10];
+			int numDesc = findTrueDescendants(first_child, trueDescendants, 10);
+			
+			if (numDesc > 0 && trueDescendants[0] != first_child) {
+				// Mark all nodes in the bypass chain
+				rootedNode *current = first_child;
+				while (current != NULL && current != trueDescendants[0]) {
+					markParentRecorded(current, temp);
+					rootedNode *next = (current->leftChild != NULL) ? 
+					                  current->leftChild : current->rightChild;
+					// Temporarily disabled node freeing
+					// if (current != first_child) {
+					//     tryFreeNode(current);
+					// }
+					current = next;
+				}
+				// Mark the true descendants
+				for (int d = 0; d < numDesc; d++) {
+					markParentRecorded(trueDescendants[d], temp);
+				}
+			} else {
+				markParentRecorded(first_child, temp);
+			}
+		} else {
+			markParentRecorded(first_child, temp);
+		}
+		
+		// For second child - mark parent recorded
+		if (minimalTreeSeq && second_child->ancestryRoot != NULL) {
+			rootedNode *trueDescendants[10];
+			int numDesc = findTrueDescendants(second_child, trueDescendants, 10);
+			
+			if (numDesc > 0 && trueDescendants[0] != second_child) {
+				// Mark all nodes in the bypass chain
+				rootedNode *current = second_child;
+				while (current != NULL && current != trueDescendants[0]) {
+					markParentRecorded(current, temp);
+					rootedNode *next = (current->leftChild != NULL) ? 
+					                  current->leftChild : current->rightChild;
+					// Temporarily disabled node freeing
+					// if (current != second_child) {
+					//     tryFreeNode(current);
+					// }
+					current = next;
+				}
+				// Mark the true descendants
+				for (int d = 0; d < numDesc; d++) {
+					markParentRecorded(trueDescendants[d], temp);
+				}
+			} else {
+				markParentRecorded(second_child, temp);
+			}
+		} else {
+			markParentRecorded(second_child, temp);
+		}
+		
+		// Try to free children based on their node type
+		// A coalescent node has both left and right children
+		int lChildIsCoal = isCoalNode(lChild);
+		int rChildIsCoal = isCoalNode(rChild);
+		
+		// Check if nodes are leaves (no children at all)
+		int lChildIsLeaf = (lChild->leftChild == NULL && lChild->rightChild == NULL);
+		int rChildIsLeaf = (rChild->leftChild == NULL && rChild->rightChild == NULL);
+		
+		// Leaf nodes need special handling since they have no children to record
+		if (lChildIsLeaf) {
+			// Mark all segments as recorded since leaf nodes have simple ancestry
+			if (lChild->ancestryRoot) {
+				markSegmentRecorded(lChild->ancestryRoot);
+			}
+			lChild->isFullyRecorded = 1;
+			addToRemovedList(lChild);
+		}
+		
+		if (rChildIsLeaf) {
+			// Mark all segments as recorded since leaf nodes have simple ancestry
+			if (rChild->ancestryRoot) {
+				markSegmentRecorded(rChild->ancestryRoot);
+			}
+			rChild->isFullyRecorded = 1;
+			addToRemovedList(rChild);
+		}
+		
+		// With periodic sweep approach, we don't need immediate freeing
+		// Just mark nodes as removed and let the sweep handle it
+	}
+	
 	//update active anc. material
 	updateActiveMaterial(temp);
 	//popnSizes[popn]--; //decrese popnSize
@@ -1981,245 +2894,16 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 
 /*******************************************************/
 void dropMutations(){
-	int i, j, m;
-	double p;
-	double mutSite, error;
-	
-	//get time and set probs
-	coaltime = totalTimeInTree();
-	//printf("%f\n",coaltime);
-	for(i=0;i<totNodeNumber;i++){
-		//add Mutations
-		p = allNodes[i]->blProb * theta * 0.5;
-		if(p>0.0){
-			m = ignpoi(p);
-			while(m>0){
-				mutSite = genunf((float)allNodes[i]->lLim / nSites, (float) allNodes[i]->rLim / nSites);
-				while(isAncestralHere(allNodes[i],mutSite) != 1){
-				//	printf("in here\n");
-					if (allNodes[i]->lLim == allNodes[i]->rLim){
-						if (mutSite*nSites < (float)allNodes[i]->lLim)
-							error = (float)allNodes[i]->lLim-(mutSite*nSites);
-						else
-							error = 0.0;
-						p = allNodes[i]->rLim + (1.0/nSites);
-						mutSite = genunf(((double)allNodes[i]->lLim + error) / nSites, (double)(p + error) / nSites);
-					}
-					else
-						mutSite = genunf((double)allNodes[i]->lLim / nSites, (double) allNodes[i]->rLim / nSites);
-				}
-				//printf("new mut allele: %d mut: %f\n",i,mutSite);
-				addMutation(allNodes[i],mutSite);
-				m--;
-			}
-		}
-	}
-//	printf("coaltime: %f totM: %d\n",coaltime,tm);
-	//push mutations down tree
-	for(i=totNodeNumber-1;i>=0;i--){
-		for(j=0;j<allNodes[i]->mutationNumber;j++){
-			mutSite = allNodes[i]->muts[j];
-			if(allNodes[i]->leftChild != NULL && isAncestralHere(allNodes[i]->leftChild,mutSite))
-				addMutation(allNodes[i]->leftChild,mutSite);
-			if(allNodes[i]->rightChild != NULL && isAncestralHere(allNodes[i]->rightChild,mutSite))
-				addMutation(allNodes[i]->rightChild,mutSite);
-				
-		}
+	// Always use edge-based mutation placement with tskit
+	int ret = tskit_place_mutations_edge_based(theta);
+	if (ret < 0) {
+		fprintf(stderr, "Error: Failed to place mutations using edge-based algorithm\n");
 	}
 }
 
-void dropMutationsRecurse(){
-	int i, j, m;
-	double p;
-	float mutSite, error;
-	
-	//get time and set probs
-	coaltime = totalTimeInTree();
-	//printf("%f\n",coaltime);
-	for(i=0;i<totNodeNumber;i++){
-		//add Mutations
-		p = allNodes[i]->blProb * theta * 0.5;
-		if(p>0.0){
-			m = ignpoi(p);
-			while(m>0){
-				mutSite = genunf((float)allNodes[i]->lLim / nSites, (float) allNodes[i]->rLim / nSites);
-				while(isAncestralHere(allNodes[i],mutSite) != 1){
-				//	printf("in here\n");
-					if (allNodes[i]->lLim == allNodes[i]->rLim){
-						if (mutSite*nSites < (float)allNodes[i]->lLim)
-							error = (float)allNodes[i]->lLim-(mutSite*nSites);
-						else
-							error = 0.0;
-						p = allNodes[i]->rLim + (1.0/nSites);
-						mutSite = genunf(((double)allNodes[i]->lLim + error) / nSites, (double)(p + error) / nSites);
-					}
-					else
-						mutSite = genunf((double)allNodes[i]->lLim / nSites, (double) allNodes[i]->rLim / nSites);
-				}
-		//	printf("mut: %f\n",mutSite);
-				addMutation(allNodes[i],mutSite);
-				m--;
-			}
-		}
-	}
-//	printf("coaltime: %f totM: %d\n",coaltime,tm);
-	//push mutations down tree
-	for(i=totNodeNumber-1;i>=0;i--){
-		for(j=0;j<allNodes[i]->mutationNumber;j++){
-			mutSite = allNodes[i]->muts[j];
-			recurseTreePushMutation(allNodes[i],mutSite);
-		}
-	}
-}
-//calculates the total time in the tree, then set blProbs for each node
-double totalTimeInTree(){
-	double tTime, siteLength;
-	int i;
-	
 
-	tTime=0.0;
-	siteLength=1.0/nSites;
-	for(i=0;i<totNodeNumber;i++){
-		allNodes[i]->blProb = siteLength * allNodes[i]->nancSites * allNodes[i]->branchLength;
-		tTime += allNodes[i]->blProb;
-	}
-//	for(i=0;i<totNodeNumber;i++)allNodes[i]->blProb /= tTime;
-	return tTime;
-}
 
-void recurseTreePushMutation(rootedNode *aNode, float site){
-	if(aNode->leftChild != NULL && isAncestralHere(aNode->leftChild,site))
-		recurseTreePushMutation(aNode->leftChild,site);
-	if(aNode->rightChild != NULL && isAncestralHere(aNode->rightChild,site))
-		recurseTreePushMutation(aNode->rightChild,site);
-	if( isLeaf(aNode) && isAncestralHere(aNode,site)){
-		if(hasMutation(aNode,site)==0) addMutation(aNode, site);
-	}
-}
-void addMutation(rootedNode *aNode, double site){
-	ensureMutsCapacity(aNode, aNode->mutationNumber + 1);
-	aNode->muts[aNode->mutationNumber] = site;
-	aNode->mutationNumber += 1;
 
-}
-
-/* Sort mutations on a single node */
-void sortNodeMutations(rootedNode *node) {
-	if (node != NULL && node->mutationNumber > 1) {
-		qsort(node->muts, node->mutationNumber, sizeof(double), compare_doubles);
-	}
-}
-
-/* Sort mutations on all nodes after mutation placement */
-void sortAllMutations() {
-	int i;
-	for (i = 0; i < totNodeNumber; i++) {
-		if (allNodes[i] != NULL) {
-			sortNodeMutations(allNodes[i]);
-		}
-	}
-}
-
-/* Binary search implementation for sorted mutations */
-static int hasMutationBinary(rootedNode *aNode, double site) {
-	int left = 0;
-	int right = aNode->mutationNumber - 1;
-	
-	while (left <= right) {
-		int mid = left + (right - left) / 2;
-		if (aNode->muts[mid] == site) {
-			return 1;
-		} else if (aNode->muts[mid] < site) {
-			left = mid + 1;
-		} else {
-			right = mid - 1;
-		}
-	}
-	return 0;
-}
-
-int hasMutation(rootedNode *aNode, double site){
-	if (aNode->mutationNumber == 0) return 0;
-	
-	/* Use linear search for small arrays (faster due to cache locality) */
-	if (aNode->mutationNumber < 10) {
-		int i;
-		for (i = 0; i < aNode->mutationNumber; i++){
-			if (aNode->muts[i] == site) return 1;
-		}
-		return 0;
-	}
-	
-	/* Use binary search for larger arrays */
-	return hasMutationBinary(aNode, site);
-}
-
-//findRootAtSite-- returns the index of the node that is the root at a given site
-int findRootAtSite(float site){
-	int j;
-	j = 0;
-	while(nAncestorsHere(allNodes[j], site) != sampleSize){
-		j++;
-	}
-	return(j);
-}
-
-//printTreeAtSite-- prints a newick tree at a given site
-void printTreeAtSite(float site){
-	int rootIdx;
-    float tPtr;
-	
-    tPtr = 0;
-	rootIdx = findRootAtSite(site);
-	newickRecurse(allNodes[rootIdx],site,tPtr);
-	printf(";\n");
-
-}
-
-void newickRecurse(rootedNode *aNode, float site, float tempTime){
-	//printf("site: %f tempTime: %f\n",site,tempTime);
-	//printNode(aNode);
-    if(isCoalNode(aNode)){
-		
-		if(hasMaterialHere(aNode->leftChild,site) && hasMaterialHere(aNode->rightChild,site)){	
-			printf("(");
-			newickRecurse(aNode->leftChild,site,0.0);
-			printf(",");
-			newickRecurse(aNode->rightChild,site,0.0);
-			printf(")");
-			if(nAncestorsHere(aNode, site) != sampleSize){
-				printf(":%f",(aNode->branchLength + tempTime)*0.5);
-			}
-			
-		}
-		else{
-            if(hasMaterialHere(aNode->leftChild,site)){
-                tempTime += aNode->branchLength;
-                newickRecurse(aNode->leftChild,site, \
-                        tempTime);
-            }
-			else if(hasMaterialHere(aNode->rightChild,site)){
-                tempTime += aNode->branchLength;
-                newickRecurse(aNode->rightChild,site, \
-                        tempTime);
-            }
-		}
-	}
-	else{
-		if(isLeaf(aNode)){
-			printf("%d:%f",aNode->id, \
-                    (aNode->branchLength +tempTime)*0.5);
-		}
-		else{ //recombination node
-			if(hasMaterialHere(aNode->leftChild,site) && \
-                    hasMaterialHere(aNode,site)){
-               tempTime+= aNode->branchLength; 
-               newickRecurse(aNode->leftChild,site, \
-                        tempTime);
-            }
-		}
-	}
-}
 
 /* Hash table entry for mutation duplicate detection */
 typedef struct MutHashEntry {
@@ -2239,182 +2923,8 @@ static inline unsigned int hashMutation(double mut) {
 	return (unsigned int)(u.i % MUTATION_HASH_SIZE);
 }
 
-/*makeGametesMS-- MS style sample output */
-void makeGametesMS(int argc,const char *argv[]){
-	int i,j, size, mutNumber;
-	double allMuts[MAXMUTS];
-	MutHashEntry *hashTable[MUTATION_HASH_SIZE];
-	MutHashEntry *entry, *newEntry;
 
-	/* Sort all mutations before output generation for binary search */
-	sortAllMutations();
 
-	/* Initialize hash table */
-	for (i = 0; i < MUTATION_HASH_SIZE; i++) {
-		hashTable[i] = NULL;
-	}
-
-	/* get unique list of muts using hash table for O(n) duplicate detection */
-	size = 0;
-	for (i = 0; i < sampleSize; i++){
-		for (j = 0; j < allNodes[i]->mutationNumber; j++){
-			double mut = allNodes[i]->muts[j];
-			unsigned int hash = hashMutation(mut);
-			
-			/* Check if mutation already exists in hash table */
-			int found = 0;
-			for (entry = hashTable[hash]; entry != NULL; entry = entry->next) {
-				if (entry->mutation == mut) {
-					found = 1;
-					break;
-				}
-			}
-			
-			if (!found) {
-				assert(size < MAXMUTS);
-				allMuts[size] = mut;
-				size++;
-				
-				/* Add to hash table */
-				newEntry = (MutHashEntry*)malloc(sizeof(MutHashEntry));
-				newEntry->mutation = mut;
-				newEntry->next = hashTable[hash];
-				hashTable[hash] = newEntry;
-			}
-		}
-	}
-	
-	/* Clean up hash table */
-	for (i = 0; i < MUTATION_HASH_SIZE; i++) {
-		entry = hashTable[i];
-		while (entry != NULL) {
-			MutHashEntry *temp = entry;
-			entry = entry->next;
-			free(temp);
-		}
-	}
-	
-	mutNumber = size;
-	qsort(allMuts, size, sizeof(allMuts[0]), compare_doubles);
-	printf("\n//\nsegsites: %d",mutNumber);
-	if(mutNumber > 0) printf("\npositions: ");
-	for(i = 0; i < mutNumber; i++)
-		fprintf(stdout,"%6.6lf ",allMuts[i] );
-	fprintf(stdout,"\n");
-
-/* Phase 3 optimization: Pre-compute presence matrix */
-	char *presenceMatrix = NULL;
-	if (mutNumber > 0) {
-		presenceMatrix = (char*)calloc(sampleSize * mutNumber, sizeof(char));
-		if (presenceMatrix == NULL) {
-			fprintf(stderr, "Error: Failed to allocate presence matrix\n");
-			exit(1);
-		}
-		
-		/* Pre-compute all ancestry and mutation information */
-		for (i = 0; i < sampleSize; i++) {
-			for (j = 0; j < mutNumber; j++) {
-				int idx = i * mutNumber + j;
-				if (isAncestralHere(allNodes[i], allMuts[j])) {
-					if (hasMutation(allNodes[i], allMuts[j])) {
-						presenceMatrix[idx] = '1';
-					} else {
-						presenceMatrix[idx] = '0';
-					}
-				} else {
-					presenceMatrix[idx] = 'N';
-				}
-			}
-		}
-	}
-	
-	/* Output using pre-computed matrix */
-	for (i = 0; i < sampleSize; i++) {
-		for (j = 0; j < mutNumber; j++) {
-			printf("%c", presenceMatrix[i * mutNumber + j]);
-		}
-		printf("\n");
-	}
-	
-	/* Clean up */
-	if (presenceMatrix) {
-		free(presenceMatrix);
-	}  
-}
-
-void errorCheckMutations(){
-	int i,j;
-	
-	for (i = 0; i < sampleSize; i++){
-		printf("allNodes[%d]:\n",i);
-		for (j = 0; j < allNodes[i]->mutationNumber; j++){
-			printf("muts[%d]=%lf\n",j,allNodes[i]->muts[j]);
-		}
-	}
-}
-
-//dropMutationsUntilTime-- places mutationson the tree iff they occur before time t
-//this will not return the "correct" number of mutations conditional on theta
-void dropMutationsUntilTime(double t){
-	int i, j, m;
-	double mutSite,p;
-	//get time and set probs
-	coaltime = totalTimeInTreeUntilTime(t);
-	//printf("%f\n",coaltime);
-	for(i=0;i<totNodeNumber;i++){
-		//add Mutations
-		p = allNodes[i]->blProb * theta * 0.5;
-		if(p>0.0){
-		  m = ignpoi(p);
-		  while(m>0){
-		  mutSite = genunf((float)allNodes[i]->lLim / nSites, (float) allNodes[i]->rLim / nSites);
-		  while(isAncestralHere(allNodes[i],mutSite) != 1){
-				  if (allNodes[i]->lLim == allNodes[i]->rLim){
-				    p = allNodes[i]->rLim + (1.0/nSites);
-				    mutSite = genunf((float)allNodes[i]->lLim / nSites, p / nSites);
-				  }
-				  else
-				    mutSite = genunf((float)allNodes[i]->lLim / nSites, (float) allNodes[i]->rLim / nSites);
-			  }
-		  //	printf("mut: %f\n",mutSite);
-			addMutation(allNodes[i],mutSite);
-			 m--;
-		  }
-		}
-	}
-//	printf("coaltime: %f totM: %d\n",coaltime,tm);
-	//push mutations down tree
-	for(i=totNodeNumber-1;i>=0;i--){
-		for(j=0;j<allNodes[i]->mutationNumber;j++){
-			mutSite = allNodes[i]->muts[j];
-			if(allNodes[i]->leftChild != NULL && isAncestralHere(allNodes[i]->leftChild,mutSite))
-				addMutation(allNodes[i]->leftChild,mutSite);
-			if(allNodes[i]->rightChild != NULL && isAncestralHere(allNodes[i]->rightChild,mutSite))
-				addMutation(allNodes[i]->rightChild,mutSite);
-				
-		}
-	}
-}
-
-//calculates the total time in the tree, then set blProbs for each node
-double totalTimeInTreeUntilTime(double t){
-	double tTime, siteLength;
-	int i;
-	
-
-	tTime=0.0;
-	siteLength=1.0/nSites;
-	for(i=0;i<totNodeNumber;i++){
-		//censor times
-		if(allNodes[i]->leftParent == NULL || allNodes[i]->leftParent->time > t){
-			allNodes[i]->branchLength = MAX(t - allNodes[i]->time,0);
-		}
-		allNodes[i]->blProb = siteLength * allNodes[i]->nancSites * allNodes[i]->branchLength;
-		tTime += allNodes[i]->blProb;
-	}
-//	for(i=0;i<totNodeNumber;i++)allNodes[i]->blProb /= tTime;
-	return tTime;
-}
 
 //////////////////////////////////////////////////////////
 ///////////////
@@ -2425,39 +2935,28 @@ double totalTimeInTreeUntilTime(double t){
 /*pickNodePopn-- picks an allele at random from active nodes from a specific popn 
 */
 rootedNode *pickNodePopn(int popn){
-	int i, popnSize, indexArray[alleleNumber], index;
-
-	//get popnSize -- may later decide to keep this is some sort of variable that is passed
-	popnSize = 0;
-	for(i = 0 ; i < alleleNumber; i++){
-		if(nodes[i]->population == popn){
-			indexArray[popnSize] = i;  //store indexes as we go
-			popnSize++;
-		}
-	}
-	if(popnSize == 0){
-		fprintf(stderr,"error encountered in pickNodePopn\n");
-		fprintf(stderr,"tried to pick allele from popn %d, but popnSize is %d! Rho=%f\n",popn,popnSize,rho);
-		exit(1);
-	}
-	//choose random index
-	index = indexArray[ignuin(0, popnSize - 1)];
-
-	return(nodes[index]);
+	// Use optimized O(1) population list-based selection
+	return pickNodePopnFast(popn);
 }
 
 void mergePopns(int popnSrc, int popnDest){
-	int i;
-	for(i = 0 ; i < alleleNumber; i++){
-		if(nodes[i]->population == popnSrc){
-			nodes[i]->population = popnDest;
-			popnSizes[popnDest]++;
-			popnSizes[popnSrc]--;
-		//	sweepPopnSizes[popnDest]++;
-		//	sweepPopnSizes[popnSrc]--;
-			
-		}
+	// Use population lists for efficient merging
+	PopulationNodeList *srcList = &popLists[popnSrc];
+	
+	// Move all nodes from source to destination
+	for (int i = 0; i < srcList->count; i++) {
+		rootedNode *node = srcList->nodes[i];
+		node->population = popnDest;
+		addNodeToPopList(node, popnDest);
 	}
+	
+	// Update population sizes
+	popnSizes[popnDest] += popnSizes[popnSrc];
+	popnSizes[popnSrc] = 0;
+	
+	// Clear source list
+	srcList->count = 0;
+	
 	//set migration rates to zero
 	migMat[popnSrc][popnDest] = 0.0;
 	migMat[popnDest][popnSrc] = 0.0;
@@ -2508,15 +3007,20 @@ void addAncientSample(int lineageNumber, int popnDest, double addTime, int still
 }
 
 void initializeNodeArrays() {
+	// Always initialize sample node tracking (needed for each replicate)
+	initializeSampleNodeIds();
+	
+	// Only allocate if not already allocated (prevents leaks in multiple replicates)
+	if (nodes != NULL) {
+		return;  // Already initialized
+	}
+	
 	int initialCapacity = 1000;  // Start small
 	
 	nodesCapacity = initialCapacity;
-	allNodesCapacity = initialCapacity;
+	nodes = calloc(nodesCapacity, sizeof(rootedNode*));
 	
-	nodes = malloc(sizeof(rootedNode*) * nodesCapacity);
-	allNodes = malloc(sizeof(rootedNode*) * allNodesCapacity);
-	
-	if (nodes == NULL || allNodes == NULL) {
+	if (nodes == NULL) {
 		fprintf(stderr, "Error: Failed to allocate initial node arrays\n");
 		exit(1);
 	}
@@ -2535,48 +3039,143 @@ void ensureNodesCapacity(int requiredSize) {
 			exit(1);
 		}
 		
+		// Initialize the new portion of the array to NULL
+		for (int i = nodesCapacity; i < newCapacity; i++) {
+			newNodes[i] = NULL;
+		}
+		
 		nodes = newNodes;
 		nodesCapacity = newCapacity;
 	}
 }
 
-void ensureAllNodesCapacity(int requiredSize) {
-	if (requiredSize >= allNodesCapacity) {
-		int newCapacity = allNodesCapacity;
-		while (newCapacity <= requiredSize) {
-			newCapacity *= 2;
+
+// Clean up nodes in the removed list (called between replicates)
+void cleanupRemovedNodes() {
+	for (int i = 0; i < removedNodeCount; i++) {
+		if (removedNodes[i] != NULL) {
+			if (removedNodes[i]->ancestryRoot != NULL) {
+				freeSegmentTree(removedNodes[i]->ancestryRoot);
+				removedNodes[i]->ancestryRoot = NULL;
+			}
+			free(removedNodes[i]);
+			removedNodes[i] = NULL;
 		}
-		
-		rootedNode **newAllNodes = realloc(allNodes, sizeof(rootedNode*) * newCapacity);
-		if (newAllNodes == NULL) {
-			fprintf(stderr, "Error: Failed to reallocate allNodes array (requested: %d pointers)\n", newCapacity);
-			exit(1);
-		}
-		
-		allNodes = newAllNodes;
-		allNodesCapacity = newCapacity;
 	}
+	removedNodeCount = 0;
 }
 
 void cleanupNodeArrays() {
+	// First free any nodes still in the removed list
+	cleanupRemovedNodes();
+	
 	if (nodes != NULL) {
+		// Free any remaining nodes and their ancestry segments
+		for (int i = 0; i < alleleNumber; i++) {
+			if (nodes[i] != NULL) {
+				// Free ancestry segments using reference counting
+				if (nodes[i]->ancestryRoot != NULL) {
+					freeSegmentTree(nodes[i]->ancestryRoot);
+					nodes[i]->ancestryRoot = NULL;
+				}
+				free(nodes[i]);
+				nodes[i] = NULL;
+			}
+		}
 		free(nodes);
 		nodes = NULL;
 		nodesCapacity = 0;
 	}
-	if (allNodes != NULL) {
-		free(allNodes);
-		allNodes = NULL;
-		allNodesCapacity = 0;
+	// Cleanup sample node tracking
+	cleanupSampleNodeIds();
+	
+	// Cleanup population lists
+	cleanupPopLists();
+}
+
+// Sample node tracking functions (always available)
+void initializeSampleNodeIds() {
+	// Only allocate if not already allocated (prevents leaks in multiple replicates)
+	if (sample_node_ids != NULL) {
+		sample_node_count = 0;  // Just reset the count
+		return;
+	}
+	
+	sample_node_capacity = 1000;  // Start with reasonable size
+	sample_node_count = 0;
+	sample_node_ids = calloc(sample_node_capacity, sizeof(tsk_id_t));
+	
+	if (sample_node_ids == NULL) {
+		fprintf(stderr, "Error: Failed to allocate sample node IDs array\n");
+		exit(1);
+	}
+	
+	// Initialize all entries to invalid ID
+	for (int i = 0; i < sample_node_capacity; i++) {
+		sample_node_ids[i] = TSK_NULL;
+	}
+}
+
+void ensureSampleNodeCapacity(int required_size) {
+	if (required_size >= sample_node_capacity) {
+		int new_capacity = sample_node_capacity;
+		while (new_capacity <= required_size) {
+			new_capacity *= 2;
+		}
+		
+		tsk_id_t *new_array = realloc(sample_node_ids, sizeof(tsk_id_t) * new_capacity);
+		if (new_array == NULL) {
+			fprintf(stderr, "Error: Failed to reallocate sample node IDs array\n");
+			exit(1);
+		}
+		
+		// Initialize new entries
+		for (int i = sample_node_capacity; i < new_capacity; i++) {
+			new_array[i] = TSK_NULL;
+		}
+		
+		sample_node_ids = new_array;
+		sample_node_capacity = new_capacity;
+	}
+}
+
+void addSampleNodeId(tsk_id_t tskit_node_id) {
+	ensureSampleNodeCapacity(sample_node_count + 1);
+	sample_node_ids[sample_node_count] = tskit_node_id;
+	sample_node_count++;
+}
+
+void cleanupSampleNodeIds() {
+	if (sample_node_ids != NULL) {
+		free(sample_node_ids);
+		sample_node_ids = NULL;
+		sample_node_capacity = 0;
+		sample_node_count = 0;
 	}
 }
 
 void addNode(rootedNode *aNode){
 	ensureNodesCapacity(alleleNumber + 1);
-	ensureAllNodesCapacity(totNodeNumber + 1);
-	
 	nodes[alleleNumber] = aNode;
-	allNodes[totNodeNumber] = aNode;
+	aNode->inActiveSet = 1;  // Mark as being in active set
+	
+	// Record node to tskit (unless in minimal mode and this is a recombination parent)
+	extern int minimalTreeSeq;
+	int isRecombParent = (aNode->leftChild != NULL && aNode->rightChild != NULL && 
+	                      aNode->leftChild == aNode->rightChild);
+	
+	if (!minimalTreeSeq || !isRecombParent) {
+		// Create tskit node for non-recombination nodes or in full mode
+		tsk_id_t tsk_id = tskit_add_node(aNode->time, aNode->population, 0);  // is_sample=0
+		set_tskit_node_id(aNode, tsk_id);
+	} else {
+		// In minimal mode, recombination parents don't get tskit nodes
+		set_tskit_node_id(aNode, TSK_NULL);
+	}
+	
+	// Add to population list
+	addNodeToPopList(aNode, aNode->population);
+	
 	alleleNumber += 1;
 	totNodeNumber += 1;
 	popnSizes[aNode->population]+=1;
@@ -2589,10 +3188,12 @@ void removeNodeAt(int index){
 	int i;
 	rootedNode *temp;
 
-	for (i = index ; i < alleleNumber; i++){
+	for (i = index ; i < alleleNumber - 1; i++){
 		temp =  nodes[i + 1];
 		nodes[i] = temp;
 	}
+	// NULL out the last position to avoid duplicate pointers
+	nodes[alleleNumber - 1] = NULL;
 	alleleNumber -= 1;
 	
 	
@@ -2609,7 +3210,17 @@ void removeNode(rootedNode *aNode){
 	popnSizes[aNode->population]-=1;
 	if (aNode->population==0)
 		sweepPopnSizes[aNode->sweepPopn]-=1;
+	
+	// Remove from population list
+	removeNodeFromPopList(aNode);
+	
 	removeNodeAt(i);
+	
+	// Mark as no longer in active set
+	aNode->inActiveSet = 0;
+	
+	// Note: Node will be added to removed list automatically when it becomes
+	// fully recorded (in markParentRecorded), not here
 }
 
 /* addNodeAtIndex - variation on the theme here. adds
@@ -2617,7 +3228,6 @@ a rootedNode at a specific index. useful for adding pops
 	or outgroups to current pops */
 void addNodeAtIndex(rootedNode *aNode, int anIndex){
 	nodes[anIndex] = aNode;
-	allNodes[anIndex] = aNode;
 }
 
 /*shiftNodes- this moves the nodes over an offset and
@@ -2632,11 +3242,6 @@ void shiftNodes(int offset){
 		nodes[i+offset] = temp;
 	}
 	alleleNumber += offset;
-
-	for(i = totNodeNumber - 1; i >= 0; i--){
-		temp =  allNodes[i];
-		allNodes[i+offset] = temp;
-	}
 	totNodeNumber += offset;
 }
 
@@ -2682,15 +3287,17 @@ void freeTree(rootedNode *aNode){
 	//printf("final nodeNumber = %d\n",totNodeNumber);
 	//cleanup nodes
 	for (i = 0; i < totNodeNumber; i++){
-		cleanupMuts(allNodes[i]);      // Free muts array
-		// Free ancestry segment tree
-		if (allNodes[i]->ancestryRoot) {
-			freeSegmentTree(allNodes[i]->ancestryRoot);
-			allNodes[i]->ancestryRoot = NULL;
+		if (nodes[i] == NULL) {
+			continue;
 		}
-		free(allNodes[i]);
-		allNodes[i] = NULL;
-	} 
+		// Free ancestry segment tree
+		if (nodes[i]->ancestryRoot) {
+			freeSegmentTree(nodes[i]->ancestryRoot);
+			nodes[i]->ancestryRoot = NULL;
+		}
+		free(nodes[i]);
+		nodes[i] = NULL;
+	}
 }
 
 /*nodePopnSize-- returns popnSize of popn from
@@ -2721,12 +3328,6 @@ int nodePopnSweepSize(int popn, int sp){
 	return(popnSize);
 }
 
-void printAllNodes(){
-	int i;
-	for(i = 0 ; i < totNodeNumber; i++){
-		printNode(allNodes[i]);
-	}
-}
 
 void printAllActiveNodes(){
 	int i;
@@ -2790,45 +3391,135 @@ unsigned int devrand(void) {
 
 
 // Muts dynamic memory management functions
-void initializeMuts(rootedNode *node, int capacity) {
-	if (capacity <= 0) {
-		capacity = 10;  // Start with small capacity, will grow as needed
+
+/*makeGametesMS-- MS style sample output using tskit genotype matrix */
+void makeGametesMS(int argc, const char *argv[]) {
+	if (tsk_tables == NULL) {
+		fprintf(stderr, "Error: No tskit tables available for output generation\n");
+		return;
 	}
 	
-	node->mutsCapacity = capacity;
-	node->muts = malloc(sizeof(double) * capacity);
+	// Sort tables before building tree sequence (required when nodes are freed during simulation)
+	int ret = tsk_table_collection_sort(tsk_tables, NULL, 0);
+	if (ret != 0) {
+		fprintf(stderr, "Error: Failed to sort tables: %s\n", tsk_strerror(ret));
+		return;
+	}
 	
-	if (node->muts == NULL) {
-		fprintf(stderr, "Error: Failed to allocate memory for muts array (capacity: %d)\n", capacity);
-		exit(1);
+	// Build trees from the table collection for genotype calculation
+	tsk_treeseq_t ts;
+	ret = tsk_treeseq_init(&ts, tsk_tables, TSK_TS_INIT_BUILD_INDEXES);
+	if (ret != 0) {
+		fprintf(stderr, "Error: Failed to build tree sequence: %s\n", tsk_strerror(ret));
+		return;
 	}
-}
-
-void ensureMutsCapacity(rootedNode *node, int requiredSize) {
-	if (requiredSize > node->mutsCapacity) {
-		int newCapacity = node->mutsCapacity;
+	
+	// Get number of samples and sites
+	tsk_size_t num_samples = tsk_treeseq_get_num_samples(&ts);
+	tsk_size_t num_sites = tsk_treeseq_get_num_sites(&ts);
+	
+	
+	// Print segsites header
+	printf("\n//\nsegsites: %zu", (size_t)num_sites);
+	
+	if (num_sites > 0) {
+		printf("\npositions: ");
 		
-		// Double capacity until we have enough
-		while (newCapacity < requiredSize) {
-			newCapacity *= 2;
+		// Print positions
+		for (tsk_id_t site_id = 0; site_id < (tsk_id_t)num_sites; site_id++) {
+			double position = tsk_tables->sites.position[site_id];
+			// Convert from absolute position back to [0,1] scale
+			double relative_position = position / tsk_tables->sequence_length;
+			printf("%6.6f ", relative_position);
+		}
+		printf("\n");
+		
+		// Generate and print genotype matrix
+		// Use the sample_node_ids array to get the correct sample order
+		extern tsk_id_t *sample_node_ids;
+		extern int sample_node_count;
+		
+		if (sample_node_ids == NULL || sample_node_count == 0) {
+			fprintf(stderr, "Error: No sample node IDs available\n");
+			tsk_treeseq_free(&ts);
+			return;
 		}
 		
-		double *newMuts = realloc(node->muts, sizeof(double) * newCapacity);
-		if (newMuts == NULL) {
-			fprintf(stderr, "Error: Failed to reallocate memory for muts array (capacity: %d -> %d)\n", 
-					node->mutsCapacity, newCapacity);
-			exit(1);
+		// Use tskit's efficient variant API for genotype generation
+		tsk_variant_t variant;
+		ret = tsk_variant_init(&variant, &ts, NULL, 0, NULL, 0);
+		if (ret != 0) {
+			fprintf(stderr, "Error: Failed to initialize variant: %s\n", tsk_strerror(ret));
+			tsk_treeseq_free(&ts);
+			return;
 		}
 		
-		node->muts = newMuts;
-		node->mutsCapacity = newCapacity;
+		// Create a matrix to store all genotypes (samples x sites)
+		int32_t **genotype_matrix = malloc(num_samples * sizeof(int32_t*));
+		if (genotype_matrix == NULL) {
+			fprintf(stderr, "Error: Failed to allocate genotype matrix\n");
+			tsk_variant_free(&variant);
+			tsk_treeseq_free(&ts);
+			return;
+		}
+		for (tsk_size_t i = 0; i < num_samples; i++) {
+			genotype_matrix[i] = malloc(num_sites * sizeof(int32_t));
+			if (genotype_matrix[i] == NULL) {
+				fprintf(stderr, "Error: Failed to allocate genotype row\n");
+				// Cleanup already allocated rows
+				for (tsk_size_t j = 0; j < i; j++) {
+					free(genotype_matrix[j]);
+				}
+				free(genotype_matrix);
+				tsk_variant_free(&variant);
+				tsk_treeseq_free(&ts);
+				return;
+			}
+		}
+		
+		// Decode genotypes for each site
+		for (tsk_id_t site_id = 0; site_id < (tsk_id_t)num_sites; site_id++) {
+			ret = tsk_variant_decode(&variant, site_id, 0);
+			if (ret != 0) {
+				fprintf(stderr, "Error: Failed to decode variant at site %d: %s\n", site_id, tsk_strerror(ret));
+				// Cleanup
+				for (tsk_size_t i = 0; i < num_samples; i++) {
+					free(genotype_matrix[i]);
+				}
+				free(genotype_matrix);
+				tsk_variant_free(&variant);
+				tsk_treeseq_free(&ts);
+				return;
+			}
+			
+			// Copy genotypes for this site
+			for (tsk_size_t sample_idx = 0; sample_idx < num_samples; sample_idx++) {
+				genotype_matrix[sample_idx][site_id] = variant.genotypes[sample_idx];
+			}
+		}
+		
+		// Print genotypes in sample order
+		for (tsk_size_t sample_idx = 0; sample_idx < num_samples; sample_idx++) {
+			for (tsk_size_t site_idx = 0; site_idx < num_sites; site_idx++) {
+				printf("%d", genotype_matrix[sample_idx][site_idx]);
+			}
+			printf("\n");
+		}
+		
+		// Cleanup
+		for (tsk_size_t i = 0; i < num_samples; i++) {
+			free(genotype_matrix[i]);
+		}
+		free(genotype_matrix);
+		tsk_variant_free(&variant);
+	} else {
+		printf("\n");
+		// Still need to print sample lines even with no sites
+		extern int sampleSize;
+		for (int i = 0; i < sampleSize; i++) {
+			printf("\n");
+		}
 	}
-}
-
-void cleanupMuts(rootedNode *node) {
-	if (node->muts != NULL) {
-		free(node->muts);
-		node->muts = NULL;
-		node->mutsCapacity = 0;
-	}
+	
+	tsk_treeseq_free(&ts);
 }

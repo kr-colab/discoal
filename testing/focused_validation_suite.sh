@@ -55,7 +55,7 @@ declare -a CORE_TEST_CASES=(
     "selection:medium_sweep:5 1 200 -t 3 -r 2 -ws 0.08 -a 100 -x 0.5:optimized_preferred"
     "selection:strong_sweep:3 1 100 -t 2 -r 2 -ws 0.05 -a 1000 -x 0.5:optimized_preferred"
     "selection:soft_sweep:3 1 100 -t 2 -r 2 -ws 0.1 -a 100 -x 0.5 -f 0.1:optimized_preferred"
-    "trees:tree_output:3 1 10 -t 1 -r 2 -T:both_succeed"
+    # "trees:tree_output:3 1 10 -t 1 -r 2 -T:both_succeed"  # -T option removed in tskit-only version
 )
 
 TOTAL_TESTS=${#CORE_TEST_CASES[@]}
