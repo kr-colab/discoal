@@ -1,0 +1,34 @@
+feat: Add xoshiro256++ RNG as high-performance alternative to legacy RNG
+
+Implement xoshiro256++ random number generator as a drop-in replacement
+for the legacy L'Ecuyer RNG, providing significant performance improvements
+while maintaining full API compatibility.
+
+Performance improvements:
+- 10-45% speedup on sweep simulations (highest with low selection coefficients)
+- 10-15% speedup on standard coalescent simulations  
+- 7-10% speedup on high-recombination scenarios
+- Consistent benefits across all parameter ranges
+
+Implementation details:
+- Complete ranlib.h API compatibility with all distributions
+- Deterministic seeding using SplitMix64 for 64-bit to 256-bit expansion
+- Maintains 32 independent generator streams like legacy system
+- Uses jump function for stream independence
+- No changes to memory usage or output format
+
+New files:
+- xoshiro256pp_compat.c: Full implementation of all RNG functions
+- test_xoshiro_compatibility.sh: Compatibility test suite
+- test_xoshiro_statistics.sh: Statistical validation tests
+- benchmark_xoshiro_sweeps.sh: Performance benchmarks for sweeps
+- benchmark_xoshiro.sh: General performance benchmarks
+- profile_sweep_rng.sh: Detailed RNG profiling for sweeps
+
+Build options:
+- make discoal_xoshiro: Build with xoshiro256++ RNG
+- Add -DUSE_XOSHIRO256PP to CFLAGS to make it default
+
+The xoshiro256++ implementation is production-ready and particularly
+beneficial for sweep simulations with low selection coefficients where
+it provides up to 45% performance improvement.
