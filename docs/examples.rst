@@ -110,13 +110,6 @@ Population Structure
      -ed 2.0 1 2 \
      -m 0 1 0.1 -m 1 0 0.1
 
-**Admixture model:**
-
-.. code-block:: bash
-
-   # Pop0 is 20% pop2, 80% pop1 ancestry (0.01 time units ago)
-   ./discoal 30 100 50000 -t 60 -r 60 -p 3 10 10 10 \
-     -ea 0.01 0 1 2 0.8
 
 Complex Scenarios
 -----------------
