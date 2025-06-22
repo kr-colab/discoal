@@ -394,6 +394,65 @@ AncestrySegment* splitRight(AncestrySegment *root, int breakpoint) {
     return result;
 }
 
+// Full ARG mode split - left side with parent node ID
+AncestrySegment* splitLeftWithParent(AncestrySegment *root, int breakpoint, tsk_id_t parent_tskit_node_id) {
+    if (!root || breakpoint <= root->start) return NULL;
+    
+    AncestrySegment *result = NULL;
+    AncestrySegment *tail = NULL;
+    AncestrySegment *current = root;
+    
+    while (current && current->start < breakpoint) {
+        if (current->end <= breakpoint) {
+            // Entire segment is to the left - use parent's tskit_node_id
+            addSegmentToResult(&result, &tail, current->start, current->end, current->count, parent_tskit_node_id);
+        } else {
+            // Segment spans the breakpoint - use parent's tskit_node_id
+            addSegmentToResult(&result, &tail, current->start, breakpoint, current->count, parent_tskit_node_id);
+        }
+        current = current->next;
+    }
+    
+    return result;
+}
+
+// Full ARG mode split - right side with parent node ID
+AncestrySegment* splitRightWithParent(AncestrySegment *root, int breakpoint, tsk_id_t parent_tskit_node_id) {
+    if (!root) return NULL;
+    
+    // Special case: if breakpoint is at or before the start, share the entire tree but update IDs
+    if (breakpoint <= root->start) {
+        AncestrySegment *result = NULL;
+        AncestrySegment *tail = NULL;
+        AncestrySegment *current = root;
+        
+        while (current) {
+            addSegmentToResult(&result, &tail, current->start, current->end, current->count, parent_tskit_node_id);
+            current = current->next;
+        }
+        return result;
+    }
+    
+    AncestrySegment *result = NULL;
+    AncestrySegment *tail = NULL;
+    AncestrySegment *current = root;
+    
+    while (current) {
+        if (current->end > breakpoint) {
+            if (current->start >= breakpoint) {
+                // Entire segment is to the right - use parent's tskit_node_id
+                addSegmentToResult(&result, &tail, current->start, current->end, current->count, parent_tskit_node_id);
+            } else {
+                // Segment spans the breakpoint - use parent's tskit_node_id
+                addSegmentToResult(&result, &tail, breakpoint, current->end, current->count, parent_tskit_node_id);
+            }
+        }
+        current = current->next;
+    }
+    
+    return result;
+}
+
 void printSegmentTree(AncestrySegment *root, int depth) {
     AncestrySegment *current = root;
     while (current) {
