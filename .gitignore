@@ -1,10 +1,19 @@
 # Compiled executables
 discoal
-discoal_*
+discoal_debug
+discoal_edited
+discoal_legacy_backup
+discoal_legacy_rng
+discoal_mem_branch
+discoal_xoshiro
+discoal_xoshiro_fast
+discoal_xoshiro_profile
+discoal_xoshiro_with_fast_coth
 
 # Build artifacts
 *.o
 *.dSYM/
+/build/
 
 # Test results (timestamped directories)
 *_test_*
@@ -66,3 +75,6 @@ reference_code/*
 CLAUDE.md
 CLAUDE.local.md
 extern/msUtils/*
+
+# Work directory for temporary files
+/work/

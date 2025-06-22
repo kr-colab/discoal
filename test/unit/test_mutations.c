@@ -1,6 +1,6 @@
 #include "unity.h"
-#include "../../discoal.h"
-#include "../../discoalFunctions.h"
+#include "discoal.h"
+#include "discoalFunctions.h"
 #include <stdlib.h>
 
 #ifndef TEST_RUNNER_MODE

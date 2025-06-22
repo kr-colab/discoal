@@ -1,9 +1,14 @@
 CC = gcc
-CFLAGS = -O3 -march=native -I. -I./extern/tskit -I./extern/tskit/kastore
-TEST_CFLAGS = -O2 -I. -I./test/unit -I./extern/tskit -I./extern/tskit/kastore
+CFLAGS = -O3 -march=native -I. -I./src/core -I./src/rng -I./src/tskit -I./extern/tskit -I./extern/tskit/kastore
+TEST_CFLAGS = -O2 -I. -I./src/core -I./src/rng -I./src/tskit -I./test/unit -I./extern/tskit -I./extern/tskit/kastore
+
+# Source directories
+SRC_CORE = src/core
+SRC_RNG = src/rng
+SRC_TSKIT = src/tskit
 
 # Segment pool is now standard
-POOL_SOURCES = segmentPool.c
+POOL_SOURCES = $(SRC_CORE)/segmentPool.c
 
 # Tskit source files
 TSKIT_SOURCES = extern/tskit/tskit/core.c \
@@ -12,25 +17,35 @@ TSKIT_SOURCES = extern/tskit/tskit/core.c \
                 extern/tskit/tskit/genotypes.c \
                 extern/tskit/kastore/kastore.c
 
-all: discoal
+all: discoal symlinks
+
+# Create symlinks in root for backward compatibility with test scripts
+symlinks: discoal
+	@ln -sf build/discoal discoal
+	@ln -sf build/discoal_edited discoal_edited
+	@ln -sf build/discoal_legacy_backup discoal_legacy_backup
 #
 # executable 
 #
 
-discoal: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h activeSegment.c activeSegment.h tskitInterface.c tskitInterface.h xoshiro256pp_compat.c $(POOL_SOURCES) $(TSKIT_SOURCES)
-	$(CC) $(CFLAGS) -DUSE_XOSHIRO256PP -o discoal discoal_multipop.c discoalFunctions.c xoshiro256pp_compat.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.c tskitInterface.c $(POOL_SOURCES) $(TSKIT_SOURCES) -lm -fcommon
+discoal: $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/discoal.h $(SRC_CORE)/discoalFunctions.h $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegment.h $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/ancestrySegmentAVL.h $(SRC_CORE)/activeSegment.c $(SRC_CORE)/activeSegment.h $(SRC_TSKIT)/tskitInterface.c $(SRC_TSKIT)/tskitInterface.h $(SRC_RNG)/xoshiro256pp_compat.c $(POOL_SOURCES) $(TSKIT_SOURCES)
+	@mkdir -p build
+	$(CC) $(CFLAGS) -DUSE_XOSHIRO256PP -o build/discoal $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/activeSegment.c $(SRC_TSKIT)/tskitInterface.c $(POOL_SOURCES) $(TSKIT_SOURCES) -lm -fcommon
 
 # Build with legacy L'Ecuyer RNG (for comparison/testing)
-discoal_legacy_rng: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h activeSegment.c activeSegment.h tskitInterface.c tskitInterface.h $(POOL_SOURCES) $(TSKIT_SOURCES)
-	$(CC) $(CFLAGS) -o discoal_legacy_rng discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.c tskitInterface.c $(POOL_SOURCES) $(TSKIT_SOURCES) -lm -fcommon
+discoal_legacy_rng: $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/discoal.h $(SRC_CORE)/discoalFunctions.h $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegment.h $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/ancestrySegmentAVL.h $(SRC_CORE)/activeSegment.c $(SRC_CORE)/activeSegment.h $(SRC_TSKIT)/tskitInterface.c $(SRC_TSKIT)/tskitInterface.h $(POOL_SOURCES) $(TSKIT_SOURCES)
+	@mkdir -p build
+	$(CC) $(CFLAGS) -o build/discoal_legacy_rng $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_RNG)/ranlibComplete.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/activeSegment.c $(SRC_TSKIT)/tskitInterface.c $(POOL_SOURCES) $(TSKIT_SOURCES) -lm -fcommon
 
 # Build edited version for testing (same as main but explicit name)
-discoal_edited: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h activeSegment.c activeSegment.h tskitInterface.c tskitInterface.h xoshiro256pp_compat.c $(POOL_SOURCES) $(TSKIT_SOURCES)
-	$(CC) $(CFLAGS) -DUSE_XOSHIRO256PP -o discoal_edited discoal_multipop.c discoalFunctions.c xoshiro256pp_compat.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.c tskitInterface.c $(POOL_SOURCES) $(TSKIT_SOURCES) -lm -fcommon
+discoal_edited: $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/discoal.h $(SRC_CORE)/discoalFunctions.h $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegment.h $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/ancestrySegmentAVL.h $(SRC_CORE)/activeSegment.c $(SRC_CORE)/activeSegment.h $(SRC_TSKIT)/tskitInterface.c $(SRC_TSKIT)/tskitInterface.h $(SRC_RNG)/xoshiro256pp_compat.c $(POOL_SOURCES) $(TSKIT_SOURCES)
+	@mkdir -p build
+	$(CC) $(CFLAGS) -DUSE_XOSHIRO256PP -o build/discoal_edited $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/activeSegment.c $(SRC_TSKIT)/tskitInterface.c $(POOL_SOURCES) $(TSKIT_SOURCES) -lm -fcommon
 
 # Build debug version with ancestry verification
-discoal_debug: discoal_multipop.c discoalFunctions.c discoal.h discoalFunctions.h ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h activeSegment.c activeSegment.h $(TSKIT_SOURCES)
-	$(CC) -O2 -I. -I./extern/tskit -I./extern/tskit/kastore -DDEBUG_ANCESTRY -o discoal_debug discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.c tskitInterface.c $(TSKIT_SOURCES) -lm -fcommon
+discoal_debug: $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/discoal.h $(SRC_CORE)/discoalFunctions.h $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegment.h $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/ancestrySegmentAVL.h $(SRC_CORE)/activeSegment.c $(SRC_CORE)/activeSegment.h $(TSKIT_SOURCES)
+	@mkdir -p build
+	$(CC) -O2 -I. -I./src/core -I./src/rng -I./src/tskit -I./extern/tskit -I./extern/tskit/kastore -DDEBUG_ANCESTRY -o build/discoal_debug $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_RNG)/ranlibComplete.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/activeSegment.c $(SRC_TSKIT)/tskitInterface.c $(TSKIT_SOURCES) -lm -fcommon
 
 # Build legacy version from master-backup branch for comparison testing
 discoal_legacy_backup:
@@ -44,7 +59,7 @@ discoal_legacy_backup:
 	   git show master-backup:alleleTraj.c > /tmp/discoal_legacy_build/alleleTraj.c 2>/dev/null && \
 	   git show master-backup:alleleTraj.h > /tmp/discoal_legacy_build/alleleTraj.h 2>/dev/null && \
 	   git show master-backup:ranlib.h > /tmp/discoal_legacy_build/ranlib.h 2>/dev/null; then \
-		cd /tmp/discoal_legacy_build && $(CC) $(CFLAGS) -o discoal_legacy_backup discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c -lm -fcommon && mv discoal_legacy_backup $(CURDIR)/ && cd ../..; \
+		mkdir -p $(CURDIR)/build && cd /tmp/discoal_legacy_build && $(CC) $(CFLAGS) -o discoal_legacy_backup discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c -lm -fcommon && mv discoal_legacy_backup $(CURDIR)/build/ && cd ../..; \
 		rm -rf /tmp/discoal_legacy_build; \
 		echo "Legacy version built successfully from master-backup branch"; \
 	else \
@@ -74,7 +89,7 @@ discoal_mem_branch:
 	   git show mem:activeSegment.h > /tmp/discoal_mem_build/activeSegment.h 2>/dev/null && \
 	   git show mem:ancestryWrapper.h > /tmp/discoal_mem_build/ancestryWrapper.h 2>/dev/null && \
 	   git show mem:ancestryVerify.h > /tmp/discoal_mem_build/ancestryVerify.h 2>/dev/null; then \
-		cd /tmp/discoal_mem_build && $(CC) $(CFLAGS) -o discoal_mem_branch discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.c -lm -fcommon && mv discoal_mem_branch $(CURDIR)/ && cd ../..; \
+		mkdir -p $(CURDIR)/build && cd /tmp/discoal_mem_build && $(CC) $(CFLAGS) -o discoal_mem_branch discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c activeSegment.c -lm -fcommon && mv discoal_mem_branch $(CURDIR)/build/ && cd ../..; \
 		rm -rf /tmp/discoal_mem_build; \
 		echo "mem branch version built successfully"; \
 	else \
@@ -90,14 +105,20 @@ discoal_mem_branch:
 
 test: discoal_legacy_backup discoal_edited
 	@echo "Running comprehensive test suite..."
+	@ln -sf build/discoal_legacy_backup discoal_legacy_backup
+	@ln -sf build/discoal_edited discoal_edited
 	cd testing && ./comprehensive_validation_suite.sh
 
 test_comprehensive: discoal_legacy_backup discoal_edited
 	@echo "Running comprehensive test suite..."
+	@ln -sf build/discoal_legacy_backup discoal_legacy_backup
+	@ln -sf build/discoal_edited discoal_edited
 	cd testing && ./comprehensive_validation_suite.sh
 
 test_quick: discoal_legacy_backup discoal_edited
 	@echo "Running quick focused validation..."
+	@ln -sf build/discoal_legacy_backup discoal_legacy_backup
+	@ln -sf build/discoal_edited discoal_edited
 	cd testing && ./focused_validation_suite.sh
 
 test_reps: discoal_legacy_backup discoal_edited
@@ -130,7 +151,7 @@ test_comprehensive_head: test_binaries_head
 
 test_binaries_mem: discoal_edited discoal_mem_branch
 	@echo "Built both optimized and mem branch versions for testing"
-	cp discoal_mem_branch discoal_legacy_backup 
+	cp build/discoal_mem_branch build/discoal_legacy_backup 
 	@echo "copying discoal_mem_branch to discoal_legacy_backup for testing"
 
 test_comprehensive_mem: test_binaries_mem
@@ -192,34 +213,41 @@ UNITY_SOURCES = $(UNITY_DIR)/unity.c
 
 
 # Individual test executables
-test_node: $(TEST_DIR)/test_node.c discoal.h $(TEST_DIR)/test_globals.c
-	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o test_node $(TEST_DIR)/test_node.c $(UNITY_SOURCES) \
-		$(TEST_DIR)/test_globals.c discoalFunctions.c ancestrySegment.c ancestrySegmentAVL.c segmentPool.c \
-		xoshiro256pp_compat.c alleleTraj.c activeSegment.c tskitInterface.c \
+test_node: $(TEST_DIR)/test_node.c $(SRC_CORE)/discoal.h $(TEST_DIR)/test_globals.c
+	@mkdir -p build
+	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o build/test_node $(TEST_DIR)/test_node.c $(UNITY_SOURCES) \
+		$(TEST_DIR)/test_globals.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c \
+		$(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/activeSegment.c $(SRC_TSKIT)/tskitInterface.c \
 		$(TSKIT_SOURCES) -I$(UNITY_DIR) -lm -fcommon
 
-test_event: $(TEST_DIR)/test_event.c discoal.h
-	$(CC) $(TEST_CFLAGS) -o test_event $(TEST_DIR)/test_event.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
+test_event: $(TEST_DIR)/test_event.c $(SRC_CORE)/discoal.h
+	@mkdir -p build
+	$(CC) $(TEST_CFLAGS) -o build/test_event $(TEST_DIR)/test_event.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
-test_node_operations: $(TEST_DIR)/test_node_operations.c discoal.h $(TEST_DIR)/test_globals.c
-	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o test_node_operations $(TEST_DIR)/test_node_operations.c $(UNITY_SOURCES) \
-		$(TEST_DIR)/test_globals.c discoalFunctions.c ancestrySegment.c ancestrySegmentAVL.c segmentPool.c \
-		xoshiro256pp_compat.c alleleTraj.c activeSegment.c tskitInterface.c \
+test_node_operations: $(TEST_DIR)/test_node_operations.c $(SRC_CORE)/discoal.h $(TEST_DIR)/test_globals.c
+	@mkdir -p build
+	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o build/test_node_operations $(TEST_DIR)/test_node_operations.c $(UNITY_SOURCES) \
+		$(TEST_DIR)/test_globals.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c \
+		$(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/activeSegment.c $(SRC_TSKIT)/tskitInterface.c \
 		$(TSKIT_SOURCES) -I$(UNITY_DIR) -lm -fcommon
 
-test_mutations: $(TEST_DIR)/test_mutations.c discoal.h
-	$(CC) $(TEST_CFLAGS) -o test_mutations $(TEST_DIR)/test_mutations.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
+test_mutations: $(TEST_DIR)/test_mutations.c $(SRC_CORE)/discoal.h
+	@mkdir -p build
+	$(CC) $(TEST_CFLAGS) -o build/test_mutations $(TEST_DIR)/test_mutations.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
-test_ancestry_segment: $(TEST_DIR)/test_ancestry_segment.c ancestrySegment.c ancestrySegmentAVL.c segmentPool.c ancestrySegment.h ancestrySegmentAVL.h segmentPool.h
-	$(CC) $(TEST_CFLAGS) -o test_ancestry_segment $(TEST_DIR)/test_ancestry_segment.c ancestrySegment.c ancestrySegmentAVL.c segmentPool.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
+test_ancestry_segment: $(TEST_DIR)/test_ancestry_segment.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c $(SRC_CORE)/ancestrySegment.h $(SRC_CORE)/ancestrySegmentAVL.h $(SRC_CORE)/segmentPool.h
+	@mkdir -p build
+	$(CC) $(TEST_CFLAGS) -o build/test_ancestry_segment $(TEST_DIR)/test_ancestry_segment.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
-test_active_segment: $(TEST_DIR)/test_active_segment.c activeSegment.c activeSegment.h ancestrySegment.c ancestrySegmentAVL.c segmentPool.c
-	$(CC) $(TEST_CFLAGS) -o test_active_segment $(TEST_DIR)/test_active_segment.c activeSegment.c ancestrySegment.c ancestrySegmentAVL.c segmentPool.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
+test_active_segment: $(TEST_DIR)/test_active_segment.c $(SRC_CORE)/activeSegment.c $(SRC_CORE)/activeSegment.h $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c
+	@mkdir -p build
+	$(CC) $(TEST_CFLAGS) -o build/test_active_segment $(TEST_DIR)/test_active_segment.c $(SRC_CORE)/activeSegment.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
-test_trajectory: $(TEST_DIR)/test_trajectory.c discoal.h $(TEST_DIR)/test_globals.c
-	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o test_trajectory $(TEST_DIR)/test_trajectory.c $(UNITY_SOURCES) \
-		$(TEST_DIR)/test_globals.c discoalFunctions.c ancestrySegment.c ancestrySegmentAVL.c segmentPool.c \
-		xoshiro256pp_compat.c alleleTraj.c activeSegment.c tskitInterface.c \
+test_trajectory: $(TEST_DIR)/test_trajectory.c $(SRC_CORE)/discoal.h $(TEST_DIR)/test_globals.c
+	@mkdir -p build
+	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o build/test_trajectory $(TEST_DIR)/test_trajectory.c $(UNITY_SOURCES) \
+		$(TEST_DIR)/test_globals.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c \
+		$(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/activeSegment.c $(SRC_TSKIT)/tskitInterface.c \
 		$(TSKIT_SOURCES) -I$(UNITY_DIR) -lm -fcommon
 
 
@@ -228,13 +256,13 @@ test_trajectory: $(TEST_DIR)/test_trajectory.c discoal.h $(TEST_DIR)/test_global
 # Run individual unit tests
 run_tests: test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory
 	@echo "=== Running Unit Tests ==="
-	./test_node
-	./test_event
-	./test_node_operations
-	./test_mutations
-	./test_ancestry_segment
-	./test_active_segment
-	./test_trajectory
+	./build/test_node
+	./build/test_event
+	./build/test_node_operations
+	./build/test_mutations
+	./build/test_ancestry_segment
+	./build/test_active_segment
+	./build/test_trajectory
 	@echo "=== All Unit Tests Passed ==="
 
 
@@ -243,16 +271,26 @@ run_tests: test_node test_event test_node_operations test_mutations test_ancestr
 #
 
 niceStats: extern/msUtils/niceStats.c extern/msUtils/msGeneralStats.c
-	$(CC) $(CFLAGS) -o niceStats extern/msUtils/niceStats.c extern/msUtils/msGeneralStats.c -lm
+	@mkdir -p build
+	$(CC) $(CFLAGS) -o build/niceStats extern/msUtils/niceStats.c extern/msUtils/msGeneralStats.c -lm
 
 # Build ms from reference_code for growth comparison testing
 extern/ms: reference_code/msdir/ms.c reference_code/msdir/streec.c reference_code/msdir/rand1.c
 	$(CC) -O3 -o extern/ms reference_code/msdir/ms.c reference_code/msdir/streec.c reference_code/msdir/rand1.c -lm
+
+# Build alleleTrajTest utility (simple trajectory test program)
+alleleTrajTest: test/alleleTrajTest.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/alleleTraj.h $(SRC_RNG)/ranlibComplete.c
+	@mkdir -p build
+	$(CC) -O3 -I. -I./src/core -I./src/rng -DSTANDALONE_ALLELETRAJ -o build/alleleTrajTest test/alleleTrajTest.c $(SRC_CORE)/alleleTraj.c $(SRC_RNG)/ranlibComplete.c -lm -fcommon
 
 #
 # clean
 #
 
 clean:
-	rm -f discoal discoal_edited discoal_legacy_backup discoal_mem_branch *.o test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory alleleTrajTest niceStats
+	rm -rf build/*
 	rm -f discoaldoc.aux discoaldoc.bbl discoaldoc.blg discoaldoc.log discoaldoc.out
+	# Remove any executables/symlinks in root (for backward compatibility)
+	rm -f discoal discoal_edited discoal_legacy_backup discoal_mem_branch discoal_debug discoal_legacy_rng
+	rm -f test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory
+	rm -f alleleTrajTest niceStats

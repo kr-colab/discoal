@@ -6,8 +6,22 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-unsigned long devrand(void);
 #define MAXTRAJ 10000000
+
+// Simple devrand implementation for standalone use
+unsigned int devrand(void) {
+    static int fd = -1;
+    unsigned int r;
+    if (fd < 0) {
+        fd = open("/dev/urandom", O_RDONLY);
+        if (fd < 0) {
+            fprintf(stderr, "Error: cannot open /dev/urandom\n");
+            exit(1);
+        }
+    }
+    read(fd, &r, sizeof(r));
+    return r;
+}
 
 void createTrajectory(int N,double alpha,double dt, double *currentTrajectory);
 
