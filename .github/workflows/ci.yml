@@ -100,7 +100,7 @@ jobs:
         echo "=== Testing basic coalescent ==="
         ./discoal 10 5 1000 -t 10 > output.txt
         [ -s output.txt ] || exit 1
-        grep -q "^//$$" output.txt || exit 1
+        grep -q "^//$" output.txt || exit 1
         echo "✓ Basic coalescent works"
     
     - name: Test with recombination
