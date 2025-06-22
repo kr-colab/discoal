@@ -126,7 +126,7 @@ char *argv[];
 		//output used for soft shoulders manuscript:
                 //printf("%lf\t%d\t%lf\t%lf\t%lf\t%d\t%f\t%f\t%f", pi, iss, th ,tajD,H, h, h1, w, z);
                 //output used for spatial SVM
-		printf("%lf\t%d\t%lf\t%lf\t%lf\t%lf\t%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf", pi, iss, th, tajD, H, mfda, h, h1, h12, h2/h1, w, z);
+		printf("%lf\t%d\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\t%lf", pi, iss, th, tajD, H, mfda, h, h1, h12, h2/h1, w, z);
 		//printf("%lf\t%d\t%lf\t%lf\t%lf\t%d", pi, iss, th ,tajD,H, h);
                 
                 /*for (exponent1 = -50; exponent1 <= 50; exponent1++){
