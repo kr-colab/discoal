@@ -50,7 +50,7 @@ jobs:
         make clean
         make discoal
         # Verify the binary works
-        ./discoal 10 1 100 -t 10 > /dev/null
+        ./build/discoal 10 1 100 -t 10 > /dev/null
     
     - name: Run unit tests
       run: |
@@ -62,9 +62,9 @@ jobs:
       run: |
         echo "=== Re-running failed tests individually ==="
         for test in test_node test_event test_mutations test_node_operations test_ancestry_segment test_active_segment test_trajectory; do
-          if [ -f "./$test" ]; then
+          if [ -f "./build/$test" ]; then
             echo "Running $test..."
-            ./$test || true
+            ./build/$test || true
           fi
         done
 
