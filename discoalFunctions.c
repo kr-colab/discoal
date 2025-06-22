@@ -1486,6 +1486,116 @@ double neutralPhaseMigExclude(int *bpArray,double startTime, double endTime, dou
 }
 
 
+/*
+ * Calculate waiting time to next coalescent event with exponential growth
+ * Following ms implementation from streec.c
+ * 
+ * Parameters:
+ *   currentTime: current time in simulation
+ *   lastUpdateTime: time when population size was last updated
+ *   currentSize: population size at lastUpdateTime
+ *   coalProb: k*(k-1) where k is number of lineages
+ *   growthRate: growth rate parameter (N(t) = N0 * exp(-growthRate * t))
+ *   randomUnif: uniform random number [0,1]
+ * 
+ * Returns: waiting time to next coalescent event
+ *          returns -1 if no coalescent possible in finite time
+ */
+double coalescentWaitingTimeWithGrowth(double currentTime, double lastUpdateTime, 
+                                      double currentSize, double coalProb, 
+                                      double growthRate, double randomUnif) {
+    double waitTime;
+    
+    if (growthRate == 0.0) {
+        // No growth - standard exponential waiting time
+        waitTime = -log(randomUnif) * currentSize / coalProb;
+    } else {
+        // With growth - use integral formula from ms/msprime
+        // u = -log(randomUnif) is an exponential(1) random variable
+        double u = -log(randomUnif);
+        double dt = currentTime - lastUpdateTime;
+        // Factor of 2 for diploid populations (matching msprime's ploidy factor)
+        double z = 1.0 + 2.0 * growthRate * currentSize * exp(-growthRate * dt) * u / coalProb;
+        
+        // Debug output
+        if (0) {  // Set to 1 to enable debug
+            fprintf(stderr, "DEBUG: currentTime=%.3f, lastUpdate=%.3f, size=%.3f, coalProb=%.1f, alpha=%.1f, U=%.3f\n",
+                    currentTime, lastUpdateTime, currentSize, coalProb, growthRate, randomUnif);
+            fprintf(stderr, "       u=%.3f, dt=%.3f, z=%.6f\n", u, dt, z);
+        }
+        
+        if (z <= 0.0) {
+            // No coalescent possible in finite time
+            return -1.0;
+        }
+        
+        waitTime = log(z) / growthRate;
+    }
+    
+    return waitTime;
+}
+
+/*
+ * INTEGRATION NOTES for exponential growth support:
+ * 
+ * To fully support -eg (exponential growth) like ms, the following changes are needed:
+ * 
+ * 1. Add to global variables (in discoal.h):
+ *    - double popnAlpha[MAXPOPS];      // Growth rates per population
+ *    - double popnLastUpdate[MAXPOPS]; // Time of last size update per population
+ * 
+ * 2. Modify event structure to support 'g' type for growth rate changes
+ * 
+ * 3. In neutralPhaseGeneralPopNumber, replace the simple coalescent rate calculation:
+ *    OLD: waitTime = genexp(1.0) * (1.0/ totRate);
+ *    NEW: Use coalescentWaitingTimeWithGrowth for each population, then take minimum
+ * 
+ * 4. Update population sizes when growth is active:
+ *    currentSize[pop] = currentSize[pop] * exp(-popnAlpha[pop] * (currentTime - popnLastUpdate[pop]))
+ * 
+ * IMPORTANT LIMITATION: Exponential growth is NOT compatible with sweep modes.
+ * The command line parser enforces this restriction to prevent undefined behavior.
+ * 
+ * Example usage in simulation loop:
+ *    double coalWaitTime = coalescentWaitingTimeWithGrowth(
+ *        currentTime,                    // current simulation time
+ *        popnLastUpdate[popIndex],       // when this pop was last updated
+ *        currentSize[popIndex],          // size at last update
+ *        popnSizes[popIndex] * (popnSizes[popIndex] - 1) * 0.5,  // coal probability
+ *        popnAlpha[popIndex],            // growth rate (0 if no growth)
+ *        ranf()                          // random uniform [0,1]
+ *    );
+ */
+
+/* Check if any population has exponential growth active */
+static int hasActiveGrowth() {
+    extern double popnAlpha[MAXPOPS];
+    int i;
+    for(i = 0; i < npops; i++) {
+        if(popnAlpha[i] != 0.0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* Update population sizes based on growth rates up to current time */
+static void updatePopulationSizes(double currentTime, double *sizeRatio) {
+    extern double popnAlpha[MAXPOPS];
+    extern double popnLastUpdate[MAXPOPS];
+    int i;
+    
+    for(i = 0; i < npops; i++) {
+        if(popnAlpha[i] != 0.0) {
+            double timeDiff = currentTime - popnLastUpdate[i];
+            if(timeDiff > 0) {
+                sizeRatio[i] = sizeRatio[i] * exp(-popnAlpha[i] * timeDiff);
+                // DO NOT update popnLastUpdate here - it should only be updated when growth rate changes
+            }
+        }
+    }
+}
+
 /*neutralPhaseGeneralPopNumber--coalescent, recombination, gc events until
 specified time. returns endTime. can handle multiple popns*/
 double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *sizeRatio){
@@ -1528,13 +1638,143 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 		//printf("totRate: %f totCRate: %f totRRate: %f \n",totRate,totCRate,totRRate);
 
 		//find time of next event
-		waitTime = genexp(1.0)  * (1.0/ totRate);
-		cTime += waitTime;
-		if (cTime >= endTime){
-			return(endTime);
+		// Check if we need to handle exponential growth
+		if(hasActiveGrowth()) {
+			// Debug: Print when growth path is taken
+			static int growthDebugPrinted = 0;
+			if (!growthDebugPrinted && 0) {  // Set to 1 to enable debug
+				fprintf(stderr, "DEBUG: Growth path activated at cTime=%.3f\n", cTime);
+				for(int i = 0; i < npops; i++) {
+					extern double popnAlpha[MAXPOPS];
+					if(popnAlpha[i] != 0.0) {
+						fprintf(stderr, "       Pop %d: alpha=%.3f\n", i, popnAlpha[i]);
+					}
+				}
+				growthDebugPrinted = 1;
+			}
+			// With growth, we need to calculate waiting times separately for each event type
+			double minWaitTime = endTime - cTime; // Initialize to max possible time
+			int minEventType = -1; // 0=recomb, 1=gc, 2=mig, 3=coal
+			int minEventPop = -1;
+			int minEventPop2 = -1; // For migration destination
+			
+			// Update population sizes to current time
+			updatePopulationSizes(cTime, sizeRatio);
+			
+			// Calculate waiting times for non-coalescent events (not affected by population size)
+			if(totRRate > 0) {
+				double recombWait = genexp(1.0) / totRRate;
+				if(recombWait < minWaitTime) {
+					minWaitTime = recombWait;
+					minEventType = 0;
+				}
+			}
+			if(totGCRate > 0) {
+				double gcWait = genexp(1.0) / totGCRate;
+				if(gcWait < minWaitTime) {
+					minWaitTime = gcWait;
+					minEventType = 1;
+				}
+			}
+			if(totMRate > 0) {
+				double migWait = genexp(1.0) / totMRate;
+				if(migWait < minWaitTime) {
+					minWaitTime = migWait;
+					minEventType = 2;
+				}
+			}
+			
+			// Calculate coalescent waiting times for each population with growth adjustment
+			extern double popnAlpha[MAXPOPS];
+			extern double popnLastUpdate[MAXPOPS];
+			for(i = 0; i < npops; i++) {
+				if(popnSizes[i] > 1) {
+					double coalProb = popnSizes[i] * (popnSizes[i] - 1) * 0.5;
+					double coalWait = coalescentWaitingTimeWithGrowth(
+						cTime,
+						popnLastUpdate[i],
+						sizeRatio[i],
+						coalProb,
+						popnAlpha[i],
+						ranf()
+					);
+					
+					if(coalWait > 0 && coalWait < minWaitTime) {
+						minWaitTime = coalWait;
+						minEventType = 3;
+						minEventPop = i;
+					}
+				}
+			}
+			
+			// Check if any event can happen before endTime
+			if(cTime + minWaitTime >= endTime) {
+				// Update sizes to endTime before returning
+				updatePopulationSizes(endTime, sizeRatio);
+				return(endTime);
+			}
+			
+			// Advance time and execute the event
+			cTime += minWaitTime;
+			updatePopulationSizes(cTime, sizeRatio);
+			
+			// Execute the selected event
+			if(minEventType == 0) { // Recombination
+				// Pick population proportional to rate
+				eSum = rRate[0];
+				i = 0;
+				r2 = ranf();
+				while(eSum/totRRate < r2) eSum += rRate[++i];
+				bp = recombineAtTimePopn(cTime,i);
+				if (bp != 666){
+					addBreakPoint(bp);
+				}
+			}
+			else if(minEventType == 1) { // Gene conversion
+				// Pick population proportional to rate
+				eSum = gcRate[0];
+				i = 0;
+				r2 = ranf();
+				while(eSum/totGCRate < r2) eSum += gcRate[++i];
+				geneConversionAtTimePopn(cTime,i);
+			}
+			else if(minEventType == 2) { // Migration
+				// Pick source population proportional to rate
+				eSum = mRate[0];
+				i = 0;
+				j = 0;
+				r2 = ranf();
+				while(eSum/totMRate < r2) eSum += mRate[++i];
+				// Pick destination population
+				eSum = migMat[i][0]* popnSizes[i] * 0.5;
+				r2 = ranf();
+				while(eSum/mRate[i] < r2){
+					eSum += migMat[i][++j] * popnSizes[i] * 0.5;
+				} 
+				migrateAtTime(cTime,i,j);
+			}
+			else if(minEventType == 3) { // Coalescence
+				coalesceAtTimePopn(cTime, minEventPop);
+				
+				// Increment coalescence counter and sweep
+				coalescenceCounter++;
+				if (coalescenceCounter % SWEEP_INTERVAL == 0) {
+					// Flush buffered edges before freeing nodes to avoid referencing freed nodes
+					extern int tskit_flush_edges_periodic(void);
+					tskit_flush_edges_periodic();
+					sweepAndFreeRemovedNodes();
+				}
+			}
+			// Continue to next iteration with growth handling
 		}
-		//find event type
-		else{ 
+		else {
+			// No growth - use original simple approach
+			waitTime = genexp(1.0)  * (1.0/ totRate);
+			cTime += waitTime;
+			if (cTime >= endTime){
+				return(endTime);
+			}
+			//find event type 
 			r =ranf();
 			if (r < (totRRate/ totRate)){
 				//pick popn
@@ -1602,7 +1842,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 					}
 				}
 			}
-		}
+		} // End of else block for no-growth case
 	}
 	
 	// Final sweep at the end of the phase

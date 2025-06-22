@@ -137,6 +137,10 @@ int sampleS, sampleFD, sampleHaps, rejectCount, sampleRMin, offset, winNumber, \
 // Population node lists for O(1) node selection
 PopulationNodeList popLists[MAXPOPS];
 
+// Exponential growth tracking per population
+double popnAlpha[MAXPOPS];      // Growth rates per population (0 = no growth)
+double popnLastUpdate[MAXPOPS]; // Time of last size update per population
+
 
 const char *mFile;
 

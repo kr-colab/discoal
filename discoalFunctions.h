@@ -32,6 +32,11 @@ void markLeafNodeRecorded(rootedNode *node);
 void tryFreeNode(rootedNode *node);
 void cleanupRemainingNodes();
 
+// Coalescent waiting time calculation with exponential growth
+double coalescentWaitingTimeWithGrowth(double currentTime, double lastUpdateTime, 
+                                      double currentSize, double coalProb, 
+                                      double growthRate, double randomUnif);
+
 void coalesceAtTimePopn(double cTime, int popn);
 void coalesceAtTimePopnSweep(double cTime, int popn, int sp);
 void migrateAtTime(double cTime,int srcPopn, int destPopn);

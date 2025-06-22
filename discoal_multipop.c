@@ -373,6 +373,31 @@ int main(int argc, const char * argv[]){
 					}
 				}
 				break;
+				case 'g': // exponential growth rate change
+				currentTime = events[j].time;
+				// Update population size to current time before changing growth rate
+				int popIndex = events[j].popID;
+				if(popnAlpha[popIndex] != 0.0) {
+					currentSize[popIndex] = currentSize[popIndex] * exp(-popnAlpha[popIndex] * (currentTime - popnLastUpdate[popIndex]));
+				}
+				// Set new growth rate and update last update time
+				popnAlpha[popIndex] = events[j].popnSize;
+				popnLastUpdate[popIndex] = currentTime;
+				// Continue simulation with new growth rate
+				if(activeSweepFlag == 0){
+					if(recurSweepMode ==0){
+						currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
+					}
+				}
+				else{
+					// This should never happen due to command line validation
+					fprintf(stderr, "Error: Growth events are not compatible with sweep modes\n");
+					exit(1);
+				}
+				break;
 			}
 			
 		}
@@ -834,6 +859,8 @@ void getParameters(int argc,const char **argv){
 			for(i=0;i<npops;i++){
 				sampleSizes[i] = parseIntArg(argc, argv, &args, "-p");
 				currentSize[i] = 1.0;
+				popnAlpha[i] = 0.0;      // No growth by default
+				popnLastUpdate[i] = 0.0;  // Initialize last update time
 			}
 			
 			break;
@@ -865,6 +892,14 @@ void getParameters(int argc,const char **argv){
 					events[eventNumber].popID3 = atoi(argv[++args]);
 					events[eventNumber].admixProp = atof(argv[++args]);
 					events[eventNumber].type = 'a'; //admix split
+					eventNumber++;
+					break;
+					case 'g' :
+						ensureEventsCapacity();
+					events[eventNumber].time = atof(argv[++args]) * 2.0;
+					events[eventNumber].popID = atoi(argv[++args]);
+					events[eventNumber].popnSize = atof(argv[++args]) / 2.0; // scale growth rate for 2N time units
+					events[eventNumber].type = 'g'; //growth rate change
 					eventNumber++;
 					break;
 				}
@@ -1058,6 +1093,7 @@ void getParameters(int argc,const char **argv){
 	//make sure events are kosher
 	selCheck = 0;
 	nChangeCheck=0;
+	int growthCheck=0;
 	for(i=0;i<eventNumber;i++){
 		//printf("event %d: type is %c\n", i, events[i].type);
 	 		if(events[i].type == 's'){
@@ -1066,6 +1102,15 @@ void getParameters(int argc,const char **argv){
 			if(events[i].type == 'n'){
 				nChangeCheck += 1;
 	 		}
+			if(events[i].type == 'g'){
+				growthCheck = 1;
+	 		}
+	}
+	// Check for incompatible sweep and growth combination
+	if((selCheck == 1 || sweepMode == 'd' || sweepMode == 's' || sweepMode == 'N' || recurSweepMode == 1) && growthCheck == 1){
+		fprintf(stderr, "Error: Exponential growth (-eg) is not compatible with sweep modes.\n");
+		fprintf(stderr, "The coalescent with selection during exponential growth is not currently supported.\n");
+		exit(1);
 	}
 	if(selCheck == 1){
 		if(recurSweepMode == 1){
@@ -1114,6 +1159,7 @@ void usage(){
 	fprintf(stderr,"\t -en time popnID size (changes size of popID)\n");	
 	fprintf(stderr,"\t -ed time popnID1 popnID2 (joins popnID1 into popnID2)\n");
 	fprintf(stderr,"\t -ea time daughterPopnID founderPopnID1 founderPopnID2 admixProp (admixture-- back in time daughterPopnID into two founders)\n");
+	fprintf(stderr,"\t -eg time popnID alpha (sets exponential growth rate for popID; alpha > 0 means growth backwards in time)\n");
 	
 	fprintf(stderr,"\t -ws tau (sweep happend tau generations ago- stochastic sweep)\n");  
 	fprintf(stderr,"\t -wd tau (sweep happend tau generations ago- deterministic sweep)\n"); 
