@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <limits.h>
 #include "params.h"
 
 /**
@@ -357,4 +358,344 @@ void params_set_simple_sweep(SimulationParams *params, double s, double position
     params->selection.sweep_mode = SWEEP_DETERMINISTIC;
     params->selection.tau = 0.0;  /* Recent sweep */
     params->selection.f0 = 1.0 / (2.0 * params->core.Ne);
+}
+
+/**
+ * Helper function to copy a SimulationParams structure
+ */
+SimulationParams* params_copy(const SimulationParams *params) {
+    if (!params) return NULL;
+    
+    SimulationParams *copy = params_create();
+    if (!copy) return NULL;
+    
+    /* Copy all fields */
+    *copy = *params;
+    
+    /* Deep copy dynamic arrays */
+    if (params->demographics.events) {
+        copy->demographics.events = malloc(params->demographics.events_capacity * sizeof(DemographicEvent));
+        if (!copy->demographics.events) {
+            params_destroy(copy);
+            return NULL;
+        }
+        memcpy(copy->demographics.events, params->demographics.events, 
+               params->demographics.num_events * sizeof(DemographicEvent));
+    }
+    
+    if (params->demographics.ancient_samples.sample_times) {
+        int n = params->demographics.ancient_samples.num_ancient_samples;
+        copy->demographics.ancient_samples.sample_times = malloc(n * sizeof(int));
+        copy->demographics.ancient_samples.sample_pops = malloc(n * sizeof(int));
+        if (!copy->demographics.ancient_samples.sample_times || 
+            !copy->demographics.ancient_samples.sample_pops) {
+            params_destroy(copy);
+            return NULL;
+        }
+        memcpy(copy->demographics.ancient_samples.sample_times, 
+               params->demographics.ancient_samples.sample_times, n * sizeof(int));
+        memcpy(copy->demographics.ancient_samples.sample_pops, 
+               params->demographics.ancient_samples.sample_pops, n * sizeof(int));
+    }
+    
+    if (params->priors.distributions) {
+        copy->priors.distributions = malloc(params->priors.num_priors * sizeof(PriorDist));
+        if (!copy->priors.distributions) {
+            params_destroy(copy);
+            return NULL;
+        }
+        for (int i = 0; i < params->priors.num_priors; i++) {
+            copy->priors.distributions[i] = params->priors.distributions[i];
+            if (params->priors.distributions[i].parameter_name) {
+                copy->priors.distributions[i].parameter_name = 
+                    strdup(params->priors.distributions[i].parameter_name);
+            }
+        }
+    }
+    
+    return copy;
+}
+
+/* Helper functions for command line parsing */
+static const char* getNextArg(int argc, char **argv, int *args, const char *option) {
+    (*args)++;
+    if (*args >= argc) {
+        fprintf(stderr, "Error: Option %s requires an argument\n", option);
+        exit(1);
+    }
+    return argv[*args];
+}
+
+static int parseIntArg(int argc, char **argv, int *args, const char *option) {
+    const char *arg = getNextArg(argc, argv, args, option);
+    char *endptr;
+    long val = strtol(arg, &endptr, 10);
+    
+    if (*endptr != '\0' || val > INT_MAX || val < INT_MIN) {
+        fprintf(stderr, "Error: Invalid integer argument for %s: '%s'\n", option, arg);
+        exit(1);
+    }
+    
+    return (int)val;
+}
+
+static double parseDoubleArg(int argc, char **argv, int *args, const char *option) {
+    const char *arg = getNextArg(argc, argv, args, option);
+    char *endptr;
+    double val = strtod(arg, &endptr);
+    
+    if (*endptr != '\0') {
+        fprintf(stderr, "Error: Invalid numeric argument for %s: '%s'\n", option, arg);
+        exit(1);
+    }
+    
+    return val;
+}
+
+/* Sort demographic events by time */
+static int compare_events(const void *a, const void *b) {
+    const DemographicEvent *ea = (const DemographicEvent *)a;
+    const DemographicEvent *eb = (const DemographicEvent *)b;
+    
+    if (ea->time < eb->time) return -1;
+    if (ea->time > eb->time) return 1;
+    return 0;
+}
+
+static void sort_events(SimulationParams *params) {
+    if (params->demographics.num_events > 0) {
+        qsort(params->demographics.events, params->demographics.num_events, 
+              sizeof(DemographicEvent), compare_events);
+    }
+}
+
+/**
+ * Load parameters from command line arguments
+ * Maintains backward compatibility with original discoal command line format
+ */
+int params_load_from_args(SimulationParams *params, int argc, char **argv) {
+    assert(params != NULL);
+    int args;
+    int i, j;
+    
+    if (argc < 4) {
+        return -1;  /* Not enough arguments */
+    }
+    
+    /* Parse positional arguments */
+    params->core.total_samples = atoi(argv[1]);
+    if (params->core.total_samples > 65535) {
+        fprintf(stderr, "Error: sampleSize > 65535. This exceeds the maximum supported.\n");
+        return -1;
+    }
+    
+    params->core.num_replicates = atoi(argv[2]);
+    params->core.num_sites = atoi(argv[3]);
+    
+    /* Set default single population */
+    params->core.num_populations = 1;
+    params->core.sample_sizes[0] = params->core.total_samples;
+    
+    args = 4;
+    
+    /* Process optional arguments */
+    while (args < argc) {
+        if (argv[args][0] != '-') {
+            fprintf(stderr, "Error: Unexpected argument '%s'\n", argv[args]);
+            return -1;
+        }
+        
+        switch(argv[args][1]) {
+            case 't':
+                if (argv[args][2] == 's') {  /* -ts for tree sequence */
+                    params->output.tree_sequence_output = true;
+                    args++;
+                    if (args >= argc) {
+                        fprintf(stderr, "Error: -ts requires filename\n");
+                        return -1;
+                    }
+                    strncpy(params->output.output_filename, argv[args], PATH_MAX - 1);
+                } else {  /* -t for theta */
+                    params->forces.theta = parseDoubleArg(argc, argv, &args, "-t");
+                }
+                break;
+                
+            case 'r':
+                params->forces.rho = parseDoubleArg(argc, argv, &args, "-r");
+                break;
+                
+            case 'g':
+                if (argv[args][2] == 'r') {  /* -gr for gene conversion ratio */
+                    params->forces.gene_conversion_ratio = parseDoubleArg(argc, argv, &args, "-gr");
+                    params->forces.gc_tract_mean = parseIntArg(argc, argv, &args, "-gr");
+                } else {  /* -g for gene conversion */
+                    double gc_rate = parseDoubleArg(argc, argv, &args, "-g");
+                    params->forces.gc_tract_mean = parseIntArg(argc, argv, &args, "-g");
+                    /* Convert absolute rate to ratio */
+                    if (params->forces.rho > 0) {
+                        params->forces.gene_conversion_ratio = gc_rate / params->forces.rho;
+                    }
+                }
+                break;
+                
+            case 'a':
+                params->selection.alpha = parseDoubleArg(argc, argv, &args, "-a");
+                break;
+                
+            case 'x':
+                params->selection.sweep_position = parseDoubleArg(argc, argv, &args, "-x");
+                break;
+                
+            case 'N':
+                params->core.Ne = (double)parseIntArg(argc, argv, &args, "-N");
+                break;
+                
+            case 'p':  /* Multiple populations */
+                params->core.num_populations = parseIntArg(argc, argv, &args, "-p");
+                if (params->core.num_populations > MAXPOPS) {
+                    fprintf(stderr, "Error: Too many populations (max %d)\n", MAXPOPS);
+                    return -1;
+                }
+                
+                params->core.total_samples = 0;
+                for (i = 0; i < params->core.num_populations; i++) {
+                    params->core.sample_sizes[i] = parseIntArg(argc, argv, &args, "-p");
+                    params->core.total_samples += params->core.sample_sizes[i];
+                }
+                break;
+                
+            case 'M':  /* Symmetric migration */
+                if (params->core.num_populations == 1) {
+                    fprintf(stderr, "Error: -M requires multiple populations (use -p first)\n");
+                    return -1;
+                }
+                params_set_symmetric_migration(params, parseDoubleArg(argc, argv, &args, "-M"));
+                break;
+                
+            case 'm':  /* Pairwise migration */
+                if (params->core.num_populations == 1) {
+                    fprintf(stderr, "Error: -m requires multiple populations (use -p first)\n");
+                    return -1;
+                }
+                i = parseIntArg(argc, argv, &args, "-m");
+                j = parseIntArg(argc, argv, &args, "-m");
+                params->forces.migration_matrix[i][j] = parseDoubleArg(argc, argv, &args, "-m");
+                break;
+                
+            case 'e':  /* Demographic events */
+                {
+                    DemographicEvent event;
+                    event.time = 0;
+                    
+                    switch(argv[args][2]) {
+                        case 'n':  /* Population size change */
+                            event.time = parseDoubleArg(argc, argv, &args, "-en") * 2.0;
+                            event.type = EVENT_SIZE_CHANGE;
+                            event.params.size_change.pop = parseIntArg(argc, argv, &args, "-en");
+                            event.params.size_change.size = parseDoubleArg(argc, argv, &args, "-en");
+                            break;
+                            
+                        case 'd':  /* Population split/join */
+                        case 'j':  /* ms compatibility */
+                            event.time = parseDoubleArg(argc, argv, &args, "-ed") * 2.0;
+                            event.type = EVENT_JOIN;
+                            event.params.join.pop1 = parseIntArg(argc, argv, &args, "-ed");
+                            event.params.join.pop2 = parseIntArg(argc, argv, &args, "-ed");
+                            event.params.join.dest = event.params.join.pop2;
+                            break;
+                            
+                        case 'a':  /* Admixture */
+                            event.time = parseDoubleArg(argc, argv, &args, "-ea") * 2.0;
+                            event.type = EVENT_ADMIX;
+                            event.params.admix.to = parseIntArg(argc, argv, &args, "-ea");
+                            int pop2 = parseIntArg(argc, argv, &args, "-ea");
+                            int pop3 = parseIntArg(argc, argv, &args, "-ea");
+                            event.params.admix.from = pop2;  /* Main source */
+                            event.params.admix.prop = parseDoubleArg(argc, argv, &args, "-ea");
+                            /* Note: pop3 is the secondary source, prop goes to pop2 */
+                            break;
+                    }
+                    
+                    if (event.time >= 0) {
+                        params_add_demographic_event(params, &event);
+                    }
+                }
+                break;
+                
+            case 'w':  /* Sweep modes */
+                switch(argv[args][2]) {
+                    case 'd':
+                        params->selection.sweep_mode = SWEEP_DETERMINISTIC;
+                        break;
+                    case 's':
+                        params->selection.sweep_mode = SWEEP_STOCHASTIC;
+                        break;
+                    case 'n':
+                        params->selection.sweep_mode = SWEEP_NEUTRAL;
+                        break;
+                }
+                params->selection.tau = parseDoubleArg(argc, argv, &args, "-w") * 2.0;
+                break;
+                
+            case 'f':  /* Starting frequency for soft sweep */
+                params->selection.f0 = parseDoubleArg(argc, argv, &args, "-f");
+                params->selection.soft_sweep = true;
+                break;
+                
+            case 'u':  /* Adaptive mutation rate */
+                params->selection.adaptive_mutation_rate = parseDoubleArg(argc, argv, &args, "-u");
+                break;
+                
+            case 'c':  /* Partial sweep */
+                params->selection.partial_sweep = true;
+                params->selection.partial_sweep_final_freq = parseDoubleArg(argc, argv, &args, "-c");
+                if (params->selection.sweep_mode != SWEEP_STOCHASTIC) {
+                    params->selection.sweep_mode = SWEEP_STOCHASTIC;
+                }
+                break;
+                
+            case 'R':  /* Recurrent sweep */
+                params->selection.recurrent_sweep = true;
+                params->selection.sweep_mode = SWEEP_STOCHASTIC;
+                params->selection.adaptive_mutation_rate = parseDoubleArg(argc, argv, &args, "-R");
+                break;
+                
+            case 'F':  /* Full tree sequence mode */
+                if (!params->output.tree_sequence_output) {
+                    fprintf(stderr, "Error: -F requires -ts to be specified first\n");
+                    return -1;
+                }
+                params->output.minimal_tree_seq = false;
+                break;
+                
+            case 'h':  /* Hide partial sweep SNP */
+                params->output.hide_partial_snp = true;
+                break;
+                
+            case 'd':  /* Random seeds */
+                params->random.seed1 = (unsigned long)parseIntArg(argc, argv, &args, "-d");
+                params->random.seed2 = (unsigned long)parseIntArg(argc, argv, &args, "-d");
+                break;
+                
+            /* TODO: Add prior parsing (-P flags) */
+            
+            default:
+                fprintf(stderr, "Error: Unknown option '-%c'\n", argv[args][1]);
+                return -1;
+        }
+        
+        args++;
+    }
+    
+    /* Sort events by time */
+    sort_events(params);
+    
+    /* Validate parameters */
+    char error_msg[256];
+    if (params_validate(params, error_msg, sizeof(error_msg)) != 0) {
+        fprintf(stderr, "Parameter validation error: %s\n", error_msg);
+        return -1;
+    }
+    
+    return 0;
 }

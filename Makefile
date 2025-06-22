@@ -250,11 +250,15 @@ test_trajectory: $(TEST_DIR)/test_trajectory.c $(SRC_CORE)/discoal.h $(TEST_DIR)
 		$(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/activeSegment.c $(SRC_TSKIT)/tskitInterface.c \
 		$(TSKIT_SOURCES) -I$(UNITY_DIR) -lm -fcommon
 
+test_params: $(TEST_DIR)/test_params.c $(SRC_CORE)/params.c $(SRC_CORE)/params.h
+	@mkdir -p build
+	$(CC) $(TEST_CFLAGS) -DUNITY_INCLUDE_DOUBLE -o build/test_params $(TEST_DIR)/test_params.c $(SRC_CORE)/params.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
+
 
 
 
 # Run individual unit tests
-run_tests: test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory
+run_tests: test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_params
 	@echo "=== Running Unit Tests ==="
 	./build/test_node
 	./build/test_event
@@ -263,6 +267,7 @@ run_tests: test_node test_event test_node_operations test_mutations test_ancestr
 	./build/test_ancestry_segment
 	./build/test_active_segment
 	./build/test_trajectory
+	./build/test_params
 	@echo "=== All Unit Tests Passed ==="
 
 
@@ -292,5 +297,5 @@ clean:
 	rm -f discoaldoc.aux discoaldoc.bbl discoaldoc.blg discoaldoc.log discoaldoc.out
 	# Remove any executables/symlinks in root (for backward compatibility)
 	rm -f discoal discoal_edited discoal_legacy_backup discoal_mem_branch discoal_debug discoal_legacy_rng
-	rm -f test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory
+	rm -f test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_params
 	rm -f alleleTrajTest niceStats
