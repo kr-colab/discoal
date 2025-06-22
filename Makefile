@@ -192,18 +192,18 @@ UNITY_SOURCES = $(UNITY_DIR)/unity.c
 
 
 # Individual test executables
-test_node: $(TEST_DIR)/test_node.c discoal.h test_globals.c
+test_node: $(TEST_DIR)/test_node.c discoal.h $(TEST_DIR)/test_globals.c
 	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o test_node $(TEST_DIR)/test_node.c $(UNITY_SOURCES) \
-		test_globals.c discoalFunctions.c ancestrySegment.c ancestrySegmentAVL.c segmentPool.c \
+		$(TEST_DIR)/test_globals.c discoalFunctions.c ancestrySegment.c ancestrySegmentAVL.c segmentPool.c \
 		xoshiro256pp_compat.c alleleTraj.c activeSegment.c tskitInterface.c \
 		$(TSKIT_SOURCES) -I$(UNITY_DIR) -lm -fcommon
 
 test_event: $(TEST_DIR)/test_event.c discoal.h
 	$(CC) $(TEST_CFLAGS) -o test_event $(TEST_DIR)/test_event.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
-test_node_operations: $(TEST_DIR)/test_node_operations.c discoal.h test_globals.c
+test_node_operations: $(TEST_DIR)/test_node_operations.c discoal.h $(TEST_DIR)/test_globals.c
 	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o test_node_operations $(TEST_DIR)/test_node_operations.c $(UNITY_SOURCES) \
-		test_globals.c discoalFunctions.c ancestrySegment.c ancestrySegmentAVL.c segmentPool.c \
+		$(TEST_DIR)/test_globals.c discoalFunctions.c ancestrySegment.c ancestrySegmentAVL.c segmentPool.c \
 		xoshiro256pp_compat.c alleleTraj.c activeSegment.c tskitInterface.c \
 		$(TSKIT_SOURCES) -I$(UNITY_DIR) -lm -fcommon
 
@@ -216,9 +216,9 @@ test_ancestry_segment: $(TEST_DIR)/test_ancestry_segment.c ancestrySegment.c anc
 test_active_segment: $(TEST_DIR)/test_active_segment.c activeSegment.c activeSegment.h ancestrySegment.c ancestrySegmentAVL.c segmentPool.c
 	$(CC) $(TEST_CFLAGS) -o test_active_segment $(TEST_DIR)/test_active_segment.c activeSegment.c ancestrySegment.c ancestrySegmentAVL.c segmentPool.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
-test_trajectory: $(TEST_DIR)/test_trajectory.c discoal.h test_globals.c
+test_trajectory: $(TEST_DIR)/test_trajectory.c discoal.h $(TEST_DIR)/test_globals.c
 	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o test_trajectory $(TEST_DIR)/test_trajectory.c $(UNITY_SOURCES) \
-		test_globals.c discoalFunctions.c ancestrySegment.c ancestrySegmentAVL.c segmentPool.c \
+		$(TEST_DIR)/test_globals.c discoalFunctions.c ancestrySegment.c ancestrySegmentAVL.c segmentPool.c \
 		xoshiro256pp_compat.c alleleTraj.c activeSegment.c tskitInterface.c \
 		$(TSKIT_SOURCES) -I$(UNITY_DIR) -lm -fcommon
 
