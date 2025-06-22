@@ -35,6 +35,10 @@ AncestrySegment* mergeAncestryTrees(AncestrySegment *left, AncestrySegment *righ
 AncestrySegment* splitLeft(AncestrySegment *root, int breakpoint);
 AncestrySegment* splitRight(AncestrySegment *root, int breakpoint);
 
+// Full ARG mode versions that update tskit_node_id
+AncestrySegment* splitLeftWithParent(AncestrySegment *root, int breakpoint, tsk_id_t parent_tskit_node_id);
+AncestrySegment* splitRightWithParent(AncestrySegment *root, int breakpoint, tsk_id_t parent_tskit_node_id);
+
 // Structure for gene conversion split operation
 typedef struct {
     AncestrySegment *converted;

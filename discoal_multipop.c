@@ -25,6 +25,7 @@
 #include "discoalFunctions.h"
 #include "alleleTraj.h"
 #include "tskitInterface.h"
+#include <tskit/tables.h>
 #include "version.h"
 #include "segmentPool.h"
 
@@ -411,7 +412,9 @@ int main(int argc, const char * argv[]){
 				exit(1);
 			}
 			
-			ret = tsk_table_collection_simplify(tsk_tables, samples, sample_node_count, 0, node_map);
+			// In full ARG mode, keep unary nodes (recombination nodes)
+			tsk_flags_t simplify_flags = minimalTreeSeq ? 0 : TSK_SIMPLIFY_KEEP_UNARY;
+			ret = tsk_table_collection_simplify(tsk_tables, samples, sample_node_count, simplify_flags, node_map);
 			if (ret != 0) {
 				fprintf(stderr, "Error simplifying tables after ancestry simulation: %s\n", tsk_strerror(ret));
 				free(samples);
