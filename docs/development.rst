@@ -85,17 +85,11 @@ discoal has a comprehensive unit testing framework using the Unity test framewor
 
 **Running Unit Tests**
 
-To run all unit tests individually:
+To run all unit tests:
 
 .. code-block:: bash
 
    make run_tests
-
-To run all tests using the unified test runner:
-
-.. code-block:: bash
-
-   make run_all_tests
 
 To run a specific test suite:
 
@@ -107,7 +101,7 @@ To run a specific test suite:
 
 **Test Coverage**
 
-The unit test suite includes 77 tests across 9 test files:
+The unit test suite includes 49 tests across 7 test files:
 
 1. **Node Operations** (``test_node.c`` - 3 tests):
    
@@ -127,11 +121,11 @@ The unit test suite includes 77 tests across 9 test files:
    * Node selection by population
    * Population size tracking
 
-4. **Mutation Tracking** (``test_mutations.c`` - 3 tests):
+4. **Node Fields** (``test_mutations.c`` - 3 tests):
    
-   * Basic node creation with mutations
-   * Mutation array access and manipulation
-   * Manual mutation addition
+   * Basic node creation and field validation
+   * Node state tracking (parentsRecorded, isFullyRecorded, etc.)
+   * Ancestry-related fields testing
 
 5. **Ancestry Segment Trees** (``test_ancestry_segment.c`` - 13 tests):
    
@@ -160,23 +154,7 @@ The unit test suite includes 77 tests across 9 test files:
    * File persistence and cleanup
    * Concurrent trajectory management
 
-8. **Coalescence and Recombination** (``test_coalescence_recombination.c`` - 11 tests):
-   
-   * Basic coalescence operations
-   * Ancestry merging during coalescence
-   * Recombination with ancestry splitting
-   * Gene conversion functionality
-   * Mutation collection for output
-   * Population-specific operations
-
-9. **Memory Management** (``test_memory_management.c`` - 17 tests):
-   
-   * Dynamic array initialization and cleanup
-   * Capacity growth for breakpoints, nodes, and mutations
-   * Stress testing with large allocations
-   * Reinitialization handling
-   * NULL pointer safety
-   * Integrated memory usage scenarios
+**Note**: Two test suites (``test_coalescence_recombination.c`` and ``test_memory_management.c``) were removed as they referenced obsolete data structures that have been replaced in the tskit integration.
 
 **Building Individual Tests**
 
@@ -185,7 +163,7 @@ Each test suite can be built separately:
 .. code-block:: bash
 
    make test_ancestry_segment
-   make test_memory_management
+   make test_node_operations
    # etc.
 
 **Test Development**
@@ -197,7 +175,12 @@ When adding new functionality:
 3. Write setUp() and tearDown() functions for test fixtures
 4. Add test functions following the pattern ``test_<functionality>_<scenario>()``
 5. Update the Makefile with build rules for the new test
-6. Add the test to ``test_runner.c`` for unified execution
+
+**Test Infrastructure**
+
+* Unity test framework is automatically downloaded to ``extern/Unity/`` on first build
+* ``test_globals.c`` provides minimal global variables (seed1, seed2, currentSize) needed for tests
+* Tests compile with actual discoal source code (no mocks) for integration testing
 
 **Debugging Tests**
 
@@ -234,10 +217,10 @@ Common testing commands during development:
 .. code-block:: bash
 
    # Run all unit tests
-   make run_all_tests
+   make run_tests
    
    # Run specific test suite
-   make test_memory_management && ./test_memory_management
+   make test_node_operations && ./test_node_operations
    
    # Clean and rebuild all tests
    make clean && make run_tests
@@ -385,20 +368,51 @@ Development Workflow
 
 1. **Create a feature branch** from the main development branch
 2. **Make changes** to the code
-3. **Run focused tests** frequently during development:
+3. **Run unit tests** during development:
+
+   .. code-block:: bash
+
+      make run_tests
+
+4. **Run focused validation tests** frequently:
 
    .. code-block:: bash
 
       cd testing/ && ./focused_validation_suite.sh
 
-4. **Run comprehensive tests** before committing:
+5. **Run comprehensive tests** before committing:
 
    .. code-block:: bash
 
       cd testing/ && ./comprehensive_validation_suite.sh
 
-5. **Document performance improvements** in commit messages
-6. **Submit pull request** with test results
+6. **Document performance improvements** in commit messages
+7. **Submit pull request** - CI will automatically run tests
+
+Continuous Integration
+^^^^^^^^^^^^^^^^^^^^^^
+
+discoal uses GitHub Actions for continuous integration. The CI workflow automatically runs on every push and pull request to ensure code quality.
+
+**CI Jobs:**
+
+1. **Unit Tests**: Runs all unit tests on multiple OS versions (Ubuntu 20.04, 22.04, latest) with both gcc and clang compilers
+2. **Basic Functionality Tests**: Verifies core discoal functionality (coalescent, recombination, selection, tree sequence output)
+3. **Memory Leak Check**: Uses valgrind to ensure no memory leaks in common usage scenarios
+
+**CI Badge:**
+
+The build status is displayed at the top of the README. Green indicates all tests are passing.
+
+To run the same tests locally before pushing:
+
+.. code-block:: bash
+
+   # Run unit tests
+   make run_tests
+   
+   # Check for memory leaks (requires valgrind)
+   valgrind --leak-check=full ./discoal 10 1 100 -t 10
 
 Code Organization
 -----------------

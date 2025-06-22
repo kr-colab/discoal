@@ -20,7 +20,7 @@ void tearDown(void) {
 
 // Test basic segment creation
 void test_newSegment_creates_valid_segment(void) {
-    testSegment = newSegment(10, 50, NULL, NULL);
+    testSegment = newSegment(10, 50, TSK_NULL, NULL, NULL);
     
     TEST_ASSERT_NOT_NULL(testSegment);
     TEST_ASSERT_EQUAL(10, testSegment->start);
@@ -33,7 +33,7 @@ void test_newSegment_creates_valid_segment(void) {
 
 // Test segment creation with invalid range
 void test_newSegment_handles_invalid_range(void) {
-    testSegment = newSegment(50, 10, NULL, NULL);  // start > end
+    testSegment = newSegment(50, 10, TSK_NULL, NULL, NULL);  // start > end
     
     TEST_ASSERT_NOT_NULL(testSegment);
     // The implementation doesn't validate, so check what we get
@@ -43,7 +43,7 @@ void test_newSegment_handles_invalid_range(void) {
 
 // Test reference counting
 void test_reference_counting_retain_release(void) {
-    testSegment = newSegment(0, 100, NULL, NULL);
+    testSegment = newSegment(0, 100, TSK_NULL, NULL, NULL);
     TEST_ASSERT_EQUAL(1, testSegment->refCount);
     
     // Retain should increment
@@ -61,7 +61,7 @@ void test_reference_counting_retain_release(void) {
 
 // Test shallow copy with reference counting
 void test_shallowCopySegment_shares_references(void) {
-    testSegment = newSegment(20, 80, NULL, NULL);
+    testSegment = newSegment(20, 80, TSK_NULL, NULL, NULL);
     testSegment->refCount = 1;
     
     AncestrySegment* copy = shallowCopySegment(testSegment);
@@ -76,7 +76,7 @@ void test_shallowCopySegment_shares_references(void) {
 
 // Test ancestry count queries
 void test_getAncestryCount_single_segment(void) {
-    testSegment = newSegment(10, 50, NULL, NULL);
+    testSegment = newSegment(10, 50, TSK_NULL, NULL, NULL);
     
     // Inside segment [10, 50)
     TEST_ASSERT_EQUAL(1, getAncestryCount(testSegment, 20));
@@ -90,7 +90,7 @@ void test_getAncestryCount_single_segment(void) {
 
 // Test hasAncestry queries
 void test_hasAncestry_queries(void) {
-    testSegment = newSegment(10, 50, NULL, NULL);
+    testSegment = newSegment(10, 50, TSK_NULL, NULL, NULL);
     
     TEST_ASSERT_TRUE(hasAncestry(testSegment, 30));
     TEST_ASSERT_FALSE(hasAncestry(testSegment, 5));
@@ -101,9 +101,9 @@ void test_hasAncestry_queries(void) {
 // Test segment tree with multiple segments
 void test_getAncestryCount_multiple_segments(void) {
     // Create a linked list of segments using 'next' pointer
-    testSegment = newSegment(10, 30, NULL, NULL);
-    testSegment->next = newSegment(20, 40, NULL, NULL);
-    testSegment->next->next = newSegment(15, 25, NULL, NULL);
+    testSegment = newSegment(10, 30, TSK_NULL, NULL, NULL);
+    testSegment->next = newSegment(20, 40, TSK_NULL, NULL, NULL);
+    testSegment->next->next = newSegment(15, 25, TSK_NULL, NULL, NULL);
     
     // Test regions - getAncestryCount returns count from first matching segment
     TEST_ASSERT_EQUAL(1, getAncestryCount(testSegment, 12));  // In first [10,30)
@@ -115,7 +115,7 @@ void test_getAncestryCount_multiple_segments(void) {
 // Test deep copy functionality
 void test_copySegmentTree_creates_independent_copy(void) {
     // Single segment with no next - should be shallow copy
-    testSegment = newSegment(10, 30, NULL, NULL);
+    testSegment = newSegment(10, 30, TSK_NULL, NULL, NULL);
     
     AncestrySegment* copy = copySegmentTree(testSegment);
     
@@ -128,7 +128,7 @@ void test_copySegmentTree_creates_independent_copy(void) {
     TEST_ASSERT_EQUAL(1, testSegment->refCount);
     
     // Now test with next pointer - should be deep copy
-    testSegment->next = newSegment(40, 60, NULL, NULL);
+    testSegment->next = newSegment(40, 60, TSK_NULL, NULL, NULL);
     copy = copySegmentTree(testSegment);
     
     TEST_ASSERT_NOT_NULL(copy);
@@ -153,10 +153,10 @@ void test_null_safety(void) {
 
 // Test segment merging (basic case)
 void test_mergeAncestryTrees_non_overlapping(void) {
-    AncestrySegment* tree1 = newSegment(10, 30, NULL, NULL);
-    AncestrySegment* tree2 = newSegment(40, 60, NULL, NULL);
+    AncestrySegment* tree1 = newSegment(10, 30, TSK_NULL, NULL, NULL);
+    AncestrySegment* tree2 = newSegment(40, 60, TSK_NULL, NULL, NULL);
     
-    AncestrySegment* merged = mergeAncestryTrees(tree1, tree2);
+    AncestrySegment* merged = mergeAncestryTrees(tree1, tree2, TSK_NULL);
     
     TEST_ASSERT_NOT_NULL(merged);
     TEST_ASSERT_EQUAL(1, getAncestryCount(merged, 20));  // From tree1
@@ -170,7 +170,7 @@ void test_mergeAncestryTrees_non_overlapping(void) {
 
 // Test splitting operations
 void test_splitLeft_basic(void) {
-    testSegment = newSegment(10, 50, NULL, NULL);
+    testSegment = newSegment(10, 50, TSK_NULL, NULL, NULL);
     
     AncestrySegment* leftTree = splitLeft(testSegment, 30);
     
@@ -182,7 +182,7 @@ void test_splitLeft_basic(void) {
 }
 
 void test_splitRight_basic(void) {
-    testSegment = newSegment(10, 50, NULL, NULL);
+    testSegment = newSegment(10, 50, TSK_NULL, NULL, NULL);
     
     AncestrySegment* rightTree = splitRight(testSegment, 30);
     
@@ -195,7 +195,7 @@ void test_splitRight_basic(void) {
 
 // Test edge cases for splitting
 void test_split_edge_cases(void) {
-    testSegment = newSegment(10, 50, NULL, NULL);
+    testSegment = newSegment(10, 50, TSK_NULL, NULL, NULL);
     
     // Split at boundaries
     AncestrySegment* leftEdge = splitLeft(testSegment, 10);

@@ -1,0 +1,170 @@
+name: CI
+
+on:
+  push:
+    branches: [master, tskit-integration ]
+  pull_request:
+    branches: [master, tskit-integration ]
+
+jobs:
+  unit-tests:
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-22.04, ubuntu-20.04]
+        compiler: [gcc, clang]
+        
+    name: ${{ matrix.os }} / ${{ matrix.compiler }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up compiler
+      run: |
+        if [ "${{ matrix.compiler }}" = "clang" ]; then
+          sudo apt-get update
+          sudo apt-get install -y clang
+          echo "CC=clang" >> $GITHUB_ENV
+        else
+          echo "CC=gcc" >> $GITHUB_ENV
+        fi
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential make git
+    
+    - name: Download Unity test framework
+      run: |
+        if [ ! -d "extern/Unity" ]; then
+          cd extern
+          git clone https://github.com/ThrowTheSwitch/Unity.git
+          cd ..
+        fi
+    
+    - name: Create test_globals.c
+      run: |
+        cat > test_globals.c << 'EOF'
+        // Minimal global variables needed for unit tests
+        long seed1 = 12345;
+        long seed2 = 67890;
+        int currentSize = 0;
+        EOF
+    
+    - name: Build discoal
+      run: |
+        make clean
+        make discoal
+        # Verify the binary works
+        ./discoal 10 1 100 -t 10 > /dev/null
+    
+    - name: Run unit tests
+      run: |
+        echo "=== Building and running unit tests ==="
+        make run_tests
+    
+    - name: Run individual tests with details on failure
+      if: failure()
+      run: |
+        echo "=== Re-running failed tests individually ==="
+        for test in test_node test_event test_mutations test_node_operations test_ancestry_segment test_active_segment test_trajectory; do
+          if [ -f "./$test" ]; then
+            echo "Running $test..."
+            ./$test || true
+          fi
+        done
+
+  basic-functionality:
+    runs-on: ubuntu-latest
+    name: Basic Functionality Tests
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential make
+    
+    - name: Build discoal
+      run: |
+        make clean
+        make discoal
+    
+    - name: Test basic coalescent
+      run: |
+        echo "=== Testing basic coalescent ==="
+        ./discoal 10 5 1000 -t 10 > output.txt
+        [ -s output.txt ] || exit 1
+        grep -q "^//$$" output.txt || exit 1
+        echo "✓ Basic coalescent works"
+    
+    - name: Test with recombination
+      run: |
+        echo "=== Testing with recombination ==="
+        ./discoal 10 5 1000 -t 10 -r 10 > output_recomb.txt
+        [ -s output_recomb.txt ] || exit 1
+        echo "✓ Recombination works"
+    
+    - name: Test tree sequence output
+      run: |
+        echo "=== Testing tree sequence output ==="
+        ./discoal 10 1 1000 -t 10 -ts test.trees > /dev/null
+        [ -f test.trees ] || exit 1
+        echo "✓ Tree sequence output works"
+
+  memory-check:
+    runs-on: ubuntu-latest
+    name: Memory Leak Check
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential make valgrind git
+    
+    - name: Download Unity test framework
+      run: |
+        cd extern
+        git clone https://github.com/ThrowTheSwitch/Unity.git
+        cd ..
+    
+    - name: Create test_globals.c
+      run: |
+        cat > test_globals.c << 'EOF'
+        // Minimal global variables needed for unit tests
+        long seed1 = 12345;
+        long seed2 = 67890;
+        int currentSize = 0;
+        EOF
+    
+    - name: Build with debug symbols
+      run: |
+        make clean
+        # Use lower optimization for better debugging
+        sed -i 's/-O3/-O0 -g/g' Makefile
+        sed -i 's/-O2/-O0 -g/g' Makefile
+        make discoal
+    
+    - name: Check for memory leaks in basic run
+      run: |
+        echo "=== Checking memory leaks in basic coalescent ==="
+        valgrind --leak-check=full --error-exitcode=1 \
+          ./discoal 10 1 100 -t 10 2>&1 | tee valgrind.log
+        ! grep -q "definitely lost" valgrind.log || exit 1
+        echo "✓ No memory leaks in basic run"
+    
+    - name: Check for memory leaks with recombination
+      run: |
+        echo "=== Checking memory leaks with recombination ==="
+        valgrind --leak-check=full --error-exitcode=1 \
+          ./discoal 10 1 100 -t 10 -r 10 2>&1 | tee valgrind_recomb.log
+        ! grep -q "definitely lost" valgrind_recomb.log || exit 1
+        echo "✓ No memory leaks with recombination"

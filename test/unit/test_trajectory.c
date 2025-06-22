@@ -217,7 +217,8 @@ void test_multiple_trajectory_cleanup(void) {
     // Create multiple trajectory files
     char files[3][256];
     for (int i = 0; i < 3; i++) {
-        snprintf(files[i], sizeof(files[i]), "%s.%d", testTrajFilename, i);
+        // Ensure we don't overflow - limit base filename to leave room for suffix
+        snprintf(files[i], sizeof(files[i]), "%.250s.%d", testTrajFilename, i);
         createTestTrajectoryFile(files[i], 100 + i * 50);
     }
     

@@ -167,6 +167,10 @@ test_nicestats_xoshiro: discoal discoal_xoshiro niceStats
 	@cp discoal_xoshiro discoal_edited
 	cd testing && ./nicestats_comparison_suite.sh 1000 50
 	@# Clean up temporary copies
+
+test_growth: discoal extern/ms niceStats
+	@echo "Running exponential growth comparison against ms baseline..."
+	cd testing && ./growth_comparison_suite.sh
 	@rm -f discoal_legacy_backup discoal_edited
 
 # Compare current tskit-integration branch with mem branch
@@ -186,47 +190,43 @@ UNITY_DIR = extern/Unity/src
 # Unity source files
 UNITY_SOURCES = $(UNITY_DIR)/unity.c
 
-# Test source files
-TEST_SOURCES = $(TEST_DIR)/test_runner.c
 
 # Individual test executables
-test_node: $(TEST_DIR)/test_node.c discoal.h ancestrySegment.o
-	$(CC) $(TEST_CFLAGS) -o test_node $(TEST_DIR)/test_node.c $(UNITY_SOURCES) ancestrySegment.o -I$(UNITY_DIR) -fcommon
+test_node: $(TEST_DIR)/test_node.c discoal.h test_globals.c
+	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o test_node $(TEST_DIR)/test_node.c $(UNITY_SOURCES) \
+		test_globals.c discoalFunctions.c ancestrySegment.c ancestrySegmentAVL.c segmentPool.c \
+		xoshiro256pp_compat.c alleleTraj.c activeSegment.c tskitInterface.c \
+		$(TSKIT_SOURCES) -I$(UNITY_DIR) -lm -fcommon
 
 test_event: $(TEST_DIR)/test_event.c discoal.h
 	$(CC) $(TEST_CFLAGS) -o test_event $(TEST_DIR)/test_event.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
-test_node_operations: $(TEST_DIR)/test_node_operations.c discoal.h ancestrySegment.o
-	$(CC) $(TEST_CFLAGS) -o test_node_operations $(TEST_DIR)/test_node_operations.c $(UNITY_SOURCES) ancestrySegment.o -I$(UNITY_DIR) -fcommon
+test_node_operations: $(TEST_DIR)/test_node_operations.c discoal.h test_globals.c
+	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o test_node_operations $(TEST_DIR)/test_node_operations.c $(UNITY_SOURCES) \
+		test_globals.c discoalFunctions.c ancestrySegment.c ancestrySegmentAVL.c segmentPool.c \
+		xoshiro256pp_compat.c alleleTraj.c activeSegment.c tskitInterface.c \
+		$(TSKIT_SOURCES) -I$(UNITY_DIR) -lm -fcommon
 
 test_mutations: $(TEST_DIR)/test_mutations.c discoal.h
 	$(CC) $(TEST_CFLAGS) -o test_mutations $(TEST_DIR)/test_mutations.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
-test_ancestry_segment: $(TEST_DIR)/test_ancestry_segment.c ancestrySegment.c ancestrySegmentAVL.c ancestrySegment.h ancestrySegmentAVL.h
-	$(CC) $(TEST_CFLAGS) -o test_ancestry_segment $(TEST_DIR)/test_ancestry_segment.c ancestrySegment.c ancestrySegmentAVL.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
+test_ancestry_segment: $(TEST_DIR)/test_ancestry_segment.c ancestrySegment.c ancestrySegmentAVL.c segmentPool.c ancestrySegment.h ancestrySegmentAVL.h segmentPool.h
+	$(CC) $(TEST_CFLAGS) -o test_ancestry_segment $(TEST_DIR)/test_ancestry_segment.c ancestrySegment.c ancestrySegmentAVL.c segmentPool.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
-test_active_segment: $(TEST_DIR)/test_active_segment.c activeSegment.c activeSegment.h
-	$(CC) $(TEST_CFLAGS) -o test_active_segment $(TEST_DIR)/test_active_segment.c activeSegment.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
+test_active_segment: $(TEST_DIR)/test_active_segment.c activeSegment.c activeSegment.h ancestrySegment.c ancestrySegmentAVL.c segmentPool.c
+	$(CC) $(TEST_CFLAGS) -o test_active_segment $(TEST_DIR)/test_active_segment.c activeSegment.c ancestrySegment.c ancestrySegmentAVL.c segmentPool.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
-test_trajectory: $(TEST_DIR)/test_trajectory.c discoal.h
-	$(CC) $(TEST_CFLAGS) -o test_trajectory $(TEST_DIR)/test_trajectory.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
+test_trajectory: $(TEST_DIR)/test_trajectory.c discoal.h test_globals.c
+	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o test_trajectory $(TEST_DIR)/test_trajectory.c $(UNITY_SOURCES) \
+		test_globals.c discoalFunctions.c ancestrySegment.c ancestrySegmentAVL.c segmentPool.c \
+		xoshiro256pp_compat.c alleleTraj.c activeSegment.c tskitInterface.c \
+		$(TSKIT_SOURCES) -I$(UNITY_DIR) -lm -fcommon
 
-test_coalescence_recombination: $(TEST_DIR)/test_coalescence_recombination.c discoal.h ancestrySegment.o
-	$(CC) $(TEST_CFLAGS) -o test_coalescence_recombination $(TEST_DIR)/test_coalescence_recombination.c $(UNITY_SOURCES) ancestrySegment.o -I$(UNITY_DIR) -fcommon
 
-test_memory_management: $(TEST_DIR)/test_memory_management.c discoal.h
-	$(CC) $(TEST_CFLAGS) -o test_memory_management $(TEST_DIR)/test_memory_management.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
-# Build the unified test runner executable
-test_runner: $(TEST_SOURCES) test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_coalescence_recombination test_memory_management
-	$(CC) $(TEST_CFLAGS) -o test_runner $(TEST_SOURCES) -I$(UNITY_DIR) -fcommon
-
-# Object files needed by tests
-ancestrySegment.o: ancestrySegment.c ancestrySegment.h ancestrySegmentAVL.c ancestrySegmentAVL.h
-	$(CC) $(TEST_CFLAGS) -c ancestrySegment.c ancestrySegmentAVL.c
 
 # Run individual unit tests
-run_tests: test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_coalescence_recombination test_memory_management
+run_tests: test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory
 	@echo "=== Running Unit Tests ==="
 	./test_node
 	./test_event
@@ -235,13 +235,8 @@ run_tests: test_node test_event test_node_operations test_mutations test_ancestr
 	./test_ancestry_segment
 	./test_active_segment
 	./test_trajectory
-	./test_coalescence_recombination
-	./test_memory_management
 	@echo "=== All Unit Tests Passed ==="
 
-# Run all tests using the unified runner
-run_all_tests: test_runner
-	./test_runner
 
 #
 # msUtils targets
@@ -250,10 +245,14 @@ run_all_tests: test_runner
 niceStats: extern/msUtils/niceStats.c extern/msUtils/msGeneralStats.c
 	$(CC) $(CFLAGS) -o niceStats extern/msUtils/niceStats.c extern/msUtils/msGeneralStats.c -lm
 
+# Build ms from reference_code for growth comparison testing
+extern/ms: reference_code/msdir/ms.c reference_code/msdir/streec.c reference_code/msdir/rand1.c
+	$(CC) -O3 -o extern/ms reference_code/msdir/ms.c reference_code/msdir/streec.c reference_code/msdir/rand1.c -lm
+
 #
 # clean
 #
 
 clean:
-	rm -f discoal discoal_edited discoal_legacy_backup discoal_mem_branch *.o test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_coalescence_recombination test_memory_management test_runner alleleTrajTest niceStats
+	rm -f discoal discoal_edited discoal_legacy_backup discoal_mem_branch *.o test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory alleleTrajTest niceStats
 	rm -f discoaldoc.aux discoaldoc.bbl discoaldoc.blg discoaldoc.log discoaldoc.out
