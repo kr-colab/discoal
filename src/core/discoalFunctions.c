@@ -200,7 +200,9 @@ void initialize(){
 				while(nodes[j]->population != events[i].popID){
 					j++;
 				}
-				for(tmpCount=0;tmpCount<events[i].lineageNumber;tmpCount++){			
+				for(tmpCount=0;tmpCount<events[i].lineageNumber;tmpCount++){
+					// Remove from population list before changing population
+					removeNodeFromPopList(nodes[tmpCount+j]);
 					nodes[tmpCount+j]->population = (events[i].popID + 1) * -1;
 					popnSizes[events[i].popID]--;
 				}
@@ -552,8 +554,13 @@ int sweepAndFreeRemovedNodes() {
 
 //migrateAtTime -- this only switches between two populations
 void migrateAtTime(double cTime,int srcPopn, int destPopn){
-	rootedNode *temp;
+	// Check if source population has any nodes
+	if (popLists[srcPopn].count == 0) {
+		// No nodes to migrate, this can happen in complex demographic scenarios
+		return;
+	}
 	
+	rootedNode *temp;
 	temp = pickNodePopn(srcPopn);
 	
 	// Remove from source population list
@@ -585,6 +592,11 @@ void recurrentMutAtTime(double cTime,int srcPopn, int sp){
 
 // migrateExceptSite -- does migration unless specific site is present in allele picked
 void migrateExceptSite(double site, double scalar, int srcPopn, int destPopn){
+	// Check if source population has any nodes
+	if (popLists[srcPopn].count == 0) {
+		return;
+	}
+	
 	rootedNode *temp;
 	int doMig=0;
 	temp = pickNodePopn(srcPopn);
@@ -694,6 +706,12 @@ static int findDescendantsWithSegments(rootedNode *node, NodeWithSegments *resul
 }
 
 void coalesceAtTimePopn(double cTime, int popn){
+	// Check if population has at least 2 nodes for coalescence
+	if (popLists[popn].count < 2) {
+		// Cannot coalesce with fewer than 2 nodes
+		return;
+	}
+	
 	rootedNode *temp, *lChild, *rChild;
 	int i;
 
@@ -3015,19 +3033,32 @@ void mergePopns(int popnSrc, int popnDest){
 	// Use population lists for efficient merging
 	PopulationNodeList *srcList = &popLists[popnSrc];
 	
+	// Create a temporary copy since we'll be modifying the list
+	int nodeCount = srcList->count;
+	rootedNode **tempNodes = malloc(nodeCount * sizeof(rootedNode*));
+	if (!tempNodes && nodeCount > 0) {
+		fprintf(stderr, "Error: Failed to allocate memory for population merge\n");
+		exit(1);
+	}
+	
+	// Copy node pointers
+	for (int i = 0; i < nodeCount; i++) {
+		tempNodes[i] = srcList->nodes[i];
+	}
+	
 	// Move all nodes from source to destination
-	for (int i = 0; i < srcList->count; i++) {
-		rootedNode *node = srcList->nodes[i];
+	for (int i = 0; i < nodeCount; i++) {
+		rootedNode *node = tempNodes[i];
+		removeNodeFromPopList(node);  // Remove from source list FIRST
 		node->population = popnDest;
 		addNodeToPopList(node, popnDest);
 	}
 	
+	free(tempNodes);
+	
 	// Update population sizes
 	popnSizes[popnDest] += popnSizes[popnSrc];
 	popnSizes[popnSrc] = 0;
-	
-	// Clear source list
-	srcList->count = 0;
 	
 	//set migration rates to zero
 	migMat[popnSrc][popnDest] = 0.0;
@@ -3036,23 +3067,51 @@ void mergePopns(int popnSrc, int popnDest){
 }
 
 void admixPopns(int popnSrc, int popnDest1, int popnDest2, double admixProp){
-	int i;
+	// Use population lists for efficient admixture
+	PopulationNodeList *srcList = &popLists[popnSrc];
 	double rn;
-	for(i = 0 ; i < alleleNumber; i++){
-		if(nodes[i]->population == popnSrc){
-			rn = ranf();
-			if(rn < admixProp){
-				nodes[i]->population = popnDest1;
-				popnSizes[popnDest1]++;
-				popnSizes[popnSrc]--;
-			}
-			else{
-				nodes[i]->population = popnDest2;
-				popnSizes[popnDest2]++;
-				popnSizes[popnSrc]--;
-			}
+	
+	// If source population is empty, nothing to do
+	if (srcList->count == 0) {
+		// This can happen in backward-time simulations when admixture events
+		// occur before any coalescent events in the source population
+		return;
+	}
+	
+	// Create a temporary copy of the nodes array since we'll be modifying the list
+	int nodeCount = srcList->count;
+	rootedNode **tempNodes = malloc(nodeCount * sizeof(rootedNode*));
+	if (!tempNodes) {
+		fprintf(stderr, "Error: Failed to allocate memory for admixture\n");
+		exit(1);
+	}
+	
+	// Copy node pointers
+	for (int i = 0; i < nodeCount; i++) {
+		tempNodes[i] = srcList->nodes[i];
+	}
+	
+	// Process each node
+	for (int i = 0; i < nodeCount; i++) {
+		rootedNode *node = tempNodes[i];
+		rn = ranf();
+		if(rn < admixProp){
+			removeNodeFromPopList(node);  // Remove BEFORE changing population
+			node->population = popnDest1;
+			addNodeToPopList(node, popnDest1);
+			popnSizes[popnDest1]++;
+			popnSizes[popnSrc]--;
+		}
+		else{
+			removeNodeFromPopList(node);  // Remove BEFORE changing population
+			node->population = popnDest2;
+			addNodeToPopList(node, popnDest2);
+			popnSizes[popnDest2]++;
+			popnSizes[popnSrc]--;
 		}
 	}
+	
+	free(tempNodes);
 }
 
 //addAncientSample -- adds ancient samples by basically flipping population id of already alloced alleles and sets there time
@@ -3064,6 +3123,8 @@ void addAncientSample(int lineageNumber, int popnDest, double addTime, int still
 		if(nodes[i]->population == (popnDest+1) * -1){
 			nodes[i]->population = popnDest;
 			nodes[i]->time = addTime;
+			// Add to destination population list
+			addNodeToPopList(nodes[i], popnDest);
 			if(stillSweeping == 1){
 				rn = ranf();
 				if(rn<currentFreq){
