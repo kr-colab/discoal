@@ -209,7 +209,7 @@ void test_updateActiveMaterialFromAncestry_basic(void) {
     initializeActiveMaterial(&testActiveMaterial, 100);
     
     // Create a simple ancestry tree
-    AncestrySegment* ancestry = newSegment(20, 80, NULL, NULL);
+    AncestrySegment* ancestry = newSegment(20, 80, TSK_NULL, NULL, NULL);
     
     // Update active material based on ancestry
     updateActiveMaterialFromAncestry(&testActiveMaterial, ancestry, 10, 100);

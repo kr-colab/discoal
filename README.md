@@ -1,3 +1,4 @@
+[![CI](https://github.com/kern-lab/discoal/actions/workflows/ci.yml/badge.svg)](https://github.com/kern-lab/discoal/actions/workflows/ci.yml)
 [![Documentation Status](https://readthedocs.org/projects/discoal/badge/?version=latest)](https://discoal.readthedocs.io/en/latest/?badge=latest)
 
 # discoal

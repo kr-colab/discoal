@@ -24,8 +24,9 @@ void test_newRootedNode(void) {
     TEST_ASSERT_NULL(node->rightParent);
     TEST_ASSERT_NULL(node->leftChild);
     TEST_ASSERT_NULL(node->rightChild);
-    TEST_ASSERT_EQUAL(0, node->mutationNumber);
+    TEST_ASSERT_EQUAL(-1, node->sweepPopn);
     TEST_ASSERT_EQUAL(0, node->nancSites);
+    TEST_ASSERT_EQUAL(TSK_NULL, node->tskit_node_id);
 }
 
 void test_addRemoveNode(void) {
