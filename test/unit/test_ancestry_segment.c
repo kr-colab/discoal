@@ -1,5 +1,5 @@
 #include "unity.h"
-#include "../../ancestrySegment.h"
+#include "ancestrySegment.h"
 #include <stdlib.h>
 
 // Test fixtures

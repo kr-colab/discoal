@@ -89,7 +89,7 @@ jobs:
     - name: Test basic coalescent
       run: |
         echo "=== Testing basic coalescent ==="
-        ./discoal 10 5 1000 -t 10 > output.txt
+        ./build/discoal 10 5 1000 -t 10 > output.txt
         [ -s output.txt ] || exit 1
         grep -q "^//$" output.txt || exit 1
         echo "✓ Basic coalescent works"
@@ -97,14 +97,14 @@ jobs:
     - name: Test with recombination
       run: |
         echo "=== Testing with recombination ==="
-        ./discoal 10 5 1000 -t 10 -r 10 > output_recomb.txt
+        ./build/discoal 10 5 1000 -t 10 -r 10 > output_recomb.txt
         [ -s output_recomb.txt ] || exit 1
         echo "✓ Recombination works"
     
     - name: Test tree sequence output
       run: |
         echo "=== Testing tree sequence output ==="
-        ./discoal 10 1 1000 -t 10 -ts test.trees > /dev/null
+        ./build/discoal 10 1 1000 -t 10 -ts test.trees > /dev/null
         [ -f test.trees ] || exit 1
         echo "✓ Tree sequence output works"
 
@@ -139,7 +139,7 @@ jobs:
       run: |
         echo "=== Checking memory leaks in basic coalescent ==="
         valgrind --leak-check=full --error-exitcode=1 \
-          ./discoal 10 1 100 -t 10 2>&1 | tee valgrind.log
+          ./build/discoal 10 1 100 -t 10 2>&1 | tee valgrind.log
         ! grep -q "definitely lost" valgrind.log || exit 1
         echo "✓ No memory leaks in basic run"
     
@@ -147,6 +147,6 @@ jobs:
       run: |
         echo "=== Checking memory leaks with recombination ==="
         valgrind --leak-check=full --error-exitcode=1 \
-          ./discoal 10 1 100 -t 10 -r 10 2>&1 | tee valgrind_recomb.log
+          ./build/discoal 10 1 100 -t 10 -r 10 2>&1 | tee valgrind_recomb.log
         ! grep -q "definitely lost" valgrind_recomb.log || exit 1
         echo "✓ No memory leaks with recombination"

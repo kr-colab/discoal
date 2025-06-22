@@ -1,7 +1,7 @@
 #include "unity.h"
-#include "../../activeSegment.h"
-#include "../../ancestrySegment.h"
-#include "../../discoal.h"
+#include "activeSegment.h"
+#include "ancestrySegment.h"
+#include "discoal.h"
 #include <stdlib.h>
 
 // Test fixtures
