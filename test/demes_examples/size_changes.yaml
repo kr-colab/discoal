@@ -1,0 +1,13 @@
+description: Test multiple size changes
+time_units: 4N
+generation_time: 1
+demes:
+  - name: pop1
+    epochs:
+      - end_time: 0.3
+        start_size: 10000
+      - end_time: 0.2
+        start_size: 5000
+      - end_time: 0.1
+        start_size: 20000
+      - start_size: 15000

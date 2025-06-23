@@ -1,6 +1,6 @@
 CC = gcc
-CFLAGS = -O3 -march=native -I. -I./src/core -I./src/rng -I./src/tskit -I./extern/tskit -I./extern/tskit/kastore
-TEST_CFLAGS = -O2 -I. -I./src/core -I./src/rng -I./src/tskit -I./test/unit -I./extern/tskit -I./extern/tskit/kastore
+CFLAGS = -O3 -march=native -I. -I./src/core -I./src/rng -I./src/tskit -I./extern/tskit -I./extern/tskit/kastore -I./extern/demes-c
+TEST_CFLAGS = -O2 -I. -I./src/core -I./src/rng -I./src/tskit -I./test/unit -I./extern/tskit -I./extern/tskit/kastore -I./extern/demes-c
 
 # Source directories
 SRC_CORE = src/core
@@ -17,7 +17,14 @@ TSKIT_SOURCES = extern/tskit/tskit/core.c \
                 extern/tskit/tskit/genotypes.c \
                 extern/tskit/kastore/kastore.c
 
-all: discoal symlinks
+# Demes-c library
+DEMES_LIB = extern/demes-c/libdemes.a
+
+all: $(DEMES_LIB) discoal symlinks
+
+# Build demes-c library
+$(DEMES_LIB):
+	$(MAKE) -C extern/demes-c -f Makefile.discoal
 
 # Create symlinks in root for backward compatibility with test scripts
 symlinks: discoal
@@ -28,9 +35,9 @@ symlinks: discoal
 # executable 
 #
 
-discoal: $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/discoal.h $(SRC_CORE)/discoalFunctions.h $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegment.h $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/ancestrySegmentAVL.h $(SRC_CORE)/activeSegment.c $(SRC_CORE)/activeSegment.h $(SRC_TSKIT)/tskitInterface.c $(SRC_TSKIT)/tskitInterface.h $(SRC_RNG)/xoshiro256pp_compat.c $(POOL_SOURCES) $(TSKIT_SOURCES)
+discoal: $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/discoal.h $(SRC_CORE)/discoalFunctions.h $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegment.h $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/ancestrySegmentAVL.h $(SRC_CORE)/activeSegment.c $(SRC_CORE)/activeSegment.h $(SRC_TSKIT)/tskitInterface.c $(SRC_TSKIT)/tskitInterface.h $(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/params.c $(SRC_CORE)/yaml_loader.c $(SRC_CORE)/demes_loader.c $(POOL_SOURCES) $(TSKIT_SOURCES) $(DEMES_LIB)
 	@mkdir -p build
-	$(CC) $(CFLAGS) -DUSE_XOSHIRO256PP -o build/discoal $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/activeSegment.c $(SRC_TSKIT)/tskitInterface.c $(POOL_SOURCES) $(TSKIT_SOURCES) -lm -fcommon
+	$(CC) $(CFLAGS) -DUSE_XOSHIRO256PP -o build/discoal $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/activeSegment.c $(SRC_TSKIT)/tskitInterface.c $(SRC_CORE)/params.c $(SRC_CORE)/yaml_loader.c $(SRC_CORE)/demes_loader.c $(POOL_SOURCES) $(TSKIT_SOURCES) -L./extern/demes-c -ldemes -lyaml -lm -fcommon
 
 # Build with legacy L'Ecuyer RNG (for comparison/testing)
 discoal_legacy_rng: $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/discoal.h $(SRC_CORE)/discoalFunctions.h $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegment.h $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/ancestrySegmentAVL.h $(SRC_CORE)/activeSegment.c $(SRC_CORE)/activeSegment.h $(SRC_TSKIT)/tskitInterface.c $(SRC_TSKIT)/tskitInterface.h $(POOL_SOURCES) $(TSKIT_SOURCES)
@@ -258,11 +265,27 @@ test_yaml_loader: $(TEST_DIR)/test_yaml_loader.c $(SRC_CORE)/params.c $(SRC_CORE
 	@mkdir -p build
 	$(CC) $(TEST_CFLAGS) -DUNITY_INCLUDE_DOUBLE -o build/test_yaml_loader $(TEST_DIR)/test_yaml_loader.c $(SRC_CORE)/params.c $(SRC_CORE)/yaml_loader.c $(UNITY_SOURCES) -I$(UNITY_DIR) -lyaml -fcommon
 
+test_demes_loader: $(TEST_DIR)/test_demes_loader.c $(SRC_CORE)/params.c $(SRC_CORE)/yaml_loader.c $(SRC_CORE)/demes_loader.c $(DEMES_LIB)
+	@mkdir -p build
+	$(CC) $(TEST_CFLAGS) -DUNITY_INCLUDE_DOUBLE -o build/test_demes_loader $(TEST_DIR)/test_demes_loader.c $(SRC_CORE)/params.c $(SRC_CORE)/yaml_loader.c $(SRC_CORE)/demes_loader.c $(UNITY_SOURCES) -I$(UNITY_DIR) -L./extern/demes-c -ldemes -lyaml -lm -fcommon
+
+test_cli_params: test/test_cli_params.c $(SRC_CORE)/params.c $(SRC_CORE)/yaml_loader.c $(SRC_CORE)/demes_loader.c $(DEMES_LIB)
+	@mkdir -p build
+	$(CC) $(CFLAGS) -o build/test_cli_params test/test_cli_params.c $(SRC_CORE)/params.c $(SRC_CORE)/yaml_loader.c $(SRC_CORE)/demes_loader.c -L./extern/demes-c -ldemes -lyaml -lm -fcommon
+
+test_cli_loading: $(TEST_DIR)/test_cli_loading.c $(SRC_CORE)/params.c $(SRC_CORE)/yaml_loader.c $(SRC_CORE)/demes_loader.c $(DEMES_LIB)
+	@mkdir -p build
+	$(CC) $(TEST_CFLAGS) -DUNITY_INCLUDE_DOUBLE -o build/test_cli_loading $(TEST_DIR)/test_cli_loading.c $(SRC_CORE)/params.c $(SRC_CORE)/yaml_loader.c $(SRC_CORE)/demes_loader.c $(UNITY_SOURCES) -I$(UNITY_DIR) -L./extern/demes-c -ldemes -lyaml -lm -fcommon
+
+test_demes_validation: $(TEST_DIR)/test_demes_validation.c $(SRC_CORE)/params.c $(SRC_CORE)/yaml_loader.c $(SRC_CORE)/demes_loader.c $(DEMES_LIB)
+	@mkdir -p build
+	$(CC) $(TEST_CFLAGS) -DUNITY_INCLUDE_DOUBLE -o build/test_demes_validation $(TEST_DIR)/test_demes_validation.c $(SRC_CORE)/params.c $(SRC_CORE)/yaml_loader.c $(SRC_CORE)/demes_loader.c $(UNITY_SOURCES) -I$(UNITY_DIR) -L./extern/demes-c -ldemes -lyaml -lm -fcommon
+
 
 
 
 # Run individual unit tests
-run_tests: test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_params test_yaml_loader
+run_tests: test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_params test_yaml_loader test_demes_loader test_cli_loading test_demes_validation
 	@echo "=== Running Unit Tests ==="
 	./build/test_node
 	./build/test_event
@@ -273,6 +296,9 @@ run_tests: test_node test_event test_node_operations test_mutations test_ancestr
 	./build/test_trajectory
 	./build/test_params
 	./build/test_yaml_loader
+	./build/test_demes_loader
+	./build/test_cli_loading
+	./build/test_demes_validation
 	@echo "=== All Unit Tests Passed ==="
 
 
@@ -304,3 +330,5 @@ clean:
 	rm -f discoal discoal_edited discoal_legacy_backup discoal_mem_branch discoal_debug discoal_legacy_rng
 	rm -f test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_params
 	rm -f alleleTrajTest niceStats
+	# Clean demes-c
+	$(MAKE) -C extern/demes-c -f Makefile.discoal clean

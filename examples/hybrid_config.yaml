@@ -1,0 +1,35 @@
+# Example of hybrid discoal + Demes configuration
+# This shows how to use Demes for demographics while specifying
+# other parameters in the discoal format
+
+simulation:
+  samples: 50        # Total samples across all populations
+  replicates: 1000
+  sites: 10000
+  
+evolution:
+  mutation:
+    theta: 100.0
+  recombination:
+    rho: 100.0
+    gene_conversion:
+      ratio: 0.1
+      tract_length: 500
+
+# Reference external Demes file for demographics
+demographics:
+  demes_file: test/demes_examples/two_pop_migration.yaml
+  # Sample distribution will be: [25, 25] for the two populations
+
+selection:
+  coefficient: 50.0
+  position: 0.5
+  mode: stochastic
+  time: 0.05
+
+output:
+  format: ms
+
+random:
+  seed1: 12345
+  seed2: 67890

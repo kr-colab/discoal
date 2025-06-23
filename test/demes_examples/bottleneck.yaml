@@ -1,0 +1,15 @@
+description: Simple bottleneck model
+time_units: 4N
+generation_time: 1
+demes:
+  - name: ancestral
+    epochs:
+      - end_time: 0.1
+        start_size: 10000
+  - name: modern
+    ancestors: [ancestral]
+    epochs:
+      - end_time: 0.05
+        start_size: 1000
+      - start_size: 5000
+        end_size: 5000

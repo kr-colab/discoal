@@ -38,19 +38,4 @@ int yaml_save_params(const SimulationParams *params, const char *filename);
  */
 int yaml_parse_document(yaml_parser_t *parser, SimulationParams *params);
 
-/**
- * Extended parameter loading that supports Demes demographics
- * 
- * This function loads discoal-specific parameters from a YAML file
- * and can reference an external Demes file for demographics.
- * 
- * @param params The SimulationParams structure to populate
- * @param config_file Path to the main configuration file
- * @param demes_file Optional path to Demes file (can be NULL)
- * @return 0 on success, -1 on error
- */
-int yaml_load_params_with_demes(SimulationParams *params, 
-                               const char *config_file,
-                               const char *demes_file);
-
 #endif /* YAML_LOADER_H */

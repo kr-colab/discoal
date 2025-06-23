@@ -1,0 +1,7 @@
+description: Simple single population model
+time_units: 4N
+generation_time: 1
+demes:
+  - name: pop1
+    epochs:
+      - start_size: 10000

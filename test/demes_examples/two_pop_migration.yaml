@@ -1,0 +1,13 @@
+description: Two population model with migration
+time_units: 4N
+generation_time: 1
+demes:
+  - name: pop1
+    epochs:
+      - start_size: 10000
+  - name: pop2  
+    epochs:
+      - start_size: 8000
+migrations:
+  - demes: [pop1, pop2]
+    rate: 0.0001

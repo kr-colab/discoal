@@ -8,6 +8,8 @@
 #include <assert.h>
 #include <limits.h>
 #include "params.h"
+#include "yaml_loader.h"
+#include "demes_loader.h"
 
 /* Forward declaration for internal functions */
 static int compare_events(const void *a, const void *b);
@@ -61,7 +63,6 @@ SimulationParams* params_create(void) {
     for (int i = 0; i < MAXPOPS; i++) {
         params->demographics.pop_sizes.sizes[i] = 1.0;
         params->demographics.pop_sizes.initial_sizes[i] = 1.0;
-        params->demographics.pop_sizes.growth_rates[i] = 0.0;
     }
     
     /* Selection defaults */
@@ -483,6 +484,65 @@ int params_load_from_args(SimulationParams *params, int argc, char **argv) {
     int args;
     int i, j;
     
+    /* Check for configuration file options */
+    if (argc >= 3) {
+        /* Check for YAML config file */
+        if (strcmp(argv[1], "-yaml") == 0 || strcmp(argv[1], "--yaml") == 0) {
+            if (argc < 3) {
+                fprintf(stderr, "Error: -yaml requires a filename\n");
+                return -1;
+            }
+            /* Check if it's a hybrid config with Demes */
+            int ret = yaml_load_params_with_demes(params, argv[2]);
+            if (ret != 0) {
+                fprintf(stderr, "Error loading YAML configuration from '%s'\n", argv[2]);
+                return -1;
+            }
+            /* Process remaining command-line arguments starting from argv[3] */
+            args = 3;
+            goto process_options;
+        }
+        /* Check for Demes file */
+        else if (strcmp(argv[1], "-demes") == 0 || strcmp(argv[1], "--demes") == 0) {
+            if (argc < 6) {
+                fprintf(stderr, "Error: -demes requires: filename samples replicates sites\n");
+                return -1;
+            }
+            /* Load demographics from Demes file */
+            int ret = demes_load_demographics(params, argv[2]);
+            if (ret != 0) {
+                fprintf(stderr, "Error loading Demes file '%s'\n", argv[2]);
+                return -1;
+            }
+            /* Parse remaining positional arguments */
+            params->core.total_samples = atoi(argv[3]);
+            params->core.num_replicates = atoi(argv[4]);
+            params->core.num_sites = atoi(argv[5]);
+            
+            if (params->core.total_samples > 65535) {
+                fprintf(stderr, "Error: sampleSize > 65535. This exceeds the maximum supported.\n");
+                return -1;
+            }
+            
+            /* Distribute samples evenly across populations if not specified */
+            if (params->core.num_populations > 1) {
+                int samples_per_pop = params->core.total_samples / params->core.num_populations;
+                int remainder = params->core.total_samples % params->core.num_populations;
+                for (int i = 0; i < params->core.num_populations; i++) {
+                    params->core.sample_sizes[i] = samples_per_pop;
+                    if (i < remainder) {
+                        params->core.sample_sizes[i]++;
+                    }
+                }
+            } else {
+                params->core.sample_sizes[0] = params->core.total_samples;
+            }
+            
+            args = 6;
+            goto process_options;
+        }
+    }
+    
     if (argc < 4) {
         return -1;  /* Not enough arguments */
     }
@@ -503,6 +563,7 @@ int params_load_from_args(SimulationParams *params, int argc, char **argv) {
     
     args = 4;
     
+process_options:
     /* Process optional arguments */
     while (args < argc) {
         if (argv[args][0] != '-') {

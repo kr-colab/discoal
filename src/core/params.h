@@ -77,7 +77,7 @@ typedef struct {
 typedef struct {
     double  sizes[MAXPOPS];         /* Current sizes */
     double  initial_sizes[MAXPOPS]; /* Starting sizes */
-    double  growth_rates[MAXPOPS];  /* Exponential growth rates */
+    /* Note: discoal doesn't support exponential growth, only discrete size changes */
 } PopulationSizes;
 
 /* Ancient samples configuration */
