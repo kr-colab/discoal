@@ -203,15 +203,16 @@ void params_destroy(SimulationParams *params);
 
 /* Loading from different sources */
 int params_load_from_args(SimulationParams *params, int argc, char *argv[]);
-int params_load_from_yaml(SimulationParams *params, const char *filename);
-int params_load_from_json(SimulationParams *params, const char *filename);
+
+/* YAML support using libyaml - implemented in yaml_loader.c */
+int yaml_load_params(SimulationParams *params, const char *filename);
+int yaml_save_params(const SimulationParams *params, const char *filename);
 
 /* Validation */
 int params_validate(const SimulationParams *params, char *error_msg, size_t msg_size);
 
 /* Utility functions */
 void params_print_summary(const SimulationParams *params, FILE *output);
-int params_save_to_yaml(const SimulationParams *params, const char *filename);
 SimulationParams* params_copy(const SimulationParams *params);
 
 /* Helper functions for common parameter patterns */
