@@ -9,6 +9,9 @@
 #include <limits.h>
 #include "params.h"
 
+/* Forward declaration for internal functions */
+static int compare_events(const void *a, const void *b);
+
 /**
  * Create a new SimulationParams structure with default values
  */
@@ -344,7 +347,9 @@ void params_add_demographic_event(SimulationParams *params, DemographicEvent *ev
     params->demographics.events[params->demographics.num_events] = *event;
     params->demographics.num_events++;
     
-    /* TODO: Sort events by time */
+    /* Sort events by time */
+    qsort(params->demographics.events, params->demographics.num_events, 
+          sizeof(DemographicEvent), compare_events);
 }
 
 /**

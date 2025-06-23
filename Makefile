@@ -254,11 +254,15 @@ test_params: $(TEST_DIR)/test_params.c $(SRC_CORE)/params.c $(SRC_CORE)/params.h
 	@mkdir -p build
 	$(CC) $(TEST_CFLAGS) -DUNITY_INCLUDE_DOUBLE -o build/test_params $(TEST_DIR)/test_params.c $(SRC_CORE)/params.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
+test_yaml_config: $(TEST_DIR)/test_yaml_config.c $(SRC_CORE)/params.c $(SRC_CORE)/simple_yaml.c $(SRC_CORE)/params.h
+	@mkdir -p build
+	$(CC) $(TEST_CFLAGS) -DUNITY_INCLUDE_DOUBLE -o build/test_yaml_config $(TEST_DIR)/test_yaml_config.c $(SRC_CORE)/params.c $(SRC_CORE)/simple_yaml.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
+
 
 
 
 # Run individual unit tests
-run_tests: test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_params
+run_tests: test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_params test_yaml_config
 	@echo "=== Running Unit Tests ==="
 	./build/test_node
 	./build/test_event
@@ -268,6 +272,7 @@ run_tests: test_node test_event test_node_operations test_mutations test_ancestr
 	./build/test_active_segment
 	./build/test_trajectory
 	./build/test_params
+	./build/test_yaml_config
 	@echo "=== All Unit Tests Passed ==="
 
 

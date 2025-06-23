@@ -1,0 +1,14 @@
+# Basic neutral simulation configuration
+simulation:
+  samples: 100
+  replicates: 1000
+  sites: 10000
+
+evolution:
+  mutation:
+    theta: 100.0
+  recombination:
+    rho: 100.0
+
+output:
+  format: ms

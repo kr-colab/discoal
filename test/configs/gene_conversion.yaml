@@ -1,0 +1,18 @@
+# Simulation with gene conversion
+simulation:
+  samples: 50
+  replicates: 1000
+  sites: 5000
+
+evolution:
+  mutation:
+    theta: 40.0
+  recombination:
+    rho: 100.0
+    gene_conversion:
+      enabled: true
+      ratio: 0.1      # 10% of recombination events are gene conversion
+      tract_length: 500
+
+output:
+  format: ms
