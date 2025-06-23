@@ -1,0 +1,17 @@
+description: Two population model with asymmetric migration
+time_units: 4N
+generation_time: 1
+demes:
+  - name: pop1
+    epochs:
+      - start_size: 10000
+  - name: pop2
+    epochs:
+      - start_size: 8000
+migrations:
+  - source: pop1
+    dest: pop2
+    rate: 0.002   # Migration from pop1 to pop2 at rate 0.002
+  - source: pop2
+    dest: pop1
+    rate: 0.001   # Migration from pop2 to pop1 at rate 0.001 (different rate)

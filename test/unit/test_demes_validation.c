@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdbool.h>
+#include <fcntl.h>
 
 void setUp(void) {
     /* This is run before each test */
@@ -339,6 +340,216 @@ void test_epoch_size_changes(void) {
     unlink(filename);
 }
 
+void test_population_split_events(void) {
+    const char *yaml = 
+        "time_units: 4N\n"
+        "generation_time: 1\n"
+        "demes:\n"
+        "  - name: ancestral\n"
+        "    epochs:\n"
+        "      - end_time: 0.1\n"
+        "        start_size: 10000\n"
+        "  - name: derived1\n"
+        "    ancestors: [ancestral]\n"
+        "    epochs:\n"
+        "      - start_size: 5000\n"
+        "  - name: derived2\n"
+        "    ancestors: [ancestral]\n"
+        "    epochs:\n"
+        "      - start_size: 8000\n";
+    
+    const char *filename = create_temp_demes_file(yaml);
+    SimulationParams *params = params_create();
+    
+    int ret = demes_load_demographics(params, filename);
+    TEST_ASSERT_EQUAL(0, ret);
+    
+    /* Should have 3 populations */
+    TEST_ASSERT_EQUAL(3, params->core.num_populations);
+    
+    /* Check for join events (splits are joins backward in time) */
+    int join_count = 0;
+    for (int i = 0; i < params->demographics.num_events; i++) {
+        if (params->demographics.events[i].type == EVENT_JOIN) {
+            join_count++;
+            /* Verify the join time is 0.1 */
+            TEST_ASSERT_EQUAL_DOUBLE(0.1, params->demographics.events[i].time);
+        }
+    }
+    
+    /* We should have 2 join events for the two derived populations */
+    TEST_ASSERT_EQUAL(2, join_count);
+    
+    params_destroy(params);
+    unlink(filename);
+}
+
+void test_migration_events(void) {
+    const char *yaml = 
+        "time_units: 4N\n"
+        "generation_time: 1\n"
+        "demes:\n"
+        "  - name: pop1\n"
+        "    epochs:\n"
+        "      - start_size: 10000\n"
+        "  - name: pop2\n"
+        "    epochs:\n"
+        "      - start_size: 8000\n"
+        "migrations:\n"
+        "  - source: pop1\n"
+        "    dest: pop2\n"
+        "    start_time: 0.3\n"
+        "    end_time: 0.1\n"
+        "    rate: 0.002\n";
+    
+    const char *filename = create_temp_demes_file(yaml);
+    SimulationParams *params = params_create();
+    
+    int ret = demes_load_demographics(params, filename);
+    TEST_ASSERT_EQUAL(0, ret);
+    
+    /* Check for migration events */
+    int migration_count = 0;
+    double first_time = -1, second_time = -1;
+    double first_rate = -1, second_rate = -1;
+    
+    for (int i = 0; i < params->demographics.num_events; i++) {
+        if (params->demographics.events[i].type == EVENT_MIGRATION_CHANGE) {
+            migration_count++;
+            if (migration_count == 1) {
+                first_time = params->demographics.events[i].time;
+                first_rate = params->demographics.events[i].params.migration.rate;
+            } else if (migration_count == 2) {
+                second_time = params->demographics.events[i].time;
+                second_rate = params->demographics.events[i].params.migration.rate;
+            }
+        }
+    }
+    
+    /* Should have 2 migration events (start and stop) */
+    TEST_ASSERT_EQUAL(2, migration_count);
+    
+    /* After sorting, the stop event (0.1) comes before start event (0.3) */
+    TEST_ASSERT_EQUAL_DOUBLE(0.1, first_time);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, first_rate);    /* Migration stops */
+    TEST_ASSERT_EQUAL_DOUBLE(0.3, second_time);
+    TEST_ASSERT_EQUAL_DOUBLE(0.002, second_rate); /* Migration starts */
+    
+    params_destroy(params);
+    unlink(filename);
+}
+
+void test_warnings_generated(void) {
+    const char *yaml = 
+        "time_units: 4N\n"
+        "generation_time: 1\n"
+        "demes:\n"
+        "  - name: pop1\n"
+        "    epochs:\n"
+        "      - end_time: 0.1\n"
+        "        start_size: 10000\n"
+        "        selfing_rate: 0.1\n"
+        "        cloning_rate: 0.05\n"
+        "      - start_size: 5000\n"
+        "        end_size: 10000\n"
+        "        size_function: exponential\n"
+        "  - name: pop2\n"
+        "    ancestors: [pop1]\n"
+        "    start_time: 0.08\n"
+        "    epochs:\n"
+        "      - start_size: 8000\n"
+        "pulses:\n"
+        "  - sources: [pop1]\n"
+        "    dest: pop2\n"
+        "    time: 0.05\n"
+        "    proportions: [0.1]\n";
+    
+    const char *filename = create_temp_demes_file(yaml);
+    SimulationParams *params = params_create();
+    
+    /* Capture stderr to verify warnings are printed */
+    int stderr_backup = dup(STDERR_FILENO);
+    int pipefd[2];
+    pipe(pipefd);
+    dup2(pipefd[1], STDERR_FILENO);
+    close(pipefd[1]);
+    
+    int ret = demes_load_demographics(params, filename);
+    TEST_ASSERT_EQUAL(0, ret);
+    
+    /* Restore stderr */
+    fflush(stderr);
+    dup2(stderr_backup, STDERR_FILENO);
+    close(stderr_backup);
+    
+    /* Read captured output */
+    char buffer[4096] = {0};
+    read(pipefd[0], buffer, sizeof(buffer) - 1);
+    close(pipefd[0]);
+    
+    /* Verify warnings were generated */
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "Selfing rate"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "Cloning rate"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "Exponential growth"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "pulse event"));
+    
+    params_destroy(params);
+    unlink(filename);
+}
+
+void test_event_sorting(void) {
+    const char *yaml = 
+        "time_units: 4N\n"
+        "generation_time: 1\n"
+        "demes:\n"
+        "  - name: ancestral\n"
+        "    epochs:\n"
+        "      - end_time: 0.2\n"
+        "        start_size: 20000\n"
+        "  - name: pop1\n"
+        "    ancestors: [ancestral]\n"
+        "    epochs:\n"
+        "      - end_time: 0.1\n"
+        "        start_size: 10000\n"
+        "      - start_size: 15000\n"
+        "  - name: pop2\n"
+        "    ancestors: [ancestral]\n"
+        "    epochs:\n"
+        "      - start_size: 8000\n"
+        "migrations:\n"
+        "  - source: pop1\n"
+        "    dest: pop2\n"
+        "    start_time: 0.15\n"
+        "    end_time: 0.05\n"
+        "    rate: 0.002\n";
+    
+    const char *filename = create_temp_demes_file(yaml);
+    SimulationParams *params = params_create();
+    
+    int ret = demes_load_demographics(params, filename);
+    TEST_ASSERT_EQUAL(0, ret);
+    
+    /* Check that events are sorted by time */
+    TEST_ASSERT_TRUE(params->demographics.num_events >= 4);
+    
+    /* Verify events are in ascending time order */
+    for (int i = 1; i < params->demographics.num_events; i++) {
+        TEST_ASSERT_TRUE(params->demographics.events[i].time >= 
+                        params->demographics.events[i-1].time);
+    }
+    
+    /* Check specific event order */
+    /* Should have events at times: 0.05, 0.1, 0.15, 0.2, 0.2 */
+    TEST_ASSERT_EQUAL_DOUBLE(0.05, params->demographics.events[0].time);
+    TEST_ASSERT_EQUAL_DOUBLE(0.1, params->demographics.events[1].time);
+    TEST_ASSERT_EQUAL_DOUBLE(0.15, params->demographics.events[2].time);
+    TEST_ASSERT_EQUAL_DOUBLE(0.2, params->demographics.events[3].time);
+    TEST_ASSERT_EQUAL_DOUBLE(0.2, params->demographics.events[4].time);
+    
+    params_destroy(params);
+    unlink(filename);
+}
+
 int main(void) {
     UNITY_BEGIN();
     
@@ -357,6 +568,18 @@ int main(void) {
     
     /* Epoch size changes */
     RUN_TEST(test_epoch_size_changes);
+    
+    /* Population splits */
+    RUN_TEST(test_population_split_events);
+    
+    /* Migration events */
+    RUN_TEST(test_migration_events);
+    
+    /* Event sorting */
+    RUN_TEST(test_event_sorting);
+    
+    /* Warnings */
+    RUN_TEST(test_warnings_generated);
     
     return UNITY_END();
 }

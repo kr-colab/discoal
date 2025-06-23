@@ -28,6 +28,8 @@
 #include <tskit/tables.h>
 #include "version.h"
 #include "segmentPool.h"
+#include "params.h"
+#include "demes_loader.h"
 
 
 
@@ -329,6 +331,33 @@ int main(int argc, const char * argv[]){
 					}
 					else{
 						currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
+					}
+				}
+				else{
+					if(recurSweepMode ==0){
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
+						 	currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+	                                        	currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
+					 		currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+                                               		currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode,currentSize);
+					}
+				}
+				break;
+				case 'm':
+				currentTime = events[j].time;
+				/* Update migration rate between populations */
+				migMat[events[j].popID][events[j].popID2] = events[j].popnSize;
+				if(activeSweepFlag == 0){
+					if(recurSweepMode ==0){
+						currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
 					}
 				}
 				else{
@@ -870,6 +899,16 @@ void getParameters(int argc,const char **argv){
 					events[eventNumber].type = 'a'; //admix split
 					eventNumber++;
 					break;
+					case 'm' :
+						ensureEventsCapacity();
+					events[eventNumber].time = atof(argv[++args]) * 2.0;
+					events[eventNumber].popID = atoi(argv[++args]);
+					events[eventNumber].popID2 = atoi(argv[++args]);
+					events[eventNumber].popnSize = atof(argv[++args]); // migration rate
+					events[eventNumber].type = 'm'; //migration rate change
+					eventNumber++;
+					migFlag = 1;  // Set migration flag
+					break;
 				}
 			break;
 			case 'w':
@@ -1048,6 +1087,105 @@ void getParameters(int argc,const char **argv){
 			fprintf(stderr, "Use -ts <filename.trees> for tree sequence output instead.\n");
 			exit(1);
 			break;
+			case 'D' :
+			{
+				// -D flag for Demes file input
+				args++;
+				if (args >= argc || argv[args] == NULL || argv[args][0] == '-' || strlen(argv[args]) == 0) {
+					fprintf(stderr, "Error: -D flag requires a filename argument\n");
+					fprintf(stderr, "Usage: %s [options] -D <demes_file.yaml>\n", argv[0]);
+					fprintf(stderr, "Example: %s 10 1 1000 -D populations.yaml\n", argv[0]);
+					if (args < argc && argv[args] != NULL && argv[args][0] == '-') {
+						fprintf(stderr, "Note: '%s' looks like another flag, not a filename\n", argv[args]);
+					}
+					exit(1);
+				}
+				
+				// Create a temporary SimulationParams to load the Demes file
+				SimulationParams *demes_params = params_create();
+				if (!demes_params) {
+					fprintf(stderr, "Error: Failed to create parameters for Demes loading\n");
+					exit(1);
+				}
+				
+				// Load demographics from Demes file
+				int ret = demes_load_demographics(demes_params, argv[args]);
+				if (ret != 0) {
+					fprintf(stderr, "Error: Failed to load Demes file '%s'\n", argv[args]);
+					params_destroy(demes_params);
+					exit(1);
+				}
+				
+				// Transfer demographics from demes_params to global variables
+				npops = demes_params->core.num_populations;
+				
+				// Set population sizes and sample sizes
+				for (int i = 0; i < npops; i++) {
+					// Initial relative population sizes from Demes (already relative to reference)
+					currentSize[i] = demes_params->demographics.pop_sizes.sizes[i];
+					
+					// For now, sample equally from all populations
+					// TODO: Add option to specify per-population sample sizes
+					sampleSizes[i] = sampleSize / npops;
+					if (i < sampleSize % npops) {
+						sampleSizes[i]++; // Distribute remainder
+					}
+					// popnSizes stores the sample sizes for each population
+					popnSizes[i] = sampleSizes[i];
+				}
+				
+				// Transfer demographic events
+				for (int i = 0; i < demes_params->demographics.num_events; i++) {
+					ensureEventsCapacity();
+					DemographicEvent *de = &demes_params->demographics.events[i];
+					
+					switch (de->type) {
+						case EVENT_SIZE_CHANGE:
+							events[eventNumber].time = de->time;
+							events[eventNumber].popID = de->params.size_change.pop;
+							events[eventNumber].popnSize = de->params.size_change.size;
+							events[eventNumber].type = 'n';
+							break;
+						case EVENT_JOIN:
+							events[eventNumber].time = de->time;
+							events[eventNumber].popID = de->params.join.pop1;
+							events[eventNumber].popID2 = de->params.join.pop2;
+							events[eventNumber].type = 'd';
+							break;
+						case EVENT_MIGRATION_CHANGE:
+							events[eventNumber].time = de->time;
+							events[eventNumber].popID = de->params.migration.from;
+							events[eventNumber].popID2 = de->params.migration.to;
+							events[eventNumber].popnSize = de->params.migration.rate; // Store rate in popnSize
+							events[eventNumber].type = 'm';
+							migFlag = 1;
+							break;
+						case EVENT_ADMIX:
+							// Note: discoal's -ea has different semantics than Demes admixture
+							fprintf(stderr, "Warning: Admixture events from Demes are complex to translate\n");
+							break;
+					}
+					eventNumber++;
+				}
+				
+				// Transfer migration matrix if symmetric migration is set
+				if (demes_params->forces.symmetric_migration) {
+					migR = demes_params->forces.migration_rate;
+					for (int i = 0; i < npops; i++) {
+						for (int j = 0; j < npops; j++) {
+							if (i != j) {
+								migMatConst[i][j] = migR;
+							} else {
+								migMatConst[i][j] = 0.0;
+							}
+						}
+					}
+					migFlag = 1;
+				}
+				
+				params_destroy(demes_params);
+			}
+			break;
 			default:
 			fprintf(stderr, "Error: Unknown option '-%c'\n", argv[args][1]);
 			fprintf(stderr, "Try '%s' without arguments for usage information.\n", argv[0]);
@@ -1117,6 +1255,7 @@ void usage(){
 	fprintf(stderr,"\t -en time popnID size (changes size of popID)\n");	
 	fprintf(stderr,"\t -ed time popnID1 popnID2 (joins popnID1 into popnID2)\n");
 	fprintf(stderr,"\t -ea time daughterPopnID founderPopnID1 founderPopnID2 admixProp (admixture-- back in time daughterPopnID into two founders)\n");
+	fprintf(stderr,"\t -em time popnID1 popnID2 migRate (sets migration rate from popnID1 to popnID2 at specified time)\n");
 	
 	fprintf(stderr,"\t -ws tau (sweep happend tau generations ago- stochastic sweep)\n");  
 	fprintf(stderr,"\t -wd tau (sweep happend tau generations ago- deterministic sweep)\n"); 
@@ -1152,6 +1291,7 @@ void usage(){
 	fprintf(stderr,"\t -ts filename (tree sequence output mode - saves to tskit file)\n");
 	fprintf(stderr,"\t -F (full ARG mode - record all edges including recombination; use with -ts)\n");
 	fprintf(stderr,"\t -d seed1 seed2 (set random number generator seeds)\n");
+	fprintf(stderr,"\t -D filename (load demographics from Demes YAML file)\n");
 	
 	exit(1);
 }

@@ -1,0 +1,43 @@
+description: Model to test all warning types
+time_units: 4N
+generation_time: 1
+demes:
+  - name: ancestral
+    epochs:
+      - end_time: 0.3
+        start_size: 20000
+        selfing_rate: 0.2
+        cloning_rate: 0.1
+  - name: pop1
+    ancestors: [ancestral]
+    epochs:
+      - end_time: 0.1
+        start_size: 5000
+        end_size: 15000
+        size_function: exponential
+      - start_size: 15000
+  - name: pop2
+    ancestors: [ancestral]
+    epochs:
+      - start_size: 8000
+  - name: pop3
+    ancestors: [ancestral]
+    epochs:
+      - start_size: 10000
+  - name: admixed
+    ancestors: [pop1, pop2, pop3]
+    proportions: [0.5, 0.3, 0.2]
+    start_time: 0.08
+    epochs:
+      - start_size: 12000
+migrations:
+  - source: pop1
+    dest: pop2
+    start_time: 0.2
+    end_time: 0.05
+    rate: 0.001
+pulses:
+  - sources: [pop3]
+    dest: pop1
+    time: 0.15
+    proportions: [0.03]

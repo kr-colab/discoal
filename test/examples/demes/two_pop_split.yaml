@@ -1,0 +1,16 @@
+description: Two population model with a split
+time_units: 4N
+generation_time: 1
+demes:
+- name: anc
+  epochs:
+  - start_size: 1.0
+    end_time: 0.5
+- name: deme1
+  ancestors: [anc]
+  epochs:
+  - start_size: 1.0
+- name: deme2
+  ancestors: [anc]
+  epochs:
+  - start_size: 1.5

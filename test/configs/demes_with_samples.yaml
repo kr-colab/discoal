@@ -1,0 +1,23 @@
+# Example discoal configuration using a Demes file with sample specifications
+simulation:
+  replicates: 100
+  sites: 100000
+
+evolution:
+  mutation:
+    theta: 10.0
+  recombination:
+    rho: 10.0
+
+demographics:
+  demes_file: examples/demes/two_pop_split.yaml
+  samples:
+    - population: deme1
+      size: 20
+      time: 0  # Present-day samples
+    - population: deme2
+      size: 30
+      time: 0  # Present-day samples
+
+output:
+  format: ms

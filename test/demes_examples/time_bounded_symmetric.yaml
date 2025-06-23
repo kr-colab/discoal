@@ -1,0 +1,21 @@
+description: Two population model with time-bounded symmetric migration
+time_units: 4N
+generation_time: 1
+demes:
+  - name: pop1
+    epochs:
+      - start_size: 10000
+  - name: pop2
+    epochs:
+      - start_size: 8000
+migrations:
+  - source: pop1
+    dest: pop2
+    start_time: 0.5
+    end_time: 0.1
+    rate: 0.002
+  - source: pop2
+    dest: pop1
+    start_time: 0.5
+    end_time: 0.1
+    rate: 0.002

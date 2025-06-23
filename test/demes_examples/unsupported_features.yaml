@@ -1,0 +1,38 @@
+description: Model with many unsupported features for warning tests
+time_units: 4N
+generation_time: 1
+demes:
+  - name: pop1
+    epochs:
+      - end_time: 0.2
+        start_size: 10000
+        selfing_rate: 0.1
+      - end_time: 0.1
+        start_size: 5000
+        end_size: 20000
+        size_function: exponential
+        cloning_rate: 0.05
+      - start_size: 20000
+  - name: pop2
+    epochs:
+      - start_size: 8000
+  - name: pop3
+    ancestors: [pop1, pop2]
+    proportions: [0.7, 0.3]
+    epochs:
+      - start_size: 15000
+migrations:
+  - source: pop1
+    dest: pop2
+    start_time: 0.15
+    end_time: 0.05
+    rate: 0.001
+pulses:
+  - sources: [pop1]
+    dest: pop2
+    time: 0.08
+    proportions: [0.02]
+  - sources: [pop2, pop3]
+    dest: pop1
+    time: 0.06
+    proportions: [0.01, 0.005]

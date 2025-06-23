@@ -329,7 +329,76 @@ int yaml_parse_document(yaml_parser_t *parser, SimulationParams *params) {
                 }
             }
         }
-        /* TODO: Parse demographics section (will integrate with Demes) */
+        else if (strcmp(section, "demographics") == 0 && value->type == YAML_MAPPING_NODE) {
+            /* Parse demographics section */
+            yaml_node_pair_t *demo_pair;
+            for (demo_pair = value->data.mapping.pairs.start;
+                 demo_pair < value->data.mapping.pairs.top; demo_pair++) {
+                yaml_node_t *demo_key = yaml_document_get_node(&document, demo_pair->key);
+                yaml_node_t *demo_value = yaml_document_get_node(&document, demo_pair->value);
+                const char *demo_key_str = get_scalar_value(demo_key);
+                
+                if (demo_key_str && strcmp(demo_key_str, "demes_file") == 0) {
+                    /* Already handled by demes_loader extension */
+                    continue;
+                }
+                else if (demo_key_str && strcmp(demo_key_str, "samples") == 0 && 
+                         demo_value->type == YAML_SEQUENCE_NODE) {
+                    /* Parse sample specifications */
+                    yaml_node_item_t *item;
+                    int sample_count = 0;
+                    
+                    /* First count samples */
+                    for (item = demo_value->data.sequence.items.start;
+                         item < demo_value->data.sequence.items.top; item++) {
+                        sample_count++;
+                    }
+                    
+                    /* Allocate sample specs */
+                    params->demographics.sample_specs = calloc(sample_count, sizeof(SampleSpec));
+                    if (!params->demographics.sample_specs) {
+                        fprintf(stderr, "Error: Failed to allocate sample specifications\n");
+                        yaml_document_delete(&document);
+                        return -1;
+                    }
+                    params->demographics.num_sample_specs = sample_count;
+                    
+                    /* Parse each sample spec */
+                    int idx = 0;
+                    for (item = demo_value->data.sequence.items.start;
+                         item < demo_value->data.sequence.items.top; item++) {
+                        yaml_node_t *sample_node = yaml_document_get_node(&document, *item);
+                        if (sample_node->type == YAML_MAPPING_NODE) {
+                            SampleSpec *spec = &params->demographics.sample_specs[idx];
+                            spec->time = 0.0;  /* Default to present-day */
+                            
+                            yaml_node_pair_t *sample_pair;
+                            for (sample_pair = sample_node->data.mapping.pairs.start;
+                                 sample_pair < sample_node->data.mapping.pairs.top; sample_pair++) {
+                                yaml_node_t *s_key = yaml_document_get_node(&document, sample_pair->key);
+                                yaml_node_t *s_value = yaml_document_get_node(&document, sample_pair->value);
+                                const char *s_key_str = get_scalar_value(s_key);
+                                
+                                if (s_key_str && strcmp(s_key_str, "population") == 0) {
+                                    const char *pop_name = get_scalar_value(s_value);
+                                    if (pop_name) {
+                                        spec->population = strdup(pop_name);
+                                    }
+                                } else if (s_key_str && strcmp(s_key_str, "size") == 0) {
+                                    parse_int(s_value, &spec->size);
+                                } else if (s_key_str && strcmp(s_key_str, "time") == 0) {
+                                    double time;
+                                    if (parse_double(s_value, &time) == 0) {
+                                        spec->time = time * 2.0;  /* Convert to coalescent units */
+                                    }
+                                }
+                            }
+                            idx++;
+                        }
+                    }
+                }
+            }
+        }
     }
     
     yaml_document_delete(&document);

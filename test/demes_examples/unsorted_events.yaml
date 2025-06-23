@@ -1,0 +1,28 @@
+description: Model with events that need sorting
+time_units: 4N
+generation_time: 1
+demes:
+  - name: ancestral
+    epochs:
+      - end_time: 0.3
+        start_size: 20000
+  - name: pop1
+    ancestors: [ancestral]
+    epochs:
+      - end_time: 0.15
+        start_size: 5000
+      - end_time: 0.05
+        start_size: 10000
+      - start_size: 15000
+  - name: pop2
+    ancestors: [ancestral]
+    epochs:
+      - end_time: 0.1
+        start_size: 8000
+      - start_size: 12000
+migrations:
+  - source: pop1
+    dest: pop2
+    start_time: 0.2
+    end_time: 0.08
+    rate: 0.001

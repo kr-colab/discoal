@@ -1,0 +1,32 @@
+description: Three population model with symmetric migration
+time_units: 4N
+generation_time: 1
+demes:
+  - name: pop1
+    epochs:
+      - start_size: 10000
+  - name: pop2
+    epochs:
+      - start_size: 8000
+  - name: pop3
+    epochs:
+      - start_size: 12000
+migrations:
+  - source: pop1
+    dest: pop2
+    rate: 0.001
+  - source: pop2
+    dest: pop1
+    rate: 0.001
+  - source: pop1
+    dest: pop3
+    rate: 0.001
+  - source: pop3
+    dest: pop1
+    rate: 0.001
+  - source: pop2
+    dest: pop3
+    rate: 0.001
+  - source: pop3
+    dest: pop2
+    rate: 0.001

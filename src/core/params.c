@@ -58,6 +58,8 @@ SimulationParams* params_create(void) {
     params->demographics.ancient_samples.sample_times = NULL;
     params->demographics.ancient_samples.sample_pops = NULL;
     params->demographics.ancient_samples.num_ancient_samples = 0;
+    params->demographics.sample_specs = NULL;
+    params->demographics.num_sample_specs = 0;
     
     /* Initialize population sizes to 1.0 */
     for (int i = 0; i < MAXPOPS; i++) {
@@ -122,6 +124,16 @@ void params_destroy(SimulationParams *params) {
     }
     if (params->demographics.ancient_samples.sample_pops) {
         free(params->demographics.ancient_samples.sample_pops);
+    }
+    
+    /* Free sample specifications */
+    if (params->demographics.sample_specs) {
+        for (int i = 0; i < params->demographics.num_sample_specs; i++) {
+            if (params->demographics.sample_specs[i].population) {
+                free(params->demographics.sample_specs[i].population);
+            }
+        }
+        free(params->demographics.sample_specs);
     }
     
     /* Free prior distributions */

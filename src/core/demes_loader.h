@@ -36,6 +36,32 @@ int demes_load_demographics(SimulationParams *params, const char *filename);
 int demes_convert_graph(SimulationParams *params, struct demes_graph *graph);
 
 /**
+ * Convert a Demes graph to discoal demographics with name mapping
+ * 
+ * Like demes_convert_graph but optionally returns the deme name mapping
+ * 
+ * @param params The SimulationParams structure to populate
+ * @param graph The parsed Demes graph
+ * @param deme_name_map_out Optional output for deme name array (caller must free)
+ * @param num_demes_out Optional output for number of demes
+ * @return 0 on success, -1 on error
+ */
+int demes_convert_graph_with_names(SimulationParams *params, struct demes_graph *graph,
+                                   char ***deme_name_map_out, int *num_demes_out);
+
+/**
+ * Apply sample specifications to populations
+ * 
+ * Uses the sample_specs from params to set population sample sizes
+ * 
+ * @param params The SimulationParams with sample_specs
+ * @param deme_name_map Array of deme names indexed by population
+ * @param num_demes Number of demes in the name map
+ * @return 0 on success, -1 on error
+ */
+int demes_apply_sample_specs(SimulationParams *params, char **deme_name_map, int num_demes);
+
+/**
  * Extended YAML loading with Demes support
  * 
  * Load discoal parameters from YAML with optional Demes file reference

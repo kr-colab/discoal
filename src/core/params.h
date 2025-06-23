@@ -80,6 +80,13 @@ typedef struct {
     /* Note: discoal doesn't support exponential growth, only discrete size changes */
 } PopulationSizes;
 
+/* Sample specification */
+typedef struct {
+    char    *population;    /* Population name (for Demes) or index */
+    int     size;          /* Number of samples */
+    double  time;          /* Sampling time (default 0 = present) */
+} SampleSpec;
+
 /* Ancient samples configuration */
 typedef struct {
     bool    enabled;
@@ -95,6 +102,8 @@ typedef struct {
     int                 num_events;
     int                 events_capacity;
     AncientSamples      ancient_samples;
+    SampleSpec          *sample_specs;
+    int                 num_sample_specs;
 } Demographics;
 
 /* Sweep modes */

@@ -1,0 +1,16 @@
+description: Population split model
+time_units: 4N
+generation_time: 1
+demes:
+  - name: ancestral
+    epochs:
+      - end_time: 0.15
+        start_size: 20000
+  - name: pop_A
+    ancestors: [ancestral]
+    epochs:
+      - start_size: 15000
+  - name: pop_B
+    ancestors: [ancestral]
+    epochs:
+      - start_size: 10000

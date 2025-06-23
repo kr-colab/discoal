@@ -1,0 +1,26 @@
+# Example with ancient samples (not yet fully implemented)
+simulation:
+  replicates: 50
+  sites: 50000
+
+evolution:
+  mutation:
+    theta: 8.0
+  recombination:
+    rho: 8.0
+
+demographics:
+  demes_file: ../examples/demes/three_pop_admixture.yaml
+  samples:
+    - population: anc
+      size: 10
+      time: 0.5  # Ancient samples at time 0.5 (in 4N units)
+    - population: deme1
+      size: 15
+      time: 0
+    - population: deme2
+      size: 15
+      time: 0
+
+output:
+  format: ms
