@@ -1,0 +1,22 @@
+# Test configuration for minimal Phase 1 parameters
+simulation:
+  samples: 50
+  replicates: 10
+  sites: 10000
+  effective_size: 500000  # Test Ne parameter
+
+evolution:
+  mutation:
+    theta: 10.0
+
+selection:
+  coefficient: 100.0
+  position: 0.5
+  mode: stochastic
+  recurrent_sweep:
+    enabled: true
+    rate: 0.001  # Test recurrent_sweep_rate
+
+output:
+  format: ms
+  mask: 1  # Test mask parameter (reserved for future use)

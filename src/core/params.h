@@ -133,6 +133,7 @@ typedef struct {
     
     /* Recurrent sweep */
     bool        recurrent_sweep;
+    double      recurrent_sweep_rate;   /* Rate of recurrent sweeps (for -R option) */
 } SelectionParams;
 
 /* Prior distribution types */
@@ -175,6 +176,7 @@ typedef struct {
     bool            minimal_tree_seq;
     bool            hide_singletons;
     bool            hide_partial_snp;
+    int             mask;               /* Masking parameter (reserved for future use) */
 } OutputConfig;
 
 /* Debug configuration */

@@ -79,6 +79,7 @@ SimulationParams* params_create(void) {
     params->selection.soft_sweep = false;
     params->selection.soft_sweep_instances = 1;
     params->selection.recurrent_sweep = false;
+    params->selection.recurrent_sweep_rate = 0.0;
     
     /* Output defaults */
     params->output.format = OUTPUT_MS;
@@ -87,6 +88,7 @@ SimulationParams* params_create(void) {
     params->output.minimal_tree_seq = false;
     params->output.hide_singletons = false;
     params->output.hide_partial_snp = false;
+    params->output.mask = 0;
     
     /* Prior defaults */
     params->priors.enabled = false;
@@ -735,7 +737,8 @@ process_options:
             case 'R':  /* Recurrent sweep */
                 params->selection.recurrent_sweep = true;
                 params->selection.sweep_mode = SWEEP_STOCHASTIC;
-                params->selection.adaptive_mutation_rate = parseDoubleArg(argc, argv, &args, "-R");
+                params->selection.recurrent_sweep_rate = parseDoubleArg(argc, argv, &args, "-R");
+                params->selection.adaptive_mutation_rate = params->selection.recurrent_sweep_rate;
                 break;
                 
             case 'F':  /* Full tree sequence mode */

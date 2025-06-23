@@ -1,0 +1,10 @@
+refactor: Complete minimal Phase 1 parameter additions
+
+- Add recurrent_sweep_rate to SelectionParams for -R option
+- Add mask parameter to OutputConfig (reserved for future use)
+- Update params initialization with new field defaults
+- Extend YAML parser to support recurrent_sweep and mask fields
+- Add comprehensive tests for command-line and YAML loading
+
+This completes the minimal set of missing parameters needed before
+the main refactoring to replace global variables with SimulationParams.

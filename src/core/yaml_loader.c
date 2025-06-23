@@ -218,6 +218,23 @@ static int parse_selection_section(yaml_document_t *document, yaml_node_t *node,
                     parse_double(ps_value, &params->selection.partial_sweep_final_freq);
                 }
             }
+        } else if (strcmp(key_str, "recurrent_sweep") == 0 && value->type == YAML_MAPPING_NODE) {
+            /* Parse recurrent sweep subsection */
+            yaml_node_pair_t *rs_pair;
+            for (rs_pair = value->data.mapping.pairs.start; rs_pair < value->data.mapping.pairs.top; rs_pair++) {
+                yaml_node_t *rs_key = yaml_document_get_node(document, rs_pair->key);
+                yaml_node_t *rs_value = yaml_document_get_node(document, rs_pair->value);
+                const char *rs_key_str = get_scalar_value(rs_key);
+                
+                if (rs_key_str && strcmp(rs_key_str, "enabled") == 0) {
+                    parse_bool(rs_value, &params->selection.recurrent_sweep);
+                } else if (rs_key_str && strcmp(rs_key_str, "rate") == 0) {
+                    parse_double(rs_value, &params->selection.recurrent_sweep_rate);
+                    if (params->selection.recurrent_sweep) {
+                        params->selection.adaptive_mutation_rate = params->selection.recurrent_sweep_rate;
+                    }
+                }
+            }
         }
     }
     
@@ -267,6 +284,8 @@ static int parse_output_section(yaml_document_t *document, yaml_node_t *node, Si
                     parse_bool(ts_value, &params->output.minimal_tree_seq);
                 }
             }
+        } else if (strcmp(key_str, "mask") == 0) {
+            parse_int(value, &params->output.mask);
         }
     }
     
