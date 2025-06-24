@@ -207,6 +207,7 @@ int main(int argc, const char * argv[]){
 
 		j=0;
 		activeSweepFlag = 0;
+		currentTime = 0;  // Reset current time for new replicate
 		// fprintf(stderr, "Before event loop: i=%d, eventNumber=%d, alleleNumber=%d\n", i, eventNumber, alleleNumber);
 		// fprintf(stderr, "DEBUG: Before event loop, eventNumber=%d, alleleNumber=%d\n", eventNumber, alleleNumber);
 		for(j=0;j<eventNumber && alleleNumber > 1;j++){

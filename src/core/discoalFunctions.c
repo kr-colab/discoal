@@ -835,7 +835,7 @@ void coalesceAtTimePopn(double cTime, int popn){
 	
 	rootedNode *temp, *lChild, *rChild;
 	int i;
-
+	
 	temp = newRootedNode(cTime,popn);
 
 	lChild = pickNodePopn(popn);
@@ -1128,7 +1128,7 @@ int recombineAtTimePopn(double cTime, int popn){
 	rootedNode *aNode, *lParent, *rParent;
 	int i;
 	int xOver;
-
+	
 	aNode = pickNodePopn(popn);
 //	printf("recombine\n");
 	xOver = ignuin(0,nSites-1);
@@ -1224,7 +1224,7 @@ void geneConversionAtTimePopn(double cTime, int popn){
 	int i;
 	int xOver;
 	int tractL;
-
+	
 	aNode = pickNodePopn(popn);
 //	printf("GC\n",aNode);
 	xOver = ignuin(0,nSites);
@@ -1569,6 +1569,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 		//find time of next event
 		waitTime = genexp(1.0)  * (1.0/ totRate);
 		cTime += waitTime;
+		
 		if (cTime >= endTime){
 			return(endTime);
 		}
@@ -1959,25 +1960,27 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 
 		//Decide which event took place
 		//first was it in population 0 (sweep) or not
+		double eventTime = cTime + ttau;
+
 		if(ranf() < sweepPopTotRate / totRate){
 			//event is in sweep pop; choose event
 			r = ranf();
 			sum = pCoalB;
 			//coalescent in B?
 			if(r < sum / sweepPopTotRate){
-				coalesceAtTimePopnSweep(cTime+(ttau), 0,1);
+				coalesceAtTimePopnSweep(eventTime, 0,1);
 			}
 			else{
 				sum += pCoalb;
 				//coalescent in b?
 				if(r < sum / sweepPopTotRate){
-					coalesceAtTimePopnSweep(cTime+(ttau),0, 0);
+					coalesceAtTimePopnSweep(eventTime,0, 0);
 				}
 				else{
 					sum += pRecb;
 					//recombination in b, also need bookkeeping
 					if(r < sum / sweepPopTotRate){
-						bp = recombineAtTimePopnSweep(cTime + (ttau),0, 0, sweepSite, (1.0-x));
+						bp = recombineAtTimePopnSweep(eventTime,0, 0, sweepSite, (1.0-x));
 						if(bp != 666){
 							addBreakPoint(bp);
 						}
@@ -1986,7 +1989,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 						sum += pRecB;
 						if( r < sum / sweepPopTotRate){
 							//recombination in B and bookkeeping
-							bp = recombineAtTimePopnSweep(cTime + (ttau),0, 1, sweepSite, x);
+							bp = recombineAtTimePopnSweep(eventTime,0, 1, sweepSite, x);
 							if(bp != 666){
 								addBreakPoint(bp);
 							}
@@ -1994,12 +1997,12 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 						else{
 							sum+= pGCB;
 							if( r < sum / sweepPopTotRate){
-								geneConversionAtTimePopnSweep(cTime + (ttau),0, 1, sweepSite, x);
+								geneConversionAtTimePopnSweep(eventTime,0, 1, sweepSite, x);
 							}
 							else{
 								sum+= pGCb;
 								if( r < sum / sweepPopTotRate){
-									geneConversionAtTimePopnSweep(cTime + (ttau),0, 0, sweepSite, x);
+									geneConversionAtTimePopnSweep(eventTime,0, 0, sweepSite, x);
 								}
 								else{
 									sum += pLeftRecb;
@@ -2014,7 +2017,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 										else{
 											//recurrent adaptive mutation:
 											//node in pop zero's sweep group exits sweep
-											recurrentMutAtTime(cTime+(ttau),0, 1);
+											recurrentMutAtTime(eventTime,0, 1);
 										}
 									}
 								}
@@ -2033,7 +2036,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 				i = 1;
 				r2 = ranf();
 				while(eSum/totRRate < r2) eSum += rRate[++i];
-				bp = recombineAtTimePopn(cTime,i);
+				bp = recombineAtTimePopn(eventTime,i);
 				if (bp != 666){
 					addBreakPoint(bp);
 				}
@@ -2045,7 +2048,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 					i = 1;
 					r2 = ranf();
 					while(eSum/totGCRate < r2) eSum += gcRate[++i];
-					geneConversionAtTimePopn(cTime,i);
+					geneConversionAtTimePopn(eventTime,i);
 				}
 				else{
 					//coalesce 
@@ -2057,7 +2060,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 					while(eSum/totCRate < r2){
 						 eSum += cRate[++i];
 						}
-					coalesceAtTimePopn(cTime,i);
+					coalesceAtTimePopn(eventTime,i);
 					
 					
 				}
@@ -2202,25 +2205,26 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 
 		//Decide which event took place
 		//first was it in population 0 (sweep) or not
+		double eventTime = cTime + ttau;
 		if(ranf() < sweepPopTotRate / totRate){
 			//event is in sweep pop; choose event
 			r = ranf();
 			sum = pCoalB;
 			//coalescent in B?
 			if(r < sum / sweepPopTotRate){
-				coalesceAtTimePopnSweep(cTime+(ttau), 0,1);
+				coalesceAtTimePopnSweep(eventTime, 0,1);
 			}
 			else{
 				sum += pCoalb;
 				//coalescent in b?
 				if(r < sum / sweepPopTotRate){
-					coalesceAtTimePopnSweep(cTime+(ttau),0, 0);
+					coalesceAtTimePopnSweep(eventTime,0, 0);
 				}
 				else{
 					sum += pRecb;
 					//recombination in b, also need bookkeeping
 					if(r < sum / sweepPopTotRate){
-						bp = recombineAtTimePopnSweep(cTime + (ttau),0, 0, sweepSite, (1.0-x));
+						bp = recombineAtTimePopnSweep(eventTime,0, 0, sweepSite, (1.0-x));
 						if(bp != 666){
 							addBreakPoint(bp);
 						}
@@ -2229,7 +2233,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 						sum += pRecB;
 						if( r < sum / sweepPopTotRate){
 							//recombination in B and bookkeeping
-							bp = recombineAtTimePopnSweep(cTime + (ttau),0, 1, sweepSite, x);
+							bp = recombineAtTimePopnSweep(eventTime,0, 1, sweepSite, x);
 							if(bp != 666){
 								addBreakPoint(bp);
 							}
@@ -2237,12 +2241,12 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 						else{
 							sum+= pGCB;
 							if( r < sum / sweepPopTotRate){
-								geneConversionAtTimePopnSweep(cTime + (ttau),0, 1, sweepSite, x);
+								geneConversionAtTimePopnSweep(eventTime,0, 1, sweepSite, x);
 							}
 							else{
 								sum+= pGCb;
 								if( r < sum / sweepPopTotRate){
-									geneConversionAtTimePopnSweep(cTime + (ttau),0, 0, sweepSite, x);
+									geneConversionAtTimePopnSweep(eventTime,0, 0, sweepSite, x);
 								}
 								else{
 									sum += pLeftRecb;
@@ -2257,7 +2261,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 										else{
 											//recurrent adaptive mutation:
 											//node in pop zero's sweep group exits sweep
-											recurrentMutAtTime(cTime+(ttau),0, 1);
+											recurrentMutAtTime(eventTime,0, 1);
 										}
 									}
 								}
@@ -2279,7 +2283,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 						i = 1;
 						r2 = ranf();
 						while(eSum/totRRate < r2) eSum += rRate[++i];
-						bp = recombineAtTimePopn(cTime,i);
+						bp = recombineAtTimePopn(eventTime,i);
 						if (bp != 666){
 							addBreakPoint(bp);
 						}
@@ -2291,7 +2295,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 							i = 1;
 							r2 = ranf();
 							while(eSum/totGCRate < r2) eSum += gcRate[++i];
-							geneConversionAtTimePopn(cTime,i);
+							geneConversionAtTimePopn(eventTime,i);
 						}
 						else{
 							//coalesce 
@@ -2303,7 +2307,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 							while(eSum/totCRate < r2){
 								 eSum += cRate[++i];
 								}
-							coalesceAtTimePopn(cTime,i);
+							coalesceAtTimePopn(eventTime,i);
 					
 					
 						}
