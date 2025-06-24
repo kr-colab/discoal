@@ -29,6 +29,7 @@
 #include "version.h"
 #include "segmentPool.h"
 #include "demesInterface.h"
+#include "configInterface.h"
 
 
 
@@ -103,6 +104,7 @@ int main(int argc, const char * argv[]){
 	
 	getParameters(argc,argv);
 	double N = EFFECTIVE_POPN_SIZE; // effective population size
+	// fprintf(stderr, "DEBUG: About to call setall() with seeds: %ld, %ld\n", seed1, seed2);
 	setall(seed1, seed2 );
 	
 	// Store command line for tskit provenance after parsing (now we know if -ts was used)
@@ -646,29 +648,10 @@ void getParameters(int argc,const char **argv){
 	int i,j;
 	double migR;
 	int selCheck,nChangeCheck;
+	int yaml_config_loaded = 0;
 	
-	if( argc < 3){
-		usage();
-	}
-
-	sampleSize = atoi(argv[1]);
-	if(sampleSize > 65535){
-		printf("Error: sampleSize > 65535. This exceeds the maximum supported by uint16_t ancestry counts.\n");
-		exit(666);
-	}
-	sampleNumber = atoi(argv[2]);
-	nSites = atoi(argv[3]);
-	if(nSites>MAXSITES){
-		printf("Error: number of sites set higher than current compilation limit. Please reduce the number of sites or change the MAXSITES define and recompile\n");
-		exit(666);
-	}
-	args = 4;
-
+	// Initialize all variables first (before any YAML or command line processing)
 	npops = 1;
-	popnSizes[0]=sampleSize;
-	popnSizes[1]=0;
-	sampleSizes[0]=sampleSize;
-	sampleSizes[1]=0;
 	leftRho = 0.0;
 	rho = 0.0;
 	my_gamma = 0.0;
@@ -683,7 +666,7 @@ void getParameters(int argc,const char **argv){
 
 	seed1 = (long) (devrand() % 2147483399);
 	seed2 = (long) (devrand() % 2147483399);
-	
+	// fprintf(stderr, "DEBUG: Initial random seeds set: %ld, %ld\n", seed1, seed2);
 
 	EFFECTIVE_POPN_SIZE = 1000000;
 	sweepSite = 0.5;
@@ -692,7 +675,6 @@ void getParameters(int argc,const char **argv){
 	priorTheta=priorRho=priorAlpha=priorTau=priorX=priorF0=priorUA=priorC=0;
 
 	eventFlag = 1;
-	effectiveSampleSize = sampleSize;
 	finiteOutputFlag = 0;
 	outputStyle = 'h';
 	mask = 0;
@@ -725,7 +707,86 @@ void getParameters(int argc,const char **argv){
 	eventNumber++;
 	currentSize = malloc(sizeof(double) * MAXPOPS);
 
+	// Check for YAML config first (special handling)
+	for (i = 1; i < argc; i++) {
+		if (argv[i][0] == '-' && argv[i][1] == 'Y') {
+			if (i + 1 >= argc || argv[i + 1] == NULL || argv[i + 1][0] == '-' || strlen(argv[i + 1]) == 0) {
+				fprintf(stderr, "Error: -Y flag requires a YAML configuration filename argument\n");
+				fprintf(stderr, "Usage: %s [options] -Y <config_file.yaml>\n", argv[0]);
+				exit(1);
+			}
+			const char *configFile = argv[i + 1];
+			
+			// Load configuration from YAML file
+			SimulationConfig config;
+			int ret = loadConfigFile(configFile, &config);
+			if (ret != 0) {
+				fprintf(stderr, "Error: Failed to load YAML configuration file '%s'\n", configFile);
+				exit(1);
+			}
+			
+			// Apply configuration immediately
+			ret = applyConfiguration(&config);
+			if (ret != 0) {
+				fprintf(stderr, "Error: Failed to apply configuration from '%s'\n", configFile);
+				exit(1);
+			}
+			
+			// fprintf(stderr, "DEBUG: Seeds after YAML config applied: %ld, %ld\n", seed1, seed2);
+			fprintf(stderr, "Loaded configuration from YAML file '%s'\n", configFile);
+			yaml_config_loaded = 1;
+			break;
+		}
+	}
+	
+
+	// If YAML config loaded basic parameters, we can skip the argc check
+	// Otherwise, require traditional 3 arguments
+	if (!yaml_config_loaded && argc < 4){
+		usage();
+	}
+
+	// Set basic parameters from command line (or defaults if YAML config loaded them)
+	if (!yaml_config_loaded || argc >= 4) {
+		sampleSize = atoi(argv[1]);
+		if(sampleSize > 65535){
+			printf("Error: sampleSize > 65535. This exceeds the maximum supported by uint16_t ancestry counts.\n");
+			exit(666);
+		}
+		sampleNumber = atoi(argv[2]);
+		nSites = atoi(argv[3]);
+		if(nSites>MAXSITES){
+			printf("Error: number of sites set higher than current compilation limit. Please reduce the number of sites or change the MAXSITES define and recompile\n");
+			exit(666);
+		}
+		args = 4;
+		
+		// Set sample sizes and population info
+		popnSizes[0]=sampleSize;
+		popnSizes[1]=0;
+		sampleSizes[0]=sampleSize;
+		sampleSizes[1]=0;
+		effectiveSampleSize = sampleSize;
+	} else {
+		// YAML config provided basic parameters, start parsing from argument 1
+		args = 1;
+		// Sample sizes should already be set by YAML config
+		if (sampleSize > 0) {
+			popnSizes[0]=sampleSize;
+			popnSizes[1]=0;
+			sampleSizes[0]=sampleSize;
+			sampleSizes[1]=0;
+			effectiveSampleSize = sampleSize;
+		}
+	}
+
 	while(args < argc){
+		// Skip YAML config arguments if already processed
+		if (argv[args][0] == '-' && argv[args][1] == 'Y') {
+			args += 2;  // Skip -Y and its filename argument
+			continue;
+		}
+		
 		// Check if argument starts with '-'
 		if (argv[args][0] != '-') {
 			fprintf(stderr, "Error: Unexpected argument '%s'\n", argv[args]);
@@ -1034,8 +1095,10 @@ void getParameters(int argc,const char **argv){
 			}
                         break;
 			case 'd' :
+			// fprintf(stderr, "DEBUG: Processing -d flag, overriding seeds\n");
 			seed1 = parseIntArg(argc, argv, &args, "-d");
 			seed2 = parseIntArg(argc, argv, &args, "-d");
+			// fprintf(stderr, "DEBUG: Seeds set by -d flag: %ld, %ld\n", seed1, seed2);
 			break;
 			case 'N' :
 			EFFECTIVE_POPN_SIZE = parseIntArg(argc, argv, &args, "-N");
@@ -1093,6 +1156,8 @@ void getParameters(int argc,const char **argv){
 		}
 		args++;
 	}
+	// fprintf(stderr, "DEBUG: Final seeds at end of getParameters: %ld, %ld\n", seed1, seed2);
+	// fprintf(stderr, "DEBUG: Final theta at end of getParameters: %f\n", theta);
 	sortEventArray(events,eventNumber);
 
 	//make sure events are kosher
