@@ -1,0 +1,12 @@
+# Basic discoal YAML configuration example
+# This simulates a simple population with mutation and recombination
+
+simulation:
+  sample_size: 20
+  num_replicates: 100
+  num_sites: 10000
+  seed: [12345, 67890]  # Optional: for reproducibility
+
+genetics:
+  mutation_rate: 10.0   # theta = 4Nu
+  recombination_rate: 8.0  # rho = 4Nr

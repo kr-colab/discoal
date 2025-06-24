@@ -1,0 +1,24 @@
+# Selective sweep example
+# Simulates a recent selective sweep at position 0.5
+
+simulation:
+  sample_size: 50
+  num_replicates: 1000
+  num_sites: 50000
+  seed: [42, 54321]
+
+genetics:
+  mutation_rate: 20.0
+  recombination_rate: 15.0
+
+populations:
+  count: 1
+  sample_sizes: [50]
+
+events:
+  selection:
+    - type: sweep
+      mode: stochastic      # Stochastic trajectory
+      time: 0.01           # Sweep completed 0.01*4N generations ago
+      selection_coeff: 100.0  # 2Ns = 100
+      position: 0.5        # Middle of the sequence

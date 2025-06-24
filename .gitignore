@@ -85,6 +85,10 @@ extern/Unity/*
 !extern/Unity/LICENSE.txt
 !extern/Unity/README.md
 
+# Ignore specific Unity build files that may appear
+extern/Unity/src/meson.build
+extern/Unity/unityConfig.cmake
+
 extern/demes-c/*
 !extern/demes-c/demes.c
 !extern/demes-c/demes.h

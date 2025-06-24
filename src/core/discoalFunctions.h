@@ -5,6 +5,7 @@ void initialize();
 void initializeBreakPoints();
 void ensureBreakPointsCapacity();
 void cleanupBreakPoints();
+void ensureEventsCapacity();
 
 // Population list management functions for O(1) node selection
 void initializePopLists();

@@ -1,0 +1,30 @@
+# Demographic model example
+# Population bottleneck followed by exponential growth
+
+simulation:
+  sample_size: 100
+  num_replicates: 500
+  num_sites: 20000
+
+genetics:
+  mutation_rate: 15.0
+  recombination_rate: 10.0
+  gene_conversion:
+    tract_length: 500
+    crossover_ratio: 0.2  # Gene conversion rate = 0.2 * rho
+
+populations:
+  count: 1
+  sample_sizes: [100]
+
+events:
+  demographic:
+    - type: size_change
+      time: 0.02          # 0.02*4N generations ago
+      population: 0
+      size: 0.1           # Bottleneck to 10% of original size
+      
+    - type: size_change
+      time: 0.005         # 0.005*4N generations ago
+      population: 0
+      size: 5.0           # Recovery to 5x original size

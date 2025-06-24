@@ -2,6 +2,37 @@
 
 ## Latest Changes and Optimizations
 
+### 2025-06-24: Documentation for YAML and Demes Integration
+
+**Objective**: Create comprehensive documentation for the YAML configuration system and demes integration.
+
+**Documentation Created**:
+
+1. **YAML Configuration Guide** (`docs/yaml_configuration.md`):
+   - Complete specification of YAML configuration structure
+   - Sections: simulation, genetics, populations, events
+   - Parameter conversion notes and examples
+   - Integration with demes files
+   - Validation guidelines
+
+2. **Demes Integration Guide** (`docs/demes_integration.md`):
+   - Supported and unsupported demes features
+   - Parameter conversion formulas (time, size, migration)
+   - Example demes files for common scenarios
+   - Troubleshooting and validation tips
+   - Converting between discoal and demes formats
+
+3. **Configuration Examples** (`config_examples/`):
+   - `basic_example.yaml`: Simple simulation setup
+   - `sweep_example.yaml`: Selective sweep configuration
+   - `demographic_example.yaml`: Population size changes
+   - `demes_example.yaml`: Using external demes files
+   - README with usage instructions
+
+4. **README Updates**:
+   - Added `-D` and `-Y` flags to usage documentation
+   - Added links to new documentation files
+
 ### 2025-06-24: YAML Configuration System Debugging
 
 **Objective**: Fix issues preventing YAML configurations from producing identical output to command line arguments.
