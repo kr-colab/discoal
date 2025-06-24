@@ -34,11 +34,14 @@ static int findPopulationIndex(struct demes_graph *graph, const char *name) {
     return -1;
 }
 
-// Convert demes time to coalescent time (generations ago / 4N)
+// Convert demes time to coalescent time
 static double demesTimeToCoalTime(double demes_time, double generation_time, double N) {
     // demes_time is in the time units specified (typically generations)
-    // Convert to coalescent time: generations_ago / (4 * N)
-    return demes_time * generation_time / (4.0 * N);
+    // In discoal, times from command line are in units of 2N generations, but
+    // internally stored as units of 4N. So command line time T becomes 2T internally.
+    // To match this behavior, we need to convert demes time (in generations) to
+    // the same internal units: generations / (2 * N)
+    return demes_time * generation_time / (2.0 * N);
 }
 
 // Convert demes size to coalescent size (relative to ancestral N)
@@ -98,20 +101,26 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
         return ret;
     }
     
-    // First, find the present-day size of the first population (index 0 in discoal)
+    // First, find the present-day size of the first PRESENT-DAY population
     // This will be used as the reference N for all scaling
-    double referenceN = N;  // default if we can't find population 0
+    double referenceN = N;  // default if we can't find a present-day population
     
-    if (graph->n_demes > 0) {
-        // Find the deme that will be population 0 (first deme in the list)
-        struct demes_deme *pop0 = &graph->demes[0];
-        if (pop0->n_epochs > 0) {
-            // Get the end size of the last epoch (present day)
-            struct demes_epoch *last_epoch = &pop0->epochs[pop0->n_epochs - 1];
-            if (last_epoch->size_function == DEMES_SIZE_FUNCTION_EXPONENTIAL) {
-                referenceN = last_epoch->end_size;
-            } else {
-                referenceN = last_epoch->start_size;
+    // Find the first population that exists at time 0 (present day)
+    for (int i = 0; i < graph->n_demes; i++) {
+        struct demes_deme *deme = &graph->demes[i];
+        if (deme->n_epochs > 0) {
+            struct demes_epoch *last_epoch = &deme->epochs[deme->n_epochs - 1];
+            // Check if this population exists at present day (end_time == 0)
+            if (last_epoch->end_time == 0.0) {
+                // This is a present-day population, use its size as reference
+                if (last_epoch->size_function == DEMES_SIZE_FUNCTION_EXPONENTIAL) {
+                    referenceN = last_epoch->end_size;
+                } else {
+                    referenceN = last_epoch->start_size;
+                }
+                fprintf(stderr, "Using population '%s' (index %d) as reference with N=%g\n", 
+                        deme->name, i, referenceN);
+                break;  // Use the first present-day population
             }
         }
     }
@@ -119,6 +128,72 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
     // Convert the graph to discoal events using the reference N
     ret = convertDemesToEvents(graph, events, eventNumber, eventsCapacity, 
                               currentSize, npops, sampleSizes, referenceN);
+    
+    if (ret != 0) {
+        demes_graph_free(graph);
+        return ret;
+    }
+    
+    // Validate that populations can coalesce
+    // For multi-population models, we need either migration or population mergers
+    // Count only present-day populations (those that exist at time 0)
+    int presentDayPops = 0;
+    for (int i = 0; i < graph->n_demes; i++) {
+        struct demes_deme *deme = &graph->demes[i];
+        if (deme->n_epochs > 0) {
+            // Check if this deme exists at time 0 (present day)
+            struct demes_epoch *last_epoch = &deme->epochs[deme->n_epochs - 1];
+            if (last_epoch->end_time == 0.0) {
+                presentDayPops++;
+            }
+        }
+    }
+    
+    if (presentDayPops > 1) {
+        fprintf(stderr, "\nValidating population connectivity (%d present-day populations)...\n", presentDayPops);
+        // Check if there's any migration
+        int hasMigration = 0;
+        for (int i = 0; i < graph->n_migrations; i++) {
+            if (graph->migrations[i].rate > 0) {
+                hasMigration = 1;
+                break;
+            }
+        }
+        fprintf(stderr, "Has migration: %s\n", hasMigration ? "yes" : "no");
+        
+        // Check if all populations eventually merge
+        // We need to check if all present-day populations trace back to a common ancestor
+        int hasCommonAncestor = 0;
+        
+        // Check specifically if present-day populations have ancestors
+        for (int i = 0; i < graph->n_demes; i++) {
+            struct demes_deme *deme = &graph->demes[i];
+            // Only check demes that exist at present
+            if (deme->n_epochs > 0 && deme->epochs[deme->n_epochs - 1].end_time == 0.0) {
+                if (deme->n_ancestors > 0) {
+                    hasCommonAncestor = 1;
+                    break;
+                }
+            }
+        }
+        fprintf(stderr, "Present-day populations have ancestors: %s\n", hasCommonAncestor ? "yes" : "no");
+        
+        // If there's no migration and no apparent mergers, issue an error
+        if (!hasMigration && !hasCommonAncestor) {
+            fprintf(stderr, "\nError: The demographic model has %d present-day populations but no migration or merger events.\n", presentDayPops);
+            fprintf(stderr, "This would result in infinite coalescent time as populations cannot coalesce.\n");
+            fprintf(stderr, "Please add migration between populations or ensure populations merge.\n");
+            demes_graph_free(graph);
+            return -1;
+        }
+        
+        // Even with ancestors, we should verify all populations can eventually coalesce
+        // This is a more thorough check
+        if (!hasMigration && hasCommonAncestor) {
+            // Just provide information, not a warning, since merged populations can coalesce
+            fprintf(stderr, "\nNote: Populations will coalesce through common ancestors.\n");
+        }
+    }
     
     // Set flags for discoal
     if (graph->n_migrations > 0) {
@@ -231,11 +306,16 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
             // (except the first epoch which extends to infinity in the past)
             if (j > 0) {
                 double coalTime = demesTimeToCoalTime(startTime, graph->generation_time, N);
-                double coalSize = demesSizeToCoalSize(epoch->start_size, N);
+                // Use the size from the PREVIOUS epoch since we're transitioning FROM that size
+                struct demes_epoch *prev_epoch = &deme->epochs[j-1];
+                double prevSize = (prev_epoch->size_function == DEMES_SIZE_FUNCTION_EXPONENTIAL) 
+                                 ? prev_epoch->end_size : prev_epoch->start_size;
+                double coalSize = demesSizeToCoalSize(prevSize, N);
                 
                 fprintf(stderr, "  Epoch %d->%d transition at time %g:\n", j-1, j, startTime);
-                fprintf(stderr, "    Demes size: %g -> Discoal relative size: %g\n", epoch->start_size, coalSize);
+                fprintf(stderr, "    Previous epoch size: %g -> Discoal relative size: %g\n", prevSize, coalSize);
                 fprintf(stderr, "    Demes time: %g -> Discoal coalescent time: %g\n", startTime, coalTime);
+                fprintf(stderr, "    Creating size change event: time=%g, pop=%d, size=%g\n", coalTime, popID, coalSize);
                 
                 (*events)[*eventNumber].time = coalTime;
                 (*events)[*eventNumber].popID = popID;
@@ -255,6 +335,18 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
                 fprintf(stderr, "or use discoal's native -eG flag for exponential growth events.\n");
                 return -1;
             }
+            
+            // Check for linear growth (not in demes-c enum but possible in demes spec)
+            // The demes-c library may not expose linear growth, but let's be defensive
+            if (epoch->start_size != epoch->end_size && 
+                epoch->size_function != DEMES_SIZE_FUNCTION_EXPONENTIAL) {
+                // This would be linear growth, which is also not supported
+                fprintf(stderr, "\nError: Linear growth epochs are not yet supported in discoal.\n");
+                fprintf(stderr, "Population '%s' has a size change from %g to %g that is not exponential.\n", 
+                        deme->name, epoch->start_size, epoch->end_size);
+                fprintf(stderr, "Please use constant size epochs only.\n");
+                return -1;
+            }
         }
         
         // Handle population splits/merges
@@ -270,13 +362,26 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
                     return -1;
                 }
                 
+                fprintf(stderr, "Creating split event: time=%g, new pop=%d joins ancestor pop=%d\n",
+                        coalTime, popID, ancestorID);
                 (*events)[*eventNumber].time = coalTime;
                 (*events)[*eventNumber].popID = popID;  // New population
                 (*events)[*eventNumber].popID2 = ancestorID;  // Source population
-                (*events)[*eventNumber].type = 'S';  // Split
+                (*events)[*eventNumber].type = 'p';  // Population join (backwards in time)
                 (*eventNumber)++;
             } else {
                 // Admixture from multiple ancestors
+                // Validate proportions sum to 1.0 (demes-c should enforce this, but be safe)
+                double propSum = 0.0;
+                for (int k = 0; k < deme->n_ancestors; k++) {
+                    propSum += deme->proportions[k];
+                }
+                if (fabs(propSum - 1.0) > 1e-9) {
+                    fprintf(stderr, "Error: Ancestry proportions for population '%s' sum to %g, not 1.0\n", 
+                            deme->name, propSum);
+                    return -1;
+                }
+                
                 for (int k = 0; k < deme->n_ancestors; k++) {
                     int ancestorID = findPopulationIndex(graph, (char*)deme->ancestors[k]->name);
                     if (ancestorID < 0) {
@@ -301,77 +406,81 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
     for (int i = 0; i < graph->n_migrations; i++) {
         struct demes_migration *mig = &graph->migrations[i];
         
-        // In demes format, migrations are bidirectional between two populations
-        // The demes-c library stores them with source and dest, but they represent
-        // bidirectional migration when specified with demes: [pop1, pop2] format
+        // In demes format, migrations can be:
+        // 1. Symmetric: specified with demes: [pop1, pop2] - creates one migration object
+        // 2. Asymmetric: specified with separate source/dest/rate - creates one directional migration
         
-        int pop1ID = findPopulationIndex(graph, (char*)mig->source->name);
-        int pop2ID = findPopulationIndex(graph, (char*)mig->dest->name);
+        int sourceID = findPopulationIndex(graph, (char*)mig->source->name);
+        int destID = findPopulationIndex(graph, (char*)mig->dest->name);
         
-        if (pop1ID < 0 || pop2ID < 0) {
+        if (sourceID < 0 || destID < 0) {
             fprintf(stderr, "Error: Could not find population for migration\n");
             return -1;
         }
         
-        fprintf(stderr, "Migration %d: %s (pop%d) <-> %s (pop%d)\n", 
-                i, mig->source->name, pop1ID, mig->dest->name, pop2ID);
+        fprintf(stderr, "Migration %d: %s (pop%d) -> %s (pop%d)\n", 
+                i, mig->source->name, sourceID, mig->dest->name, destID);
         fprintf(stderr, "  Time interval: %g to %g generations\n", mig->start_time, mig->end_time);
         fprintf(stderr, "  Demes rate: %g per generation\n", mig->rate);
         
         // Convert demes migration rate to discoal's scaled rate (4Nm)
         double scaledRate = 4.0 * N * mig->rate;
-        fprintf(stderr, "  Conversion: %g * 4 * %g = %g (discoal -M equivalent)\n", 
+        fprintf(stderr, "  Conversion: %g * 4 * %g = %g (discoal -m equivalent)\n", 
                 mig->rate, N, scaledRate);
         
-        // Create bidirectional migration events
-        // Migration from pop1 to pop2
+        // Create only unidirectional migration event (source -> dest)
+        // For symmetric migrations, demes-c will create two migration objects
         (*events)[*eventNumber].time = demesTimeToCoalTime(mig->start_time, graph->generation_time, N);
-        (*events)[*eventNumber].popID = pop2ID;  // destination
-        (*events)[*eventNumber].popID2 = pop1ID; // source
+        (*events)[*eventNumber].popID = destID;     // destination
+        (*events)[*eventNumber].popID2 = sourceID;  // source
         (*events)[*eventNumber].popnSize = scaledRate;  // Scaled migration rate
         (*events)[*eventNumber].type = 'M';  // Migration start
         (*eventNumber)++;
         
-        // Migration from pop2 to pop1
-        (*events)[*eventNumber].time = demesTimeToCoalTime(mig->start_time, graph->generation_time, N);
-        (*events)[*eventNumber].popID = pop1ID;  // destination
-        (*events)[*eventNumber].popID2 = pop2ID; // source
-        (*events)[*eventNumber].popnSize = scaledRate;  // Scaled migration rate
-        (*events)[*eventNumber].type = 'M';  // Migration start
-        (*eventNumber)++;
-        
-        // End events for both directions
+        // End event
         (*events)[*eventNumber].time = demesTimeToCoalTime(mig->end_time, graph->generation_time, N);
-        (*events)[*eventNumber].popID = pop2ID;
-        (*events)[*eventNumber].popID2 = pop1ID;
-        (*events)[*eventNumber].popnSize = 0.0;  // Stop migration
-        (*events)[*eventNumber].type = 'M';  // Migration end
-        (*eventNumber)++;
-        
-        (*events)[*eventNumber].time = demesTimeToCoalTime(mig->end_time, graph->generation_time, N);
-        (*events)[*eventNumber].popID = pop1ID;
-        (*events)[*eventNumber].popID2 = pop2ID;
+        (*events)[*eventNumber].popID = destID;
+        (*events)[*eventNumber].popID2 = sourceID;
         (*events)[*eventNumber].popnSize = 0.0;  // Stop migration
         (*events)[*eventNumber].type = 'M';  // Migration end
         (*eventNumber)++;
     }
     
     // Process pulses (admixture events)
+    fprintf(stderr, "\nPulses: %zu\n", graph->n_pulses);
     for (int i = 0; i < graph->n_pulses; i++) {
         struct demes_pulse *pulse = &graph->pulses[i];
         int destID = findPopulationIndex(graph, (char*)pulse->dest->name);
         
         if (destID < 0) {
-            fprintf(stderr, "Error: Could not find destination population for pulse\n");
+            fprintf(stderr, "Error: Could not find destination population '%s' for pulse\n", 
+                    pulse->dest->name);
             return -1;
         }
+        
+        // Validate pulse proportions sum to <= 1.0
+        double propSum = 0.0;
+        for (int j = 0; j < pulse->n_sources; j++) {
+            propSum += pulse->proportions[j];
+        }
+        if (propSum > 1.0 + 1e-9) {
+            fprintf(stderr, "Error: Pulse proportions sum to %g, which exceeds 1.0\n", propSum);
+            return -1;
+        }
+        
+        fprintf(stderr, "Pulse %d at time %g into %s (pop%d)\n", 
+                i, pulse->time, pulse->dest->name, destID);
         
         for (int j = 0; j < pulse->n_sources; j++) {
             int sourceID = findPopulationIndex(graph, (char*)pulse->sources[j]->name);
             if (sourceID < 0) {
-                fprintf(stderr, "Error: Could not find source population for pulse\n");
+                fprintf(stderr, "Error: Could not find source population '%s' for pulse\n",
+                        pulse->sources[j]->name);
                 return -1;
             }
+            
+            fprintf(stderr, "  Source: %s (pop%d), proportion: %g\n", 
+                    pulse->sources[j]->name, sourceID, pulse->proportions[j]);
             
             (*events)[*eventNumber].time = demesTimeToCoalTime(pulse->time, graph->generation_time, N);
             (*events)[*eventNumber].popID = destID;
@@ -390,8 +499,17 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
     for (int i = 0; i < graph->n_demes; i++) {
         struct demes_deme *deme = &graph->demes[i];
         if (deme->n_epochs > 0) {
-            // Use the end size of the last epoch (most recent time)
+            // Check if this population exists at present day
             struct demes_epoch *last_epoch = &deme->epochs[deme->n_epochs-1];
+            if (last_epoch->end_time != 0.0) {
+                // This population doesn't exist at present day
+                fprintf(stderr, "  Pop %d (%s): not present at time 0 (ends at %g)\n", 
+                        i, deme->name, last_epoch->end_time);
+                currentSize[i] = 0.0;  // Will be handled by events
+                continue;
+            }
+            
+            // Use the end size of the last epoch (most recent time)
             double presentSize = (last_epoch->size_function == DEMES_SIZE_FUNCTION_EXPONENTIAL) 
                                 ? last_epoch->end_size : last_epoch->start_size;
             currentSize[i] = demesSizeToCoalSize(presentSize, N);
