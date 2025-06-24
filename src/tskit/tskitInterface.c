@@ -239,10 +239,8 @@ tsk_id_t tskit_add_node(double time, int population, int is_sample) {
                                      NULL, 0);  // metadata
     
     // Debug output (commented out for production)
-    // if (is_sample) {
-    //     fprintf(stderr, "Added sample node %lld: time=%f (scaled=%f), pop=%d\n", 
-    //             (long long)node_id, time, time / 2.0, tsk_population);
-    // }
+    // fprintf(stderr, "DEBUG tskit_add_node: id=%lld, time=%.12f, pop=%d, is_sample=%d\n", 
+    //         (long long)node_id, time, tsk_population, is_sample);
     
     return node_id;
 }
@@ -255,6 +253,15 @@ int tskit_add_edges(tsk_id_t parent, tsk_id_t child, double left, double right) 
     if (tsk_tables == NULL) {
         return -1;
     }
+    
+    // Check parent-child time relationship (only in debug mode)
+    // if (parent >= 0 && child >= 0 && parent < tsk_tables->nodes.num_rows && child < tsk_tables->nodes.num_rows) {
+    //     double parent_time = tsk_tables->nodes.time[parent];
+    //     double child_time = tsk_tables->nodes.time[child];
+    //     if (parent_time <= child_time) {
+    //         fprintf(stderr, "ERROR: Bad edge timing! Parent time %.12f <= child time %.12f\n", parent_time, child_time);
+    //     }
+    // }
     
     // If edge squashing is disabled, add directly to table
     if (!edge_squashing_enabled) {
