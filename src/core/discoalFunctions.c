@@ -223,6 +223,43 @@ void initialize(){
 				migMat[i][j]=migMatConst[i][j];
 			}
 		}
+		
+		// Process migration events from demes (type 'M')
+		// These set up the initial migration matrix
+		for(i=1;i<eventNumber;i++){
+			if(events[i].type == 'M'){
+				fprintf(stderr, "Found migration event: time=%f, pop%d->pop%d, rate=%f\n", 
+				        events[i].time, events[i].popID2, events[i].popID, events[i].popnSize);
+				// For demes, infinite start time gets converted to large coalescent time
+				// Check if this is a start event (non-zero rate) that should be active at time 0
+				// Since demesTimeToCoalTime(inf) results in inf/4N which is still inf,
+				// we need to check for very large times
+				if(events[i].popnSize > 0.0 && events[i].time > 1000.0){
+					// popID is destination, popID2 is source
+					// popnSize contains the scaled migration rate (4Nm)
+					migMat[events[i].popID2][events[i].popID] = events[i].popnSize;
+					fprintf(stderr, "Setting initial migration: pop%d -> pop%d = %f\n", 
+					        events[i].popID2, events[i].popID, events[i].popnSize);
+				}
+			}
+		}
+		
+		// Debug: Print migration matrix
+		fprintf(stderr, "\n=== MIGRATION MATRIX DEBUG ===\n");
+		fprintf(stderr, "Number of populations: %d\n", npops);
+		fprintf(stderr, "Migration matrix (migMat[from][to]):\n");
+		fprintf(stderr, "     ");
+		for(j=0;j<npops;j++) fprintf(stderr, "  Pop%d  ", j);
+		fprintf(stderr, "\n");
+		for(i=0;i<npops;i++){
+			fprintf(stderr, "Pop%d ", i);
+			for(j=0;j<npops;j++){
+				fprintf(stderr, "%7.4f ", migMat[i][j]);
+			}
+			fprintf(stderr, "\n");
+		}
+		fprintf(stderr, "=== END MIGRATION MATRIX DEBUG ===\n\n");
+		
 		eventFlag = 0;
 	}
 	

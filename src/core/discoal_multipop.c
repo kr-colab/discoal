@@ -28,6 +28,7 @@
 #include <tskit/tables.h>
 #include "version.h"
 #include "segmentPool.h"
+#include "demesInterface.h"
 
 
 
@@ -796,6 +797,37 @@ void getParameters(int argc,const char **argv){
 			case 'a' :
 			alpha = parseDoubleArg(argc, argv, &args, "-a");
 			break;
+			case 'D' :
+			// -D flag for demes file
+			{
+				args++;
+				if (args >= argc || argv[args] == NULL || argv[args][0] == '-' || strlen(argv[args]) == 0) {
+					fprintf(stderr, "Error: -D flag requires a demes filename argument\n");
+					fprintf(stderr, "Usage: %s [options] -D <demes_file.yaml>\n", argv[0]);
+					exit(1);
+				}
+				const char *demesFile = argv[args];
+				
+				// Load demographic events from demes file
+				int ret = loadDemesFile(demesFile, &events, &eventNumber, &eventsCapacity, 
+				                       currentSize, &npops, sampleSizes, EFFECTIVE_POPN_SIZE);
+				if (ret != 0) {
+					fprintf(stderr, "Error: Failed to load demes file '%s'\n", demesFile);
+					exit(1);
+				}
+				
+				fprintf(stderr, "Loaded %d populations and %d events from demes file '%s'\n", 
+				        npops, eventNumber - 1, demesFile);  // -1 to exclude initial bogus event
+				
+				// Require user to specify sampling after loading demes
+				fprintf(stderr, "Note: You must use -p flag after -D to specify sample sizes for each population\n");
+				fprintf(stderr, "Example: -D file.yaml -p %d", npops);
+				for (i = 0; i < npops; i++) {
+					fprintf(stderr, " <sampleSize%d>", i);
+				}
+				fprintf(stderr, "\n");
+			}
+			break;
 			case 'x' :
 			sweepSite = parseDoubleArg(argc, argv, &args, "-x");
 			break;
@@ -837,7 +869,11 @@ void getParameters(int argc,const char **argv){
 			}
 			for(i=0;i<npops;i++){
 				sampleSizes[i] = parseIntArg(argc, argv, &args, "-p");
-				currentSize[i] = 1.0;
+				// Don't overwrite currentSize if it was already set (e.g., by demes)
+				// Only set to 1.0 if it's still 0 (uninitialized)
+				if (currentSize[i] == 0.0) {
+					currentSize[i] = 1.0;
+				}
 			}
 			
 			break;
@@ -1115,6 +1151,7 @@ void usage(){
 	fprintf(stderr,"\t -g conversionRate tractLengthMean (gene conversion)\n");
 	fprintf(stderr,"\t -gr conversionToCrossoverRatio tractLengthMean (gene conversion where initiation rate = rho*conversionToCrossoverRatio)\n");
 	fprintf(stderr,"\t -p npops sampleSize1 sampleSize2 etc.\n");
+	fprintf(stderr,"\t -D demesFile.yaml (load demographic model from demes format file)\n");
 	fprintf(stderr,"\t -en time popnID size (changes size of popID)\n");	
 	fprintf(stderr,"\t -ed time popnID1 popnID2 (joins popnID1 into popnID2)\n");
 	fprintf(stderr,"\t -ea time daughterPopnID founderPopnID1 founderPopnID2 admixProp (admixture-- back in time daughterPopnID into two founders)\n");
