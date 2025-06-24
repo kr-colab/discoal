@@ -225,21 +225,37 @@ void initialize(){
 		}
 		
 		// Process migration events from demes (type 'M')
-		// These set up the initial migration matrix
+		// We need to find what migration rates should be active at time 0
+		// by looking at all migration events and finding the most recent one
+		// that affects the present (time 0)
 		for(i=1;i<eventNumber;i++){
 			if(events[i].type == 'M'){
 				fprintf(stderr, "Found migration event: time=%f, pop%d->pop%d, rate=%f\n", 
 				        events[i].time, events[i].popID2, events[i].popID, events[i].popnSize);
-				// For demes, infinite start time gets converted to large coalescent time
-				// Check if this is a start event (non-zero rate) that should be active at time 0
-				// Since demesTimeToCoalTime(inf) results in inf/4N which is still inf,
-				// we need to check for very large times
-				if(events[i].popnSize > 0.0 && events[i].time > 1000.0){
-					// popID is destination, popID2 is source
-					// popnSize contains the scaled migration rate (4Nm)
-					migMat[events[i].popID2][events[i].popID] = events[i].popnSize;
-					fprintf(stderr, "Setting initial migration: pop%d -> pop%d = %f\n", 
-					        events[i].popID2, events[i].popID, events[i].popnSize);
+			}
+		}
+		
+		// For each population pair, find the migration rate at time 0
+		for(int src=0; src<npops; src++){
+			for(int dst=0; dst<npops; dst++){
+				if(src != dst){
+					double currentRate = 0.0;
+					// Find the most recent migration event for this pair
+					// Events are sorted by time (descending), so we want the last one with time > 0
+					for(i=eventNumber-1; i>=1; i--){
+						if(events[i].type == 'M' && 
+						   events[i].popID2 == src && 
+						   events[i].popID == dst &&
+						   events[i].time > 0.0){
+							currentRate = events[i].popnSize;
+							break;
+						}
+					}
+					if(currentRate > 0.0){
+						migMat[src][dst] = currentRate;
+						fprintf(stderr, "Setting initial migration: pop%d -> pop%d = %f\n", 
+						        src, dst, currentRate);
+					}
 				}
 			}
 		}

@@ -1,0 +1,18 @@
+# Simplified Makefile for building demes-c as part of discoal
+
+CFLAGS=-Wall -O2 -g -fPIC -I.
+CC=gcc -std=c11 -D_POSIX_C_SOURCE=200809L
+
+all: libdemes.a
+
+libdemes.a: demes.o unicodectype.o
+	$(AR) rcs $@ $^
+
+demes.o: demes.c demes.h
+	$(CC) $(CFLAGS) -c demes.c -o demes.o
+
+unicodectype.o: unicodectype.c unicodetype_db.h
+	$(CC) $(CFLAGS) -c unicodectype.c -o unicodectype.o
+
+clean:
+	rm -f libdemes.a *.o
