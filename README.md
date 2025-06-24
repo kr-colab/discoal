@@ -18,6 +18,11 @@ The documentation includes:
 
 A PDF version is also available in `discoaldoc.pdf`.
 
+### Additional Documentation
+
+- [YAML Configuration](docs/yaml_configuration.md) - Using YAML files to specify simulation parameters
+- [Demes Integration](docs/demes_integration.md) - Using demes-format demographic models
+
 ## Quick Start
 
 To install discoal, clone this repository, cd into the directory, then assuming you have gcc and make installed on your system, simply type `make discoal`.
@@ -32,6 +37,8 @@ parameters:
 	 -g conversionRate tractLengthMean (gene conversion)
 	 -gr conversionToCrossoverRatio tractLengthMean (gene conversion where initiation rate = rho*conversionToCrossoverRatio)
 	 -p npops sampleSize1 sampleSize2 etc.
+	 -D demesFile.yaml (load demographic model from demes format file)
+	 -Y configFile.yaml (load parameters from YAML configuration file)
 	 -en time popnID size (changes size of popID)
 	 -ed time popnID1 popnID2 (joins popnID1 into popnID2)
 	 -ea time daughterPopnID founderPopnID1 founderPopnID2 admixProp (admixture-- back in time daughterPopnID into two founders)

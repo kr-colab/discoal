@@ -1,0 +1,18 @@
+# Example using external demes file
+# The demes file specifies the demographic model
+
+simulation:
+  sample_size: 100
+  num_replicates: 1000
+  num_sites: 50000
+
+genetics:
+  mutation_rate: 20.0
+  recombination_rate: 15.0
+
+# Load demographic model from demes file
+events:
+  demes_file: ../testing/two_pop_migration.yaml
+
+# Note: When using demes file, specify sample sizes with -p flag:
+# discoal -Y demes_example.yaml -p 2 50 50
