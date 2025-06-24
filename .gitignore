@@ -78,3 +78,18 @@ extern/msUtils/*
 
 # Work directory for temporary files
 /work/
+
+# External dependencies - ignore everything except what we need for building
+extern/Unity/*
+!extern/Unity/src/
+!extern/Unity/LICENSE.txt
+!extern/Unity/README.md
+
+extern/demes-c/*
+!extern/demes-c/demes.c
+!extern/demes-c/demes.h
+!extern/demes-c/unicodectype.c
+!extern/demes-c/unicodetype_db.h
+!extern/demes-c/LICENSE
+!extern/demes-c/README.md
+!extern/demes-c/Makefile.discoal
