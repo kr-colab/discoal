@@ -255,11 +255,19 @@ test_trajectory: $(TEST_DIR)/test_trajectory.c $(SRC_CORE)/discoal.h $(TEST_DIR)
 		$(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/activeSegment.c $(SRC_TSKIT)/tskitInterface.c \
 		$(TSKIT_SOURCES) -I$(UNITY_DIR) -lm -fcommon
 
+test_config_interface: demes-c $(TEST_DIR)/test_config_interface.c $(SRC_CORE)/configInterface.c $(SRC_CORE)/configInterface.h $(SRC_CORE)/demesInterface.c $(SRC_CORE)/demesInterface.h $(TEST_DIR)/test_globals.c
+	@mkdir -p build
+	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o build/test_config_interface $(TEST_DIR)/test_config_interface.c $(SRC_CORE)/configInterface.c \
+		$(SRC_CORE)/demesInterface.c $(TEST_DIR)/test_globals.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/ancestrySegment.c \
+		$(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c $(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c \
+		$(SRC_CORE)/activeSegment.c $(SRC_TSKIT)/tskitInterface.c $(TSKIT_SOURCES) \
+		$(UNITY_SOURCES) -I$(UNITY_DIR) -Lextern/demes-c -ldemes -lyaml -lm -fcommon
+
 
 
 
 # Run individual unit tests
-run_tests: test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory
+run_tests: test_node test_event test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_config_interface
 	@echo "=== Running Unit Tests ==="
 	./build/test_node
 	./build/test_event
@@ -268,6 +276,7 @@ run_tests: test_node test_event test_node_operations test_mutations test_ancestr
 	./build/test_ancestry_segment
 	./build/test_active_segment
 	./build/test_trajectory
+	./build/test_config_interface
 	@echo "=== All Unit Tests Passed ==="
 
 

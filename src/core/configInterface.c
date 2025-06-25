@@ -326,6 +326,15 @@ static int parsePopulationsSection(yaml_parser_t *parser, SimulationConfig *conf
                             yaml_event_delete(&seq_event);
                         }
                         yaml_event_delete(&seq_event);
+                        
+                        // Set npops based on number of sample sizes
+                        config->npops = pop_index;
+                        
+                        // Calculate total sample size
+                        config->sample_size = 0;
+                        for (int i = 0; i < pop_index; i++) {
+                            config->sample_size += config->sample_sizes[i];
+                        }
                     }
                 }
                 break;
@@ -349,6 +358,108 @@ static int parseEventsSection(yaml_parser_t *parser, SimulationConfig *config) {
     yaml_event_t event;
     char key[256], value[256];
     int done = 0;
+    int in_sequence = 0;
+    
+    // Check if we're already in a sequence (called from main parser after YAML_SEQUENCE_START_EVENT)
+    if (!yaml_parser_parse(parser, &event)) {
+        fprintf(stderr, "Error parsing YAML in events section\n");
+        return -1;
+    }
+    
+    // If we got a mapping start, we're directly in the event sequence
+    if (event.type == YAML_MAPPING_START_EVENT) {
+        in_sequence = 1;
+        yaml_event_delete(&event);
+        
+        // Parse events directly
+        yaml_event_t ev_event;
+        do {
+            // Parse individual event
+            char item_key[256], item_value[256];
+            char event_type[256] = "";
+            double event_time = 0.0;
+            int pop_id = 0, pop_id2 = 0;
+            double size_or_rate = 0.0;
+            
+            while (yaml_parser_parse(parser, &ev_event)) {
+                if (ev_event.type == YAML_MAPPING_END_EVENT) {
+                    yaml_event_delete(&ev_event);
+                    break;
+                }
+                
+                if (ev_event.type == YAML_SCALAR_EVENT) {
+                    parseScalarValue(&ev_event, item_key, sizeof(item_key));
+                    yaml_event_delete(&ev_event);
+                    
+                    if (yaml_parser_parse(parser, &ev_event) && ev_event.type == YAML_SCALAR_EVENT) {
+                        parseScalarValue(&ev_event, item_value, sizeof(item_value));
+                        
+                        if (strcmp(item_key, "type") == 0) {
+                            strncpy(event_type, item_value, sizeof(event_type) - 1);
+                        } else if (strcmp(item_key, "time") == 0) {
+                            event_time = atof(item_value);
+                        } else if (strcmp(item_key, "population") == 0) {
+                            pop_id = atoi(item_value);
+                        } else if (strcmp(item_key, "source") == 0) {
+                            pop_id = atoi(item_value);
+                        } else if (strcmp(item_key, "destination") == 0) {
+                            pop_id2 = atoi(item_value);
+                        } else if (strcmp(item_key, "derived") == 0) {
+                            pop_id = atoi(item_value);
+                        } else if (strcmp(item_key, "ancestral") == 0) {
+                            pop_id2 = atoi(item_value);
+                        } else if (strcmp(item_key, "new_size") == 0) {
+                            size_or_rate = atof(item_value);
+                        } else if (strcmp(item_key, "rate") == 0) {
+                            size_or_rate = atof(item_value);
+                        }
+                    }
+                }
+                yaml_event_delete(&ev_event);
+            }
+            
+            // Add event to config
+            if (config->num_explicit_events < 1000) {
+                struct event *ev = &config->explicit_events[config->num_explicit_events];
+                ev->time = event_time;
+                ev->popID = pop_id;
+                ev->popID2 = pop_id2;
+                
+                if (strcmp(event_type, "population_size_change") == 0) {
+                    ev->type = 'g';
+                    ev->popnSize = size_or_rate;
+                } else if (strcmp(event_type, "population_split") == 0) {
+                    ev->type = 'p';
+                } else if (strcmp(event_type, "migration_rate_change") == 0) {
+                    ev->type = 'm';
+                    ev->popnSize = size_or_rate; // Migration rate stored in popnSize
+                }
+                
+                config->num_explicit_events++;
+            }
+            
+            // Check for next event
+            if (!yaml_parser_parse(parser, &ev_event)) {
+                return -1;
+            }
+            
+            if (ev_event.type == YAML_SEQUENCE_END_EVENT) {
+                yaml_event_delete(&ev_event);
+                return 0;
+            } else if (ev_event.type == YAML_MAPPING_START_EVENT) {
+                yaml_event_delete(&ev_event);
+                // Continue to parse next event
+            } else {
+                yaml_event_delete(&ev_event);
+                return -1;
+            }
+        } while (1);
+        
+        return 0;
+    }
+    
+    // Handle original parsing logic (sequence might be nested under a key)
+    yaml_event_delete(&event);
     
     while (!done) {
         if (!yaml_parser_parse(parser, &event)) {
@@ -357,6 +468,87 @@ static int parseEventsSection(yaml_parser_t *parser, SimulationConfig *config) {
         }
         
         switch (event.type) {
+            case YAML_SEQUENCE_START_EVENT:
+                // Handle direct event sequence under "events:" key
+                {
+                    yaml_event_t ev_event;
+                    while (yaml_parser_parse(parser, &ev_event)) {
+                        if (ev_event.type == YAML_SEQUENCE_END_EVENT) {
+                            yaml_event_delete(&ev_event);
+                            break;
+                        }
+                        
+                        if (ev_event.type == YAML_MAPPING_START_EVENT) {
+                            // Parse individual event
+                            yaml_event_t item_event;
+                            char item_key[256], item_value[256];
+                            char event_type[256] = "";
+                            double event_time = 0.0;
+                            int pop_id = 0, pop_id2 = 0;
+                            double size_or_rate = 0.0;
+                            
+                            while (yaml_parser_parse(parser, &item_event)) {
+                                if (item_event.type == YAML_MAPPING_END_EVENT) {
+                                    yaml_event_delete(&item_event);
+                                    break;
+                                }
+                                
+                                if (item_event.type == YAML_SCALAR_EVENT) {
+                                    parseScalarValue(&item_event, item_key, sizeof(item_key));
+                                    yaml_event_delete(&item_event);
+                                    
+                                    if (yaml_parser_parse(parser, &item_event) && item_event.type == YAML_SCALAR_EVENT) {
+                                        parseScalarValue(&item_event, item_value, sizeof(item_value));
+                                        
+                                        if (strcmp(item_key, "type") == 0) {
+                                            strncpy(event_type, item_value, sizeof(event_type) - 1);
+                                        } else if (strcmp(item_key, "time") == 0) {
+                                            event_time = atof(item_value);
+                                        } else if (strcmp(item_key, "population") == 0) {
+                                            pop_id = atoi(item_value);
+                                        } else if (strcmp(item_key, "source") == 0) {
+                                            pop_id = atoi(item_value);
+                                        } else if (strcmp(item_key, "destination") == 0) {
+                                            pop_id2 = atoi(item_value);
+                                        } else if (strcmp(item_key, "derived") == 0) {
+                                            pop_id = atoi(item_value);
+                                        } else if (strcmp(item_key, "ancestral") == 0) {
+                                            pop_id2 = atoi(item_value);
+                                        } else if (strcmp(item_key, "new_size") == 0) {
+                                            size_or_rate = atof(item_value);
+                                        } else if (strcmp(item_key, "rate") == 0) {
+                                            size_or_rate = atof(item_value);
+                                        }
+                                    }
+                                }
+                                yaml_event_delete(&item_event);
+                            }
+                            
+                            // Add event to config
+                            if (config->num_explicit_events < 1000) {
+                                struct event *ev = &config->explicit_events[config->num_explicit_events];
+                                ev->time = event_time;
+                                ev->popID = pop_id;
+                                ev->popID2 = pop_id2;
+                                
+                                if (strcmp(event_type, "population_size_change") == 0) {
+                                    ev->type = 'g';
+                                    ev->popnSize = size_or_rate;
+                                } else if (strcmp(event_type, "population_split") == 0) {
+                                    ev->type = 'p';
+                                } else if (strcmp(event_type, "migration_rate_change") == 0) {
+                                    ev->type = 'm';
+                                    ev->popnSize = size_or_rate; // Migration rate stored in popnSize
+                                }
+                                
+                                config->num_explicit_events++;
+                            }
+                        }
+                        yaml_event_delete(&ev_event);
+                    }
+                }
+                break;
+                
             case YAML_SCALAR_EVENT:
                 if (!parseScalarValue(&event, key, sizeof(key))) {
                     yaml_event_delete(&event);
@@ -557,6 +749,192 @@ static int parseEventsSection(yaml_parser_t *parser, SimulationConfig *config) {
     return 0;
 }
 
+// Parse selection section
+static int parseSelectionSection(yaml_parser_t *parser, SimulationConfig *config) {
+    yaml_event_t event;
+    char key[256], value[256];
+    int done = 0;
+    
+    config->has_selection = 1;
+    
+    while (!done) {
+        if (!yaml_parser_parse(parser, &event)) {
+            fprintf(stderr, "Error parsing YAML in selection section\n");
+            return -1;
+        }
+        
+        switch (event.type) {
+            case YAML_SCALAR_EVENT:
+                if (!parseScalarValue(&event, key, sizeof(key))) {
+                    yaml_event_delete(&event);
+                    continue;
+                }
+                
+                // Get the value
+                yaml_event_delete(&event);
+                if (!yaml_parser_parse(parser, &event)) {
+                    fprintf(stderr, "Error parsing YAML value for key: %s\n", key);
+                    return -1;
+                }
+                
+                if (event.type == YAML_SCALAR_EVENT) {
+                    parseScalarValue(&event, value, sizeof(value));
+                    
+                    // Process key-value pairs
+                    if (strcmp(key, "alpha") == 0) {
+                        config->alpha = atof(value);
+                    } else if (strcmp(key, "sweep_site") == 0) {
+                        config->sweep_site = atof(value);
+                    } else if (strcmp(key, "sweep_mode") == 0) {
+                        if (strcmp(value, "deterministic") == 0) {
+                            config->sweep_mode = 'd';
+                        } else if (strcmp(value, "neutral") == 0) {
+                            config->sweep_mode = 'N';
+                        } else {
+                            config->sweep_mode = 's';  // default to stochastic
+                        }
+                    } else if (strcmp(key, "tau") == 0) {
+                        config->tau = atof(value);
+                    }
+                } else if (event.type == YAML_MAPPING_START_EVENT) {
+                    // Handle nested mappings like soft_sweep
+                    if (strcmp(key, "soft_sweep") == 0) {
+                        // Parse soft sweep sub-section
+                        yaml_event_t ss_event;
+                        char ss_key[256], ss_value[256];
+                        
+                        while (yaml_parser_parse(parser, &ss_event)) {
+                            if (ss_event.type == YAML_MAPPING_END_EVENT) {
+                                yaml_event_delete(&ss_event);
+                                break;
+                            }
+                            
+                            if (ss_event.type == YAML_SCALAR_EVENT) {
+                                parseScalarValue(&ss_event, ss_key, sizeof(ss_key));
+                                yaml_event_delete(&ss_event);
+                                
+                                if (yaml_parser_parse(parser, &ss_event) && ss_event.type == YAML_SCALAR_EVENT) {
+                                    parseScalarValue(&ss_event, ss_value, sizeof(ss_value));
+                                    
+                                    if (strcmp(ss_key, "initial_frequency") == 0) {
+                                        config->f0 = atof(ss_value);
+                                        config->soft_sweep_mode = 1;
+                                    }
+                                }
+                            }
+                            yaml_event_delete(&ss_event);
+                        }
+                    }
+                }
+                break;
+                
+            case YAML_MAPPING_END_EVENT:
+                done = 1;
+                break;
+                
+            default:
+                break;
+        }
+        
+        yaml_event_delete(&event);
+    }
+    
+    return 0;
+}
+
+// Parse output section
+static int parseOutputSection(yaml_parser_t *parser, SimulationConfig *config) {
+    yaml_event_t event;
+    char key[256], value[256];
+    int done = 0;
+    
+    config->has_output = 1;
+    
+    while (!done) {
+        if (!yaml_parser_parse(parser, &event)) {
+            fprintf(stderr, "Error parsing YAML in output section\n");
+            return -1;
+        }
+        
+        switch (event.type) {
+            case YAML_SCALAR_EVENT:
+                if (!parseScalarValue(&event, key, sizeof(key))) {
+                    yaml_event_delete(&event);
+                    continue;
+                }
+                
+                // Get the value
+                yaml_event_delete(&event);
+                if (!yaml_parser_parse(parser, &event)) {
+                    fprintf(stderr, "Error parsing YAML value for key: %s\n", key);
+                    return -1;
+                }
+                
+                if (event.type == YAML_SCALAR_EVENT) {
+                    parseScalarValue(&event, value, sizeof(value));
+                    
+                    // Process key-value pairs
+                    if (strcmp(key, "style") == 0) {
+                        if (strcmp(value, "snp_matrix") == 0) {
+                            config->output_style = 's';
+                        } else if (strcmp(value, "haplotype") == 0) {
+                            config->output_style = 'h';
+                        }
+                    } else if (strcmp(key, "finite_output") == 0) {
+                        config->finite_output_flag = (strcmp(value, "true") == 0) ? 1 : 0;
+                    } else if (strcmp(key, "hide_partial_snp") == 0) {
+                        config->hide_partial_snp = (strcmp(value, "true") == 0) ? 1 : 0;
+                    }
+                } else if (event.type == YAML_MAPPING_START_EVENT) {
+                    // Handle nested mappings like tskit
+                    if (strcmp(key, "tskit") == 0) {
+                        // Parse tskit sub-section
+                        yaml_event_t ts_event;
+                        char ts_key[256], ts_value[256];
+                        
+                        while (yaml_parser_parse(parser, &ts_event)) {
+                            if (ts_event.type == YAML_MAPPING_END_EVENT) {
+                                yaml_event_delete(&ts_event);
+                                break;
+                            }
+                            
+                            if (ts_event.type == YAML_SCALAR_EVENT) {
+                                parseScalarValue(&ts_event, ts_key, sizeof(ts_key));
+                                yaml_event_delete(&ts_event);
+                                
+                                if (yaml_parser_parse(parser, &ts_event) && ts_event.type == YAML_SCALAR_EVENT) {
+                                    parseScalarValue(&ts_event, ts_value, sizeof(ts_value));
+                                    
+                                    if (strcmp(ts_key, "enabled") == 0) {
+                                        config->tskit_output_mode = (strcmp(ts_value, "true") == 0) ? 1 : 0;
+                                    } else if (strcmp(ts_key, "filename") == 0) {
+                                        strncpy(config->tskit_output_filename, ts_value, sizeof(config->tskit_output_filename) - 1);
+                                        config->tskit_output_filename[sizeof(config->tskit_output_filename) - 1] = '\0';
+                                    } else if (strcmp(ts_key, "minimal") == 0) {
+                                        config->minimal_tree_seq = (strcmp(ts_value, "true") == 0) ? 1 : 0;
+                                    }
+                                }
+                            }
+                            yaml_event_delete(&ts_event);
+                        }
+                    }
+                }
+                break;
+                
+            case YAML_MAPPING_END_EVENT:
+                done = 1;
+                break;
+                
+            default:
+                break;
+        }
+        
+        yaml_event_delete(&event);
+    }
+    
+    return 0;
+}
+
 // Main function to load configuration from YAML file
 int loadConfigFile(const char *filename, SimulationConfig *config) {
     FILE *file = fopen(filename, "r");
@@ -628,12 +1006,33 @@ int loadConfigFile(const char *filename, SimulationConfig *config) {
                                     done = 1;
                                 }
                                 continue;
-                            } else if (strcmp(key, "events") == 0) {
+                            } else if (strcmp(key, "selection") == 0) {
                                 yaml_event_delete(&event);
-                                if (parseEventsSection(&parser, config) != 0) {
+                                if (parseSelectionSection(&parser, config) != 0) {
                                     done = 1;
                                 }
                                 continue;
+                            } else if (strcmp(key, "output") == 0) {
+                                yaml_event_delete(&event);
+                                if (parseOutputSection(&parser, config) != 0) {
+                                    done = 1;
+                                }
+                                continue;
+                            }
+                        } else if (event.type == YAML_SEQUENCE_START_EVENT && strcmp(key, "events") == 0) {
+                            // Handle events as a direct sequence
+                            yaml_event_delete(&event);
+                            if (parseEventsSection(&parser, config) != 0) {
+                                done = 1;
+                            }
+                            continue;
+                        } else if (event.type == YAML_SCALAR_EVENT && strcmp(key, "demes") == 0) {
+                            // Handle demes: filename directly
+                            char value[256];
+                            if (parseScalarValue(&event, value, sizeof(value))) {
+                                strncpy(config->demes_file, value, sizeof(config->demes_file) - 1);
+                                config->demes_file[sizeof(config->demes_file) - 1] = '\0';
+                                config->use_demes = 1;
                             }
                         }
                     }
