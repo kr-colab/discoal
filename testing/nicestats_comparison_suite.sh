@@ -100,8 +100,6 @@ declare -a SCENARIOS=(
     "weak_sweep:$NSAM PLACEHOLDER $NSITES -t 20 -r 40 -ws 0.1 -Pa 5 100 -Pu 0 0.05"
     "strong_sweep:$NSAM PLACEHOLDER $NSITES -t 20 -r 40 -ws 0.01 -Pa 5 500 -Pu 0 0.001"
     "bottleneck:$NSAM PLACEHOLDER $NSITES -t 20 -r 40 -en 0.1 0 0.1 -en 0.2 0 1.0"
-    "growth:$NSAM PLACEHOLDER $NSITES -t 20 -r 40 -G 100"
-    "structure:$NSAM PLACEHOLDER $NSITES -t 20 -r 40 -I 2 10 10 0.5"
 )
 
 # Process each scenario
