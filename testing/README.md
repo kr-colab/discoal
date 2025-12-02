@@ -11,25 +11,37 @@ cd testing/
 # Run comprehensive validation (all documented examples)
 ./comprehensive_validation_suite.sh
 
-# Run quick validation (core functionality)  
+# Run quick validation (core functionality)
 ./focused_validation_suite.sh
-
-# Test trajectory optimization specifically
-./test_trajectory_memory_comparison.sh
 
 # Compare with msprime simulator
 ./msprime_comparison_suite.sh
+
+# Run nicestats comparison (requires niceStats - see below)
+./nicestats_comparison_suite.sh
 ```
+
+## Building niceStats
+
+Several test suites require the `niceStats` utility for computing population genetics summary statistics:
+
+```bash
+# From project root
+make niceStats
+```
+
+This builds `niceStats` from the msUtils library and creates a symlink in the project root.
 
 ## Test Suites
 
-| Script | Purpose | Runtime | Test Cases |
-|--------|---------|---------|------------|
-| `comprehensive_validation_suite.sh` | Complete validation of all documented functionality | 15-30 min | 21 tests |
-| `focused_validation_suite.sh` | Quick regression testing of core features | 3-5 min | 10 tests |
-| `test_trajectory_memory_comparison.sh` | Trajectory optimization validation | 2-3 min | 5 tests |
-| `test_trajectory_lazy_optimization.sh` | Legacy trajectory validation | 5-10 min | 10 tests |
-| `msprime_comparison_suite.sh` | Statistical comparison with msprime simulator | 5-10 min | 5 tests |
+| Script | Purpose | Runtime |
+|--------|---------|---------|
+| `comprehensive_validation_suite.sh` | Complete validation of all documented functionality | 15-30 min |
+| `focused_validation_suite.sh` | Quick regression testing of core features | 3-5 min |
+| `nicestats_comparison_suite.sh` | Statistical comparison of summary statistics | 5-15 min |
+| `msprime_comparison_suite.sh` | Statistical comparison with msprime simulator | 5-10 min |
+| `demes_validation_suite.sh` | Demes format demographic model validation | 5 min |
+| `yaml_validation_suite.sh` | YAML configuration file validation | 2 min |
 
 ## Documentation
 

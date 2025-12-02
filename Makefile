@@ -37,10 +37,11 @@ discoal: demes-c $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $
 	@mkdir -p build
 	$(CC) $(CFLAGS) -DUSE_XOSHIRO256PP -o build/discoal $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/activeSegment.c $(SRC_TSKIT)/tskitInterface.c $(SRC_CORE)/demesInterface.c $(SRC_CORE)/configInterface.c $(POOL_SOURCES) $(TSKIT_SOURCES) -Lextern/demes-c -ldemes -lyaml -lm -fcommon
 
-# Build with legacy L'Ecuyer RNG (for comparison/testing)
-discoal_legacy_rng: $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/discoal.h $(SRC_CORE)/discoalFunctions.h $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegment.h $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/ancestrySegmentAVL.h $(SRC_CORE)/activeSegment.c $(SRC_CORE)/activeSegment.h $(SRC_TSKIT)/tskitInterface.c $(SRC_TSKIT)/tskitInterface.h $(POOL_SOURCES) $(TSKIT_SOURCES)
+# Build with legacy L'Ecuyer RNG (for regression testing against master)
+# This version uses the old RNG so outputs match master exactly for same seeds
+discoal_legacy_rng: demes-c $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/discoal.h $(SRC_CORE)/discoalFunctions.h $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegment.h $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/ancestrySegmentAVL.h $(SRC_CORE)/activeSegment.c $(SRC_CORE)/activeSegment.h $(SRC_TSKIT)/tskitInterface.c $(SRC_TSKIT)/tskitInterface.h $(POOL_SOURCES) $(TSKIT_SOURCES) $(SRC_CORE)/demesInterface.c $(SRC_CORE)/demesInterface.h $(SRC_CORE)/configInterface.c $(SRC_CORE)/configInterface.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) -o build/discoal_legacy_rng $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_RNG)/ranlibComplete.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/activeSegment.c $(SRC_TSKIT)/tskitInterface.c $(POOL_SOURCES) $(TSKIT_SOURCES) -lm -fcommon
+	$(CC) $(CFLAGS) -o build/discoal_legacy_rng $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_RNG)/ranlibComplete.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/activeSegment.c $(SRC_TSKIT)/tskitInterface.c $(SRC_CORE)/demesInterface.c $(SRC_CORE)/configInterface.c $(POOL_SOURCES) $(TSKIT_SOURCES) -Lextern/demes-c -ldemes -lyaml -lm -fcommon
 
 # Build edited version for testing (same as main but explicit name)
 discoal_edited: demes-c $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/discoal.h $(SRC_CORE)/discoalFunctions.h $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegment.h $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/ancestrySegmentAVL.h $(SRC_CORE)/activeSegment.c $(SRC_CORE)/activeSegment.h $(SRC_TSKIT)/tskitInterface.c $(SRC_TSKIT)/tskitInterface.h $(SRC_RNG)/xoshiro256pp_compat.c $(POOL_SOURCES) $(TSKIT_SOURCES) $(SRC_CORE)/demesInterface.c $(SRC_CORE)/demesInterface.h $(SRC_CORE)/configInterface.c $(SRC_CORE)/configInterface.h
@@ -287,6 +288,7 @@ run_tests: test_node test_event test_node_operations test_mutations test_ancestr
 niceStats: extern/msUtils/niceStats.c extern/msUtils/msGeneralStats.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -o build/niceStats extern/msUtils/niceStats.c extern/msUtils/msGeneralStats.c -lm
+	@ln -sf build/niceStats niceStats
 
 # Build ms from reference_code for growth comparison testing
 extern/ms: reference_code/msdir/ms.c reference_code/msdir/streec.c reference_code/msdir/rand1.c
