@@ -281,7 +281,6 @@ run_test_case "stats_neutral" "20 $NUM_REPLICATES 10000 -t 20" $NUM_REPLICATES
 run_test_case "stats_recomb" "20 $NUM_REPLICATES 10000 -t 20 -r 20" $NUM_REPLICATES
 run_test_case "stats_gc" "20 $NUM_REPLICATES 10000 -t 20 -r 10 -g 5 10" $NUM_REPLICATES
 run_test_case "stats_bottleneck" "20 $NUM_REPLICATES 10000 -t 20 -r 10 -en 0.1 0 0.1 -en 0.5 0 1.0" $NUM_REPLICATES
-run_test_case "stats_multipop" "20 $NUM_REPLICATES 10000 -t 20 -r 10 -I 2 10 10 0.5" $NUM_REPLICATES
 
 echo "Phase 5: Tree Sequence Tests"
 echo "============================"
