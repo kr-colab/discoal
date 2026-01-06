@@ -51,7 +51,7 @@ void initializeDefaultConfig(SimulationConfig *config) {
     config->output_style = 'h';
     config->finite_output_flag = 0;
     config->hide_partial_snp = 0;
-    config->tskit_output_mode = 0;
+    config->tskit_output = 0;
     config->tskit_output_filename[0] = '\0';
     config->minimal_tree_seq = 1;
     config->has_output = 0;
@@ -891,6 +891,8 @@ static int parseOutputSection(yaml_parser_t *parser, SimulationConfig *config) {
                         // Parse tskit sub-section
                         yaml_event_t ts_event;
                         char ts_key[256], ts_value[256];
+
+                        config->tskit_output = 1;
                         
                         while (yaml_parser_parse(parser, &ts_event)) {
                             if (ts_event.type == YAML_MAPPING_END_EVENT) {
@@ -905,9 +907,7 @@ static int parseOutputSection(yaml_parser_t *parser, SimulationConfig *config) {
                                 if (yaml_parser_parse(parser, &ts_event) && ts_event.type == YAML_SCALAR_EVENT) {
                                     parseScalarValue(&ts_event, ts_value, sizeof(ts_value));
                                     
-                                    if (strcmp(ts_key, "enabled") == 0) {
-                                        config->tskit_output_mode = (strcmp(ts_value, "true") == 0) ? 1 : 0;
-                                    } else if (strcmp(ts_key, "filename") == 0) {
+                                    if (strcmp(ts_key, "filename") == 0) {
                                         strncpy(config->tskit_output_filename, ts_value, sizeof(config->tskit_output_filename) - 1);
                                         config->tskit_output_filename[sizeof(config->tskit_output_filename) - 1] = '\0';
                                     } else if (strcmp(ts_key, "minimal") == 0) {
@@ -1170,6 +1170,19 @@ int applyConfiguration(const SimulationConfig *config) {
         fprintf(stderr, "Loaded %d populations and %d events from demes file '%s' (via YAML config)\n", 
                 npops, eventNumber - 1, config->demes_file);
     }
+
+    // Handle tree sequence output
+    if (config->tskit_output && strlen(config->tskit_output_filename) > 0) {
+        tskitOutputMode = 1;
+        strncpy(tskitOutputFilename, config->tskit_output_filename, sizeof(tskitOutputFilename) - 1);
+        tskitOutputFilename[sizeof(tskitOutputFilename) - 1] = '\0';
+        // FIXME: is buffer size large enough for arbitrary paths? 
+        // Should these be initialized with size PATH_MAX? (use ifndef to define if not from system)
+        minimalTreeSeq = config->minimal_tree_seq;
+        fprintf(stderr, "Writing tree sequence to file '%s' (via YAML config)\n", tskitOutputFilename);
+    }
+    // FIXME: other output options from YAML are currently ignored
+
     
     return 0;
 }

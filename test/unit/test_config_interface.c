@@ -64,7 +64,7 @@ void test_initialize_default_config(void) {
     
     TEST_ASSERT_EQUAL('h', config.output_style);
     TEST_ASSERT_EQUAL(0, config.finite_output_flag);
-    TEST_ASSERT_EQUAL(0, config.tskit_output_mode);
+    TEST_ASSERT_EQUAL(0, config.tskit_output);
     TEST_ASSERT_EQUAL(1, config.minimal_tree_seq);
     TEST_ASSERT_EQUAL(0, config.has_output);
     
@@ -301,7 +301,7 @@ void test_load_tskit_output(void) {
     int result = loadConfigFile(tempFilename, &config);
     
     TEST_ASSERT_EQUAL(0, result);
-    TEST_ASSERT_EQUAL(1, config.tskit_output_mode);
+    TEST_ASSERT_EQUAL(1, config.tskit_output);
     TEST_ASSERT_EQUAL_STRING("test_output.trees", config.tskit_output_filename);
     TEST_ASSERT_EQUAL(0, config.minimal_tree_seq);
     TEST_ASSERT_EQUAL(1, config.has_output);
@@ -514,7 +514,7 @@ void test_load_complete_configuration(void) {
     TEST_ASSERT_EQUAL(1, config.has_selection);
     
     TEST_ASSERT_EQUAL('h', config.output_style);
-    TEST_ASSERT_EQUAL(1, config.tskit_output_mode);
+    TEST_ASSERT_EQUAL(1, config.tskit_output);
     TEST_ASSERT_EQUAL_STRING("output.trees", config.tskit_output_filename);
     TEST_ASSERT_EQUAL(1, config.minimal_tree_seq);
     TEST_ASSERT_EQUAL(1, config.has_output);
