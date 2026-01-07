@@ -46,7 +46,7 @@ typedef struct {
     char output_style;      // 'h' for haplotype, etc.
     int finite_output_flag;
     int hide_partial_snp;
-    int tskit_output_mode;
+    int tskit_output;
     char tskit_output_filename[256];
     int minimal_tree_seq;
     int has_output;         // flag to track if output settings were set
