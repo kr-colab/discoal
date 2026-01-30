@@ -1,0 +1,24 @@
+# reduced Makefile for building discoal
+CC = gcc
+AR = ar
+
+CPPFLAGS = \
+	-DYAML_VERSION_MAJOR=0 \
+	-DYAML_VERSION_MINOR=2 \
+	-DYAML_VERSION_PATCH=5 \
+	-DYAML_VERSION_STRING=0
+
+CFLAGS = -std=c11 -Wall -O2 -g -fPIC -I. 
+
+OBJ = api.o reader.o scanner.o parser.o loader.o writer.o emitter.o dumper.o
+
+all: libyaml.a
+
+libyaml.a: $(OBJ)
+	$(AR) -rcs $@ $^
+
+$(OBJ): %.o : %.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+
+clean:
+	rm -f libyaml.a *.o

@@ -1,0 +1,27 @@
+# reduced Makefile for building discoal
+CC = gcc 
+AR = ar
+
+CPPFLAGS = \
+	-DVERSION_MAJOR=2 -DVERSION_MINOR=0 -DVERSION_PATCH=0 -DVERSION_DEVEL=1 \
+	-MMD -MP
+
+CFLAGS = -I. -I../libyaml \
+		-std=c11 -Wall -Wextra -pedantic \
+		-Wconversion -Wwrite-strings -Wcast-align -Wpointer-arith \
+		-Winit-self -Wshadow -Wstrict-prototypes -Wmissing-prototypes \
+		-Wredundant-decls -Wundef -Wvla -Wdeclaration-after-statement \
+		-O2 -DNDEBUG
+
+OBJ = mem.o free.o load.o save.o copy.o util.o utf8.o
+
+all: libcyaml.a
+
+libcyaml.a: $(OBJ)
+	$(AR) -rcs $@ $^
+
+$(OBJ): %.o : %.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+
+clean:
+	rm -f libcyaml.a *.o
