@@ -11,6 +11,7 @@ discoal_xoshiro_profile
 discoal_xoshiro_with_fast_coth
 
 # Build artifacts
+*.a
 *.o
 *.dSYM/
 /build/
