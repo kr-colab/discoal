@@ -421,6 +421,8 @@ int parse_selection_block(struct selection_config *cfg)
     extern double partialSweepFinalFreq, recurSweepRate;
     extern int recurSweepMode, partialSweepMode, softSweepMode;
     extern char sweepMode;
+    extern int eventNumber, eventsCapacity;
+    extern struct event *events;
     if (cfg != NULL) {
         switch (cfg->sweep_mode) {
             case SWEEP_STOCHASTIC:
@@ -434,8 +436,7 @@ int parse_selection_block(struct selection_config *cfg)
                 break;
             default:
                 break;
-        }
-        /* FIXME: need recurrent sweep modes above */
+        } /* FIXME: need to add recurrent sweep modes */
         if (cfg->selection_coefficient > 0) {
             alpha = cfg->selection_coefficient;
         }
@@ -464,6 +465,13 @@ int parse_selection_block(struct selection_config *cfg)
             recurSweepMode = 1; /* FIXME: should this be set elsewhere? */
         }
         /* FIXME: is error checking needed for conflicting options? */
+
+        /* explictly add selection event */
+        ensureEventsCapacity();
+        events[eventNumber].time = tau;
+        events[eventNumber].type = 's';
+        eventNumber++;
+        // FIXME: perhaps better to do this in main
     }
     return EXIT_SUCCESS;
 }
