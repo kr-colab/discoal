@@ -317,6 +317,7 @@ int parse_demography_block(struct demography_config *cfg)
 {
     extern int sampleSizes[MAXPOPS];
     extern int npops;
+    extern int migFlag;
     extern int EFFECTIVE_POPN_SIZE;
     extern int eventNumber, eventsCapacity;
     extern struct event *events;
@@ -364,6 +365,7 @@ int parse_demography_block(struct demography_config *cfg)
                 events[eventNumber].popID2 = dmo->migration_rate_changes[i].destination;
                 events[eventNumber].popnSize = dmo->migration_rate_changes[i].rate;
                 eventNumber++;
+                migFlag = 1;  /* set migration mode FIXME: is this correct? */
             }
             for (int i = 0; i < dmo->num_population_splits; ++i) {
                 ensureEventsCapacity();
@@ -398,6 +400,7 @@ int parse_demography_block(struct demography_config *cfg)
                     migMatConst[i][j] = row->rates[j];
                 }
             }
+            migFlag = 1;  /* set migration mode */
         }
         /* parse demes YAML into events */
         if (cfg->demes_filename != NULL) {

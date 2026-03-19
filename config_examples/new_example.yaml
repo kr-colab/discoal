@@ -3,53 +3,53 @@
 
 simulation:
   sample_size: 20
-  num_replicates: 100
+  num_replicates: 10
   num_sites: 10000
-  seed: [12345, 10101]
+  seed: [12345, 10102]
 
 genetics:
-  mutation_rate: 10.0 
-  recombination_rate: 8.0 
-  gene_conversion_rate: 2.0
+  mutation_rate: 1.0e-1
+  recombination_rate: 1.0e-1
+  gene_conversion_rate: 1.0e-1
   gene_conversion_tract_length: 100
   #crossover_ratio: 0.5  # CHECK: conflicts with gene_conversion_rate 
 
 demography:
-  deme_sample_size: [10, 15, 20]
-  effective_population_size: 1000
-  migration_matrix:
-    - row: [1.0, 2.0, 3.0]
-    - row: [2.0, 3.0, 4.0]
-    - row: [3.0, 4.0, 5.0]
+  deme_sample_size: [10, 5, 5]
+  effective_population_size: 1.0
+  #migration_matrix:
+  #  - row: [0.0, 1.0e-1, 1.0e-1]
+  #  - row: [1.0e-1, 0.0, 1.0e-1]
+  #  - row: [1.0e-1, 1.0e-1, 0.0]
   demographic_events:
-    population_size_changes:
-      - time: 1000
-        size: 30
-        population: 0
-      - time: 1500
-        size: 100
-        population: 1
-    migration_rate_changes:
-      - time: 1000
-        rate: 1.0e-6
-        source: 0
-        destination: 1
-      - time: 2500
-        rate: 1.0e-6
-        source: 0
-        destination: 2
+    #population_size_changes:
+    #  - time: 1000
+    #    size: 2000
+    #    population: 0
+    #  - time: 1500
+    #    size: 100
+    #    population: 1
+    #migration_rate_changes:
+    #  - time: 1000
+    #    rate: 1.0e-6
+    #    source: 0
+    #    destination: 1
+    #  - time: 2500
+    #    rate: 1.0e-6
+    #    source: 0
+    #    destination: 2
     population_splits:
-      - time: 2000
+      - time: 2.0
         ancestral: 0
         derived: 1
-      - time: 3000
+      - time: 3.0
         ancestral: 0
         derived: 2
 #  demes_filename: "/path/to/demes"  # CHECK: conflicts with explicit events/migration matrix
 
-output:
-  output_type: "tree_sequence"
-  finite_output: true
-  hide_partial_snp: true
-  unsimplified_tree_sequence: false
-  tree_sequence_filename: "new_example.trees"
+#output:
+#  output_type: "tree_sequence"
+#  finite_output: true
+#  hide_partial_snp: true
+#  unsimplified_tree_sequence: false
+#  tree_sequence_filename: "new_example.trees"
