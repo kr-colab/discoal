@@ -9,6 +9,7 @@ CPPFLAGS = \
 	-DYAML_VERSION_STRING=0
 
 CFLAGS = -std=c11 -Wall -O2 -g -fPIC -I. -D_POSIX_C_SOURCE=200809L
+# NB: setting POSIX_C_SOURCE is necessary or libyaml will segfault
 
 OBJ = api.o reader.o scanner.o parser.o loader.o writer.o emitter.o dumper.o
 
