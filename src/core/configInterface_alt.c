@@ -1,6 +1,8 @@
 #include "configInterface_alt.h"
 #include <assert.h>
+#include <string.h>
 
+void ensureEventsCapacity();
 
 /* for string-valued options, use enums so that CYAML can automatically check
  * for invalid values */
@@ -152,7 +154,7 @@ static const cyaml_schema_field_t demography_fields_schema[] = {
     /* required arguments */
     CYAML_FIELD_SEQUENCE_COUNT("deme_sample_size", CYAML_FLAG_POINTER,
         struct demography_config, deme_sample_size, num_demes, &int_array_schema, 
-        1, MAX_POPS),
+        1, MAXPOPS),
     /* optional arguments */
     CYAML_FIELD_FLOAT("effective_population_size", CYAML_FLAG_OPTIONAL, 
         struct demography_config, effective_population_size),
@@ -160,7 +162,7 @@ static const cyaml_schema_field_t demography_fields_schema[] = {
         struct demography_config, demographic_events, demographic_events_fields_schema),
     CYAML_FIELD_SEQUENCE_COUNT("migration_matrix", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
         struct demography_config, migration_matrix, num_migration_matrix_rows,
-        &migration_matrix_row_schema, 1, MAX_POPS),
+        &migration_matrix_row_schema, 1, MAXPOPS),
     CYAML_FIELD_STRING_PTR("demes_filename", CYAML_FLAG_OPTIONAL,
         struct demography_config, demes_filename, 0, PATH_MAX),
     CYAML_FIELD_END
@@ -280,7 +282,7 @@ int parse_genetics_block(struct genetics_config *cfg)
 {
     extern double theta, rho;
     extern double gammaCoRatio, my_gamma, gammaCoRatioMode;
-    extern int gc_mean;
+    extern int gcMean;
     if (cfg != NULL) {
         if (cfg->mutation_rate > 0) {
             theta = cfg->mutation_rate;
@@ -305,7 +307,7 @@ int parse_genetics_block(struct genetics_config *cfg)
         }
         if (cfg->gene_conversion_tract_length > 0) {
             // FIXME: check that is positive, if one of the gc rates is set?
-            gc_mean = cfg->gene_conversion_tract_length;
+            gcMean = cfg->gene_conversion_tract_length;
         }
     }
     return EXIT_SUCCESS;
@@ -349,26 +351,26 @@ int parse_demography_block(struct demography_config *cfg)
             for (int i = 0; i < dmo->num_population_size_changes; ++i) {
                 ensureEventsCapacity();
                 events[eventNumber].type = 'g';
-                events[eventNumber].time = demo->population_size_changes[i].time;
-                events[eventNumber].popID = demo->population_size_changes[i].population;
-                events[eventNumber].popnSize = demo->population_size_changes[i].size;
+                events[eventNumber].time = dmo->population_size_changes[i].time;
+                events[eventNumber].popID = dmo->population_size_changes[i].population;
+                events[eventNumber].popnSize = dmo->population_size_changes[i].size;
                 eventNumber++;
             }
             for (int i = 0; i < dmo->num_migration_rate_changes; ++i) {
                 ensureEventsCapacity();
                 events[eventNumber].type = 'm';
-                events[eventNumber].time = demo->migration_rate_changes[i].time;
-                events[eventNumber].popID = demo->migration_rate_changes[i].source;
-                events[eventNumber].popID2 = demo->migration_rate_changes[i].destination;
-                events[eventNumber].popnSize = demo->migration_rate_changes[i].rate;
+                events[eventNumber].time = dmo->migration_rate_changes[i].time;
+                events[eventNumber].popID = dmo->migration_rate_changes[i].source;
+                events[eventNumber].popID2 = dmo->migration_rate_changes[i].destination;
+                events[eventNumber].popnSize = dmo->migration_rate_changes[i].rate;
                 eventNumber++;
             }
             for (int i = 0; i < dmo->num_population_splits; ++i) {
                 ensureEventsCapacity();
                 events[eventNumber].type = 'p';
-                events[eventNumber].time = demo->population_splits[i].time;
-                events[eventNumber].popID = demo->population_splits[i].derived;
-                events[eventNumber].popID2 = demo->population_splits[i].ancestral;
+                events[eventNumber].time = dmo->population_splits[i].time;
+                events[eventNumber].popID = dmo->population_splits[i].derived;
+                events[eventNumber].popID2 = dmo->population_splits[i].ancestral;
                 eventNumber++;
             }
         }
@@ -385,7 +387,7 @@ int parse_demography_block(struct demography_config *cfg)
                 return EXIT_FAILURE;
             }
             for (int i = 0; i < cfg->num_migration_matrix_rows; ++i) {
-                struct migration_matrix_row *row = cfg->migration_matrix[i];
+                struct migration_matrix_row *row = &cfg->migration_matrix[i];
                 if (row->num_cols != cfg->num_demes) {
                     fprintf(stderr, "Number of elements in migration matrix row "
                         "does not match number of demes\n");
@@ -393,13 +395,13 @@ int parse_demography_block(struct demography_config *cfg)
                 }
                 for (int j = 0; j < row->num_cols; ++j) {
                     /* FIXME: assert rate > 0? */
-                    migMatConst[i][j] = row->rate[j];
+                    migMatConst[i][j] = row->rates[j];
                 }
             }
         }
         /* parse demes YAML into events */
         if (cfg->demes_filename != NULL) {
-            int ret = loadDemesFile(config->demes_file, &events, &eventNumber, 
+            int ret = loadDemesFile(cfg->demes_filename, &events, &eventNumber, 
                 &eventsCapacity, currentSize, &npops, sampleSizes, EFFECTIVE_POPN_SIZE);
             if (ret != 0) {
                 fprintf(stderr, "Error: Failed to load demes file '%s' from YAML config\n", 
@@ -409,7 +411,7 @@ int parse_demography_block(struct demography_config *cfg)
             fprintf(stderr, 
                 "Loaded %d populations and %d events from demes file '%s' "
                 "(via YAML config)\n", npops, eventNumber - 1, 
-                config->demes_filename);
+                cfg->demes_filename);
         }
     }
     return EXIT_SUCCESS;
@@ -426,13 +428,13 @@ int parse_selection_block(struct selection_config *cfg)
     if (cfg != NULL) {
         switch (cfg->sweep_mode) {
             case SWEEP_STOCHASTIC:
-                sweepMode = "s";
+                sweepMode = 's';
                 break;
             case SWEEP_DETERMINISTIC:
-                sweepMode = "d";
+                sweepMode = 'd';
                 break;
             case SWEEP_NEUTRAL:
-                sweepMode = "N";
+                sweepMode = 'N';
                 break;
             default:
                 break;
