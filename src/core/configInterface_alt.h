@@ -146,7 +146,7 @@ int parse_demography_block(struct demography_config*);
 int parse_selection_block(struct selection_config*);
 int parse_output_block(struct output_config*);
 int apply_yaml_config(struct discoal_config*);
-int load_yaml_config(const char*, struct discoal_config*);
+int load_yaml_config(const char*, struct discoal_config**);
 
 #endif // CONFIGINTERFACE_ALT_H
 

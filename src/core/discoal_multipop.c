@@ -719,7 +719,7 @@ void getParameters(int argc,const char **argv){
 			const char *configFile = argv[i + 1];
 			
 			// Load configuration from YAML file
-			struct discoal_config config;
+			struct discoal_config *config = NULL;
       int ret = load_yaml_config(configFile, &config);
 			if (ret != EXIT_SUCCESS) {
 				fprintf(stderr, "Error: Failed to load YAML configuration file '%s'\n", configFile);
@@ -727,7 +727,7 @@ void getParameters(int argc,const char **argv){
 			}
 			
 			// Apply configuration immediately
-			ret = apply_yaml_config(&config);
+			ret = apply_yaml_config(config);
 			if (ret != EXIT_SUCCESS) {
 				fprintf(stderr, "Error: Failed to apply configuration from '%s'\n", configFile);
 				exit(1);

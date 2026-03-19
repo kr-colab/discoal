@@ -547,12 +547,12 @@ out:
     return ret;
 }
 
-int load_yaml_config(const char *yaml_path, struct discoal_config *config)
+int load_yaml_config(const char *yaml_path, struct discoal_config **config)
 {
     int err;
-    assert(config == NULL);
+    assert(*config == NULL);
     err = cyaml_load_file(yaml_path, &cyaml_config,
-        &discoal_config_schema, (void **) &config, NULL);
+        &discoal_config_schema, (void **) config, NULL);
     if (err != CYAML_OK) {
         fprintf(stderr, "ERROR: %s\n", cyaml_strerror(err));
         cyaml_free(&cyaml_config, &discoal_config_schema, config, 0);
