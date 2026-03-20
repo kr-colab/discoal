@@ -104,6 +104,8 @@ int main(int argc, const char * argv[]){
 	double probAccept;
 	
 	getParameters(argc,argv);
+  fprintf(stderr, "DEBUG\t%d\t%f\t%f\t%f\t%ld\t%ld\t%d\n", migFlag, tDiv, theta, rho, seed1, seed2, EFFECTIVE_POPN_SIZE);
+  fprintf(stderr, "DEBUG\t%d\n", numSites);
 	double N = EFFECTIVE_POPN_SIZE; // effective population size
 	// fprintf(stderr, "DEBUG: About to call setall() with seeds: %ld, %ld\n", seed1, seed2);
 	setall(seed1, seed2 );

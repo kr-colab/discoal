@@ -323,6 +323,7 @@ int parse_demography_block(struct demography_config *cfg)
     extern struct event *events;
     extern double migMatConst[MAXPOPS][MAXPOPS];
     extern double *currentSize;
+    extern double tDiv;
     if (cfg != NULL) {
         npops = cfg->num_demes;
         assert(cfg->num_demes > 0);
@@ -374,6 +375,7 @@ int parse_demography_block(struct demography_config *cfg)
                 events[eventNumber].popID = dmo->population_splits[i].derived;
                 events[eventNumber].popID2 = dmo->population_splits[i].ancestral;
                 eventNumber++;
+                tDiv = 1; /* set to non-default to set population merger mode FIXME: is this correct */
             }
         }
         /* parse migration matrix */
