@@ -105,7 +105,7 @@ int main(int argc, const char * argv[]){
 	
 	getParameters(argc,argv);
   fprintf(stderr, "DEBUG\t%d\t%f\t%f\t%f\t%ld\t%ld\t%d\n", migFlag, tDiv, theta, rho, seed1, seed2, EFFECTIVE_POPN_SIZE);
-  fprintf(stderr, "DEBUG\t%d\n", numSites);
+  fprintf(stderr, "DEBUG\t%d\n", nSites);
 	double N = EFFECTIVE_POPN_SIZE; // effective population size
 	// fprintf(stderr, "DEBUG: About to call setall() with seeds: %ld, %ld\n", seed1, seed2);
 	setall(seed1, seed2 );
@@ -773,12 +773,10 @@ void getParameters(int argc,const char **argv){
 	} else {
 		// YAML config provided basic parameters, start parsing from argument 1
 		args = 1;
-		// Sample sizes should already be set by YAML config
+		// sampleSizes[] is already set per-population by parse_demography_block;
+		// popnSizes[] gets initialized from sampleSizes[] inside initialize().
+		// Do NOT overwrite them here.
 		if (sampleSize > 0) {
-			popnSizes[0]=sampleSize;
-			popnSizes[1]=0;
-			sampleSizes[0]=sampleSize;
-			sampleSizes[1]=0;
 			effectiveSampleSize = sampleSize;
 		}
 	}
