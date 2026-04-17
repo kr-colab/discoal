@@ -313,8 +313,9 @@ int parse_genetics_block(struct genetics_config *cfg)
     return EXIT_SUCCESS;
 }
 
-int parse_demography_block(struct demography_config *cfg) 
+int parse_demography_block(struct demography_config *cfg)
 {
+    extern int sampleSize;
     extern int sampleSizes[MAXPOPS];
     extern int npops;
     extern int migFlag;
@@ -327,10 +328,20 @@ int parse_demography_block(struct demography_config *cfg)
     if (cfg != NULL) {
         npops = cfg->num_demes;
         assert(cfg->num_demes > 0);
+        int deme_sum = 0;
         for (int i = 0; i < cfg->num_demes; ++i) {
             sampleSizes[i] = cfg->deme_sample_size[i];
             currentSize[i] = 1.0;
-            // FIXME: do we need to check that these sum to sampleSize or is that done elsewhere?
+            deme_sum += cfg->deme_sample_size[i];
+        }
+        /* initialize() creates sum(sampleSizes) sample nodes but sets
+         * alleleNumber to sampleSize; a mismatch leaves popLists[] and
+         * nodes[] out of sync and later corrupts coalescence. */
+        if (deme_sum != sampleSize) {
+            fprintf(stderr,
+                "Error parsing config: sum of deme_sample_size (%d) does "
+                "not match sample_size (%d)\n", deme_sum, sampleSize);
+            return EXIT_FAILURE;
         }
         if (cfg->effective_population_size > 0) {
             EFFECTIVE_POPN_SIZE = (int)(cfg->effective_population_size);
