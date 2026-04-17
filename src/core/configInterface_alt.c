@@ -473,16 +473,33 @@ int parse_selection_block(struct selection_config *cfg)
         }
         if (cfg->recurrent_sweep_rate > 0) {
             recurSweepRate = cfg->recurrent_sweep_rate;
-            recurSweepMode = 1; /* FIXME: should this be set elsewhere? */
+            recurSweepMode = 1;
         }
-        /* FIXME: is error checking needed for conflicting options? */
 
-        /* explictly add selection event */
-        ensureEventsCapacity();
-        events[eventNumber].time = tau;
-        events[eventNumber].type = 's';
-        eventNumber++;
-        // FIXME: perhaps better to do this in main
+        if (cfg->fixation_time_ago > 0 && cfg->recurrent_sweep_rate > 0) {
+            fprintf(stderr,
+                "Error parsing config: fixation_time_ago and "
+                "recurrent_sweep_rate cannot both be set\n");
+            return EXIT_FAILURE;
+        }
+
+        /* Single sweep (matching `-ws`/`-wd`/`-wn`) requires fixation_time_ago
+         * and emits an `'s'` event at tau. Recurrent sweeps (matching `-R`)
+         * are driven by recurSweepMode + recurSweepRate alone and do not
+         * produce an event. */
+        if (cfg->recurrent_sweep_rate <= 0) {
+            if (cfg->fixation_time_ago <= 0) {
+                fprintf(stderr,
+                    "Error parsing config: selection block requires "
+                    "fixation_time_ago > 0 unless recurrent_sweep_rate "
+                    "is set\n");
+                return EXIT_FAILURE;
+            }
+            ensureEventsCapacity();
+            events[eventNumber].time = tau;
+            events[eventNumber].type = 's';
+            eventNumber++;
+        }
     }
     return EXIT_SUCCESS;
 }
