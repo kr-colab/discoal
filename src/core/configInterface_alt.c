@@ -350,32 +350,35 @@ int parse_demography_block(struct demography_config *cfg)
                 return EXIT_FAILURE;
             }
             /* FIXME: do we need to check population indices < npops, times are positive etc */
+            /* Time-varying migration rate changes are not implemented in the
+             * main event loop yet (see discoalFunctions.c); reject rather than
+             * silently dropping them. */
+            if (dmo->num_migration_rate_changes > 0) {
+                fprintf(stderr,
+                    "Error parsing config: migration_rate_changes are not yet "
+                    "implemented (no handler in the main event loop)\n");
+                return EXIT_FAILURE;
+            }
+            /* Times in YAML follow the same convention as the command line:
+             * the user supplies them in 2N units and the parser scales by 2 to
+             * convert to discoal's internal 4N units. Keep this in sync with
+             * `-en`, `-ed`, and `-ws` time scaling in getParameters(). */
             for (int i = 0; i < dmo->num_population_size_changes; ++i) {
                 ensureEventsCapacity();
-                events[eventNumber].type = 'g';
-                events[eventNumber].time = dmo->population_size_changes[i].time;
+                events[eventNumber].type = 'n';
+                events[eventNumber].time = dmo->population_size_changes[i].time * 2.0;
                 events[eventNumber].popID = dmo->population_size_changes[i].population;
                 events[eventNumber].popnSize = dmo->population_size_changes[i].size;
                 eventNumber++;
             }
-            for (int i = 0; i < dmo->num_migration_rate_changes; ++i) {
-                ensureEventsCapacity();
-                events[eventNumber].type = 'm';
-                events[eventNumber].time = dmo->migration_rate_changes[i].time;
-                events[eventNumber].popID = dmo->migration_rate_changes[i].source;
-                events[eventNumber].popID2 = dmo->migration_rate_changes[i].destination;
-                events[eventNumber].popnSize = dmo->migration_rate_changes[i].rate;
-                eventNumber++;
-                migFlag = 1;  /* set migration mode FIXME: is this correct? */
-            }
             for (int i = 0; i < dmo->num_population_splits; ++i) {
                 ensureEventsCapacity();
                 events[eventNumber].type = 'p';
-                events[eventNumber].time = dmo->population_splits[i].time;
+                events[eventNumber].time = dmo->population_splits[i].time * 2.0;
                 events[eventNumber].popID = dmo->population_splits[i].derived;
                 events[eventNumber].popID2 = dmo->population_splits[i].ancestral;
                 eventNumber++;
-                tDiv = 1; /* set to non-default to set population merger mode FIXME: is this correct */
+                tDiv = dmo->population_splits[i].time;  /* mark merger model active */
             }
         }
         /* parse migration matrix */
@@ -451,8 +454,9 @@ int parse_selection_block(struct selection_config *cfg)
             /* FIXME: check 0 <= x <= 1 here? */
             sweepSite = cfg->sweep_position;
         }
-        if (cfg->fixation_time_ago > 0) { 
-            tau = cfg->fixation_time_ago;
+        if (cfg->fixation_time_ago > 0) {
+            /* User supplies tau in 2N units (matching `-ws`); scale to 4N. */
+            tau = cfg->fixation_time_ago * 2.0;
         }
         if (cfg->initial_frequency > 0) {
             /* FIXME: check 0 <= f <= 1 here? */
