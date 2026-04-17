@@ -710,47 +710,59 @@ void getParameters(int argc,const char **argv){
 	eventNumber++;
 	currentSize = malloc(sizeof(double) * MAXPOPS);
 
-	// Check for YAML config first (special handling)
+	// Locate -Y first so we can validate "-Y xor positional args" before
+	// doing any work. The positional form "sampleSize numReplicates nSites"
+	// and -Y are mutually exclusive: loading YAML and then running the
+	// positional parser would feed "-Y" or another flag into atoi() (when -Y
+	// comes before the positional slots) or overwrite the per-pop state YAML
+	// just installed (when positional slots come first).
+	int yaml_arg_idx = -1;
 	for (i = 1; i < argc; i++) {
 		if (argv[i][0] == '-' && argv[i][1] == 'Y') {
-			if (i + 1 >= argc || argv[i + 1] == NULL || argv[i + 1][0] == '-' || strlen(argv[i + 1]) == 0) {
-				fprintf(stderr, "Error: -Y flag requires a YAML configuration filename argument\n");
-				fprintf(stderr, "Usage: %s [options] -Y <config_file.yaml>\n", argv[0]);
-				exit(1);
-			}
-			const char *configFile = argv[i + 1];
-			
-			// Load configuration from YAML file
-			struct discoal_config *config = NULL;
-      int ret = load_yaml_config(configFile, &config);
-			if (ret != EXIT_SUCCESS) {
-				fprintf(stderr, "Error: Failed to load YAML configuration file '%s'\n", configFile);
-				exit(1);
-			}
-			
-			// Apply configuration immediately
-			ret = apply_yaml_config(config);
-			if (ret != EXIT_SUCCESS) {
-				fprintf(stderr, "Error: Failed to apply configuration from '%s'\n", configFile);
-				exit(1);
-			}
-			
-			// fprintf(stderr, "DEBUG: Seeds after YAML config applied: %ld, %ld\n", seed1, seed2);
-			fprintf(stderr, "Loaded configuration from YAML file '%s'\n", configFile);
-			yaml_config_loaded = 1;
+			yaml_arg_idx = i;
 			break;
 		}
 	}
-	
+	if (yaml_arg_idx != -1 && argc >= 2 && argv[1][0] != '-') {
+		fprintf(stderr,
+			"Error: positional arguments (sampleSize numReplicates nSites) "
+			"cannot be combined with -Y. Use either '-Y <config.yaml>' "
+			"(optionally with flag overrides) or the traditional positional "
+			"form without -Y.\n");
+		exit(1);
+	}
 
-	// If YAML config loaded basic parameters, we can skip the argc check
-	// Otherwise, require traditional 3 arguments
-	if (!yaml_config_loaded && argc < 4){
+	if (yaml_arg_idx != -1) {
+		i = yaml_arg_idx;
+		if (i + 1 >= argc || argv[i + 1] == NULL || argv[i + 1][0] == '-' || strlen(argv[i + 1]) == 0) {
+			fprintf(stderr, "Error: -Y flag requires a YAML configuration filename argument\n");
+			fprintf(stderr, "Usage: %s [options] -Y <config_file.yaml>\n", argv[0]);
+			exit(1);
+		}
+		const char *configFile = argv[i + 1];
+
+		struct discoal_config *config = NULL;
+		int ret = load_yaml_config(configFile, &config);
+		if (ret != EXIT_SUCCESS) {
+			fprintf(stderr, "Error: Failed to load YAML configuration file '%s'\n", configFile);
+			exit(1);
+		}
+
+		ret = apply_yaml_config(config);
+		if (ret != EXIT_SUCCESS) {
+			fprintf(stderr, "Error: Failed to apply configuration from '%s'\n", configFile);
+			exit(1);
+		}
+
+		fprintf(stderr, "Loaded configuration from YAML file '%s'\n", configFile);
+		yaml_config_loaded = 1;
+	}
+
+	if (!yaml_config_loaded && argc < 4) {
 		usage();
 	}
 
-	// Set basic parameters from command line (or defaults if YAML config loaded them)
-	if (!yaml_config_loaded || argc >= 4) {
+	if (!yaml_config_loaded) {
 		sampleSize = atoi(argv[1]);
 		if(sampleSize > 65535){
 			printf("Error: sampleSize > 65535. This exceeds the maximum supported by uint16_t ancestry counts.\n");
@@ -763,19 +775,16 @@ void getParameters(int argc,const char **argv){
 			exit(666);
 		}
 		args = 4;
-		
-		// Set sample sizes and population info
+
 		popnSizes[0]=sampleSize;
 		popnSizes[1]=0;
 		sampleSizes[0]=sampleSize;
 		sampleSizes[1]=0;
 		effectiveSampleSize = sampleSize;
 	} else {
-		// YAML config provided basic parameters, start parsing from argument 1
+		// sampleSize/sampleSizes[]/popnSizes[] already set via apply_yaml_config;
+		// skip positional parsing and start the flag loop at argv[1].
 		args = 1;
-		// sampleSizes[] is already set per-population by parse_demography_block;
-		// popnSizes[] gets initialized from sampleSizes[] inside initialize().
-		// Do NOT overwrite them here.
 		if (sampleSize > 0) {
 			effectiveSampleSize = sampleSize;
 		}
