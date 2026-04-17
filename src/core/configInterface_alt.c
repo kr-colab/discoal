@@ -329,12 +329,12 @@ int parse_demography_block(struct demography_config *cfg)
         assert(cfg->num_demes > 0);
         for (int i = 0; i < cfg->num_demes; ++i) {
             sampleSizes[i] = cfg->deme_sample_size[i];
+            currentSize[i] = 1.0;
             // FIXME: do we need to check that these sum to sampleSize or is that done elsewhere?
         }
         if (cfg->effective_population_size > 0) {
             EFFECTIVE_POPN_SIZE = (int)(cfg->effective_population_size);
             // FIXME: should this really be an int?
-            // FIXME: do we need to set currentSize here?
         }
         /* parse demographic events; these will be sorted into time order later */
         if (cfg->demographic_events != NULL) {
