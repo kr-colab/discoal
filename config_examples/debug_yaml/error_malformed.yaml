@@ -1,0 +1,10 @@
+# PR #51 (#42): malformed YAML (unknown key) -- triggers the cyaml_load_file
+# error path that exposed the wrong-arg cyaml_free call.
+# Pre-fix: ASan SEGV inside cyaml_free (called with pointer-to-pointer).
+# Post-fix: clean "Error: Failed to load YAML configuration file '...'" exit 1.
+
+simulation:
+  sample_size: 20
+  num_replicates: 2
+  num_sites: 10000
+this_field_does_not_exist: true

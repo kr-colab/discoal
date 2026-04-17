@@ -592,7 +592,7 @@ int load_yaml_config(const char *yaml_path, struct discoal_config **config)
         &discoal_config_schema, (void **) config, NULL);
     if (err != CYAML_OK) {
         fprintf(stderr, "ERROR: %s\n", cyaml_strerror(err));
-        cyaml_free(&cyaml_config, &discoal_config_schema, config, 0);
+        cyaml_free(&cyaml_config, &discoal_config_schema, *config, 0);
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
