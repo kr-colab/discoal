@@ -720,10 +720,11 @@ int parse_output_block(struct output_config *cfg)
                 // FIXME: it is not clear what should be done here
                 break;
             case OUTPUT_TREE_SEQN:
-                if (cfg->tree_sequence_filename == NULL) {
-                    fprintf(stderr, 
-                        "Must provide tree_sequence_filename if using "
-                        "output mode tree_sequence\n");
+                if (cfg->tree_sequence_filename == NULL ||
+                    cfg->tree_sequence_filename[0] == '\0') {
+                    fprintf(stderr,
+                        "Must provide non-empty tree_sequence_filename if "
+                        "using output mode tree_sequence\n");
                     return EXIT_FAILURE;
                 }
                 tskitOutputMode = 1;

@@ -1,0 +1,20 @@
+# Fixes #67: an empty string tree_sequence_filename passed the parser's
+# NULL check (not NULL, just length 0) and reached the tskit write,
+# which failed at runtime but still exited 0. Reject empty filenames up
+# front. Now rejected with:
+#   "Must provide non-empty tree_sequence_filename if using output mode tree_sequence"
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [10]
+  effective_population_size: 10000
+output:
+  output_type: tree_sequence
+  tree_sequence_filename: ""
