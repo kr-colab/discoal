@@ -420,7 +420,6 @@ int parse_demography_block(struct demography_config *cfg)
                 fprintf(stderr, "Ancient sample events not yet implemented\n");
                 return EXIT_FAILURE;
             }
-            /* FIXME: do we need to check population indices < npops, times are positive etc */
             /* Time-varying migration rate changes are not implemented in the
              * main event loop yet (see discoalFunctions.c); reject rather than
              * silently dropping them. */
@@ -435,10 +434,17 @@ int parse_demography_block(struct demography_config *cfg)
              * convert to discoal's internal 4N units. Keep this in sync with
              * `-en`, `-ed`, and `-ws` time scaling in getParameters(). */
             for (int i = 0; i < dmo->num_population_size_changes; ++i) {
+                int pop = dmo->population_size_changes[i].population;
+                if (pop < 0 || pop >= (int)cfg->num_demes) {
+                    fprintf(stderr,
+                        "Error parsing config: population_size_changes[%d].population "
+                        "(%d) must be in [0, %u)\n", i, pop, cfg->num_demes);
+                    return EXIT_FAILURE;
+                }
                 ensureEventsCapacity();
                 events[eventNumber].type = 'n';
                 events[eventNumber].time = dmo->population_size_changes[i].time * 2.0;
-                events[eventNumber].popID = dmo->population_size_changes[i].population;
+                events[eventNumber].popID = pop;
                 events[eventNumber].popnSize = dmo->population_size_changes[i].size;
                 eventNumber++;
             }
