@@ -1,5 +1,6 @@
 #include "configInterface_alt.h"
 #include <assert.h>
+#include <limits.h>
 #include <string.h>
 
 void ensureEventsCapacity();
@@ -344,8 +345,23 @@ int parse_demography_block(struct demography_config *cfg)
             return EXIT_FAILURE;
         }
         if (cfg->effective_population_size > 0) {
-            EFFECTIVE_POPN_SIZE = (int)(cfg->effective_population_size);
-            // FIXME: should this really be an int?
+            /* EFFECTIVE_POPN_SIZE is int; cmdline `-N` uses strtol with a
+             * range check. Mirror that here so a fractional or out-of-range
+             * YAML value is rejected loudly rather than silently truncated. */
+            double ne = cfg->effective_population_size;
+            if (ne > (double)INT_MAX) {
+                fprintf(stderr,
+                    "Error parsing config: effective_population_size (%g) "
+                    "exceeds INT_MAX (%d)\n", ne, INT_MAX);
+                return EXIT_FAILURE;
+            }
+            if (ne != (double)(long)ne) {
+                fprintf(stderr,
+                    "Error parsing config: effective_population_size (%g) "
+                    "must be an integer\n", ne);
+                return EXIT_FAILURE;
+            }
+            EFFECTIVE_POPN_SIZE = (int)ne;
         }
         /* parse demographic events; these will be sorted into time order later */
         if (cfg->demographic_events != NULL) {
