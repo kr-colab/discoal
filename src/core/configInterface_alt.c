@@ -5,6 +5,18 @@
 
 void ensureEventsCapacity();
 
+static int check_pop_index(const char *arr, const char *field, int idx,
+    int pop, unsigned num_demes)
+{
+    if (pop < 0 || pop >= (int)num_demes) {
+        fprintf(stderr,
+            "Error parsing config: %s[%d].%s (%d) must be in [0, %u)\n",
+            arr, idx, field, pop, num_demes);
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
+}
+
 /* for string-valued options, use enums so that CYAML can automatically check
  * for invalid values */
 static const cyaml_strval_t output_types_strings[] = {
@@ -435,10 +447,8 @@ int parse_demography_block(struct demography_config *cfg)
              * `-en`, `-ed`, and `-ws` time scaling in getParameters(). */
             for (int i = 0; i < dmo->num_population_size_changes; ++i) {
                 int pop = dmo->population_size_changes[i].population;
-                if (pop < 0 || pop >= (int)cfg->num_demes) {
-                    fprintf(stderr,
-                        "Error parsing config: population_size_changes[%d].population "
-                        "(%d) must be in [0, %u)\n", i, pop, cfg->num_demes);
+                if (check_pop_index("population_size_changes", "population",
+                        i, pop, cfg->num_demes) != EXIT_SUCCESS) {
                     return EXIT_FAILURE;
                 }
                 ensureEventsCapacity();
