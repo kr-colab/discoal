@@ -430,6 +430,12 @@ rootedNode *newRootedNode(double cTime, int popn) {
 	temp->time = cTime;
 	temp->branchLength=0.0;
 	temp->population = popn;
+	/* -1 means "not yet classified into a sweep background". Sample-init,
+	 * sweepPhaseEvents* (via nodePopnSweepSize), and the sweep coalescence/
+	 * recombination paths overwrite this with 0 or 1. Consumers that update
+	 * sweepPopnSizes[] must guard with `sweepPopn >= 0` to avoid an OOB
+	 * write for nodes that haven't been classified yet (everything in a
+	 * no-sweep run, plus pre-sweep internal nodes). */
 	temp->sweepPopn = -1;
 	
 	// Initialize node state tracking
@@ -626,7 +632,7 @@ void migrateAtTime(double cTime,int srcPopn, int destPopn){
 
 	popnSizes[srcPopn]-=1;
 	popnSizes[destPopn]+=1;
-	if (srcPopn==0)
+	if (srcPopn==0 && temp->sweepPopn >= 0)
 		sweepPopnSizes[temp->sweepPopn]-=1;
 
 }
@@ -667,7 +673,7 @@ void migrateExceptSite(double site, double scalar, int srcPopn, int destPopn){
 		
 		popnSizes[srcPopn]-=1;
 		popnSizes[destPopn]+=1;
-		if (srcPopn==0)
+		if (srcPopn==0 && temp->sweepPopn >= 0)
 			sweepPopnSizes[temp->sweepPopn]-=1;
 	}
 	
@@ -3239,7 +3245,7 @@ void addNode(rootedNode *aNode){
 	alleleNumber += 1;
 	totNodeNumber += 1;
 	popnSizes[aNode->population]+=1;
-	if(aNode->population==0)
+	if(aNode->population==0 && aNode->sweepPopn >= 0)
 		sweepPopnSizes[aNode->sweepPopn]+=1;
 }
 
@@ -3268,7 +3274,7 @@ void removeNode(rootedNode *aNode){
 		i++;
 	}
 	popnSizes[aNode->population]-=1;
-	if (aNode->population==0)
+	if (aNode->population==0 && aNode->sweepPopn >= 0)
 		sweepPopnSizes[aNode->sweepPopn]-=1;
 	
 	// Remove from population list
