@@ -612,6 +612,12 @@ int parse_selection_block(struct selection_config *cfg)
                 "must be >= 0\n", cfg->selection_coefficient);
             return EXIT_FAILURE;
         }
+        if (cfg->sweep_mode == SWEEP_NEUTRAL && cfg->selection_coefficient > 0) {
+            fprintf(stderr,
+                "Error parsing config: selection_coefficient (%g) must be 0 "
+                "when sweep_mode is 'neutral'\n", cfg->selection_coefficient);
+            return EXIT_FAILURE;
+        }
         alpha = cfg->selection_coefficient;
         if (cfg->sweep_position < 0.0 || cfg->sweep_position > 1.0) {
             fprintf(stderr,
