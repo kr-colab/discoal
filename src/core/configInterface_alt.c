@@ -772,5 +772,12 @@ int load_yaml_config(const char *yaml_path, struct discoal_config **config)
         cyaml_free(&cyaml_config, &discoal_config_schema, *config, 0);
         return EXIT_FAILURE;
     }
+    /* cyaml returns OK with a NULL top-level when the file is empty or
+     * contains only comments; downstream parsers assume non-NULL. */
+    if (*config == NULL) {
+        fprintf(stderr, "Error parsing config: YAML file '%s' is empty or "
+            "contains no top-level mapping\n", yaml_path);
+        return EXIT_FAILURE;
+    }
     return EXIT_SUCCESS;
 }

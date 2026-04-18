@@ -1,0 +1,4 @@
+# Fixes #59: an empty (or all-comment) YAML file made cyaml_load_file
+# return CYAML_OK with a NULL top-level config, which then tripped the
+# assert(config != NULL) in apply_yaml_config and aborted. Now rejected with:
+#   "Error parsing config: YAML file '<path>' is empty or contains no top-level mapping"

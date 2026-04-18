@@ -1,7 +1,0 @@
-# BUG: an empty (or all-comment) YAML file causes cyaml to return a NULL
-# top-level config, which then trips the `assert(config != NULL)` in
-# apply_yaml_config() and aborts with SIGABRT (exit 134).
-#
-# Observed: `Assertion 'config != NULL' failed.` and core dump.
-# Expected: a proper error message from load_yaml_config (e.g. "YAML file
-# is empty or missing required blocks") and a clean non-zero exit.
