@@ -411,9 +411,16 @@ int parse_demography_block(struct demography_config *cfg)
         assert(cfg->num_demes > 0);
         int deme_sum = 0;
         for (int i = 0; i < cfg->num_demes; ++i) {
-            sampleSizes[i] = cfg->deme_sample_size[i];
+            int n = cfg->deme_sample_size[i];
+            if (n < 0) {
+                fprintf(stderr,
+                    "Error parsing config: deme_sample_size[%d] (%d) "
+                    "must be >= 0\n", i, n);
+                return EXIT_FAILURE;
+            }
+            sampleSizes[i] = n;
             currentSize[i] = 1.0;
-            deme_sum += cfg->deme_sample_size[i];
+            deme_sum += n;
         }
         /* initialize() creates sum(sampleSizes) sample nodes but sets
          * alleleNumber to sampleSize; a mismatch leaves popLists[] and
