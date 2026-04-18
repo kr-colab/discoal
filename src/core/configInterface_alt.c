@@ -644,6 +644,14 @@ int parse_selection_block(struct selection_config *cfg)
             partialSweepFinalFreq = cfg->final_frequency;
             partialSweepMode = 1;
         }
+        if (softSweepMode && partialSweepMode &&
+            cfg->initial_frequency >= cfg->final_frequency) {
+            fprintf(stderr,
+                "Error parsing config: initial_frequency (%g) must be less "
+                "than final_frequency (%g) when both are set\n",
+                cfg->initial_frequency, cfg->final_frequency);
+            return EXIT_FAILURE;
+        }
         if (cfg->beneficial_mutation_rate < 0) {
             fprintf(stderr,
                 "Error parsing config: beneficial_mutation_rate (%g) "
