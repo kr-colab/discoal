@@ -545,15 +545,16 @@ int parse_demography_block(struct demography_config *cfg)
                 /* Self-migration is not meaningful in a coalescent; cmdline
                  * `-M` forces the diagonal to zero. Reject rather than
                  * silently massage the user's input. */
-                if (row->rates[i] != 0.0) {
-                    fprintf(stderr,
-                        "Error parsing config: migration_matrix diagonal "
-                        "must be zero (row %d column %d = %g)\n",
-                        i, i, row->rates[i]);
-                    return EXIT_FAILURE;
-                }
                 for (int j = 0; j < row->num_cols; ++j) {
-                    if (row->rates[j] < 0.0) {
+                    if (j == i) {
+                        if (row->rates[j] != 0.0) {
+                            fprintf(stderr,
+                                "Error parsing config: migration_matrix diagonal "
+                                "must be zero (row %d column %d = %g)\n",
+                                i, j, row->rates[j]);
+                            return EXIT_FAILURE;
+                        }
+                    } else if (row->rates[j] < 0.0) {
                         fprintf(stderr,
                             "Error parsing config: migration_matrix rate "
                             "(row %d column %d = %g) must be >= 0\n",
