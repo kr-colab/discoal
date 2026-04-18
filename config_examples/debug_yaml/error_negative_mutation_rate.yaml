@@ -1,0 +1,19 @@
+# PR #54 (#45): genetics block negative-rate validation. Pre-fix the
+# silently-skipping `if (mutation_rate > 0)` guard would have ignored this
+# and used the (also-zero) default theta, hiding the user's mistake.
+# Now rejected with:
+#   "Error parsing config: mutation_rate (-0.1) must be >= 0"
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: -0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [10]
+  effective_population_size: 1.0
+output:
+  output_type: "snp_array"

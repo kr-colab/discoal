@@ -1,0 +1,25 @@
+# PR #54 (#45): initial_frequency for a soft sweep must be in (0, 1). Pre-fix
+# `if (initial_frequency > 0)` would have accepted any positive value, even
+# >= 1, and silently set f0 to a nonsensical starting frequency. Now
+# rejected with:
+#   "Error parsing config: initial_frequency (1.5) must be in (0, 1)"
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [10]
+  effective_population_size: 1000000
+selection:
+  sweep_mode: stochastic
+  selection_coefficient: 100
+  sweep_position: 0.5
+  fixation_time_ago: 0.1
+  initial_frequency: 1.5
+output:
+  output_type: "snp_array"
