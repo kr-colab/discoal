@@ -1,0 +1,22 @@
+# BUG: a population_size_changes entry with population >= npops is silently
+# accepted and the simulator runs to completion (exit 0) producing
+# meaningless output (e.g. segsites: 0). The parser stores popID without
+# bounds-checking against npops.
+#
+# Observed: exit 0, empty/degenerate output.
+# Expected: reject population not in [0, num_demes) at parse time.
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [10]
+  effective_population_size: 10000
+  demographic_events:
+    population_size_changes:
+      - {time: 0.1, size: 0.5, population: 5}

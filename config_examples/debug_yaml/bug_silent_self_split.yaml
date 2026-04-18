@@ -1,0 +1,20 @@
+# BUG: a population_splits entry where derived == ancestral is silently
+# accepted. A split into itself is ill-defined and should be rejected.
+#
+# Observed: exit 0, degenerate output.
+# Expected: reject derived == ancestral at parse time.
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [5, 5]
+  effective_population_size: 10000
+  demographic_events:
+    population_splits:
+      - {time: 0.1, derived: 0, ancestral: 0}

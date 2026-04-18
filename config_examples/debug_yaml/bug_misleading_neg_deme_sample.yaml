@@ -1,0 +1,20 @@
+# BUG: individual entries in deme_sample_size are not bounds-checked for
+# non-negativity. A negative entry paired with matching positive entries
+# can still satisfy the sum == sample_size check, but the simulator then
+# fails with the unrelated-looking message "tDiv or migration not set in
+# population split model".
+#
+# Observed: exit 1 with misleading error.
+# Expected: reject any deme_sample_size[i] < 0 at parse time.
+
+simulation:
+  sample_size: 5
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [-5, 10]
+  effective_population_size: 10000

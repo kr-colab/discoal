@@ -1,0 +1,23 @@
+# BUG: a negative size in population_size_changes is not checked at parse
+# time. The event is loaded, the simulator runs, and tskit eventually
+# complains at table-sort time with "time[parent] must be greater than
+# time[child]. (TSK_ERR_BAD_NODE_TIME_ORDERING)". Exit 1 is correct but
+# the blame falls on tskit rather than the YAML input.
+#
+# Observed: exit 1 with misleading tskit error.
+# Expected: reject size <= 0 at parse time with a YAML-oriented message.
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [10]
+  effective_population_size: 10000
+  demographic_events:
+    population_size_changes:
+      - {time: 0.1, size: -0.5, population: 0}
