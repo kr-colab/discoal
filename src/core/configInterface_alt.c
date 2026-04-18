@@ -446,16 +446,28 @@ int parse_demography_block(struct demography_config *cfg)
              * convert to discoal's internal 4N units. Keep this in sync with
              * `-en`, `-ed`, and `-ws` time scaling in getParameters(). */
             for (int i = 0; i < dmo->num_population_size_changes; ++i) {
-                int pop = dmo->population_size_changes[i].population;
+                struct population_size_change *psc = &dmo->population_size_changes[i];
                 if (check_pop_index("population_size_changes", "population",
-                        i, pop, cfg->num_demes) != EXIT_SUCCESS) {
+                        i, psc->population, cfg->num_demes) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
+                if (psc->time < 0) {
+                    fprintf(stderr,
+                        "Error parsing config: population_size_changes[%d].time "
+                        "(%g) must be >= 0\n", i, psc->time);
+                    return EXIT_FAILURE;
+                }
+                if (psc->size <= 0) {
+                    fprintf(stderr,
+                        "Error parsing config: population_size_changes[%d].size "
+                        "(%g) must be > 0\n", i, psc->size);
                     return EXIT_FAILURE;
                 }
                 ensureEventsCapacity();
                 events[eventNumber].type = 'n';
-                events[eventNumber].time = dmo->population_size_changes[i].time * 2.0;
-                events[eventNumber].popID = pop;
-                events[eventNumber].popnSize = dmo->population_size_changes[i].size;
+                events[eventNumber].time = psc->time * 2.0;
+                events[eventNumber].popID = psc->population;
+                events[eventNumber].popnSize = psc->size;
                 eventNumber++;
             }
             for (int i = 0; i < dmo->num_population_splits; ++i) {
@@ -473,6 +485,12 @@ int parse_demography_block(struct demography_config *cfg)
                         "Error parsing config: population_splits[%d] derived "
                         "(%d) and ancestral (%d) must be distinct\n",
                         i, split->derived, split->ancestral);
+                    return EXIT_FAILURE;
+                }
+                if (split->time <= 0) {
+                    fprintf(stderr,
+                        "Error parsing config: population_splits[%d].time "
+                        "(%g) must be > 0\n", i, split->time);
                     return EXIT_FAILURE;
                 }
                 ensureEventsCapacity();
