@@ -553,6 +553,13 @@ int parse_demography_block(struct demography_config *cfg)
                     return EXIT_FAILURE;
                 }
                 for (int j = 0; j < row->num_cols; ++j) {
+                    if (row->rates[j] < 0.0) {
+                        fprintf(stderr,
+                            "Error parsing config: migration_matrix rate "
+                            "(row %d column %d = %g) must be >= 0\n",
+                            i, j, row->rates[j]);
+                        return EXIT_FAILURE;
+                    }
                     migMatConst[i][j] = row->rates[j];
                 }
             }
