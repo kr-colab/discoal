@@ -1,8 +1,6 @@
-# BUG: a population_splits entry where derived == ancestral is silently
-# accepted. A split into itself is ill-defined and should be rejected.
-#
-# Observed: exit 0, degenerate output.
-# Expected: reject derived == ancestral at parse time.
+# Fixes #64: population_splits with derived == ancestral was silently
+# accepted. A split into itself is ill-defined. Now rejected with:
+#   "Error parsing config: population_splits[0] derived (0) and ancestral (0) must be distinct"
 
 simulation:
   sample_size: 10

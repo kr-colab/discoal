@@ -459,11 +459,28 @@ int parse_demography_block(struct demography_config *cfg)
                 eventNumber++;
             }
             for (int i = 0; i < dmo->num_population_splits; ++i) {
+                int derived = dmo->population_splits[i].derived;
+                int ancestral = dmo->population_splits[i].ancestral;
+                if (check_pop_index("population_splits", "derived",
+                        i, derived, cfg->num_demes) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
+                if (check_pop_index("population_splits", "ancestral",
+                        i, ancestral, cfg->num_demes) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
+                if (derived == ancestral) {
+                    fprintf(stderr,
+                        "Error parsing config: population_splits[%d] derived "
+                        "(%d) and ancestral (%d) must be distinct\n",
+                        i, derived, ancestral);
+                    return EXIT_FAILURE;
+                }
                 ensureEventsCapacity();
                 events[eventNumber].type = 'p';
                 events[eventNumber].time = dmo->population_splits[i].time * 2.0;
-                events[eventNumber].popID = dmo->population_splits[i].derived;
-                events[eventNumber].popID2 = dmo->population_splits[i].ancestral;
+                events[eventNumber].popID = derived;
+                events[eventNumber].popID2 = ancestral;
                 eventNumber++;
                 tDiv = dmo->population_splits[i].time;  /* mark merger model active */
             }
