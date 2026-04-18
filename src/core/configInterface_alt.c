@@ -244,33 +244,53 @@ static const cyaml_config_t cyaml_config = {
 };
 
 
-/* FIXME: initialization should be explicit, and we probably don't want to
- * constrain yaml to positive values
+/* libcyaml zeros every primitive struct field before populating it from
+ * the YAML, so a user-supplied 0 looks indistinguishable from a missing
+ * field. Each block parser below handles three flavours of input:
  *
- * libcyaml is guaranteed to initialize primitive types to zero and pointers to NULL.
- * Hence, we do not worry about initializing the config structs explicitly, and instead
- * only copy into extern fields if the config members are positive.
+ *   - Required fields with no semantic "unset" value (sample_size,
+ *     num_sites, mutation_rate, sweep_position, ...): cyaml guarantees
+ *     the field is set, so validate the range and assign unconditionally.
  *
- * This might need more careful handling if the defaults are non-positive, and a
- * particular member of the config is explicitly set to zero or less in the yaml.
+ *   - Optional fields where 0 is semantically equivalent to "not
+ *     configured" (gene_conversion_rate, initial_frequency, ...): keep
+ *     the `if (x > 0)` copy guard, but reject explicit out-of-range
+ *     values like negatives or >= 1 for frequencies.
  *
- * For booleans, we need to ensure that the option is always false by default.
+ *   - Optional fields where 0 is a meaningful user choice distinct from
+ *     "absent" (none today): would need cyaml's pointer-typed optional
+ *     machinery so absence -> NULL. Left for follow-up.
+ *
+ * Booleans are assigned unconditionally; cyaml zeroing matches our
+ * default-false convention.
  */
 
-int parse_simulation_block(struct simulation_config *cfg) 
+int parse_simulation_block(struct simulation_config *cfg)
 {
     extern int sampleSize, sampleNumber, nSites;
     extern long seed1, seed2;
     if (cfg != NULL) {
-        if (cfg->sample_size > 0) {
-            sampleSize = cfg->sample_size;
+        if (cfg->sample_size <= 0) {
+            fprintf(stderr,
+                "Error parsing config: sample_size (%d) must be > 0\n",
+                cfg->sample_size);
+            return EXIT_FAILURE;
         }
-        if (cfg->num_replicates > 0) {
-            sampleNumber = cfg->num_replicates;
+        sampleSize = cfg->sample_size;
+        if (cfg->num_replicates <= 0) {
+            fprintf(stderr,
+                "Error parsing config: num_replicates (%d) must be > 0\n",
+                cfg->num_replicates);
+            return EXIT_FAILURE;
         }
-        if (cfg->num_sites > 0) {
-            nSites = cfg->num_sites;
+        sampleNumber = cfg->num_replicates;
+        if (cfg->num_sites <= 0) {
+            fprintf(stderr,
+                "Error parsing config: num_sites (%d) must be > 0\n",
+                cfg->num_sites);
+            return EXIT_FAILURE;
         }
+        nSites = cfg->num_sites;
         if (cfg->seed != NULL) {
             seed1 = cfg->seed[0];
             seed2 = cfg->seed[1];
@@ -279,21 +299,47 @@ int parse_simulation_block(struct simulation_config *cfg)
     return EXIT_SUCCESS;
 }
 
-int parse_genetics_block(struct genetics_config *cfg) 
+int parse_genetics_block(struct genetics_config *cfg)
 {
     extern double theta, rho;
     extern double gammaCoRatio, my_gamma, gammaCoRatioMode;
     extern int gcMean;
     if (cfg != NULL) {
-        if (cfg->mutation_rate > 0) {
-            theta = cfg->mutation_rate;
+        if (cfg->mutation_rate < 0) {
+            fprintf(stderr,
+                "Error parsing config: mutation_rate (%g) must be >= 0\n",
+                cfg->mutation_rate);
+            return EXIT_FAILURE;
         }
-        if (cfg->recombination_rate > 0) {
-            rho = cfg->recombination_rate;
+        theta = cfg->mutation_rate;
+        if (cfg->recombination_rate < 0) {
+            fprintf(stderr,
+                "Error parsing config: recombination_rate (%g) must be >= 0\n",
+                cfg->recombination_rate);
+            return EXIT_FAILURE;
+        }
+        rho = cfg->recombination_rate;
+        if (cfg->crossover_ratio < 0) {
+            fprintf(stderr,
+                "Error parsing config: crossover_ratio (%g) must be >= 0\n",
+                cfg->crossover_ratio);
+            return EXIT_FAILURE;
+        }
+        if (cfg->gene_conversion_rate < 0) {
+            fprintf(stderr,
+                "Error parsing config: gene_conversion_rate (%g) must be >= 0\n",
+                cfg->gene_conversion_rate);
+            return EXIT_FAILURE;
+        }
+        if (cfg->gene_conversion_tract_length < 0) {
+            fprintf(stderr,
+                "Error parsing config: gene_conversion_tract_length (%d) "
+                "must be >= 0\n", cfg->gene_conversion_tract_length);
+            return EXIT_FAILURE;
         }
         if (cfg->crossover_ratio > 0) {
             if (cfg->gene_conversion_rate > 0) {
-                fprintf(stderr, 
+                fprintf(stderr,
                   "Error parsing config: `gene_conversion_rate` "
                   "and `crossover_ratio` cannot both be set\n"
                 );
@@ -303,11 +349,9 @@ int parse_genetics_block(struct genetics_config *cfg)
             gammaCoRatio = cfg->crossover_ratio;
         }
         if (cfg->gene_conversion_rate > 0) {
-            gammaCoRatioMode = 0; // FIXME: is this correct?
             my_gamma = cfg->gene_conversion_rate;
         }
         if (cfg->gene_conversion_tract_length > 0) {
-            // FIXME: check that is positive, if one of the gc rates is set?
             gcMean = cfg->gene_conversion_tract_length;
         }
     }
@@ -483,29 +527,58 @@ int parse_selection_block(struct selection_config *cfg)
             default:
                 break;
         } /* FIXME: need to add recurrent sweep modes */
-        if (cfg->selection_coefficient > 0) {
-            alpha = cfg->selection_coefficient;
+        if (cfg->selection_coefficient < 0) {
+            fprintf(stderr,
+                "Error parsing config: selection_coefficient (%g) "
+                "must be >= 0\n", cfg->selection_coefficient);
+            return EXIT_FAILURE;
         }
-        if (cfg->sweep_position >= 0) { /* FIXME: need initialization as default is 0.5 */
-            /* FIXME: check 0 <= x <= 1 here? */
-            sweepSite = cfg->sweep_position;
+        alpha = cfg->selection_coefficient;
+        if (cfg->sweep_position < 0.0 || cfg->sweep_position > 1.0) {
+            fprintf(stderr,
+                "Error parsing config: sweep_position (%g) must be in [0, 1]\n",
+                cfg->sweep_position);
+            return EXIT_FAILURE;
         }
+        sweepSite = cfg->sweep_position;
         if (cfg->fixation_time_ago > 0) {
             /* User supplies tau in 2N units (matching `-ws`); scale to 4N. */
             tau = cfg->fixation_time_ago * 2.0;
         }
+        if (cfg->initial_frequency < 0 || cfg->initial_frequency >= 1.0) {
+            fprintf(stderr,
+                "Error parsing config: initial_frequency (%g) "
+                "must be in (0, 1)\n", cfg->initial_frequency);
+            return EXIT_FAILURE;
+        }
         if (cfg->initial_frequency > 0) {
-            /* FIXME: check 0 <= f <= 1 here? */
             f0 = cfg->initial_frequency;
             softSweepMode = 1;
         }
+        if (cfg->final_frequency < 0 || cfg->final_frequency >= 1.0) {
+            fprintf(stderr,
+                "Error parsing config: final_frequency (%g) "
+                "must be in (0, 1)\n", cfg->final_frequency);
+            return EXIT_FAILURE;
+        }
         if (cfg->final_frequency > 0) {
-            /* FIXME: check 0 <= f <= 1 here? */
             partialSweepFinalFreq = cfg->final_frequency;
             partialSweepMode = 1;
         }
+        if (cfg->beneficial_mutation_rate < 0) {
+            fprintf(stderr,
+                "Error parsing config: beneficial_mutation_rate (%g) "
+                "must be >= 0\n", cfg->beneficial_mutation_rate);
+            return EXIT_FAILURE;
+        }
         if (cfg->beneficial_mutation_rate > 0) {
             uA = cfg->beneficial_mutation_rate;
+        }
+        if (cfg->recurrent_sweep_rate < 0) {
+            fprintf(stderr,
+                "Error parsing config: recurrent_sweep_rate (%g) "
+                "must be >= 0\n", cfg->recurrent_sweep_rate);
+            return EXIT_FAILURE;
         }
         if (cfg->recurrent_sweep_rate > 0) {
             recurSweepRate = cfg->recurrent_sweep_rate;
