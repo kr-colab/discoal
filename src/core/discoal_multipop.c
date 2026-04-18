@@ -708,7 +708,12 @@ void getParameters(int argc,const char **argv){
 	events[eventNumber].popnSize = 1.0;
 	events[eventNumber].type = 'n';
 	eventNumber++;
-	currentSize = malloc(sizeof(double) * MAXPOPS);
+	/* calloc, not malloc: the -p handler treats `currentSize[i] == 0.0` as
+	 * "not yet set by demes". glibc malloc on a fresh process happens to
+	 * return zeroed pages so the sentinel works; ASan's allocator returns
+	 * a non-zero poison pattern, which made -p skip the initialization and
+	 * left currentSize at garbage (#46). */
+	currentSize = calloc(MAXPOPS, sizeof(double));
 
 	// Locate -Y first so we can validate "-Y xor positional args" before
 	// doing any work. The positional form "sampleSize numReplicates nSites"
