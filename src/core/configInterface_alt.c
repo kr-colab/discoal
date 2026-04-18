@@ -17,6 +17,30 @@ static int check_pop_index(const char *arr, const char *field, int idx,
     return EXIT_SUCCESS;
 }
 
+static int check_positive_double(const char *arr, const char *field, int idx,
+    double val)
+{
+    if (val <= 0) {
+        fprintf(stderr,
+            "Error parsing config: %s[%d].%s (%g) must be > 0\n",
+            arr, idx, field, val);
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
+}
+
+static int check_nonneg_double(const char *arr, const char *field, int idx,
+    double val)
+{
+    if (val < 0) {
+        fprintf(stderr,
+            "Error parsing config: %s[%d].%s (%g) must be >= 0\n",
+            arr, idx, field, val);
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
+}
+
 /* for string-valued options, use enums so that CYAML can automatically check
  * for invalid values */
 static const cyaml_strval_t output_types_strings[] = {
@@ -448,19 +472,11 @@ int parse_demography_block(struct demography_config *cfg)
             for (int i = 0; i < dmo->num_population_size_changes; ++i) {
                 struct population_size_change *psc = &dmo->population_size_changes[i];
                 if (check_pop_index("population_size_changes", "population",
-                        i, psc->population, cfg->num_demes) != EXIT_SUCCESS) {
-                    return EXIT_FAILURE;
-                }
-                if (psc->time < 0) {
-                    fprintf(stderr,
-                        "Error parsing config: population_size_changes[%d].time "
-                        "(%g) must be >= 0\n", i, psc->time);
-                    return EXIT_FAILURE;
-                }
-                if (psc->size <= 0) {
-                    fprintf(stderr,
-                        "Error parsing config: population_size_changes[%d].size "
-                        "(%g) must be > 0\n", i, psc->size);
+                        i, psc->population, cfg->num_demes) != EXIT_SUCCESS ||
+                    check_nonneg_double("population_size_changes", "time",
+                        i, psc->time) != EXIT_SUCCESS ||
+                    check_positive_double("population_size_changes", "size",
+                        i, psc->size) != EXIT_SUCCESS) {
                     return EXIT_FAILURE;
                 }
                 ensureEventsCapacity();
@@ -487,10 +503,8 @@ int parse_demography_block(struct demography_config *cfg)
                         i, split->derived, split->ancestral);
                     return EXIT_FAILURE;
                 }
-                if (split->time <= 0) {
-                    fprintf(stderr,
-                        "Error parsing config: population_splits[%d].time "
-                        "(%g) must be > 0\n", i, split->time);
+                if (check_positive_double("population_splits", "time",
+                        i, split->time) != EXIT_SUCCESS) {
                     return EXIT_FAILURE;
                 }
                 ensureEventsCapacity();
