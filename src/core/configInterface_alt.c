@@ -5,6 +5,42 @@
 
 void ensureEventsCapacity();
 
+static int check_pop_index(const char *arr, const char *field, int idx,
+    int pop, unsigned num_demes)
+{
+    if (pop < 0 || pop >= (int)num_demes) {
+        fprintf(stderr,
+            "Error parsing config: %s[%d].%s (%d) must be in [0, %u)\n",
+            arr, idx, field, pop, num_demes);
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
+}
+
+static int check_positive_double(const char *arr, const char *field, int idx,
+    double val)
+{
+    if (val <= 0) {
+        fprintf(stderr,
+            "Error parsing config: %s[%d].%s (%g) must be > 0\n",
+            arr, idx, field, val);
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
+}
+
+static int check_nonneg_double(const char *arr, const char *field, int idx,
+    double val)
+{
+    if (val < 0) {
+        fprintf(stderr,
+            "Error parsing config: %s[%d].%s (%g) must be >= 0\n",
+            arr, idx, field, val);
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
+}
+
 /* for string-valued options, use enums so that CYAML can automatically check
  * for invalid values */
 static const cyaml_strval_t output_types_strings[] = {
@@ -375,9 +411,16 @@ int parse_demography_block(struct demography_config *cfg)
         assert(cfg->num_demes > 0);
         int deme_sum = 0;
         for (int i = 0; i < cfg->num_demes; ++i) {
-            sampleSizes[i] = cfg->deme_sample_size[i];
+            int n = cfg->deme_sample_size[i];
+            if (n < 0) {
+                fprintf(stderr,
+                    "Error parsing config: deme_sample_size[%d] (%d) "
+                    "must be >= 0\n", i, n);
+                return EXIT_FAILURE;
+            }
+            sampleSizes[i] = n;
             currentSize[i] = 1.0;
-            deme_sum += cfg->deme_sample_size[i];
+            deme_sum += n;
         }
         /* initialize() creates sum(sampleSizes) sample nodes but sets
          * alleleNumber to sampleSize; a mismatch leaves popLists[] and
@@ -420,7 +463,6 @@ int parse_demography_block(struct demography_config *cfg)
                 fprintf(stderr, "Ancient sample events not yet implemented\n");
                 return EXIT_FAILURE;
             }
-            /* FIXME: do we need to check population indices < npops, times are positive etc */
             /* Time-varying migration rate changes are not implemented in the
              * main event loop yet (see discoalFunctions.c); reject rather than
              * silently dropping them. */
@@ -435,21 +477,50 @@ int parse_demography_block(struct demography_config *cfg)
              * convert to discoal's internal 4N units. Keep this in sync with
              * `-en`, `-ed`, and `-ws` time scaling in getParameters(). */
             for (int i = 0; i < dmo->num_population_size_changes; ++i) {
+                struct population_size_change *psc = &dmo->population_size_changes[i];
+                if (check_pop_index("population_size_changes", "population",
+                        i, psc->population, cfg->num_demes) != EXIT_SUCCESS ||
+                    check_nonneg_double("population_size_changes", "time",
+                        i, psc->time) != EXIT_SUCCESS ||
+                    check_positive_double("population_size_changes", "size",
+                        i, psc->size) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
                 ensureEventsCapacity();
                 events[eventNumber].type = 'n';
-                events[eventNumber].time = dmo->population_size_changes[i].time * 2.0;
-                events[eventNumber].popID = dmo->population_size_changes[i].population;
-                events[eventNumber].popnSize = dmo->population_size_changes[i].size;
+                events[eventNumber].time = psc->time * 2.0;
+                events[eventNumber].popID = psc->population;
+                events[eventNumber].popnSize = psc->size;
                 eventNumber++;
             }
             for (int i = 0; i < dmo->num_population_splits; ++i) {
+                struct population_split *split = &dmo->population_splits[i];
+                if (check_pop_index("population_splits", "derived",
+                        i, split->derived, cfg->num_demes) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
+                if (check_pop_index("population_splits", "ancestral",
+                        i, split->ancestral, cfg->num_demes) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
+                if (split->derived == split->ancestral) {
+                    fprintf(stderr,
+                        "Error parsing config: population_splits[%d] derived "
+                        "(%d) and ancestral (%d) must be distinct\n",
+                        i, split->derived, split->ancestral);
+                    return EXIT_FAILURE;
+                }
+                if (check_positive_double("population_splits", "time",
+                        i, split->time) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
                 ensureEventsCapacity();
                 events[eventNumber].type = 'p';
-                events[eventNumber].time = dmo->population_splits[i].time * 2.0;
-                events[eventNumber].popID = dmo->population_splits[i].derived;
-                events[eventNumber].popID2 = dmo->population_splits[i].ancestral;
+                events[eventNumber].time = split->time * 2.0;
+                events[eventNumber].popID = split->derived;
+                events[eventNumber].popID2 = split->ancestral;
                 eventNumber++;
-                tDiv = dmo->population_splits[i].time;  /* mark merger model active */
+                tDiv = split->time;  /* mark merger model active */
             }
         }
         /* parse migration matrix */
@@ -474,14 +545,22 @@ int parse_demography_block(struct demography_config *cfg)
                 /* Self-migration is not meaningful in a coalescent; cmdline
                  * `-M` forces the diagonal to zero. Reject rather than
                  * silently massage the user's input. */
-                if (row->rates[i] != 0.0) {
-                    fprintf(stderr,
-                        "Error parsing config: migration_matrix diagonal "
-                        "must be zero (row %d column %d = %g)\n",
-                        i, i, row->rates[i]);
-                    return EXIT_FAILURE;
-                }
                 for (int j = 0; j < row->num_cols; ++j) {
+                    if (j == i) {
+                        if (row->rates[j] != 0.0) {
+                            fprintf(stderr,
+                                "Error parsing config: migration_matrix diagonal "
+                                "must be zero (row %d column %d = %g)\n",
+                                i, j, row->rates[j]);
+                            return EXIT_FAILURE;
+                        }
+                    } else if (row->rates[j] < 0.0) {
+                        fprintf(stderr,
+                            "Error parsing config: migration_matrix rate "
+                            "(row %d column %d = %g) must be >= 0\n",
+                            i, j, row->rates[j]);
+                        return EXIT_FAILURE;
+                    }
                     migMatConst[i][j] = row->rates[j];
                 }
             }
@@ -533,6 +612,12 @@ int parse_selection_block(struct selection_config *cfg)
                 "must be >= 0\n", cfg->selection_coefficient);
             return EXIT_FAILURE;
         }
+        if (cfg->sweep_mode == SWEEP_NEUTRAL && cfg->selection_coefficient > 0) {
+            fprintf(stderr,
+                "Error parsing config: selection_coefficient (%g) must be 0 "
+                "when sweep_mode is 'neutral'\n", cfg->selection_coefficient);
+            return EXIT_FAILURE;
+        }
         alpha = cfg->selection_coefficient;
         if (cfg->sweep_position < 0.0 || cfg->sweep_position > 1.0) {
             fprintf(stderr,
@@ -564,6 +649,14 @@ int parse_selection_block(struct selection_config *cfg)
         if (cfg->final_frequency > 0) {
             partialSweepFinalFreq = cfg->final_frequency;
             partialSweepMode = 1;
+        }
+        if (softSweepMode && partialSweepMode &&
+            cfg->initial_frequency >= cfg->final_frequency) {
+            fprintf(stderr,
+                "Error parsing config: initial_frequency (%g) must be less "
+                "than final_frequency (%g) when both are set\n",
+                cfg->initial_frequency, cfg->final_frequency);
+            return EXIT_FAILURE;
         }
         if (cfg->beneficial_mutation_rate < 0) {
             fprintf(stderr,
@@ -627,10 +720,11 @@ int parse_output_block(struct output_config *cfg)
                 // FIXME: it is not clear what should be done here
                 break;
             case OUTPUT_TREE_SEQN:
-                if (cfg->tree_sequence_filename == NULL) {
-                    fprintf(stderr, 
-                        "Must provide tree_sequence_filename if using "
-                        "output mode tree_sequence\n");
+                if (cfg->tree_sequence_filename == NULL ||
+                    cfg->tree_sequence_filename[0] == '\0') {
+                    fprintf(stderr,
+                        "Must provide non-empty tree_sequence_filename if "
+                        "using output mode tree_sequence\n");
                     return EXIT_FAILURE;
                 }
                 tskitOutputMode = 1;
@@ -691,6 +785,13 @@ int load_yaml_config(const char *yaml_path, struct discoal_config **config)
     if (err != CYAML_OK) {
         fprintf(stderr, "ERROR: %s\n", cyaml_strerror(err));
         cyaml_free(&cyaml_config, &discoal_config_schema, *config, 0);
+        return EXIT_FAILURE;
+    }
+    /* cyaml returns OK with a NULL top-level when the file is empty or
+     * contains only comments; downstream parsers assume non-NULL. */
+    if (*config == NULL) {
+        fprintf(stderr, "Error parsing config: YAML file '%s' is empty or "
+            "contains no top-level mapping\n", yaml_path);
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
