@@ -1,4 +1,8 @@
-# Simulate three populations with migration and population mergers.
+# Simulate three populations with symmetric migration, pop-size changes,
+# and two mergers going backward in time.
+# Going backward: at t=0.5 pop 0 passes through a bottleneck (size x0.1);
+# at t=1.0 pop 1 has a larger ancestral size (size x2.0); at t=2.0 pop 1
+# merges into pop 0; at t=3.0 pop 2 merges into pop 0.
 # Equivalent to: TODO CLI
 
 simulation:
@@ -20,11 +24,11 @@ demography:
     - row: [1.0e-1, 1.0e-1, 0.0]
   demographic_events:
     population_size_changes:
-      - time: 1000
-        size: 2000
+      - time: 0.5
+        size: 0.1
         population: 0
-      - time: 1500
-        size: 100
+      - time: 1.0
+        size: 2.0
         population: 1
     population_splits:
       - time: 2.0

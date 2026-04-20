@@ -307,6 +307,10 @@ static const cyaml_config_t cyaml_config = {
 int parse_simulation_block(struct simulation_config *cfg)
 {
     extern int sampleSize, sampleNumber, nSites;
+    extern int sampleSizes[MAXPOPS];
+    extern int popnSizes[MAXPOPS];
+    extern int npops;
+    extern double *currentSize;
     extern long seed1, seed2;
     if (cfg != NULL) {
         if (cfg->sample_size <= 0) {
@@ -334,6 +338,16 @@ int parse_simulation_block(struct simulation_config *cfg)
             seed1 = cfg->seed[0];
             seed2 = cfg->seed[1];
         }
+        /* Establish the single-population defaults implied by sample_size:
+         * one population containing every sample. parse_demography_block
+         * overrides these when an explicit demography block is present.
+         * Without this, YAMLs that omit the optional demography block left
+         * sampleSizes[]/currentSize[]/npops at zero, and the simulation
+         * crashed with no sample nodes. */
+        sampleSizes[0] = sampleSize;
+        popnSizes[0]   = sampleSize;
+        currentSize[0] = 1.0;
+        npops          = 1;
     }
     return EXIT_SUCCESS;
 }

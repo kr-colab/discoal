@@ -1,0 +1,55 @@
+# 3-deme demographic model expressed in demes format. Mirrors the
+# topology of the sibling demographic_example.yaml:
+#   - Ancestor A (present-day pop 0) with a bottleneck releasing at 10000 gens.
+#   - B (present-day pop 1) splits from A at 40000 gens, larger ancestral size.
+#   - C (present-day pop 2) splits from A at 60000 gens.
+#   - Symmetric migration between coexisting demes at 4Nm = 0.1.
+#
+# Discoal's demes importer sets the reference N to the first present-day
+# deme's size and scales everything to its internal units:
+#     discoal_time = demes_generations / (2 * Ne_ref)
+#     discoal_size = demes_size / Ne_ref
+#     discoal_migration = demes_rate * 4 * Ne_ref
+# With Ne_ref = 10000 the split at 40000 gens becomes discoal time 2.0, and
+# 60000 gens becomes 3.0; the bottleneck at 10000 gens becomes 0.5; the
+# ancestral-size change at 20000 gens becomes 1.0; migration rate 2.5e-6
+# becomes 4Nm = 0.1 — matching the numbers in demographic_example.yaml.
+
+time_units: generations
+
+demes:
+  - name: A
+    description: Ancestor of B and C; present-day pop 0.
+    epochs:
+      - end_time: 10000
+        start_size: 1000
+      - end_time: 0
+        start_size: 10000
+  - name: B
+    description: Splits from A at 40000 gens ago; present-day pop 1.
+    ancestors: [A]
+    start_time: 40000
+    epochs:
+      - end_time: 20000
+        start_size: 20000
+      - end_time: 0
+        start_size: 10000
+  - name: C
+    description: Splits from A at 60000 gens ago; present-day pop 2.
+    ancestors: [A]
+    start_time: 60000
+    epochs:
+      - end_time: 0
+        start_size: 10000
+
+migrations:
+  # All three demes coexist in [0, 40000] gens.
+  - demes: [A, B, C]
+    rate: 2.5e-6
+    start_time: 40000
+    end_time: 0
+  # After B merges into A, only A and C coexist in [40000, 60000] gens.
+  - demes: [A, C]
+    rate: 2.5e-6
+    start_time: 60000
+    end_time: 40000
