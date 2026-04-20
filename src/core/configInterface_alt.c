@@ -1,6 +1,7 @@
 #include "configInterface_alt.h"
 #include <assert.h>
 #include <limits.h>
+#include <math.h>
 #include <string.h>
 
 void ensureEventsCapacity();
@@ -429,6 +430,16 @@ int parse_demography_block(struct demography_config *cfg)
             fprintf(stderr,
                 "Error parsing config: sum of deme_sample_size (%d) does "
                 "not match sample_size (%d)\n", deme_sum, sampleSize);
+            return EXIT_FAILURE;
+        }
+        /* effective_population_size is optional; cyaml zero-fills, so 0
+         * means "not set". Reject any explicitly invalid value (negative,
+         * NaN) before falling through to the "is set" guard. */
+        if (cfg->effective_population_size < 0 ||
+            isnan(cfg->effective_population_size)) {
+            fprintf(stderr,
+                "Error parsing config: effective_population_size (%g) "
+                "must be >= 0\n", cfg->effective_population_size);
             return EXIT_FAILURE;
         }
         if (cfg->effective_population_size > 0) {

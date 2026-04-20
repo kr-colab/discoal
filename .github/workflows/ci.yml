@@ -106,7 +106,12 @@ jobs:
         echo "=== Testing tree sequence output ==="
         ./build/discoal 10 1 1000 -t 10 -ts test.trees > /dev/null
         [ -f test.trees ] || exit 1
-        echo "✓ Tree sequence output works"
+        echo "Tree sequence output works"
+
+    - name: Run YAML parser regression suite
+      run: |
+        echo "=== Running YAML parser regression suite ==="
+        bash testing/yaml_parser_suite.sh
 
   memory-check:
     runs-on: ubuntu-latest
