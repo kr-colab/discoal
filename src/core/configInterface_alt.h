@@ -28,9 +28,7 @@
  *      is optional (otherwise the YAML parser will expect the option and exit
  *      with an informative error).
  *
- *    - Initialize TODO
- *
- *    - Parser TODO
+ *    - Handle initialization and parsing in the appropriate parse_* function
  *
  *    - Add the new option to `config_examples/all_options.yaml`, even if there
  *      are conflicts (i.e. if the option is incompatible with another option and
@@ -140,6 +138,7 @@ struct discoal_config {
     struct selection_config *selection;   /* optional */
 };
 
+
 int parse_simulation_block(struct simulation_config*);
 int parse_genetics_block(struct genetics_config*);
 int parse_demography_block(struct demography_config*);
@@ -147,6 +146,7 @@ int parse_selection_block(struct selection_config*);
 int parse_output_block(struct output_config*);
 int apply_yaml_config(struct discoal_config*);
 int load_yaml_config(const char*, struct discoal_config**);
+
 
 #endif // CONFIGINTERFACE_ALT_H
 

@@ -6,6 +6,8 @@
 
 void ensureEventsCapacity();
 
+
+/* input validation */
 static int check_pop_index(const char *arr, const char *field, int idx,
     int pop, unsigned num_demes)
 {

@@ -1,3 +1,5 @@
+TODO this is out of date
+
 # YAML Configuration Examples
 
 This directory contains example YAML configuration files for discoal.

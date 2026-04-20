@@ -1,18 +1,16 @@
-# Example using external demes file
-# The demes file specifies the demographic model
+# Simulate using an external demes file to specify the demographic model.
+# Equivalent to: TODO CLI
 
 simulation:
-  sample_size: 100
-  num_replicates: 1000
+  sample_size: 15
+  num_replicates: 10
   num_sites: 50000
 
 genetics:
   mutation_rate: 20.0
   recombination_rate: 15.0
 
-# Load demographic model from demes file
-events:
-  demes_file: ../testing/two_pop_migration.yaml
+demography:
+  deme_sample_size: [10, 5]
+  demes_filename: "../testing/two_pop_migration.yaml"
 
-# Note: When using demes file, specify sample sizes with -p flag:
-# discoal -Y demes_example.yaml -p 2 50 50
