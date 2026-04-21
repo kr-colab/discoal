@@ -4,7 +4,7 @@
 
 simulation:
   sample_size: 15
-  num_replicates: 1000
+  num_replicates: 10
   num_sites: 50000
   seed: [42, 54321]
 

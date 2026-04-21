@@ -1,16 +1,18 @@
 # Simulate using an external demes file to specify the demographic model.
+# Mirrors the topology of demographic_example.yaml via the sibling
+# demes file demes_example.demes.yaml.
 # Equivalent to: TODO CLI
 
 simulation:
-  sample_size: 15
+  sample_size: 20
   num_replicates: 10
   num_sites: 50000
+  seed: [31337, 4242]
 
 genetics:
   mutation_rate: 20.0
   recombination_rate: 15.0
 
 demography:
-  deme_sample_size: [10, 5]
-  demes_filename: "../testing/two_pop_migration.yaml"
-
+  deme_sample_size: [10, 5, 5]
+  demes_filename: "config_examples/demes_example.demes.yaml"
