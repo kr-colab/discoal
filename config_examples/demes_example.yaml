@@ -15,7 +15,4 @@ genetics:
 
 demography:
   deme_sample_size: [10, 5, 5]
-  # Path is interpreted relative to the CWD when discoal runs. Works as-is
-  # when discoal is invoked from the project root. The regression harness
-  # rewrites it to an absolute path for per-fixture tempdir isolation.
   demes_filename: "config_examples/demes_example.demes.yaml"

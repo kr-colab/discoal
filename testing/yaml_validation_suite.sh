@@ -70,6 +70,13 @@ declare -A FIXTURE_REPS=(
 declare -A FIXTURE_TREES_FILE=(
     [tree_sequence_example.yaml]="tree_sequence_example.trees"
 )
+# Auxiliary files referenced by a fixture YAML via a `config_examples/<name>`
+# relative path. The harness copies each into ${fixture_workdir}/config_examples/
+# so the YAML's relative path resolves inside the per-fixture tempdir.
+# Values are space-separated basenames under EXAMPLES_DIR.
+declare -A FIXTURE_AUX_FILES=(
+    [demes_example.yaml]="demes_example.demes.yaml"
+)
 
 fail() {
     local fixture="$1" reason="$2"
@@ -217,6 +224,14 @@ run_fixture() {
     mkdir -p "${fixture_workdir}"
     local stdout_file="${fixture_workdir}/stdout.txt"
     local stderr_file="${fixture_workdir}/stderr.txt"
+
+    local aux_files="${FIXTURE_AUX_FILES[${fixture}]:-}"
+    if [[ -n "${aux_files}" ]]; then
+        mkdir -p "${fixture_workdir}/config_examples"
+        for aux in ${aux_files}; do
+            cp "${EXAMPLES_DIR}/${aux}" "${fixture_workdir}/config_examples/${aux}"
+        done
+    fi
 
     # Tree-sequence outputs land next to the working directory so we can
     # pick them up by the filename declared in the YAML.
