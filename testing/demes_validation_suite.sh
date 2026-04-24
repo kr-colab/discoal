@@ -1,5 +1,15 @@
 #!/bin/bash
 
+# NOTE: This suite drives discoal via the CLI `-D <demes_file>` flag, which
+# has been temporarily disabled (see kr-colab/discoal#75). The original
+# body is preserved below so it can be restored easily once either CLI `-D`
+# returns or the suite is ported to the YAML (`-Y`) demes flow. Until then
+# it fails fast so CI cannot silently skip it.
+echo "Error: testing/demes_validation_suite.sh is out of date." >&2
+echo "  The CLI -D flag is currently disabled; this suite needs to be" >&2
+echo "  restored once -D returns, or ported to the YAML (-Y) demes flow." >&2
+exit 1
+
 # Demes validation test suite for discoal
 # Tests various demographic models specified in demes format
 

@@ -9,8 +9,9 @@
 #   2. For ms-style examples: stdout contains exactly num_replicates
 #      `//` blocks, each followed by a `segsites:` line. For replicates
 #      with segsites > 0: a `positions:` line with exactly that many
-#      floats in [0, 1), followed by sample_size genotype rows of length
-#      segsites over {0, 1}.
+#      floats in [0, 1], followed by sample_size genotype rows of length
+#      segsites over {0, 1}. Upper bound is inclusive: at `%6.6f` print
+#      precision, true values just under 1 can round up to "1.000000".
 #   3. For tree-sequence examples: the declared .trees output file is
 #      created and non-empty.
 #
@@ -120,8 +121,10 @@ check_ms_replicate() {
         return 1
     fi
 
-    # Validate position count and that each is in [0, 1).
+    # Validate position count and that each is in [0, 1].
     # strip leading "positions: ", then count whitespace-separated tokens.
+    # Upper bound is inclusive because discoal prints positions at %6.6f,
+    # so a true value slightly under 1 can display as "1.000000".
     local positions_values
     positions_values="${positions_line#positions: }"
     positions_count=$(echo "${positions_values}" | awk '{print NF}')
@@ -131,9 +134,9 @@ check_ms_replicate() {
     fi
     if ! echo "${positions_values}" | awk '
         { for (i = 1; i <= NF; i++) {
-            if ($i + 0 < 0 || $i + 0 >= 1) { print "out_of_range:" $i; exit 1 }
+            if ($i + 0 < 0 || $i + 0 > 1) { print "out_of_range:" $i; exit 1 }
         }}' >/dev/null; then
-        fail "${fixture}" "positions contain value(s) outside [0, 1)"
+        fail "${fixture}" "positions contain value(s) outside [0, 1]"
         return 1
     fi
 

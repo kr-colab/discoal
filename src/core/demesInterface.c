@@ -273,10 +273,6 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
             fprintf(stderr, "\n");
         }
         
-        // Initialize sample sizes (assuming equal sampling from all populations for now)
-        // This should be updated based on actual sampling scheme
-        sampleSizes[popID] = 0;  // Will be set by user or sampling scheme
-        
         // Process epochs (population size changes)
         for (int j = 0; j < deme->n_epochs; j++) {
             struct demes_epoch *epoch = &deme->epochs[j];
