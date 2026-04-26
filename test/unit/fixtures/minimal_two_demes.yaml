@@ -1,0 +1,20 @@
+# Minimal demes fixture used by the configInterface_alt unit tests.
+# Two demes with one epoch each and a symmetric migration so that both
+# coexisting demes have a path to one another (discoal's demes importer
+# rejects disconnected populations as "infinite coalescent time").
+
+time_units: generations
+
+demes:
+  - name: A
+    epochs:
+      - end_time: 0
+        start_size: 1000
+  - name: B
+    epochs:
+      - end_time: 0
+        start_size: 1000
+
+migrations:
+  - demes: [A, B]
+    rate: 1e-5

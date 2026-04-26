@@ -888,35 +888,12 @@ void getParameters(int argc,const char **argv){
 			alpha = parseDoubleArg(argc, argv, &args, "-a");
 			break;
 			case 'D' :
-			// -D flag for demes file
-			{
-				args++;
-				if (args >= argc || argv[args] == NULL || argv[args][0] == '-' || strlen(argv[args]) == 0) {
-					fprintf(stderr, "Error: -D flag requires a demes filename argument\n");
-					fprintf(stderr, "Usage: %s [options] -D <demes_file.yaml>\n", argv[0]);
-					exit(1);
-				}
-				const char *demesFile = argv[args];
-				
-				// Load demographic events from demes file
-				int ret = loadDemesFile(demesFile, &events, &eventNumber, &eventsCapacity, 
-				                       currentSize, &npops, sampleSizes, EFFECTIVE_POPN_SIZE);
-				if (ret != 0) {
-					fprintf(stderr, "Error: Failed to load demes file '%s'\n", demesFile);
-					exit(1);
-				}
-				
-				fprintf(stderr, "Loaded %d populations and %d events from demes file '%s'\n", 
-				        npops, eventNumber - 1, demesFile);  // -1 to exclude initial bogus event
-				
-				// Require user to specify sampling after loading demes
-				fprintf(stderr, "Note: You must use -p flag after -D to specify sample sizes for each population\n");
-				fprintf(stderr, "Example: -D file.yaml -p %d", npops);
-				for (i = 0; i < npops; i++) {
-					fprintf(stderr, " <sampleSize%d>", i);
-				}
-				fprintf(stderr, "\n");
-			}
+			fprintf(stderr,
+				"Error: the -D command-line flag for loading demes files is no "
+				"longer supported. Use a YAML config (-Y) with "
+				"demography.demes_filename instead. See "
+				"config_examples/demes_example.yaml.\n");
+			exit(1);
 			break;
 			case 'x' :
 			sweepSite = parseDoubleArg(argc, argv, &args, "-x");
