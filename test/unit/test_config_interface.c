@@ -1,7 +1,7 @@
 /*
  * test_config_interface.c
  *
- * Unit tests for src/core/configInterface_alt.[ch], the YAML config
+ * Unit tests for src/core/configInterface.[ch], the YAML config
  * parser invoked by discoal's -Y option. These tests check the
  * parse_* validation functions and apply_yaml_config; they do not
  * try to test libcyaml's own schema parser (missing required fields,
@@ -39,7 +39,7 @@
  * for both this translation unit and unity.c; the Makefile target adds
  * -DUNITY_INCLUDE_DOUBLE so both see it. */
 #include "unity.h"
-#include "configInterface_alt.h"
+#include "configInterface.h"
 #include "discoal.h"
 #include <limits.h>
 #include <stdio.h>
@@ -323,7 +323,7 @@ void test_simulation_rejects_nonpositive_num_sites(void) {
  * When no demography block is present, parse_simulation_block sets
  * up a single population containing every sample and currentSize[0]
  * = 1.0. This is what downstream code in initialize() assumes; see
- * the comment in configInterface_alt.c near "without this, YAMLs
+ * the comment in configInterface.c near "without this, YAMLs
  * that omit the optional demography block left ... at zero".
  */
 void test_simulation_sets_single_pop_defaults(void) {
@@ -1590,7 +1590,7 @@ void test_output_unsimplified_tree_sequence_unsets_minimal(void) {
 /*
  * load_yaml_config rejects empty input. libcyaml itself returns OK
  * with a NULL top-level for empty files; the wrapper in
- * configInterface_alt.c (around line 819) turns that case into
+ * configInterface.c (around line 819) turns that case into
  * EXIT_FAILURE explicitly. Globals must remain unchanged since no
  * parsing took place.
  */
@@ -1611,7 +1611,7 @@ void test_load_empty_yaml(void) {
 void test_load_nonexistent_file(void) {
     struct discoal_config *cfg = NULL;
     int rc = load_yaml_config(
-        "/tmp/configInterface_alt_nonexistent_xyzabc.yaml", &cfg);
+        "/tmp/configInterface_nonexistent_xyzabc.yaml", &cfg);
     TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, rc);
 }
 

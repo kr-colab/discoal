@@ -37,12 +37,12 @@ void ensureEventsCapacity() {
  * reset_config_globals
  *
  * Zero every discoal global that the parse_* functions in
- * src/core/configInterface_alt.c write into. Tests that call
+ * src/core/configInterface.c write into. Tests that call
  * apply_yaml_config invoke this from setUp() so each test starts
  * from a known state.
  *
  * The list below corresponds to the `extern` declarations inside
- * the parse_* functions in configInterface_alt.c. If a parse_*
+ * the parse_* functions in configInterface.c. If a parse_*
  * function gains a new global write, add the corresponding reset
  * here too — otherwise the next test's setUp will see the previous
  * test's value.

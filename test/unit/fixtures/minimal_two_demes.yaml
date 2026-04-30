@@ -1,4 +1,4 @@
-# Minimal demes fixture used by the configInterface_alt unit tests.
+# Minimal demes fixture used by the configInterface unit tests.
 # Two demes with one epoch each and a symmetric migration so that both
 # coexisting demes have a path to one another (discoal's demes importer
 # rejects disconnected populations as "infinite coalescent time").
