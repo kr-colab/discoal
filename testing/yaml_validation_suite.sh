@@ -182,7 +182,6 @@ check_ms_fixture() {
         fi
     done
 
-    pass "${fixture}"
     return 0
 }
 
@@ -207,8 +206,69 @@ check_trees_fixture() {
         fi
     done
 
-    pass "${fixture}"
     return 0
+}
+
+# Pull the CLI invocation declared by a fixture YAML's load-bearing
+# header. The YAML must contain exactly one line of the form
+#   # Equivalent to: discoal <args...>
+# We strip the prefix (including the literal "discoal " token, since
+# the harness substitutes the absolute binary path) and print what is
+# left. An empty result means the marker was not found.
+parse_cli_args_from_yaml() {
+    local yaml_path="$1"
+    grep -m1 '^# Equivalent to: discoal ' "$yaml_path" \
+        | sed 's|^# Equivalent to: discoal ||'
+}
+
+# Diff the YAML and CLI runs' stdouts. discoal echoes its own argv on
+# the first stdout line, which is naturally different between -Y and
+# the positional invocation, so we skip line 1 on both sides. Any
+# remaining difference is a parity failure.
+# Per-replicate trees parity. Walks each expected replicate file
+# under the YAML and CLI workdirs in parallel and shells out to
+# cmp_trees.py, which loads each .trees with tskit and compares
+# table collections with provenance ignored (discoal stamps a
+# timestamp into provenance, so byte-equal would never hold).
+# Returns 0 if every replicate matches, 1 on first mismatch.
+# Caller is responsible for deciding whether to invoke this — when
+# tskit is not installed, the suite skips it altogether.
+check_parity_trees() {
+    local fixture="$1" yaml_dir="$2" cli_dir="$3"
+    local expected_reps="$4" trees_basename="$5"
+    local base="${trees_basename%.trees}"
+    local n yaml_rep cli_rep cmp_out cmp_rc
+    for (( n = 1; n <= expected_reps; n++ )); do
+        yaml_rep="${yaml_dir}/${base}_rep${n}.trees"
+        cli_rep="${cli_dir}/${base}_rep${n}.trees"
+        cmp_out=$(python3 "${SCRIPT_DIR}/cmp_trees.py" \
+                    "${yaml_rep}" "${cli_rep}" 2>&1)
+        cmp_rc=$?
+        if [[ "${cmp_rc}" -ne 0 ]]; then
+            local detail="${cmp_out:-no comparator output}"
+            fail "${fixture}" "trees parity mismatch on replicate ${n} (rc=${cmp_rc}: ${detail})"
+            return 1
+        fi
+    done
+    return 0
+}
+
+check_parity_ms_stdout() {
+    local fixture="$1" yaml_stdout="$2" cli_stdout="$3"
+    local diff_output
+    diff_output=$(diff <(tail -n +2 "${yaml_stdout}") \
+                      <(tail -n +2 "${cli_stdout}"))
+    if [[ -z "${diff_output}" ]]; then
+        return 0
+    fi
+    # Compact summary: total diff line count plus the first three diff
+    # lines truncated to 60 chars each. Genotype/positions rows are
+    # hundreds of chars wide, so we never let a single line dominate.
+    local diff_lines diff_head
+    diff_lines=$(echo "${diff_output}" | wc -l)
+    diff_head=$(echo "${diff_output}" | head -n 3 | cut -c1-60 | tr '\n' '|')
+    fail "${fixture}" "YAML/CLI stdout parity mismatch (${diff_lines} diff lines; first: ${diff_head})"
+    return 1
 }
 
 run_fixture() {
@@ -223,47 +283,114 @@ run_fixture() {
         return
     fi
 
-    local fixture_workdir="${WORK_DIR}/${fixture%.yaml}"
-    mkdir -p "${fixture_workdir}"
-    local stdout_file="${fixture_workdir}/stdout.txt"
-    local stderr_file="${fixture_workdir}/stderr.txt"
-
-    local aux_files="${FIXTURE_AUX_FILES[${fixture}]:-}"
-    if [[ -n "${aux_files}" ]]; then
-        mkdir -p "${fixture_workdir}/config_examples"
-        for aux in ${aux_files}; do
-            cp "${EXAMPLES_DIR}/${aux}" "${fixture_workdir}/config_examples/${aux}"
-        done
-    fi
-
-    # Tree-sequence outputs land next to the working directory so we can
-    # pick them up by the filename declared in the YAML.
-    (
-        cd "${fixture_workdir}" && \
-        timeout "${PER_FIXTURE_TIMEOUT}" "${DISCOAL}" -Y "${yaml_path}" \
-            > "${stdout_file}" 2> "${stderr_file}"
-    )
-    local rc=$?
-    if [[ "${rc}" -ne 0 ]]; then
-        local stderr_head
-        stderr_head=$(head -n 3 "${stderr_file}" | tr '\n' ' ')
-        fail "${fixture}" "discoal exited ${rc} (stderr: ${stderr_head})"
+    # The CLI form is the one declared in the YAML header — single
+    # source of truth, no parallel array in this script.
+    local cli_args
+    cli_args=$(parse_cli_args_from_yaml "${yaml_path}")
+    if [[ -z "${cli_args}" ]]; then
+        fail "${fixture}" "YAML missing '# Equivalent to: discoal ...' header"
         return
     fi
 
+    # Run -Y and the equivalent CLI invocation in separate workdirs so
+    # tree-sequence fixtures' .trees files don't collide.
+    local fixture_workdir="${WORK_DIR}/${fixture%.yaml}"
+    local yaml_dir="${fixture_workdir}/yaml"
+    local cli_dir="${fixture_workdir}/cli"
+    mkdir -p "${yaml_dir}" "${cli_dir}"
+
+    # Aux files that a fixture YAML cites by relative path (e.g. a
+    # demes file) must be reachable from each run's CWD. The CLI form
+    # generally doesn't need them, but copying into both keeps the
+    # setup symmetric.
+    local aux_files="${FIXTURE_AUX_FILES[${fixture}]:-}"
+    if [[ -n "${aux_files}" ]]; then
+        local d
+        for d in "${yaml_dir}" "${cli_dir}"; do
+            mkdir -p "${d}/config_examples"
+            for aux in ${aux_files}; do
+                cp "${EXAMPLES_DIR}/${aux}" "${d}/config_examples/${aux}"
+            done
+        done
+    fi
+
+    local yaml_stdout="${yaml_dir}/stdout.txt"
+    local yaml_stderr="${yaml_dir}/stderr.txt"
+    local cli_stdout="${cli_dir}/stdout.txt"
+    local cli_stderr="${cli_dir}/stderr.txt"
+
+    (
+        cd "${yaml_dir}" && \
+        timeout "${PER_FIXTURE_TIMEOUT}" "${DISCOAL}" -Y "${yaml_path}" \
+            > "${yaml_stdout}" 2> "${yaml_stderr}"
+    )
+    local yaml_rc=$?
+    if [[ "${yaml_rc}" -ne 0 ]]; then
+        local stderr_head
+        stderr_head=$(head -n 3 "${yaml_stderr}" | tr '\n' ' ')
+        fail "${fixture}" "discoal -Y exited ${yaml_rc} (stderr: ${stderr_head})"
+        return
+    fi
+
+    # Word-split ${cli_args} on whitespace into argv. None of the
+    # current fixtures need quoted arguments; if a future fixture
+    # does, this is where to revisit.
+    (
+        cd "${cli_dir}" && \
+        timeout "${PER_FIXTURE_TIMEOUT}" "${DISCOAL}" ${cli_args} \
+            > "${cli_stdout}" 2> "${cli_stderr}"
+    )
+    local cli_rc=$?
+    if [[ "${cli_rc}" -ne 0 ]]; then
+        local stderr_head
+        stderr_head=$(head -n 3 "${cli_stderr}" | tr '\n' ' ')
+        fail "${fixture}" "discoal (CLI form) exited ${cli_rc} (stderr: ${stderr_head})"
+        return
+    fi
+
+    # Run all relevant checks; only mark the fixture as passed if every
+    # one of them passes.
+    local fixture_failed=0
     case "${mode}" in
         ms)
-            check_ms_fixture "${fixture}" "${stdout_file}" \
-                "${sample_size}" "${expected_reps}"
+            if ! check_parity_ms_stdout "${fixture}" \
+                "${yaml_stdout}" "${cli_stdout}"; then
+                fixture_failed=1
+            fi
+            if ! check_ms_fixture "${fixture}" "${yaml_stdout}" \
+                "${sample_size}" "${expected_reps}"; then
+                fixture_failed=1
+            fi
             ;;
         trees)
-            local trees_file="${fixture_workdir}/${FIXTURE_TREES_FILE[${fixture}]}"
-            check_trees_fixture "${fixture}" "${trees_file}" "${expected_reps}"
+            local trees_basename="${FIXTURE_TREES_FILE[${fixture}]}"
+            local yaml_trees="${yaml_dir}/${trees_basename}"
+            if ! check_trees_fixture "${fixture}" "${yaml_trees}" \
+                "${expected_reps}"; then
+                fixture_failed=1
+            fi
+            # Parity is only meaningful if both the YAML run and the
+            # CLI run produced the expected files; the existing
+            # non-empty check above already covers the YAML side.
+            if [[ "${TSKIT_AVAILABLE}" -eq 1 ]]; then
+                if ! check_parity_trees "${fixture}" \
+                    "${yaml_dir}" "${cli_dir}" \
+                    "${expected_reps}" "${trees_basename}"; then
+                    fixture_failed=1
+                fi
+            else
+                echo "${YELLOW}SKIP${NC} ${fixture}: trees-parity (tskit unavailable)"
+            fi
             ;;
         *)
             fail "${fixture}" "unknown mode '${mode}' in harness config"
+            return
             ;;
     esac
+
+    if [[ "${fixture_failed}" -eq 0 ]]; then
+        pass "${fixture}"
+    fi
 }
 
 # Build discoal if it doesn't exist yet so the harness is self-bootstrapping.
@@ -273,6 +400,16 @@ if [[ ! -x "${DISCOAL}" ]]; then
         echo "${RED}make failed; aborting${NC}"
         exit 1
     }
+fi
+
+# Probe for the trees-parity comparator. tskit is the heavy dep —
+# environments without it just skip the trees parity check rather
+# than failing the whole suite.
+TSKIT_AVAILABLE=0
+if command -v python3 >/dev/null 2>&1 \
+   && python3 -c "import tskit" >/dev/null 2>&1 \
+   && [[ -f "${SCRIPT_DIR}/cmp_trees.py" ]]; then
+    TSKIT_AVAILABLE=1
 fi
 
 echo "Running YAML example regression suite against ${DISCOAL}"

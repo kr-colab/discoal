@@ -3,7 +3,7 @@
 # Going backward: at t=0.5 pop 0 passes through a bottleneck (size x0.1);
 # at t=1.0 pop 1 has a larger ancestral size (size x2.0); at t=2.0 pop 1
 # merges into pop 0; at t=3.0 pop 2 merges into pop 0.
-# Equivalent to: TODO CLI
+# Equivalent to: discoal 20 2 10000 -t 0.1 -r 0.1 -p 3 10 5 5 -M 0.1 -en 0.5 0 0.1 -en 1.0 1 2.0 -ed 2.0 1 0 -ed 3.0 2 0 -d 12345 10102
 
 simulation:
   sample_size: 20
