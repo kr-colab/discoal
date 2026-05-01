@@ -1,0 +1,40 @@
+=== Phase 4b msprime parity tests (REPS=1000) ===
+=== Phase 4b: single-pop EXP growth parity ===
+reps per simulator = 1000
+validate_active_convention PASS: rel_err = 0.042 (convention = B: ploidy=2, popsize=Ne)
+discoal: ./build/discoal 10 1000 10000 -t 10.0 -r 10.0 -eg 0.5 0 50.0 -d 12345 67890
+  discoal: 0.2s
+msprime: matched single-pop exp growth
+  msprime: 6.0s
+
+discoal: mean ss=19.87, mean pi=6.5724, mean tajD=-0.2894
+msprime: mean ss=20.61, mean pi=6.8810, mean tajD=-0.2454
+
+4 comparisons, Bonferroni alpha = 2.50e-03
+comparison                           D/chi2          p reject?
+single_pop_exp_ss                    0.0710   1.29e-02
+single_pop_exp_pi                    0.0730   9.68e-03
+single_pop_exp_td                    0.0600   5.46e-02
+single_pop_exp_sfs_chi2             14.2064   6.66e-03
+
+PASS: all 4 comparisons within Bonferroni-corrected p > 2.50e-03
+
+=== Phase 4b: two-pop split + EXP parity ===
+reps per simulator = 1000
+validate_active_convention PASS: rel_err = 0.042 (convention = B: ploidy=2, popsize=Ne)
+discoal: ./build/discoal 12 1000 10000 -t 10.0 -r 10.0 -p 2 6 6 -eg 0.3 0 50.0 -ed 1.0 0 1 -d 12345 67890
+  discoal: 0.4s
+msprime: matched two-pop split + exp growth
+  msprime: 6.6s
+
+discoal: mean ss=53.04, mean pi=19.7421, mean tajD=0.5746
+msprime: mean ss=53.73, mean pi=19.8651, mean tajD=0.5420
+
+3 comparisons, Bonferroni alpha = 3.33e-03
+two_pop_split_exp_ss                 0.0420   3.41e-01
+two_pop_split_exp_pi                 0.0210   9.80e-01
+two_pop_split_exp_td                 0.0430   3.14e-01
+
+PASS: all 3 comparisons within Bonferroni-corrected p > 3.33e-03
+
+OVERALL: PASS
