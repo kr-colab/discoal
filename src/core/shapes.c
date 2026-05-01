@@ -67,8 +67,24 @@ double integratedHazardSize(int popID, double t0, double T, int k) {
 }
 
 double integratedHazardMig(int srcPopID, int dstPopID, double t0, double T, int k) {
-    (void)srcPopID; (void)dstPopID; (void)t0; (void)T; (void)k;
-    return 0.0;
+    Shape *s = &migShape[srcPopID][dstPopID];
+    double m0 = migAt(srcPopID, dstPopID, t0);
+    if (k <= 0 || m0 == 0.0) return 0.0;
+    switch (s->type) {
+        case SHAPE_CONSTANT:
+            return k * m0 * T;
+        case SHAPE_EXPONENTIAL: {
+            double b = s->rate_param;
+            if (b == 0.0) return k * m0 * T;
+            return k * m0 * -expm1(-b * T) / b;
+        }
+        case SHAPE_LINEAR: {
+            double d = s->rate_param;
+            return k * (m0 * T - 0.5 * d * T * T);
+        }
+        default:
+            return 0.0;
+    }
 }
 
 double drawWaitingTimeSize(int popID, double t0, double xi, int k) {

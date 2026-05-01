@@ -285,6 +285,53 @@ void test_integratedHazardSize_linear_quadrature_match(void) {
     TEST_ASSERT_DOUBLE_WITHIN(1e-5, sum, closed);
 }
 
+void test_integratedHazardMig_constant(void) {
+    migShape[0][1].type = SHAPE_CONSTANT;
+    migShape[0][1].anchor_value = 0.5;
+    /* k=3, T=4: H = 3*0.5*4 = 6 */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 6.0, integratedHazardMig(0, 1, 0.0, 4.0, 3));
+}
+
+void test_integratedHazardMig_exponential(void) {
+    migShape[0][1].type = SHAPE_EXPONENTIAL;
+    migShape[0][1].anchor_value = 1.0;
+    migShape[0][1].rate_param = 0.5;
+    migShape[0][1].anchor_time = 0.0;
+    /* k=2, T=4: m(s) = exp(-0.5 s), H = 2 * (1 - exp(-2))/0.5 */
+    double expected = 2.0 * (1.0 - exp(-2.0)) / 0.5;
+    TEST_ASSERT_DOUBLE_WITHIN(1e-10, expected, integratedHazardMig(0, 1, 0.0, 4.0, 2));
+}
+
+void test_integratedHazardMig_linear(void) {
+    /* delta = -0.05 (forward decline => backward growth):
+     * m(s) = 0.1 - (-0.05)*s = 0.1 + 0.05 s, k=2, T=4
+     * H = 2*(0.1*4 - (-0.05)*16/2) = 2*(0.4 + 0.4) = 1.6 */
+    migShape[0][1].type = SHAPE_LINEAR;
+    migShape[0][1].anchor_value = 0.1;
+    migShape[0][1].rate_param = -0.05;
+    migShape[0][1].anchor_time = 0.0;
+    TEST_ASSERT_DOUBLE_WITHIN(1e-10, 1.6, integratedHazardMig(0, 1, 0.0, 4.0, 2));
+}
+
+void test_integratedHazardMig_quadrature_match(void) {
+    migShape[0][1].type = SHAPE_EXPONENTIAL;
+    migShape[0][1].anchor_value = 0.3;
+    migShape[0][1].rate_param = 0.7;
+    migShape[0][1].anchor_time = 1.0;
+    double t0 = 1.5;
+    double T = 3.0;
+    int k = 4;
+    int N = 16384;
+    double dt = T / N;
+    double sum = 0.0;
+    for (int i = 0; i < N; i++) {
+        double s_mid = (i + 0.5) * dt;
+        sum += k * migAt(0, 1, t0 + s_mid) * dt;
+    }
+    double closed = integratedHazardMig(0, 1, t0, T, k);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, sum, closed);
+}
+
 #ifndef TEST_RUNNER_MODE
 int main(void) {
     UNITY_BEGIN();
@@ -311,6 +358,10 @@ int main(void) {
     RUN_TEST(test_integratedHazardSize_linear_zero_gamma);
     RUN_TEST(test_integratedHazardSize_linear_diverges_at_zero_crossing);
     RUN_TEST(test_integratedHazardSize_linear_quadrature_match);
+    RUN_TEST(test_integratedHazardMig_constant);
+    RUN_TEST(test_integratedHazardMig_exponential);
+    RUN_TEST(test_integratedHazardMig_linear);
+    RUN_TEST(test_integratedHazardMig_quadrature_match);
     return UNITY_END();
 }
 #endif
