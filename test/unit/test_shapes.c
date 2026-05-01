@@ -332,6 +332,62 @@ void test_integratedHazardMig_quadrature_match(void) {
     TEST_ASSERT_DOUBLE_WITHIN(1e-6, sum, closed);
 }
 
+void test_drawWaitingTimeSize_constant_inverts(void) {
+    popShape[0].type = SHAPE_CONSTANT;
+    popShape[0].anchor_value = 2.0;
+    /* xi = 3, k=2: T = 3*2/1 = 6 */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 6.0, drawWaitingTimeSize(0, 0.0, 3.0, 2));
+}
+
+void test_drawWaitingTimeSize_exponential_inverts(void) {
+    popShape[0].type = SHAPE_EXPONENTIAL;
+    popShape[0].anchor_value = 1.0;
+    popShape[0].rate_param = 0.5;
+    popShape[0].anchor_time = 0.0;
+    double xi = 2.0;
+    int k = 2;
+    /* T such that H(T)=xi: T = log(1 + N0*alpha*xi/pairs)/alpha = log(1+1)/0.5 = 2*log(2) */
+    double T = drawWaitingTimeSize(0, 0.0, xi, k);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-10, 2.0 * log(2.0), T);
+    /* Verify round trip: H(T) == xi */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-10, xi, integratedHazardSize(0, 0.0, T, k));
+}
+
+void test_drawWaitingTimeSize_linear_inverts(void) {
+    popShape[0].type = SHAPE_LINEAR;
+    popShape[0].anchor_value = 1.0;
+    popShape[0].rate_param = 0.5;
+    popShape[0].anchor_time = 0.0;
+    double xi = 1.0;
+    int k = 2;
+    double T = drawWaitingTimeSize(0, 0.0, xi, k);
+    /* Round trip */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-10, xi, integratedHazardSize(0, 0.0, T, k));
+}
+
+void test_drawWaitingTimeSize_returns_negative_for_k_lt_2(void) {
+    popShape[0].type = SHAPE_CONSTANT;
+    popShape[0].anchor_value = 1.0;
+    TEST_ASSERT_TRUE(drawWaitingTimeSize(0, 0.0, 1.0, 1) < 0.0);
+    TEST_ASSERT_TRUE(drawWaitingTimeSize(0, 0.0, 1.0, 0) < 0.0);
+}
+
+void test_drawWaitingTimeSize_linear_zero_crossing(void) {
+    /* gamma = 0.5 (forward growth => backward decline):
+     * N(t) = 1 - 0.5 t hits zero at t=2. H(2) = +inf, so any finite xi maps to T<2. */
+    popShape[0].type = SHAPE_LINEAR;
+    popShape[0].anchor_value = 1.0;
+    popShape[0].rate_param = 0.5;
+    popShape[0].anchor_time = 0.0;
+    int k = 2;
+    /* Try a battery of xi values; T must always be < 2. */
+    for (double xi = 0.1; xi < 100.0; xi *= 1.5) {
+        double T = drawWaitingTimeSize(0, 0.0, xi, k);
+        TEST_ASSERT_TRUE(T > 0.0);
+        TEST_ASSERT_TRUE(T < 2.0);
+    }
+}
+
 #ifndef TEST_RUNNER_MODE
 int main(void) {
     UNITY_BEGIN();
@@ -362,6 +418,11 @@ int main(void) {
     RUN_TEST(test_integratedHazardMig_exponential);
     RUN_TEST(test_integratedHazardMig_linear);
     RUN_TEST(test_integratedHazardMig_quadrature_match);
+    RUN_TEST(test_drawWaitingTimeSize_constant_inverts);
+    RUN_TEST(test_drawWaitingTimeSize_exponential_inverts);
+    RUN_TEST(test_drawWaitingTimeSize_linear_inverts);
+    RUN_TEST(test_drawWaitingTimeSize_returns_negative_for_k_lt_2);
+    RUN_TEST(test_drawWaitingTimeSize_linear_zero_crossing);
     return UNITY_END();
 }
 #endif

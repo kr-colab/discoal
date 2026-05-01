@@ -88,8 +88,32 @@ double integratedHazardMig(int srcPopID, int dstPopID, double t0, double T, int 
 }
 
 double drawWaitingTimeSize(int popID, double t0, double xi, int k) {
-    (void)popID; (void)t0; (void)xi; (void)k;
-    return -1.0;
+    if (k < 2) return -1.0;
+    Shape *s = &popShape[popID];
+    double pairs = (double)k * (k - 1) / 2.0;
+    double N0 = sizeAt(popID, t0);
+    if (N0 <= 0.0) return -1.0;
+    switch (s->type) {
+        case SHAPE_CONSTANT:
+            return xi * N0 / pairs;
+        case SHAPE_EXPONENTIAL: {
+            double a = s->rate_param;
+            if (a == 0.0) return xi * N0 / pairs;
+            return log1p(N0 * a * xi / pairs) / a;
+        }
+        case SHAPE_LINEAR: {
+            double g = s->rate_param;
+            if (g == 0.0) return xi * N0 / pairs;
+            double T = (N0 / g) * (1.0 - exp(-g * xi / pairs));
+            if (g > 0.0) {
+                double T_cross = N0 / g;
+                if (T >= T_cross) T = nextafter(T_cross, 0.0);
+            }
+            return T;
+        }
+        default:
+            return -1.0;
+    }
 }
 
 double drawWaitingTimeMig(int srcPopID, int dstPopID, double t0, double xi, int k) {
