@@ -253,6 +253,10 @@ test_shapes: $(TEST_DIR)/test_shapes.c $(SRC_CORE)/shapes.c $(SRC_CORE)/shapes.h
 	@mkdir -p build
 	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -DUNITY_INCLUDE_DOUBLE -o build/test_shapes $(TEST_DIR)/test_shapes.c $(SRC_CORE)/shapes.c $(TEST_DIR)/test_globals.c $(SRC_RNG)/xoshiro256pp_compat.c $(UNITY_SOURCES) -I$(UNITY_DIR) -lm -fcommon
 
+test_alleleTraj: $(TEST_DIR)/test_alleleTraj.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/alleleTraj.h
+	@mkdir -p build
+	$(CC) $(TEST_CFLAGS) -DUNITY_INCLUDE_DOUBLE -o build/test_alleleTraj $(TEST_DIR)/test_alleleTraj.c $(SRC_CORE)/alleleTraj.c $(SRC_RNG)/xoshiro256pp_compat.c $(UNITY_SOURCES) -I$(UNITY_DIR) -lm -fcommon
+
 test_node_operations: $(TEST_DIR)/test_node_operations.c $(SRC_CORE)/discoal.h $(TEST_DIR)/test_globals.c
 	@mkdir -p build
 	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o build/test_node_operations $(TEST_DIR)/test_node_operations.c $(UNITY_SOURCES) \
@@ -291,11 +295,12 @@ test_config_interface: demes-c $(TEST_DIR)/test_config_interface.c $(SRC_CORE)/c
 
 
 # Run individual unit tests
-run_tests: test_node test_event test_shapes test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_config_interface
+run_tests: test_node test_event test_shapes test_alleleTraj test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_config_interface
 	@echo "=== Running Unit Tests ==="
 	./build/test_node
 	./build/test_event
 	./build/test_shapes
+	./build/test_alleleTraj
 	./build/test_node_operations
 	./build/test_mutations
 	./build/test_ancestry_segment

@@ -32,6 +32,21 @@ double detSweepFreq(double t, double alpha){
 	return(epsilon/denom);
 }
 
+/* detSweepFreqEuler-- advances the deterministic sweep frequency
+   by one Euler step on the logistic ODE
+       dx/dt = alpha_eff * x * (1 - x).
+   This is the time-varying-N counterpart to detSweepFreq, which uses
+   the closed-form solution under constant N. The clamp to [0, 1] is
+   defensive: callers are expected to use a small enough dt that the
+   step naturally stays in range. */
+double detSweepFreqEuler(double x, double dt, double alpha_eff){
+	double dx = alpha_eff * x * (1.0 - x) * dt;
+	double x_new = x + dx;
+	if (x_new < 0.0) x_new = 0.0;
+	if (x_new > 1.0) x_new = 1.0;
+	return x_new;
+}
+
 /* neutralStochastic-- returns the frequency of a neutral allele
 which is sweeping through the population. This is the jump process
 corresponding to the condition diffusion towards loss (i.e. backwards).
