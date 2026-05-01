@@ -490,7 +490,7 @@ Tests first:
 - `test_shape_constant`: `sizeAt`/`migAt` returns anchor value for CONST.
 - `test_shape_exponential`: `sizeAt(t)` matches $N_0 e^{-\alpha (t-t_0)}$
   to $10^{-12}$ relative tolerance for a battery of inputs.
-- `test_shape_linear`: similarly for $N_0 + \gamma (t - t_0)$.
+- `test_shape_linear`: similarly for $N_0 - \gamma (t - t_0)$.
 - `test_integratedHazard_quadrature`: closed-form integrated hazards
   agree with high-resolution numerical quadrature (Simpson's rule, 1024
   steps) to $10^{-9}$ for all three shapes, sizes and migrations,
@@ -598,8 +598,8 @@ Tests first:
 - `test_shape_linear_neutral_msprime_parity`: 2-pop with linear-growth
   branch, parity vs msprime. Same statistics as Phase 4.
 - `test_shape_linear_zero_crossing_robustness`: linear shape with
-  $\gamma$ such that $N_0 + \gamma T \to 0^+$ at finite $T$ within the
-  epoch. Verify the integrator forces a coalescence and does not
+  $\gamma > 0$ such that $N_0 - \gamma T \to 0^+$ at finite $T$ within
+  the epoch. Verify the integrator forces a coalescence and does not
   segfault or produce NaN times.
 
 Implementation:

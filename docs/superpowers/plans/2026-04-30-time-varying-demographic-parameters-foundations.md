@@ -845,9 +845,9 @@ case SHAPE_LINEAR: {
 git add src/core/shapes.c test/unit/test_shapes.c
 git commit -m "Implement integratedHazardSize for SHAPE_LINEAR
 
-H = (k choose 2) * log((N0 + gamma*T)/N0) / gamma. Returns
-+infinity when N(t) crosses zero within T to signal forced
-coalescence to the waiting-time draw."
+H = (k choose 2) * log(N0 / (N0 - gamma*T)) / gamma. Returns
++infinity when N(t) crosses zero within T (gamma > 0) to
+signal forced coalescence to the waiting-time draw."
 ```
 
 ---
