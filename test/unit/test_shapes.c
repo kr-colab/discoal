@@ -228,6 +228,57 @@ void test_integratedHazardSize_exponential_quadrature_match(void) {
     TEST_ASSERT_DOUBLE_WITHIN(1e-6, sum, closed);
 }
 
+void test_integratedHazardSize_linear_basic(void) {
+    /* gamma = -0.5 (forward decline => backward growth):
+     * N(s) = 1 - (-0.5)*s = 1 + 0.5 s, k=2, T=4
+     * H = 1/(-0.5) * log(1/(1+0.5*4)) = -2 * log(1/3) = 2*log(3) */
+    popShape[0].type = SHAPE_LINEAR;
+    popShape[0].anchor_value = 1.0;
+    popShape[0].rate_param = -0.5;
+    popShape[0].anchor_time = 0.0;
+    TEST_ASSERT_DOUBLE_WITHIN(1e-10, 2.0 * log(3.0), integratedHazardSize(0, 0.0, 4.0, 2));
+}
+
+void test_integratedHazardSize_linear_zero_gamma(void) {
+    popShape[0].type = SHAPE_LINEAR;
+    popShape[0].anchor_value = 2.0;
+    popShape[0].rate_param = 0.0;
+    popShape[0].anchor_time = 0.0;
+    /* matches constant */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-10, 1.0 * 5.0 / 2.0, integratedHazardSize(0, 0.0, 5.0, 2));
+}
+
+void test_integratedHazardSize_linear_diverges_at_zero_crossing(void) {
+    /* gamma = 0.5 (forward growth => backward decline):
+     * N(t) = 1 - 0.5 t hits zero at t=2. Integration to T=2.5 should diverge. */
+    popShape[0].type = SHAPE_LINEAR;
+    popShape[0].anchor_value = 1.0;
+    popShape[0].rate_param = 0.5;
+    popShape[0].anchor_time = 0.0;
+    double H = integratedHazardSize(0, 0.0, 2.5, 2);
+    TEST_ASSERT_TRUE(isinf(H) || H > 1e15);
+}
+
+void test_integratedHazardSize_linear_quadrature_match(void) {
+    popShape[0].type = SHAPE_LINEAR;
+    popShape[0].anchor_value = 2.0;
+    popShape[0].rate_param = 0.3;
+    popShape[0].anchor_time = 1.0;
+    double t0 = 1.5;
+    double T = 6.0;
+    int k = 4;
+    double pairs = k*(k-1)/2.0;
+    int N = 16384;
+    double dt = T / N;
+    double sum = 0.0;
+    for (int i = 0; i < N; i++) {
+        double s_mid = (i + 0.5) * dt;
+        sum += pairs / sizeAt(0, t0 + s_mid) * dt;
+    }
+    double closed = integratedHazardSize(0, t0, T, k);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, sum, closed);
+}
+
 #ifndef TEST_RUNNER_MODE
 int main(void) {
     UNITY_BEGIN();
@@ -250,6 +301,10 @@ int main(void) {
     RUN_TEST(test_integratedHazardSize_exponential_offset_t0);
     RUN_TEST(test_integratedHazardSize_exponential_alpha_zero);
     RUN_TEST(test_integratedHazardSize_exponential_quadrature_match);
+    RUN_TEST(test_integratedHazardSize_linear_basic);
+    RUN_TEST(test_integratedHazardSize_linear_zero_gamma);
+    RUN_TEST(test_integratedHazardSize_linear_diverges_at_zero_crossing);
+    RUN_TEST(test_integratedHazardSize_linear_quadrature_match);
     return UNITY_END();
 }
 #endif

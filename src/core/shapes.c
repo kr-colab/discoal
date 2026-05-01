@@ -54,6 +54,13 @@ double integratedHazardSize(int popID, double t0, double T, int k) {
             if (a == 0.0) return pairs * T / N0;
             return pairs * expm1(a * T) / (N0 * a);
         }
+        case SHAPE_LINEAR: {
+            double g = s->rate_param;
+            if (g == 0.0) return pairs * T / N0;
+            double frac = g * T / N0;
+            if (frac >= 1.0) return INFINITY;  /* end <= 0 case */
+            return -pairs * log1p(-frac) / g;
+        }
         default:
             return 0.0;
     }
