@@ -68,9 +68,9 @@ discoal_edited: libyaml demes-c libcyaml $(SRC_CORE)/discoal_multipop.c $(SRC_CO
 	$(CC) $(CFLAGS) -DUSE_XOSHIRO256PP -o build/discoal_edited $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/activeSegment.c $(SRC_TSKIT)/tskitInterface.c $(SRC_CORE)/demesInterface.c $(SRC_CORE)/configInterface.c $(SRC_CORE)/shapes.c $(POOL_SOURCES) $(TSKIT_SOURCES) $(EXTERN_LIB) -lm -fcommon
 
 # Build debug version with ancestry verification
-discoal_debug: $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/discoal.h $(SRC_CORE)/discoalFunctions.h $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegment.h $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/ancestrySegmentAVL.h $(SRC_CORE)/activeSegment.c $(SRC_CORE)/activeSegment.h $(TSKIT_SOURCES)
+discoal_debug: libyaml demes-c libcyaml $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/discoal.h $(SRC_CORE)/discoalFunctions.h $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegment.h $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/ancestrySegmentAVL.h $(SRC_CORE)/activeSegment.c $(SRC_CORE)/activeSegment.h $(SRC_CORE)/shapes.h $(SRC_CORE)/shapes.c $(TSKIT_SOURCES)
 	@mkdir -p build
-	$(CC) -O2 -I. -I./src/core -I./src/rng -I./src/tskit -I./extern/tskit -I./extern/tskit/kastore -DDEBUG_ANCESTRY -o build/discoal_debug $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_RNG)/ranlibComplete.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/activeSegment.c $(SRC_TSKIT)/tskitInterface.c $(TSKIT_SOURCES) -lm -fcommon
+	$(CC) -O2 $(INCLUDE) -DDEBUG_ANCESTRY -o build/discoal_debug $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_RNG)/ranlibComplete.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/activeSegment.c $(SRC_CORE)/shapes.c $(SRC_TSKIT)/tskitInterface.c $(SRC_CORE)/demesInterface.c $(SRC_CORE)/configInterface.c $(POOL_SOURCES) $(TSKIT_SOURCES) $(EXTERN_LIB) -lm -fcommon
 
 # Build legacy version from master-backup branch for comparison testing
 discoal_legacy_backup:
