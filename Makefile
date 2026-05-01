@@ -86,6 +86,22 @@ build/discoal_pre_phase3:
 	  git worktree remove "$$WT"
 	@echo "Built pre-Phase-3 reference: build/discoal_pre_phase3"
 
+# Phase 5 regression reference: discoal binary at the SHA where Phase 5 began.
+# build/discoal_pre_phase5 is a real-file target so make skips the rebuild
+# if it already exists. Remove the file to force a rebuild.
+PHASE5_REF_SHA = 12415d3
+.PHONY: discoal_pre_phase5
+discoal_pre_phase5: build/discoal_pre_phase5
+
+build/discoal_pre_phase5:
+	@mkdir -p build
+	@WT=$$(mktemp -d) && \
+	  git worktree add --detach "$$WT" $(PHASE5_REF_SHA) && \
+	  $(MAKE) -C "$$WT" discoal && \
+	  cp "$$WT/build/discoal" build/discoal_pre_phase5 && \
+	  git worktree remove "$$WT"
+	@echo "Built pre-Phase-5 reference: build/discoal_pre_phase5"
+
 # Build debug version with ancestry verification
 discoal_debug: libyaml demes-c libcyaml $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/discoal.h $(SRC_CORE)/discoalFunctions.h $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegment.h $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/ancestrySegmentAVL.h $(SRC_CORE)/activeSegment.c $(SRC_CORE)/activeSegment.h $(SRC_CORE)/shapes.h $(SRC_CORE)/shapes.c $(TSKIT_SOURCES)
 	@mkdir -p build
