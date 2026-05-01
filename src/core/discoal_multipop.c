@@ -1086,6 +1086,37 @@ void getParameters(int argc,const char **argv){
 							}
 						}
 						break;
+					case 'm':
+						/* -em time srcPop dstPop rate — change migration rate at this time */
+						{
+							ensureEventsCapacity();
+							events[eventNumber].time = atof(argv[++args]) * 2.0;
+							events[eventNumber].popID2 = atoi(argv[++args]);  /* source pop */
+							events[eventNumber].popID = atoi(argv[++args]);   /* destination pop */
+							events[eventNumber].popnSize = atof(argv[++args]); /* new rate stored in popnSize field */
+							events[eventNumber].type = 'm';  /* lowercase 'm' for time-varying migration event */
+							eventNumber++;
+						}
+						break;
+					case 'M':
+						/* -eM time rate — set all off-diagonal pairs to the given rate at this time */
+						{
+							double t = atof(argv[++args]) * 2.0;
+							double rate_val = atof(argv[++args]);
+							for (int src = 0; src < npops; src++) {
+								for (int dst = 0; dst < npops; dst++) {
+									if (src == dst) continue;
+									ensureEventsCapacity();
+									events[eventNumber].time = t;
+									events[eventNumber].popID2 = src;
+									events[eventNumber].popID = dst;
+									events[eventNumber].popnSize = rate_val;
+									events[eventNumber].type = 'm';
+									eventNumber++;
+								}
+							}
+						}
+						break;
 				}
 			break;
 			case 'w':
