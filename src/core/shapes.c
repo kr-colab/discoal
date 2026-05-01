@@ -52,7 +52,7 @@ double integratedHazardSize(int popID, double t0, double T, int k) {
         case SHAPE_EXPONENTIAL: {
             double a = s->rate_param;
             if (a == 0.0) return pairs * T / N0;
-            return pairs * (exp(a * T) - 1.0) / (N0 * a);
+            return pairs * expm1(a * T) / (N0 * a);
         }
         default:
             return 0.0;
