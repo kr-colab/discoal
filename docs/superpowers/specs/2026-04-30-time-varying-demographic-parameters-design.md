@@ -993,3 +993,42 @@ indistinguishable from msprime under the tested conditions, validating the
 NHPP per-component sampler and the `'g'` event handler.
 
 Detailed per-comparison output: `test/parity/phase4b_msprime/results/analysis.txt`.
+
+### 2026-05-01 update: broadened single-pop sweep + alpha-conversion fix
+
+After the initial single-point single-pop test passed, a configuration
+sweep was run with alpha in {50, 200, 1000} x eg_time_cli in {0.1, 0.5, 1.0}
+and 11 statistics per cell (segregating sites, pi, Tajima's D, Watterson's
+theta, haplotype diversity, number of distinct haplotypes, plus per-bin
+folded SFS). Initial run at REPS=1000 rejected 4 statistics in the
+`a50_t0.1` cell (small alpha, recent growth onset) at Bonferroni p < 1e-4,
+with msprime systematically more diverse than discoal — a 2x parameter
+mis-mapping somewhere in the conversions.
+
+Diagnosis: the bug was in `discoal_alpha_to_msp_growth`, which was dividing
+by `4*Ne` but should divide by `2*Ne`. Discoal stores alpha as the
+`rate_param` of an exponential shape evaluated in *internal* time units
+(`size(t) = anchor * exp(-alpha * (t - t0))`, see `shapes.c`). The pair
+coalescent rate in `neutralPhase` is `n*(n-1)/2` per internal unit, so 1
+internal unit equals `2*Ne_diploid` generations. Therefore the per-generation
+growth rate `g` that produces the same exponential is
+`g = alpha / (2*Ne)`, not `alpha / (4*Ne)`. The CLI-time conversion is
+unaffected: discoal multiplies user-supplied event times by 2.0 to enter
+internal units, so `t_gen = t_cli * 4 * Ne` is correct (one factor of 2
+from CLI->internal, one factor of 2 from internal->generations).
+
+The bug was masked at the original single-point test (alpha=50, t_cli=0.5)
+because the deeper growth event left less integrated growth contribution to
+diversity, and was only revealed by the broadened sweep — small alpha plus
+recent growth makes the absolute exponential rate strongly determining of
+the post-event coalescent time distribution.
+
+Fix: divide alpha by `2*Ne` instead of `4*Ne` in
+`discoal_alpha_to_msp_growth`. Re-running the sweep at REPS=5000 across 99
+comparisons (Bonferroni alpha = 1.01e-4): PASS, no rejections. Two-pop
+test (REPS=5000) also PASSes.
+
+This corroborates Convention B (ploidy=2, popsize=Ne) for the rate
+mapping, the existing time conversion (`t_cli * 4 * Ne`), and the corrected
+growth-rate conversion (`alpha / (2 * Ne)`). The broadened sweep is a
+stronger validation than the original single-point test.
