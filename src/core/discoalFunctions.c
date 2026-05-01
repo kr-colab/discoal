@@ -1618,7 +1618,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 			rRate[i] = rho * popnSizes[i] * 0.5;// * ((float)activeSites/nSites);
 			gcRate[i] = my_gamma * popnSizes[i] * 0.5 ;
 			
-			for(j=0;j<npops;j++) mRate[i]+=migMat[i][j];
+			for(j=0;j<npops;j++) mRate[i]+=migAt(i, j, currentTime);
 			mRate[i] *= popnSizes[i] * 0.5;
 			totCRate += cRate[i];
 			totRRate += rRate[i];
@@ -1668,12 +1668,12 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 						while(eSum/totMRate < r2) eSum += mRate[++i];
 						//printf("outer totMRate: %f eSum: %f i:%d\n",totMRate,eSum,i);
 						//pick dest popn
-						eSum = migMat[i][0]* popnSizes[i] * 0.5;
+						eSum = migAt(i, 0, currentTime) * popnSizes[i] * 0.5;
 						//printf("outer eSumNew:%f mRate[%d]:%f\n",eSum,i,mRate[i]);
 						r2 = ranf();
 						while(eSum/mRate[i] < r2){
 						//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
-							eSum += migMat[i][++j] * popnSizes[i] * 0.5;
+							eSum += migAt(i, ++j, currentTime) * popnSizes[i] * 0.5;
 						//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
 							
 						} 
@@ -3007,6 +3007,14 @@ void mergePopns(int popnSrc, int popnDest){
 	//set migration rates to zero
 	migMat[popnSrc][popnDest] = 0.0;
 	migMat[popnDest][popnSrc] = 0.0;
+	migShape[popnSrc][popnDest].type = SHAPE_CONSTANT;
+	migShape[popnSrc][popnDest].anchor_value = 0.0;
+	migShape[popnSrc][popnDest].rate_param = 0.0;
+	migShape[popnSrc][popnDest].anchor_time = currentTime;
+	migShape[popnDest][popnSrc].type = SHAPE_CONSTANT;
+	migShape[popnDest][popnSrc].anchor_value = 0.0;
+	migShape[popnDest][popnSrc].rate_param = 0.0;
+	migShape[popnDest][popnSrc].anchor_time = currentTime;
 	
 }
 
