@@ -1923,6 +1923,12 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 	long int j;
 	double x;
 
+	/* Integrated alpha_eff for the closed-form general detSweepFreq under
+	 * non-constant shapes. Reset to 0 at function entry; updated in the
+	 * inner loop's case 'd' when the dispatch chooses the general path. */
+	double A_now = 0.0;
+	double A_prev = 0.0;
+
 	/* Save popShape state; we'll mutate it as we walk events forward to track
 	 * 'n' and 'g' events, then restore at function exit so the caller's view
 	 * is unchanged. */
@@ -1994,7 +2000,17 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 				switch(sweepMode){
 					case 'd':
 					if (detSweepMode == 0) {
-						x = detSweepFreq(ttau, alpha * sr_now);
+						if (allShapesConstant()) {
+							/* Bit-equal with pre-Phase-5: existing per-step detSweepFreq with current alpha_eff. */
+							x = detSweepFreq(ttau, alpha * sr_now);
+						} else {
+							/* Time-varying alpha_eff: use the closed-form general formula with the
+							 * incrementally-tracked integrated alpha. A_now = A_prev + alpha *
+							 * integratedSizeRatio over the most recent dt step. */
+							A_now = A_prev + alpha * integratedSizeRatio(0, currentTime + ttau - tIncOrig, tIncOrig);
+							x = detSweepFreqGeneral(alpha, A_now);
+							A_prev = A_now;
+						}
 					} else {
 						x = detSweepFreqEuler(x, tIncOrig, alpha * sr_now);
 					}
