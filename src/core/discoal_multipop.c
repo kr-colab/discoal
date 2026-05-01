@@ -106,6 +106,11 @@ int main(int argc, const char * argv[]){
 	getParameters(argc,argv);
   fprintf(stderr, "DEBUG\t%d\t%f\t%f\t%f\t%ld\t%ld\t%d\n", migFlag, tDiv, theta, rho, seed1, seed2, EFFECTIVE_POPN_SIZE);
   fprintf(stderr, "DEBUG\t%d\n", nSites);
+	/* Snapshot per-pop initial sizes for per-replicate reset (#82 follow-up).
+	 * 'n' / 'g' / 'l' events mutate currentSize during a replicate. Without
+	 * this snapshot, the mutated value bleeds into the next replicate's
+	 * initializeShapesFromGlobals(), corrupting the starting popShape. */
+	for (i = 0; i < MAXPOPS; i++) currentSizeConst[i] = currentSize[i];
 	double N = EFFECTIVE_POPN_SIZE; // effective population size
 	// fprintf(stderr, "DEBUG: About to call setall() with seeds: %ld, %ld\n", seed1, seed2);
 	setall(seed1, seed2 );

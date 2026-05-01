@@ -150,7 +150,18 @@ void initialize(){
 	int i,j,p, count=0;
 	int leafID=0;
 	int tmpCount = 0;
-	
+	extern double *currentSize;
+
+	/* Restore per-pop sizes from the snapshot taken after parameter parsing.
+	 * 'n' / 'g' / 'l' events mutate currentSize within a replicate; without
+	 * this restore, the mutation leaks into the next replicate via the
+	 * initializeShapesFromGlobals() call below. (Guarded: unit tests that
+	 * call initialize() without going through main don't allocate
+	 * currentSize.) */
+	if (currentSize != NULL) {
+		for (p = 0; p < MAXPOPS; p++) currentSize[p] = currentSizeConst[p];
+	}
+
 	/* Initialize the arrays */
 	totChunkNumber = 0;
 	initializeBreakPoints();
@@ -1649,7 +1660,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 			cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 / sizeAt(i, currentTime);
 			rRate[i] = rho * popnSizes[i] * 0.5;// * ((float)activeSites/nSites);
 			gcRate[i] = my_gamma * popnSizes[i] * 0.5 ;
-			
+
 			for(j=0;j<npops;j++) mRate[i]+=migAt(i, j, currentTime);
 			mRate[i] *= popnSizes[i] * 0.5;
 			totCRate += cRate[i];

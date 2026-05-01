@@ -173,6 +173,7 @@ double gammaCoRatioMode, gammaCoRatio;
 double pThetaUp, pThetaLow,pRhoMean,pRhoUp,pRhoLow,pAlphaUp,pAlphaLow,pTauUp,pTauLow,pXUp,pXLow,pF0Up,pF0Low,pUALow,pUAUp,pCUp,pCLow;
 double pE2TLow,pE1TLow, pE2THigh, pE1THigh, pE1SLow, pE1SHigh, pE2SLow,pE2SHigh;
 double migMat[MAXPOPS][MAXPOPS], migMatConst[MAXPOPS][MAXPOPS];
+double currentSizeConst[MAXPOPS];  /* per-replicate snapshot for currentSize reset */
 Shape popShape[MAXPOPS];
 Shape migShape[MAXPOPS][MAXPOPS];
 double recurSweepRate;
