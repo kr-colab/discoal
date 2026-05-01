@@ -949,3 +949,47 @@ will be deleted in Phase 5 when the closed-form general path lands.
 `feature/issue-82-time-varying-demography`. Re-running the harness
 (`./test/parity/q1_detsweep_verification.sh`) regenerates the .ms
 and .stats files (gitignored due to size; ~30 MB total).
+
+## Addendum (2026-05-01): Phase 4b msprime Parity Result
+
+The Phase 4 SHAPE_EXPONENTIAL implementation was validated against
+msprime 1.4.1 via the parity harness at `test/parity/phase4b_msprime/`.
+
+**Configuration discovery:** The conversion between discoal's CLI/internal
+units and msprime's parameters has three plausible (ploidy, population_size)
+combinations. A trial sweep at the no-demography baseline (theta=5, rho=5,
+n=6, reps=200) decisively picked **Convention B: ploidy=2, popsize=Ne** with
+relative error 0.025 on mean pi. The other conventions failed:
+A (ploidy=1, popsize=Ne) had rel_err 0.503 (half the coalescent timescale);
+C (ploidy=1, popsize=2*Ne) had rel_err 0.023 (mathematically equivalent to B).
+The discoal `EFFECTIVE_POPN_SIZE` parameter is therefore best interpreted as
+diploid Ne — consistent with the documented "4N convention" since 4*Ne_diploid
+generations per coalescent unit.
+
+**Two implementation gotchas surfaced during conversion discovery, both
+caught by the test harness:**
+
+1. msprime's default mutation model (JC69 with `discrete_genome=True`) produces
+   multi-allelic sites; discoal uses infinite-sites binary. The harness uses
+   `model=msprime.BinaryMutationModel(), discrete_genome=False`.
+2. msprime's `samples=n` under `ploidy=2` returns `2n` haploid samples; discoal's
+   `n` is already haploid. The harness passes `n // ploidy` individuals.
+
+**EXP parity tests at $10^3$ replicates each:**
+
+- Single-pop EXP (`-eg 0.5 0 50` in discoal; matched
+  `add_population_parameters_change` in msprime): 4 comparisons (segregating
+  sites, pi, Tajima's D, folded SFS chi-squared) at Bonferroni-corrected
+  $\alpha = 0.01/4 = 2.5 \times 10^{-3}$. **Result: PASS**, smallest $p = 6.7 \times 10^{-3}$
+  (SFS chi-squared — the most discriminating statistic), all others $p > 10^{-2}$.
+
+- Two-pop split + EXP in pop0 (`-p 2 6 6 -eg 0.3 0 50 -ed 1.0 0 1`; matched
+  msprime `Demography` with `population_split` + `parameters_change`):
+  3 comparisons (ss, pi, tajD) at $\alpha = 3.3 \times 10^{-3}$. **Result: PASS**,
+  smallest $p = 0.31$.
+
+**Overall: PASS.** The discoal SHAPE_EXPONENTIAL implementation is statistically
+indistinguishable from msprime under the tested conditions, validating the
+NHPP per-component sampler and the `'g'` event handler.
+
+Detailed per-comparison output: `test/parity/phase4b_msprime/results/analysis.txt`.
