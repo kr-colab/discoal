@@ -70,13 +70,15 @@ discoal_edited: libyaml demes-c libcyaml $(SRC_CORE)/discoal_multipop.c $(SRC_CO
 # Phase 3 regression reference: discoal binary at the SHA where Phase 3 began.
 # This recipe checks out that SHA in a temp worktree, builds discoal there,
 # copies the binary to build/discoal_pre_phase3, and removes the worktree.
+# Phase 3 regression reference: discoal binary at the SHA where Phase 3 began.
+# build/discoal_pre_phase3 is a real-file target so make skips the rebuild
+# if it already exists. Remove the file to force a rebuild.
 PHASE3_REF_SHA = 9b7c4e0
-discoal_pre_phase3:
+.PHONY: discoal_pre_phase3
+discoal_pre_phase3: build/discoal_pre_phase3
+
+build/discoal_pre_phase3:
 	@mkdir -p build
-	@if [ -x build/discoal_pre_phase3 ]; then \
-		echo "build/discoal_pre_phase3 already present; remove it to rebuild"; \
-		exit 0; \
-	fi
 	@WT=$$(mktemp -d) && \
 	  git worktree add --detach "$$WT" $(PHASE3_REF_SHA) && \
 	  $(MAKE) -C "$$WT" discoal && \
