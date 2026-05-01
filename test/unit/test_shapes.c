@@ -438,6 +438,61 @@ void test_drawWaitingTimeMig_zero_rate_returns_negative(void) {
     TEST_ASSERT_TRUE(drawWaitingTimeMig(0, 1, 0.0, 1.0, 4) < 0.0);
 }
 
+extern double ranf(void);  /* from xoshiro256pp_compat */
+
+static int compare_doubles(const void *a, const void *b) {
+    double da = *(const double *)a;
+    double db = *(const double *)b;
+    return (da > db) - (da < db);
+}
+
+static double ks_statistic_size(int popID, int k, int n) {
+    double *T = malloc(sizeof(double) * n);
+    for (int i = 0; i < n; i++) {
+        double xi = -log(ranf());
+        T[i] = drawWaitingTimeSize(popID, 0.0, xi, k);
+    }
+    qsort(T, n, sizeof(double), compare_doubles);
+    double max_d = 0.0;
+    for (int i = 0; i < n; i++) {
+        double F_emp = (double)(i + 1) / n;
+        double F_theory = 1.0 - exp(-integratedHazardSize(popID, 0.0, T[i], k));
+        double d = fabs(F_emp - F_theory);
+        if (d > max_d) max_d = d;
+    }
+    free(T);
+    return max_d;
+}
+
+void test_drawWaitingTimeSize_distribution_constant(void) {
+    popShape[0].type = SHAPE_CONSTANT;
+    popShape[0].anchor_value = 1.0;
+    int n = 10000;
+    double D = ks_statistic_size(0, 2, n);
+    /* For n=10000, KS critical at 5% is ~0.0136. Use 0.05 as forgiving threshold. */
+    TEST_ASSERT_TRUE(D < 0.05);
+}
+
+void test_drawWaitingTimeSize_distribution_exponential(void) {
+    popShape[0].type = SHAPE_EXPONENTIAL;
+    popShape[0].anchor_value = 1.0;
+    popShape[0].rate_param = 0.5;
+    popShape[0].anchor_time = 0.0;
+    int n = 10000;
+    double D = ks_statistic_size(0, 4, n);
+    TEST_ASSERT_TRUE(D < 0.05);
+}
+
+void test_drawWaitingTimeSize_distribution_linear(void) {
+    popShape[0].type = SHAPE_LINEAR;
+    popShape[0].anchor_value = 1.0;
+    popShape[0].rate_param = 0.3;
+    popShape[0].anchor_time = 0.0;
+    int n = 10000;
+    double D = ks_statistic_size(0, 3, n);
+    TEST_ASSERT_TRUE(D < 0.05);
+}
+
 #ifndef TEST_RUNNER_MODE
 int main(void) {
     UNITY_BEGIN();
@@ -478,6 +533,9 @@ int main(void) {
     RUN_TEST(test_drawWaitingTimeMig_exponential_unreachable_xi);
     RUN_TEST(test_drawWaitingTimeMig_linear_round_trip);
     RUN_TEST(test_drawWaitingTimeMig_zero_rate_returns_negative);
+    RUN_TEST(test_drawWaitingTimeSize_distribution_constant);
+    RUN_TEST(test_drawWaitingTimeSize_distribution_exponential);
+    RUN_TEST(test_drawWaitingTimeSize_distribution_linear);
     return UNITY_END();
 }
 #endif
