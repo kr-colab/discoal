@@ -1,0 +1,112 @@
+108 comparisons, Bonferroni alpha = 9.26e-05
+config                   stat                      D          p reject?
+alpha1000_tau0.01        H1                   0.0650   2.92e-02
+alpha1000_tau0.01        H12                  0.0630   3.78e-02
+alpha1000_tau0.01        H2/H1                0.0600   5.46e-02
+alpha1000_tau0.01        HapCount             0.0630   3.78e-02
+alpha1000_tau0.01        Omega                0.0070   1.00e+00
+alpha1000_tau0.01        ZnS                  0.0590   6.15e-02
+alpha1000_tau0.01        fayWuH               0.0630   3.78e-02
+alpha1000_tau0.01        maxFDA               0.0480   2.00e-01
+alpha1000_tau0.01        pi                   0.0610   4.84e-02
+alpha1000_tau0.01        ss                   0.0590   6.15e-02
+alpha1000_tau0.01        tajD                 0.0600   5.46e-02
+alpha1000_tau0.01        thetaH               0.0630   3.78e-02
+alpha1000_tau0.1         H1                   0.0840   1.72e-03
+alpha1000_tau0.1         H12                  0.0790   3.88e-03
+alpha1000_tau0.1         H2/H1                0.0660   2.56e-02
+alpha1000_tau0.1         HapCount             0.0620   4.28e-02
+alpha1000_tau0.1         Omega                0.0570   7.76e-02
+alpha1000_tau0.1         ZnS                  0.0230   9.54e-01
+alpha1000_tau0.1         fayWuH               0.0620   4.28e-02
+alpha1000_tau0.1         maxFDA               0.0390   4.33e-01
+alpha1000_tau0.1         pi                   0.0690   1.71e-02
+alpha1000_tau0.1         ss                   0.0660   2.56e-02
+alpha1000_tau0.1         tajD                 0.0310   7.23e-01
+alpha1000_tau0.1         thetaH               0.0530   1.21e-01
+alpha1000_tau0.5         H1                   0.0410   3.70e-01
+alpha1000_tau0.5         H12                  0.0410   3.70e-01
+alpha1000_tau0.5         H2/H1                0.0300   7.59e-01
+alpha1000_tau0.5         HapCount             0.0410   3.70e-01
+alpha1000_tau0.5         Omega                0.0370   5.01e-01
+alpha1000_tau0.5         ZnS                  0.0590   6.15e-02
+alpha1000_tau0.5         fayWuH               0.0640   3.33e-02
+alpha1000_tau0.5         maxFDA               0.0380   4.66e-01
+alpha1000_tau0.5         pi                   0.0520   1.34e-01
+alpha1000_tau0.5         ss                   0.0470   2.19e-01
+alpha1000_tau0.5         tajD                 0.0260   8.88e-01
+alpha1000_tau0.5         thetaH               0.0320   6.85e-01
+alpha200_tau0.01         H1                   0.1700   4.96e-13  **
+alpha200_tau0.01         H12                  0.1640   3.74e-12  **
+alpha200_tau0.01         H2/H1                0.1600   1.38e-11  **
+alpha200_tau0.01         HapCount             0.1580   2.63e-11  **
+alpha200_tau0.01         Omega                0.1210   8.51e-07  **
+alpha200_tau0.01         ZnS                  0.1020   5.98e-05  **
+alpha200_tau0.01         fayWuH               0.1730   1.75e-13  **
+alpha200_tau0.01         maxFDA               0.0690   1.71e-02
+alpha200_tau0.01         pi                   0.1560   4.94e-11  **
+alpha200_tau0.01         ss                   0.1490   4.25e-10  **
+alpha200_tau0.01         tajD                 0.0490   1.81e-01
+alpha200_tau0.01         thetaH               0.1010   7.34e-05  **
+alpha200_tau0.1          H1                   0.0800   3.31e-03
+alpha200_tau0.1          H12                  0.0860   1.22e-03
+alpha200_tau0.1          H2/H1                0.0930   3.48e-04
+alpha200_tau0.1          HapCount             0.0760   6.19e-03
+alpha200_tau0.1          Omega                0.0570   7.76e-02
+alpha200_tau0.1          ZnS                  0.0600   5.46e-02
+alpha200_tau0.1          fayWuH               0.0670   2.24e-02
+alpha200_tau0.1          maxFDA               0.1070   2.10e-05  **
+alpha200_tau0.1          pi                   0.1060   2.60e-05  **
+alpha200_tau0.1          ss                   0.0770   5.31e-03
+alpha200_tau0.1          tajD                 0.0880   8.61e-04
+alpha200_tau0.1          thetaH               0.1120   6.99e-06  **
+alpha200_tau0.5          H1                   0.0250   9.14e-01
+alpha200_tau0.5          H12                  0.0400   4.01e-01
+alpha200_tau0.5          H2/H1                0.0250   9.14e-01
+alpha200_tau0.5          HapCount             0.0400   4.01e-01
+alpha200_tau0.5          Omega                0.0530   1.21e-01
+alpha200_tau0.5          ZnS                  0.0510   1.48e-01
+alpha200_tau0.5          fayWuH               0.0360   5.36e-01
+alpha200_tau0.5          maxFDA               0.0330   6.48e-01
+alpha200_tau0.5          pi                   0.0400   4.01e-01
+alpha200_tau0.5          ss                   0.0330   6.48e-01
+alpha200_tau0.5          tajD                 0.0280   8.28e-01
+alpha200_tau0.5          thetaH               0.0670   2.24e-02
+alpha50_tau0.01          H1                   0.1560   4.94e-11  **
+alpha50_tau0.01          H12                  0.1510   2.32e-10  **
+alpha50_tau0.01          H2/H1                0.1380   1.02e-08  **
+alpha50_tau0.01          HapCount             0.1570   3.61e-11  **
+alpha50_tau0.01          Omega                0.1230   5.21e-07  **
+alpha50_tau0.01          ZnS                  0.0920   4.19e-04
+alpha50_tau0.01          fayWuH               0.2790   1.15e-34  **
+alpha50_tau0.01          maxFDA               0.1010   7.34e-05  **
+alpha50_tau0.01          pi                   0.2330   3.29e-24  **
+alpha50_tau0.01          ss                   0.2000   6.61e-18  **
+alpha50_tau0.01          tajD                 0.1400   5.82e-09  **
+alpha50_tau0.01          thetaH               0.1220   6.67e-07  **
+alpha50_tau0.1           H1                   0.0510   1.48e-01
+alpha50_tau0.1           H12                  0.0460   2.41e-01
+alpha50_tau0.1           H2/H1                0.0580   6.92e-02
+alpha50_tau0.1           HapCount             0.0440   2.88e-01
+alpha50_tau0.1           Omega                0.0690   1.71e-02
+alpha50_tau0.1           ZnS                  0.0970   1.62e-04
+alpha50_tau0.1           fayWuH               0.1630   5.21e-12  **
+alpha50_tau0.1           maxFDA               0.0580   6.92e-02
+alpha50_tau0.1           pi                   0.1700   4.96e-13  **
+alpha50_tau0.1           ss                   0.1360   1.77e-08  **
+alpha50_tau0.1           tajD                 0.1040   3.96e-05  **
+alpha50_tau0.1           thetaH               0.0980   1.33e-04
+alpha50_tau0.5           H1                   0.0200   9.88e-01
+alpha50_tau0.5           H12                  0.0210   9.80e-01
+alpha50_tau0.5           H2/H1                0.0320   6.85e-01
+alpha50_tau0.5           HapCount             0.0100   1.00e+00
+alpha50_tau0.5           Omega                0.0330   6.48e-01
+alpha50_tau0.5           ZnS                  0.0430   3.14e-01
+alpha50_tau0.5           fayWuH               0.0530   1.21e-01
+alpha50_tau0.5           maxFDA               0.0930   3.48e-04
+alpha50_tau0.5           pi                   0.0930   3.48e-04
+alpha50_tau0.5           ss                   0.0940   2.88e-04
+alpha50_tau0.5           tajD                 0.0320   6.85e-01
+alpha50_tau0.5           thetaH               0.1240   4.07e-07  **
+
+FAIL: 29/108 comparisons reject equality at Bonferroni p < 9.26e-05
