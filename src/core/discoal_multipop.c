@@ -1022,6 +1022,30 @@ void getParameters(int argc,const char **argv){
 					events[eventNumber].type = 'a'; //admix split
 					eventNumber++;
 					break;
+					case 'g':
+						/* -eg time popID alpha */
+						ensureEventsCapacity();
+						events[eventNumber].time = atof(argv[++args]) * 2.0;
+						events[eventNumber].popID = atoi(argv[++args]);
+						events[eventNumber].popnSize = atof(argv[++args]);  /* alpha stored in popnSize field */
+						events[eventNumber].type = 'g';
+						eventNumber++;
+						break;
+					case 'G':
+						/* -eG time alpha -- applies to all populations */
+						{
+							double t = atof(argv[++args]) * 2.0;
+							double alpha_val = atof(argv[++args]);
+							for (int p = 0; p < npops; p++) {
+								ensureEventsCapacity();
+								events[eventNumber].time = t;
+								events[eventNumber].popID = p;
+								events[eventNumber].popnSize = alpha_val;
+								events[eventNumber].type = 'g';
+								eventNumber++;
+							}
+						}
+						break;
 				}
 			break;
 			case 'w':
