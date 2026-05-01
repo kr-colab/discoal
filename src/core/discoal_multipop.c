@@ -33,12 +33,13 @@
 
 
 
-int locusNumber; 
+int locusNumber;
 int leftRhoFlag=0;
 const char *fileName;
 double *currentSize;
 long seed1, seed2;
 double nextTime, currentFreq;
+int detSweepMode = 0;
 //float *currentTrajectory;
 
 void getParameters(int argc,const char **argv);
@@ -827,7 +828,20 @@ void getParameters(int argc,const char **argv){
 			fprintf(stderr, "Error: Empty option '-'\n");
 			exit(1);
 		}
-		
+
+		/* Long-option pre-check */
+		if (strcmp(argv[args], "--det-sweep-mode") == 0) {
+			args++;
+			if (strcmp(argv[args], "closed") == 0) detSweepMode = 0;
+			else if (strcmp(argv[args], "euler") == 0) detSweepMode = 1;
+			else {
+				fprintf(stderr, "--det-sweep-mode: expected 'closed' or 'euler', got '%s'\n", argv[args]);
+				exit(1);
+			}
+			args++;
+			continue;  /* skip the switch */
+		}
+
 		switch(argv[args][1]){
 			case 'F' :
 			if (!tskitOutputMode) {

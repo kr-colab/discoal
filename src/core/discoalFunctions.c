@@ -1820,7 +1820,11 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 				//get next sweep allele freq
 				switch(sweepMode){
 					case 'd':
-					x = detSweepFreq(ttau, alpha * currentSizeRatio);
+					if (detSweepMode == 0) {
+						x = detSweepFreq(ttau, alpha * currentSizeRatio);
+					} else {
+						x = detSweepFreqEuler(x, tIncOrig, alpha * currentSizeRatio);
+					}
 					break;
 					case 's':
 					x = 1.0 - genicSelectionStochasticForwardsOptimized(tInc, (1.0 - x), alpha * currentSizeRatio);
@@ -1955,7 +1959,11 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 				//get next sweep allele freq
 				switch(sweepMode){
 					case 'd':
-					x = detSweepFreq(ttau, alpha * sizeRatio[0]);
+					if (detSweepMode == 0) {
+						x = detSweepFreq(ttau, alpha * sizeRatio[0]);
+					} else {
+						x = detSweepFreqEuler(x, tIncOrig, alpha * sizeRatio[0]);
+					}
 				//	printf("x here:%f ttau: %f alpha*sizeRatio: %f\n",x,ttau,alpha*sizeRatio);
 
 					break;
