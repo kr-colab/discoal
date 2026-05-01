@@ -1986,18 +1986,21 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 		//iterate until epoch time or sweep freq
 		while( x > 1.0/(2.*N) && (currentTime+ttau) < localNextTime){
 			ttau += tIncOrig;
+			double sr_now = sizeAt(0, currentTime + ttau);
+			N = floor(N_0 * sr_now);
+			tInc = 1.0 / (deltaTMod * N);
 			if(x > minF && insweepphase){
 				//get next sweep allele freq
 				switch(sweepMode){
 					case 'd':
 					if (detSweepMode == 0) {
-						x = detSweepFreq(ttau, alpha * currentSizeRatio);
+						x = detSweepFreq(ttau, alpha * sr_now);
 					} else {
-						x = detSweepFreqEuler(x, tIncOrig, alpha * currentSizeRatio);
+						x = detSweepFreqEuler(x, tIncOrig, alpha * sr_now);
 					}
 					break;
 					case 's':
-					x = 1.0 - genicSelectionStochasticForwardsOptimized(tInc, (1.0 - x), alpha * currentSizeRatio);
+					x = 1.0 - genicSelectionStochasticForwardsOptimized(tInc, (1.0 - x), alpha * sr_now);
 					break;
 					case 'N':
 					x = neutralStochasticOptimized(tInc, x);
@@ -2006,7 +2009,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			}
 			else{
 				insweepphase = 0;
-				tInc = 1.0 / (deltaTMod * N );
+				/* tInc already set above */
 				x = neutralStochasticOptimized(tInc, x);
 			}
 			//printf("j: %ld x: %f\n",j,x);
