@@ -688,19 +688,18 @@ void test_demography_demes_filename_malformed_rejected(void) {
 }
 
 /*
- * The demes importer rejects exponential growth epochs (and
- * several other unsupported demes-spec features: linear growth,
- * selfing, cloning, disconnected populations). The fixture
- * exponential_growth_demes.yaml is a single-deme model whose most
- * recent epoch has unequal start_size and end_size with
- * size_function: exponential, which trips the importer's
- * unsupported-feature check and returns non-zero.
+ * Exponential-growth epochs are supported as of Phase 7 Task 5: the
+ * importer emits a 'g' event with the per-generation forward-time
+ * growth rate scaled to discoal's internal alpha (4N-scaled). The
+ * fixture exponential_growth_demes.yaml is a single-deme model whose
+ * most recent epoch has unequal start_size and end_size with
+ * size_function: exponential. The importer should now accept it.
  *
- * Only this one rejection is unit-tested. The other unsupported
- * features share the same plumbing; adding fixtures for each is
- * straightforward once the template here exists.
+ * Other unsupported features (selfing, cloning, disconnected
+ * populations) are still rejected; their plumbing mirrors the
+ * exponential path and could be unit-tested with their own fixtures.
  */
-void test_demography_demes_filename_unsupported_feature_rejected(void) {
+void test_demography_demes_filename_exponential_growth_accepted(void) {
     copy_fixture_to_workdir("exponential_growth_demes.yaml");
 
     const char *yaml =
@@ -714,7 +713,7 @@ void test_demography_demes_filename_unsupported_feature_rejected(void) {
         "demography:\n"
         "  deme_sample_size: [2]\n"
         "  demes_filename: \"exponential_growth_demes.yaml\"\n";
-    TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    TEST_ASSERT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
 }
 
 /*
@@ -2004,7 +2003,7 @@ int main(void) {
     RUN_TEST(test_demography_demes_filename_loads_events);
     RUN_TEST(test_demography_demes_filename_missing_file_rejected);
     RUN_TEST(test_demography_demes_filename_malformed_rejected);
-    RUN_TEST(test_demography_demes_filename_unsupported_feature_rejected);
+    RUN_TEST(test_demography_demes_filename_exponential_growth_accepted);
     RUN_TEST(test_demography_rejects_negative_deme_sample_size);
     RUN_TEST(test_demography_rejects_deme_sum_mismatch);
     RUN_TEST(test_demography_rejects_negative_effective_population_size);

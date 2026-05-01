@@ -340,28 +340,65 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
                 (*eventNumber)++;
             }
             
-            // Handle exponential growth within epoch
-            if (epoch->size_function == DEMES_SIZE_FUNCTION_EXPONENTIAL) {
-                // Exponential growth is not yet supported in discoal
-                fprintf(stderr, "\nError: Exponential growth epochs are not yet supported in discoal.\n");
-                fprintf(stderr, "Population '%s' has an exponential growth epoch from size %g to %g.\n", 
-                        deme->name, epoch->start_size, epoch->end_size);
-                fprintf(stderr, "Please use constant size epochs or implement exponential growth manually using -eG events.\n");
-                fprintf(stderr, "\nNote: You can approximate exponential growth with multiple constant-size epochs\n");
-                fprintf(stderr, "or use discoal's native -eG flag for exponential growth events.\n");
-                return -1;
+            // Handle exponential growth within epoch.
+            // Emit a 'g' event at the more-recent (smaller-internal-time) boundary
+            // of the epoch with the forward-time per-generation growth rate
+            // converted to discoal's internal alpha (4N-scaled).  Phase 4 wires
+            // 'g' to SHAPE_EXPONENTIAL.  See -eg CLI parsing for the convention.
+            if (epoch->size_function == DEMES_SIZE_FUNCTION_EXPONENTIAL &&
+                epoch->start_size != epoch->end_size) {
+                /* Forward-time per-generation rate.  start_time is the older
+                 * boundary (forward-time start), end_time is the more recent
+                 * (forward-time end).  end_size > start_size => positive alpha
+                 * (forward growth, past was smaller). */
+                double alpha_per_gen = log(epoch->end_size / epoch->start_size)
+                                       / (startTime - endTime);
+                /* Convert to discoal internal alpha (4N-scaled).  Mirrors the
+                 * Phase 4b parity-validated alpha_per_gen = alpha_internal/(2N)
+                 * inverse.  Assumes generation_time == 1 (consistent with the
+                 * rest of this importer); for generations-as-time-units the
+                 * factor is unity. */
+                double alpha_internal = alpha_per_gen * 2.0 * N;
+                double t_internal = demesTimeToCoalTime(epoch->end_time,
+                                                        graph->generation_time, N);
+
+                ensureDemesEventsCapacity(events, eventsCapacity, *eventNumber + 1);
+                (*events)[*eventNumber].time = t_internal;
+                (*events)[*eventNumber].popID = popID;
+                (*events)[*eventNumber].popnSize = alpha_internal;  /* alpha stored in popnSize, matches -eg */
+                (*events)[*eventNumber].type = 'g';
+                (*eventNumber)++;
+
+                fprintf(stderr, "  Epoch %d exponential: pop %d, %g -> %g, alpha=%g per gen (alpha_internal=%g) at t_internal=%g\n",
+                        j, popID, epoch->start_size, epoch->end_size,
+                        alpha_per_gen, alpha_internal, t_internal);
             }
-            
-            // Check for linear growth (not in demes-c enum but possible in demes spec)
-            // The demes-c library may not expose linear growth, but let's be defensive
-            if (epoch->start_size != epoch->end_size && 
-                epoch->size_function != DEMES_SIZE_FUNCTION_EXPONENTIAL) {
-                // This would be linear growth, which is also not supported
-                fprintf(stderr, "\nError: Linear growth epochs are not yet supported in discoal.\n");
-                fprintf(stderr, "Population '%s' has a size change from %g to %g that is not exponential.\n", 
-                        deme->name, epoch->start_size, epoch->end_size);
-                fprintf(stderr, "Please use constant size epochs only.\n");
-                return -1;
+
+            // Linear growth: any non-EXPONENTIAL size_function with differing
+            // start_size and end_size.  demes-c may not expose a LINEAR enum
+            // but the demes spec recognises this case.  Emit an 'l' event at
+            // the more-recent boundary; Phase 6 wires 'l' to SHAPE_LINEAR.
+            if (epoch->size_function != DEMES_SIZE_FUNCTION_EXPONENTIAL &&
+                epoch->start_size != epoch->end_size) {
+                /* Forward-time linear growth rate per generation: positive when
+                 * end_size > start_size (forward growth, past was smaller).
+                 * (start_time - end_time) is positive (older - more recent). */
+                double gamma_per_gen = (epoch->end_size - epoch->start_size)
+                                       / (startTime - endTime);
+                double gamma_internal = gamma_per_gen * 2.0 * N;
+                double t_internal = demesTimeToCoalTime(epoch->end_time,
+                                                        graph->generation_time, N);
+
+                ensureDemesEventsCapacity(events, eventsCapacity, *eventNumber + 1);
+                (*events)[*eventNumber].time = t_internal;
+                (*events)[*eventNumber].popID = popID;
+                (*events)[*eventNumber].popnSize = gamma_internal;  /* gamma stored in popnSize, matches -el */
+                (*events)[*eventNumber].type = 'l';
+                (*eventNumber)++;
+
+                fprintf(stderr, "  Epoch %d linear: pop %d, %g -> %g, gamma=%g per gen (gamma_internal=%g) at t_internal=%g\n",
+                        j, popID, epoch->start_size, epoch->end_size,
+                        gamma_per_gen, gamma_internal, t_internal);
             }
         }
         
