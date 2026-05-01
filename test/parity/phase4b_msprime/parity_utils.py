@@ -233,21 +233,37 @@ def discoal_rho_to_msp_r(rho: float, Ne: int, L: int) -> float:
 
 def _msp_constant_parity_pi(n: int, L: int, theta: float, rho: float,
                               Ne: int, reps: int, conv: Convention) -> float:
-    """Mean pi from msprime no-demography simulation under the given convention."""
+    """Mean pi from msprime no-demography simulation under the given convention.
+
+    `n` is the desired haploid sample count (matches discoal's first positional
+    arg). msprime takes `samples` as the number of *individuals* of the given
+    ploidy, so we pass `n // ploidy` to get exactly `n` haploid output samples.
+    Requires n % ploidy == 0.
+    """
+    if n % conv.ploidy != 0:
+        raise ValueError(
+            f"n={n} must be divisible by ploidy={conv.ploidy} for sample-count parity"
+        )
+    n_individuals = n // conv.ploidy
     mu = discoal_theta_to_msp_mu(theta, Ne, L)
     r = discoal_rho_to_msp_r(rho, Ne, L)
     pop_size = Ne * conv.population_size_factor
     pis = []
     for seed in range(1, reps + 1):
         ts = msprime.sim_ancestry(
-            samples=n,
+            samples=n_individuals,
             sequence_length=L,
             recombination_rate=r,
             population_size=pop_size,
             ploidy=conv.ploidy,
             random_seed=seed,
         )
-        ts = msprime.sim_mutations(ts, rate=mu, random_seed=seed)
+        ts = msprime.sim_mutations(
+            ts, rate=mu,
+            model=msprime.BinaryMutationModel(),
+            discrete_genome=False,
+            random_seed=seed,
+        )
         pis.append(pi(msprime_to_ms(ts)))
     return float(np.mean(pis))
 
