@@ -440,6 +440,31 @@ void test_drawWaitingTimeMig_zero_rate_returns_negative(void) {
 
 extern double ranf(void);  /* from xoshiro256pp_compat */
 
+void test_drawWaitingTimeSize_linear_zero_crossing_stress(void) {
+    /* Battery of (gamma, N0) configurations that drive N -> 0 going backward.
+     * Under msprime forward-time convention, gamma > 0 (forward growth) means
+     * past was smaller, hitting zero at T_cross = N0/gamma. */
+    struct { double N0; double gamma; } configs[] = {
+        {1.0, 0.1}, {1.0, 1.0}, {1.0, 10.0},
+        {0.01, 0.001}, {100.0, 50.0}
+    };
+    for (int c = 0; c < (int)(sizeof(configs)/sizeof(configs[0])); c++) {
+        popShape[0].type = SHAPE_LINEAR;
+        popShape[0].anchor_value = configs[c].N0;
+        popShape[0].rate_param = configs[c].gamma;
+        popShape[0].anchor_time = 0.0;
+        double T_cross = configs[c].N0 / configs[c].gamma;
+        for (int trial = 0; trial < 1000; trial++) {
+            double xi = -log(ranf());
+            double T = drawWaitingTimeSize(0, 0.0, xi, 2);
+            TEST_ASSERT_TRUE(T > 0.0);
+            TEST_ASSERT_TRUE(T < T_cross);
+            TEST_ASSERT_FALSE(isnan(T));
+            TEST_ASSERT_FALSE(isinf(T));
+        }
+    }
+}
+
 static int compare_doubles(const void *a, const void *b) {
     double da = *(const double *)a;
     double db = *(const double *)b;
@@ -584,6 +609,7 @@ int main(void) {
     RUN_TEST(test_drawWaitingTimeMig_distribution_constant);
     RUN_TEST(test_drawWaitingTimeMig_distribution_exponential);
     RUN_TEST(test_drawWaitingTimeMig_distribution_linear);
+    RUN_TEST(test_drawWaitingTimeSize_linear_zero_crossing_stress);
     return UNITY_END();
 }
 #endif
