@@ -8,15 +8,6 @@ double detSweepFreq(double t, double s);
  * detSweepFreq(tau, alpha) bit-exactly. */
 double detSweepFreqGeneral(double alpha, double A);
 
-/* Euler-step variant of detSweepFreq for time-varying N support.
- * Given current frequency x and per-step backward-time increment dt,
- * advance by one Euler step on the backward-time logistic ODE:
- *   x_{ttau+dt} = x_ttau - alpha_eff * x * (1 - x) * dt
- * Matches detSweepFreq(ttau, alpha)'s parameterization: x near 1 at
- * ttau=0 decreasing toward epsilon at ttau=ts. Caller is responsible
- * for clamping x in [0, 1]; the function clamps defensively as well. */
-double detSweepFreqEuler(double x, double dt, double alpha_eff);
-
 double neutralStochastic(double dt, double currentFreq);
 double genicSelectionStochastic(double dt, double currentFreq, double alpha);
 double genicSelectionStochasticForwards(double dt, double currentFreq, double alpha);

@@ -43,25 +43,6 @@ double detSweepFreqGeneral(double alpha, double A) {
 	return epsilon / denom;
 }
 
-/* detSweepFreqEuler-- advances the deterministic sweep frequency
-   by one Euler step on the backward-time logistic ODE
-       dx/dttau = -alpha_eff * x * (1 - x).
-   The negative sign reflects coalescent simulation running backward
-   in time -- as ttau increases (going further into the past), x
-   decreases from ~1 (sweep just fixed) toward ~epsilon (start of
-   sweep). This matches detSweepFreq(ttau, alpha)'s parameterization.
-   This is the time-varying-N counterpart to detSweepFreq, which uses
-   the closed-form solution under constant N. The clamp to [0, 1] is
-   defensive: callers are expected to use a small enough dt that the
-   step naturally stays in range. */
-double detSweepFreqEuler(double x, double dt, double alpha_eff){
-	double dx = -alpha_eff * x * (1.0 - x) * dt;
-	double x_new = x + dx;
-	if (x_new < 0.0) x_new = 0.0;
-	if (x_new > 1.0) x_new = 1.0;
-	return x_new;
-}
-
 /* neutralStochastic-- returns the frequency of a neutral allele
 which is sweeping through the population. This is the jump process
 corresponding to the condition diffusion towards loss (i.e. backwards).

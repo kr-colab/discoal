@@ -1999,20 +1999,16 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 				//get next sweep allele freq
 				switch(sweepMode){
 					case 'd':
-					if (detSweepMode == 0) {
-						if (allShapesConstant()) {
-							/* Bit-equal with pre-Phase-5: existing per-step detSweepFreq with current alpha_eff. */
-							x = detSweepFreq(ttau, alpha * sr_now);
-						} else {
-							/* Time-varying alpha_eff: use the closed-form general formula with the
-							 * incrementally-tracked integrated alpha. A_now = A_prev + alpha *
-							 * integratedSizeRatio over the most recent dt step. */
-							A_now = A_prev + alpha * integratedSizeRatio(0, currentTime + ttau - tIncOrig, tIncOrig);
-							x = detSweepFreqGeneral(alpha, A_now);
-							A_prev = A_now;
-						}
+					if (allShapesConstant()) {
+						/* Bit-equal with pre-Phase-5: existing per-step detSweepFreq with current alpha_eff. */
+						x = detSweepFreq(ttau, alpha * sr_now);
 					} else {
-						x = detSweepFreqEuler(x, tIncOrig, alpha * sr_now);
+						/* Time-varying alpha_eff: use the closed-form general formula with the
+						 * incrementally-tracked integrated alpha. A_now = A_prev + alpha *
+						 * integratedSizeRatio over the most recent dt step. */
+						A_now = A_prev + alpha * integratedSizeRatio(0, currentTime + ttau - tIncOrig, tIncOrig);
+						x = detSweepFreqGeneral(alpha, A_now);
+						A_prev = A_now;
 					}
 					break;
 					case 's':
@@ -2155,11 +2151,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 				switch(sweepMode){
 					case 'd':
 					if (allShapesConstant()) {
-						if (detSweepMode == 0) {
-							x = detSweepFreq(ttau, alpha * sr_now);
-						} else {
-							x = detSweepFreqEuler(x, tIncOrig, alpha * sr_now);
-						}
+						x = detSweepFreq(ttau, alpha * sr_now);
 					} else {
 						/* Time-varying alpha_eff: closed-form general formula with
 						 * incrementally-tracked integrated alpha. */

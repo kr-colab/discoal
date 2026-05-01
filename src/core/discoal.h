@@ -176,7 +176,6 @@ double migMat[MAXPOPS][MAXPOPS], migMatConst[MAXPOPS][MAXPOPS];
 Shape popShape[MAXPOPS];
 Shape migShape[MAXPOPS][MAXPOPS];
 double recurSweepRate;
-int detSweepMode;  /* 0 = closed-form (default), 1 = Euler */
 
 int EFFECTIVE_POPN_SIZE;
 
