@@ -1,0 +1,826 @@
+# Time-Varying Demographic Parameters in discoal
+
+**Status:** Draft for review
+**Issue:** [#82 — Demes importer emits unfaithful migration events](https://github.com/kr-colab/discoal/issues/82)
+**Branch base:** `origin/nsp-yaml-revamp`
+**Working branch:** `feature/issue-82-time-varying-demography`
+**Date:** 2026-04-30
+
+## 1. Motivation
+
+### 1.1 The proximate trigger: issue #82
+
+The demes importer in `src/core/demesInterface.c:402-443` translates each
+`migrations:` window into a pair of `'M'` events (start with rate $r$, end
+with rate 0). These events are not handled by the runtime event-dispatch
+switch in `src/core/discoal_multipop.c:228`. A back-derivation hack at
+`src/core/discoalFunctions.c:222-261` scans the entire event list to
+reconstruct what `migMat` should be at $t = 0$, then sets it. That hack
+is the only path by which demes-emitted migration events influence the
+simulation.
+
+The hack works for single-window migration. It produces incorrect
+results whenever the demes graph has multi-window migration (e.g., a
+deme born partway through the simulation): the rate-0 events still fire
+at their original times and zero out migration the demes spec says
+should be active. The detailed reproducer is in issue #82.
+
+### 1.2 The deeper problem
+
+The current discoal engine assumes **rates are constant between
+events**. It supports piecewise-constant population sizes via `'n'`
+events (mutating `currentSize[popID]`) but has no mechanism to vary
+migration rates over time and no mechanism for continuously-varying
+sizes (exponential or linear growth). The `population_structure.rst`
+docs explicitly note: "Time-varying migration rates are not currently
+implemented." The demes importer rejects exponential and linear epochs
+outright (`demesInterface.c:323-345`).
+
+This blocks msprime parity: any demes graph with growth or
+multi-window migration cannot be simulated faithfully by discoal.
+
+### 1.3 Goal
+
+Add first-class support for time-varying demographic parameters with
+the shape vocabulary that demes uses (constant, exponential, linear),
+applied to both population sizes and pairwise migration rates. The
+result should:
+
+- Faithfully simulate any demes graph that demes-c can parse.
+- Achieve statistical parity with msprime for neutral simulations
+  under demes models.
+- Remain backward-compatible with all existing CLI flags.
+- Preserve sweep-simulation correctness for piecewise-constant
+  demography (statistical parity with current discoal).
+- Remove the back-derivation hack as a side effect.
+
+## 2. Goals and Non-Goals
+
+### In scope
+
+- Constant, exponential, and linear shape primitives for population
+  sizes and migration rates.
+- Continuous integration of these shapes in both the neutral phase
+  and the sweep phase.
+- New event types `'g'` (size-shape change) and `'em'` (migration-shape
+  change) in the runtime.
+- New CLI flags `-eg`, `-eG`, `-em`, `-eM` mirroring ms.
+- Importer changes: emit faithful shape events; remove rejection of
+  exponential/linear epochs.
+- Removal of the back-derivation hack at `discoalFunctions.c:222-261`.
+- Test-driven development for every component.
+- Statistical parity tests against existing discoal (sweeps under
+  piecewise-constant demography) and msprime (neutral under demes).
+
+### Out of scope
+
+- Arbitrary user-supplied $\lambda(t)$ shapes (thinning sampler).
+- Time-varying recombination rate, mutation rate, gene-conversion rate,
+  selection coefficient.
+- Sweep behavior under time-varying selection.
+- Migration during sweep phases (currently suspended; remains suspended).
+- A linear-shape CLI primitive (linear shapes are accepted via demes/YAML
+  only at first cut; no precedent in ms vocabulary).
+- Changes to existing semantics of `-en`, `-em` (in the sense of single
+  pairwise migration set), `-M`, `-m`.
+
+## 3. Mathematical Foundation
+
+### 3.1 Non-homogeneous Poisson process draws
+
+The neutral phase is a competing-exponentials sampler today. With each
+rate component $\lambda_k$ constant, the next inter-event time is
+$T \sim \text{Exp}(\sum_k \lambda_k)$. With time-varying rates each
+component becomes its own non-homogeneous Poisson process. To draw a
+waiting time $T_k$ for component $k$, sample $\xi_k = -\log U_k$ with
+$U_k \sim \text{Uniform}(0, 1)$ and solve
+
+$$\xi_k = \int_0^{T_k} \lambda_k(s)\,ds.$$
+
+Take $T^* = \min_k T_k$ as the next event time, capped at the next
+shape-change boundary. By memorylessness, components that did not fire
+get fresh draws at the next iteration; or equivalently, all $T_k$ are
+redrawn after each event because the lineage state may have changed.
+
+### 3.2 Closed-form integrals for the three shapes
+
+Let $\binom{k}{2}$ denote the within-population pair count and $k_i$
+the lineage count in population $i$. Coalescent rate within
+population $i$ at time $s$ is
+
+$$\lambda_C^{(i)}(s) = \binom{k_i}{2} \big/ N_i(s),$$
+
+migration rate from $i$ to $j$ for the lineages in $i$ is
+
+$$\lambda_M^{(i \to j)}(s) = k_i \cdot m_{ij}(s),$$
+
+and recombination/gene-conversion are constant per lineage. The three
+shapes give:
+
+**Constant.** $N(s) = N_0$ or $m(s) = m_0$. $T = \xi / \lambda$.
+This is the existing case.
+
+**Exponential.** $N(s) = N_0 e^{-\alpha s}$ (forward growth at rate
+$\alpha > 0$ implies backward decline; backward time $s$ is the
+coalescent's natural direction).
+
+For the coalescent rate, $\lambda_C(s) = \binom{k}{2} e^{\alpha s}/N_0$
+and
+
+$$\int_0^T \lambda_C(s)\,ds = \frac{\binom{k}{2}}{N_0\alpha}\big(e^{\alpha T} - 1\big) = \xi$$
+
+inverts to
+
+$$T = \frac{1}{\alpha}\,\log\!\left(1 + \frac{N_0\alpha}{\binom{k}{2}}\,\xi\right).$$
+
+For exponential migration $m(s) = m_0 e^{\beta s}$ similarly,
+
+$$T = \frac{1}{\beta}\,\log\!\left(1 + \frac{\beta\,\xi}{k_i\,m_0}\right).$$
+
+**Linear.** $N(s) = N_0 + \gamma s$ (so $\gamma > 0$ grows backward
+in time, $\gamma < 0$ declines).
+
+$$\int_0^T \frac{\binom{k}{2}}{N_0 + \gamma s}\,ds = \frac{\binom{k}{2}}{\gamma}\,\log\!\left(\frac{N_0 + \gamma T}{N_0}\right) = \xi$$
+
+inverts to
+
+$$T = \frac{N_0}{\gamma}\left(\exp\!\left(\frac{\gamma\xi}{\binom{k}{2}}\right) - 1\right).$$
+
+(Care: if $\gamma < 0$ and $\xi$ is large enough, $N_0 + \gamma T$ goes
+non-positive — the coalescent rate diverges to infinity inside the
+epoch and a coalescence is forced before the rate becomes pathological.
+The integrator must clip $T$ at the time the linear extrapolation hits
+zero, force a coalescent there, and refuse to extrapolate past it. In
+demes this case corresponds to a population shrinking linearly to size
+zero, which the spec would not normally produce, but the integrator
+must be robust to it.)
+
+The migration linear case is identical with $k_i\,m_0$ in place of
+$\binom{k}{2}$.
+
+### 3.3 Sweep-phase math under continuous $N(t)$
+
+The sweep phase is already an Euler-style small-dt forward integration
+(`proposeTrajectory` in `discoalFunctions.c:1764-1875`,
+`sweepPhaseEventsConditionalTrajectory` in 2143+, and
+`sweepPhaseEventsGeneralPopNumber` in 1881+). At every grid step it
+re-evaluates $N$, $\alpha_{\text{eff}} = \alpha \cdot \text{sizeRatio}$,
+and $\text{tInc} = 1/(\text{deltaTMod} \cdot N)$. Today these are
+pulled from a scalar `currentSizeRatio` mutated by `'n'` events; under
+B2 they will be pulled from `sizeAt(popID, t)` evaluating the current
+shape.
+
+Three sweep modes:
+
+- **Stochastic forward (`'s'`)**: WF SDE Euler step. Algorithm unchanged;
+  just reads $N$ from `sizeAt` per step.
+- **Neutral stochastic (`'N'`)**: drift-diffusion Euler step. Same.
+- **Deterministic (`'d'`)**: today uses `detSweepFreq(\tau, \alpha_{\text{eff}})`,
+  the Stephan et al. 1992 closed-form logistic. This formula assumes
+  *constant* $\alpha_{\text{eff}}$. Under continuous $N(t)$ it does not
+  apply. Replace with a one-line Euler step on the deterministic
+  logistic ODE: $x_{t+dt} = x_t + \alpha_{\text{eff}}(t)\,x(1-x)\,dt$.
+  See section 6 for verification testing of this swap.
+
+Migration is suspended during sweep phases (existing behavior). Remains
+suspended; time-varying migration is silently ignored across sweep
+durations. This is documented and out of scope to change.
+
+The acceptance probability returned by `proposeTrajectory` is
+`currentSizeRatio / Nmax` with `Nmax = max(sizeRatio over walk)`. For
+continuous shapes, `Nmax` is the running max as the trajectory walk
+progresses. For monotone shapes within an epoch this is just the
+endpoint of larger value; across multi-epoch walks it is the running
+max as today. Generalization is straightforward.
+
+## 4. Architecture
+
+### 4.1 Shape state
+
+Add per-population and per-pair shape state holding the *currently
+active* shape for that pop or pair. Updated by `'n'`, `'g'`, `'em'`
+events when they fire.
+
+```c
+typedef enum { SHAPE_CONSTANT, SHAPE_EXPONENTIAL, SHAPE_LINEAR } ShapeType;
+
+typedef struct {
+    ShapeType type;
+    double anchor_value;   // size or rate at anchor_time
+    double rate_param;     // alpha for EXP, gamma for LIN, unused for CONST
+    double anchor_time;    // time at which anchor_value applies
+} Shape;
+
+extern Shape popShape[MAXPOPS];
+extern Shape migShape[MAXPOPS][MAXPOPS];
+```
+
+Both arrays initialize from the parser/importer to the t=0 shape (see
+section 4.6 on initialization).
+
+### 4.2 Accessors
+
+```c
+double sizeAt(int popID, double t);
+double migAt(int srcPopID, int dstPopID, double t);
+double integratedHazardSize(int popID, double t0, double T, int k);
+double integratedHazardMig(int srcPopID, int dstPopID, double t0, double T, int k);
+double drawWaitingTimeSize(int popID, double t0, double xi, int k);
+double drawWaitingTimeMig(int srcPopID, int dstPopID, double t0, double xi, int k);
+```
+
+Each is a small switch on `Shape.type` calling the appropriate
+closed-form. `sizeAt` and `migAt` are the only accessors the sweep
+phase needs. The neutral phase additionally calls
+`drawWaitingTime{Size,Mig}` for NHPP draws.
+
+`integratedHazard*` is exported for tests (verification of the closed
+forms against numerical quadrature) but the sampler uses
+`drawWaitingTime*` which inverts directly.
+
+### 4.3 Event vocabulary
+
+Today's runtime events: `'n'`, `'s'`, `'p'`, `'a'`, `'A'`. Adding two:
+
+- `'g'`: at time $t$, set `popShape[popID]` to a new shape.
+  - Carries: `popID`, new `Shape` (type, anchor_value, rate_param)
+  - `anchor_time` of the new shape is set to $t$.
+  - Convention 1: when `'g'` fires, the previous shape's value at $t$
+    becomes the new shape's `anchor_value` if the importer doesn't
+    override it (i.e., shape changes are continuous unless an `'n'`
+    event explicitly snaps the size).
+- `'em'`: at time $t$, set `migShape[i][j]` to a new shape.
+  - Carries: `popID` (dst), `popID2` (src), new `Shape`.
+  - Same continuity convention.
+
+The existing `'n'` event remains: it sets `popShape[popID]` to
+`(CONSTANT, value, 0, t)`, anchored at $t$ — the existing semantic.
+
+Existing CLI flag `-en` continues to emit `'n'` events. New flags emit
+`'g'`, `'em'`.
+
+### 4.4 Event struct extension
+
+```c
+typedef struct event {
+    double time, popnSize;    // popnSize used by 'n' for the snap-to value
+    char type;
+    int popID, popID2, popID3;
+    int lineageNumber;
+    double admixProp;
+    Shape newShape;           // used by 'g' and 'em' only
+} event;
+```
+
+`Shape` is fixed-size (3 doubles + an int), 32 bytes. Per-event memory
+goes up; harmless.
+
+### 4.4.1 Relation to nspope's suggestions in issue #82
+
+The issue lists two proposed fix directions: (1) importer-side
+synthesis of the active migration matrix per interval, removing the
+runtime back-derivation; (2) adding a `-em` CLI flag for time-varying
+migration. This design implements both. The importer produces faithful
+shape events (1), and the CLI exposes the same primitive directly (2).
+The runtime back-derivation is removed unconditionally.
+
+### 4.5 Inner-loop changes
+
+`neutralPhaseGeneralPopNumber` (`discoalFunctions.c:1589+`):
+
+```c
+// today: total constant rate, draw Exp(total)
+// new: NHPP competing-events draw
+
+double T_min = LOCAL_NEXT_TIME - currentTime;  // upper bound = next event
+int winnerKind = NONE;  // {COAL_i, MIG_ij, RECOMB, GC, ...}
+int winnerArg = -1;
+
+for each population i {
+    if (popnSizes[i] >= 2) {
+        double xi = -log(ranf());
+        double T = drawWaitingTimeSize(i, currentTime, xi, popnSizes[i]);
+        // T may be infinity if xi > total integrated hazard over [t, infty)
+        if (T < T_min) { T_min = T; winnerKind = COAL_i; winnerArg = i; }
+    }
+    for each j != i {
+        if (popnSizes[i] >= 1 && migAt(i, j, currentTime) > 0) {
+            double xi = -log(ranf());
+            double T = drawWaitingTimeMig(i, j, currentTime, xi, popnSizes[i]);
+            if (T < T_min) { T_min = T; winnerKind = MIG_ij; winnerArg = pack(i,j); }
+        }
+    }
+}
+
+// recomb, gene conv: rate constant in time per lineage; draw Exp directly
+// rRate = rho * sum_i popnSizes[i] / 2
+// double T_recomb = -log(ranf()) / rRate;   if (T_recomb < T_min) ...
+
+if (winnerKind == NONE) {
+    // no event before the next epoch boundary; advance to it
+    currentTime = LOCAL_NEXT_TIME;
+} else {
+    currentTime += T_min;
+    fire(winnerKind, winnerArg, currentTime);
+}
+```
+
+Recombination and gene conversion remain constant-in-time per lineage,
+so they stay homogeneous Poisson and are drawn with a single
+$\text{Exp}(\rho/2 \cdot \sum_i k_i)$ call.
+
+`recurrentSweepPhaseGeneralPopNumber` and the conditional-trajectory
+sweep functions are *not* changed at the sampler level — they remain
+small-dt Euler — but their inner per-step rate computations switch to
+read from `sizeAt(i, t)` instead of `sizeRatio[i]` and from `migAt(i, j, t)`
+where applicable (which is currently nowhere, since migration is
+suspended during sweeps).
+
+`proposeTrajectory` likewise reads `sizeAt(0, t)` per step (and
+`sizeAt(i, t)` if it tracks other pops; it does not in current code).
+
+Deterministic-mode sweep: replace the `detSweepFreq` call with the
+Euler step:
+
+```c
+case 'd':
+    if (popShape[0].type == SHAPE_CONSTANT) {
+        // unchanged: closed-form logistic
+        x = detSweepFreq(ttau, alpha * sizeAt(0, currentTime + ttau));
+    } else {
+        // Euler step on the deterministic logistic ODE
+        double alpha_eff = alpha * sizeAt(0, currentTime + ttau);
+        x += alpha_eff * x * (1.0 - x) * tIncOrig;
+    }
+    break;
+```
+
+This branch on shape type is the conservative form: it preserves bit-equal
+output for piecewise-constant demography (the regime current discoal
+handles) while enabling continuous shapes. If the Q1 verification test
+(section 6.1) confirms statistical equivalence between the two paths
+under constant $N$, the branch can be collapsed to always-Euler.
+
+### 4.6 Initialization
+
+The simulation starts at $t = 0$ with `migMatConst` and `currentSize[]`
+populated by command-line flags or the importer. Under B2:
+
+- `popShape[i]` initializes to `(CONSTANT, currentSize[i], 0, 0)` if no
+  growth shape applies at $t=0$, else to the active shape with anchor
+  values at $t=0$ for that population.
+- `migShape[i][j]` initializes to `(CONSTANT, migMatConst[i][j], 0, 0)`
+  if no migration window applies at $t=0$, else to the active shape.
+
+The back-derivation hack at `discoalFunctions.c:222-261` is **deleted**.
+The importer is responsible for writing the t=0 active matrix into
+`migMatConst` directly (just as it does for sizes today via
+`currentSize[]`), and emitting `'em'` events only for *transitions*.
+
+### 4.7 Importer changes (`demesInterface.c`)
+
+Replace the current paired-`'M'` emission with shape-aware events:
+
+For each demes deme:
+- For each epoch: if `size_function == EXPONENTIAL`, compute
+  $\alpha = -\log(\text{end\_size}/\text{start\_size}) / (\text{end\_time} - \text{start\_time})$
+  in coalescent time units, and emit a `'g'` event at the epoch's
+  more-recent boundary anchoring the new shape.
+- For `LINEAR`, similarly compute $\gamma$ and emit `'g'` with shape
+  type `LINEAR`.
+- For `CONSTANT` epochs across boundaries, emit `'n'` as today.
+- Remove the rejection at `demesInterface.c:323-345`.
+
+For each demes migration:
+- Compute the windows-active migration matrix for each piecewise
+  interval implied by the union of all migration windows. Within each
+  interval, every pair has a constant rate (that is what demes
+  guarantees: rates are constant within their own window, and windows
+  do not overlap on the same pair).
+- Emit one `'em'` event per pair per interval boundary, anchoring the
+  per-pair shape.
+- The t=0 active matrix (interval ending at $t=0$) gets written to
+  `migMatConst[i][j]` directly, not as an event.
+
+### 4.8 CLI surface
+
+New flags (mirroring ms):
+
+- `-eg <time> <popID> <alpha>`: emit `'g'` for population `popID` at
+  `time` with `(EXPONENTIAL, sizeAt(popID, time), alpha, time)`. Anchor
+  value is computed by evaluating the prior shape at `time` (Convention
+  1 continuity).
+- `-eG <time> <alpha>`: same as `-eg` for every population.
+- `-em <time> <i> <j> <rate>`: emit `'em'` for pair (i,j) at `time`
+  with `(CONSTANT, rate, 0, time)`. (Constant within the new window;
+  to make a window with start and end, supply two `-em` events.)
+- `-eM <time> <rate>`: same as `-em` for all off-diagonal pairs.
+
+No CLI surface for linear shapes at first cut. Linear is reachable via
+demes/YAML.
+
+Existing flags unchanged: `-en`, `-m`, `-M`, `-ed`, `-ej`, `-ea`, `-A`,
+`-w`, `-l`, all sweep flags.
+
+### 4.9 What gets removed
+
+- The back-derivation block at `discoalFunctions.c:222-261` (the
+  fprintf-laced scan that infers the $t=0$ matrix). Replaced by direct
+  initialization from `migMatConst`.
+- The importer rejection at `demesInterface.c:323-345`.
+- The current importer's paired-`'M'`-event emission. Replaced by
+  per-interval `'em'` events plus direct write to `migMatConst` for
+  the $t=0$ interval.
+
+## 5. Implementation Phases (TDD-driven)
+
+Every phase is **test-first**. For each component below, the order is:
+write tests describing intended behavior; verify they fail; implement
+the minimum to pass; refactor.
+
+### Phase 0: Branch hygiene and scaffolding
+
+- Confirm branch is `feature/issue-82-time-varying-demography` based on
+  `origin/nsp-yaml-revamp`.
+- Add `test/unit/test_shapes.c` (math primitives) and
+  `test/parity/` directory (for parity test harnesses).
+- Wire `make test-shapes` and `make test-parity` into the build.
+
+### Phase 1: Shape primitives and accessors
+
+Tests first:
+- `test_shape_constant`: `sizeAt`/`migAt` returns anchor value for CONST.
+- `test_shape_exponential`: `sizeAt(t)` matches $N_0 e^{-\alpha (t-t_0)}$
+  to $10^{-12}$ relative tolerance for a battery of inputs.
+- `test_shape_linear`: similarly for $N_0 + \gamma (t - t_0)$.
+- `test_integratedHazard_quadrature`: closed-form integrated hazards
+  agree with high-resolution numerical quadrature (Simpson's rule, 1024
+  steps) to $10^{-9}$ for all three shapes, sizes and migrations,
+  random parameters.
+- `test_drawWaitingTime_distribution`: empirical CDF of $T_k$ samples
+  matches theoretical CDF (Kolmogorov-Smirnov, $n = 10^5$, $p > 0.05$)
+  for all three shapes.
+- `test_drawWaitingTime_inverse`: round-trip $T \to \xi \to T$ recovers
+  to $10^{-12}$ relative tolerance.
+
+Implementation:
+- Add `Shape`, `popShape`, `migShape` to `discoal.h`.
+- Add `sizeAt`, `migAt`, `integratedHazardSize`, `integratedHazardMig`,
+  `drawWaitingTimeSize`, `drawWaitingTimeMig` to a new
+  `src/core/shapes.c` / `shapes.h`.
+
+### Phase 2: Q1 verification — Euler vs detSweepFreq under constant $N$
+
+Tests first:
+- `test_sweep_deterministic_constant_N_parity`: under
+  $\alpha \in \{50, 200, 1000\}$ and constant $N$ (no shape change),
+  run $10^4$ deterministic sweep replicates with the closed-form path
+  and $10^4$ with the Euler path. Compare distributions of:
+  - Number of segregating sites
+  - $\pi$ (nucleotide diversity)
+  - Tajima's D
+  - SFS bin frequencies (per-bin chi-squared)
+- Statistical thresholds: KS test on continuous statistics,
+  $p > 0.01$ Bonferroni-corrected; chi-squared on SFS bins, same
+  threshold.
+
+If the test passes (expected): collapse the branch in 4.5 to
+always-Euler. If it fails (drift visible at large $\alpha$): keep the
+branch on shape type so constant-$N$ runs use the closed form.
+
+### Phase 3: Inner-loop NHPP sampler with shape=CONSTANT only
+
+Tests first:
+- `test_neutral_phase_constant_regression`: the rewritten neutral phase
+  with shape state initialized to all-CONSTANT must produce **byte-for-byte
+  identical output** to the current `neutralPhaseGeneralPopNumber`
+  given identical RNG seeds, for a battery of:
+  - Single-pop neutral
+  - Two-pop with `-en` size changes
+  - Two-pop with `-m` constant migration
+  - Two-pop with `-ed` split
+- This regression is the safety net for the algorithmic refactor before
+  any new shape support is added.
+
+Implementation:
+- Refactor `neutralPhaseGeneralPopNumber` to use the NHPP sampler with
+  shape state. With CONST-only shapes the NHPP draws collapse to
+  exponential draws and bit-equality should hold.
+
+If bit-equality cannot be preserved (e.g., due to RNG-call-order
+differences), fall back to statistical parity at $p > 0.01$ on the same
+summary statistics as Phase 2, plus exact agreement of `eventNumber`,
+`tDiv`, segregating-sites count, lineage-count trajectory at fixed
+checkpoints. Document the divergence in the design doc and CHANGELOG.
+
+### Phase 4: Add EXPONENTIAL shape
+
+Tests first:
+- `test_shape_exp_single_pop_msprime_parity`: single population with
+  exponential growth (matched parameters in discoal and msprime). Run
+  $10^4$ replicates each, compare:
+  - SFS (per-bin chi-squared)
+  - $\pi$, Tajima's D, segregating sites distributions (KS)
+  - Pairwise coalescent-time distribution (KS)
+- Threshold: $p > 0.01$ Bonferroni-corrected across statistics.
+- `test_shape_exp_neutral_no_migration_msprime_parity`: 2-pop with
+  split + exp growth in one branch, no migration. Same statistics.
+
+Implementation:
+- Wire `SHAPE_EXPONENTIAL` through the closed-form drawWaitingTime.
+- Add CLI `-eg`, `-eG` parsing.
+- Update YAML config to accept growth-rate fields.
+
+### Phase 5: Sweep accessor wiring
+
+Tests first:
+- `test_sweep_constant_N_regression`: piecewise-constant `-en` sweep
+  configurations produce byte-equal or statistically-indistinguishable
+  output (per Phase 2 thresholds) before and after the `sizeAt` swap.
+- `test_sweep_exp_growth_internal_consistency`: under exponential
+  growth, sweep replicates produce sensible SFS shapes (sanity, not a
+  parity test — there is no msprime gold standard for sweeps).
+- `test_sweep_recurrent_constant_N_regression`: same regression for
+  the recurrent-sweep code path.
+
+Implementation:
+- Replace `currentSizeRatio` and `sizeRatio[i]` reads in
+  `proposeTrajectory`, `sweepPhaseEventsConditionalTrajectory`,
+  `sweepPhaseEventsGeneralPopNumber` with `sizeAt` calls.
+- Apply Q1 outcome from Phase 2 to the deterministic-mode dispatch.
+- Audit `currentSize[]` usage. If `sizeAt` becomes the sole accessor
+  in the inner loop, remove `currentSize[]` and any `'n'` dispatch
+  that only mutates it. Single source of truth in `popShape[]`.
+
+### Phase 6: Add LINEAR shape
+
+Tests first:
+- `test_shape_linear_quadrature` (already in Phase 1; revisit
+  edge cases including $\gamma$ pushing $N \to 0$).
+- `test_shape_linear_neutral_msprime_parity`: 2-pop with linear-growth
+  branch, parity vs msprime. Same statistics as Phase 4.
+- `test_shape_linear_zero_crossing_robustness`: linear shape with
+  $\gamma$ such that $N_0 + \gamma T \to 0^+$ at finite $T$ within the
+  epoch. Verify the integrator forces a coalescence and does not
+  segfault or produce NaN times.
+
+Implementation:
+- Wire `SHAPE_LINEAR` through the closed-form drawWaitingTime.
+- Linear shape exposed via demes/YAML only at this stage.
+
+### Phase 7: Migration shapes (`'em'` events)
+
+Tests first:
+- `test_migration_constant_window_msprime_parity`: 3-pop with single
+  constant-rate migration window covering full simulation, parity vs
+  msprime. (Sanity baseline — should match the Phase 4 results.)
+- `test_migration_multi_window_msprime_parity`: the issue #82 fixture
+  (`config_examples/demes_example.demes.yaml`). Compare against msprime
+  running the same demes graph. **This is the closing of issue #82.**
+- `test_migration_back_derivation_hack_removed`: the existing
+  `migMat`-debug fprintf output is gone; importer writes `migMatConst`
+  directly for $t=0$.
+
+Implementation:
+- Add `'em'` event parsing (CLI `-em`, `-eM`).
+- Add `'em'` dispatch in the inner loop.
+- Importer rewrite: piecewise migration matrices per interval, emit
+  one `'em'` per pair per boundary.
+- Delete `discoalFunctions.c:222-261`.
+
+### Phase 8: Documentation and full-vocabulary parity
+
+- Update `docs/population_structure.rst`: remove "Time-varying migration
+  rates are not currently implemented" note. Document `-eg`, `-eG`,
+  `-em`, `-eM`.
+- Update `docs/demes_integration.md`: exponential and linear epochs are
+  now supported; document any caveats.
+- Update `docs/yaml_configuration.md` with growth-rate fields.
+- Re-run the full demes-vs-msprime parity suite on a battery of demes
+  examples (single pop, splits, migration, growth combinations).
+
+## 6. Parity Testing Strategy
+
+Two separate parity test suites, both runnable as Make targets and CI
+jobs.
+
+### 6.1 Sweep parity vs current discoal (regression)
+
+**Purpose**: ensure the new code does not regress sweep behavior under
+the demography current discoal supports (piecewise-constant).
+
+**Reference**: the tip of `origin/nsp-yaml-revamp` at branch creation
+time, built and committed as a reference binary into `test/parity/bin/`.
+
+**Configurations** (full grid):
+- Sweep mode: `'d'` (deterministic), `'s'` (stochastic forward),
+  `'N'` (neutral stochastic). Recurrent sweep variant for each.
+- Selection strength $\alpha \in \{50, 200, 1000\}$.
+- Sweep timing $\tau \in \{0.01, 0.1, 0.5\}$.
+- Demography: single-pop constant; single-pop with `-en` size changes
+  at 2 epochs; 2-pop with split + migration.
+
+**Replicates**: $10^4$ per configuration. Same RNG seeds for both
+binaries.
+
+**Statistics compared** per replicate:
+- Segregating sites count
+- $\pi$ (nucleotide diversity)
+- Tajima's D
+- Per-bin SFS frequencies
+- Number of recombination events (if available in trees output)
+
+**Tests**:
+- For each summary statistic distribution: KS test, $p > 0.01$
+  Bonferroni-corrected across the configuration grid.
+- For per-bin SFS: chi-squared, same threshold.
+- Phase 3 attempts byte-equality where the RNG sequence is preserved;
+  Phase 5 falls back to statistical-equality once the sweep code
+  changes.
+
+### 6.2 Neutral parity vs msprime under demes models
+
+**Purpose**: validate that discoal under the new shape vocabulary
+faithfully simulates the demes models that msprime is the gold standard
+for.
+
+**Reference**: msprime ≥ 1.3 with `msprime.sim_ancestry` and
+`msprime.Demography.from_demes`.
+
+**Configurations**:
+- Single pop, constant size — sanity baseline.
+- Single pop, exponential growth (one epoch with `size_function: exponential`).
+- Single pop, linear growth.
+- Two pops with split + constant migration.
+- Two pops with split + exp growth + constant migration.
+- Three pops with two splits + multi-window migration (the issue #82
+  fixture, `config_examples/demes_example.demes.yaml`).
+- Three pops with growth + multi-window migration (full B2 stress test).
+
+**Replicates**: $10^4$ per configuration, matched random seeds when
+possible (independent runs otherwise; rely on distributional tests).
+
+**Statistics compared**:
+- SFS (per-bin)
+- $\pi$ overall and per-pop
+- $F_{\text{ST}}$ between pop pairs
+- Tajima's D per-pop
+- Pairwise coalescent-time distribution (extracted from trees)
+- Number of segregating sites distribution
+
+**Tests**:
+- KS for continuous statistics, chi-squared for SFS, $p > 0.01$
+  Bonferroni-corrected.
+- For each demes model, document the test in
+  `test/parity/test_msprime_<model_name>.py` as a runnable
+  `pytest`-style harness with msprime as a dev dependency.
+
+### 6.3 Q1 verification: detSweepFreq vs Euler under constant $N$
+
+Specific to Phase 2. Goal: decide whether the deterministic-sweep
+closed form is empirically distinguishable from the Euler step under
+the regimes discoal currently uses.
+
+**Setup**: single population, constant $N$, `'d'` mode, range of
+$\alpha$, $\tau$, recombination rates. Run $10^4$ replicates with each
+method.
+
+**Statistics**: same as 6.1 plus the sweep frequency trajectory itself
+(record the $x(\tau)$ at fixed grid points and compare distributions
+pointwise via KS).
+
+**Outcome**:
+- If $p > 0.01$ Bonferroni across all configurations: the dispatch on
+  shape type in section 4.5 collapses to always-Euler.
+- If any configuration rejects: keep the dispatch; document where
+  closed-form retention is required.
+
+This is a one-time test that informs the design; document the result
+in this design doc as an addendum after Phase 2 completes.
+
+## 7. TDD Discipline
+
+This project is large and touches the simulation engine. **Every commit
+on this branch follows red-green-refactor.**
+
+- New behavior gets a failing test first. The test names what the
+  behavior is.
+- Implementation does the minimum to pass. No speculative generality.
+- Refactor with the test suite green.
+- A commit may not introduce code without an accompanying test, except
+  for non-functional changes (formatting, comments, doc-only) and
+  test-harness scaffolding.
+- The two parity suites (6.1, 6.2) and the unit test suite all run in
+  CI. PRs may not merge with any of them red.
+
+The `superpowers:test-driven-development` skill provides the discipline.
+This design is the spec; the writing-plans skill produces the
+implementation plan; subagent-driven-development executes phase-by-phase
+with each phase ending green.
+
+## 8. Risks and Open Questions
+
+### 8.1 NHPP sampler performance
+
+The neutral-phase inner loop today draws one $\text{Exp}$ per event;
+NHPP draws one log per rate component per event. For $P$ populations
+the migration draw count is $O(P^2)$, up from $O(P)$ today (we sum
+total migration). For typical $P \le 10$ this is fine; for large $P$
+(deep demes graphs) it may matter.
+
+**Mitigation**: benchmark Phase 3 against the current code on a
+stress-test config; if regression > 50%, profile and consider summing
+total-coalescent-rate and total-migration-rate via a tighter NHPP
+formulation.
+
+### 8.2 Numerical stability
+
+Exponential growth with very large $\alpha$ in coalescent units, or
+linear growth with $\gamma$ near zero, can produce numerically tricky
+$\log$ and $\exp$ arguments. The integrators must:
+- Clip $\xi$-driven $T$ to the next epoch boundary explicitly.
+- Detect $N(t) \to 0$ in linear shape and force coalescent.
+- Not produce NaN times under any input the importer can emit.
+
+Tested in Phase 6 (`test_shape_linear_zero_crossing_robustness`) and
+Phase 4 (large-$\alpha$ growth).
+
+### 8.3 Sweep shape branch decision
+
+Phase 2's outcome (Q1 verification) determines the sweep dispatch
+structure. If closed-form retention is required for constant $N$ to
+preserve current discoal's exact distribution, the branch in 4.5
+stays. Document either way.
+
+### 8.4 Importer shape extraction for migrations
+
+demes' migration windows are constant-rate within their window. But
+multiple windows on overlapping pairs require the importer to compute
+the *piecewise constant* matrix per disjoint interval and emit
+boundary events. The interval algorithm:
+1. Collect all window boundaries $\{t_b\}$ for all pairs.
+2. Sort, deduplicate.
+3. For each interval $(t_b, t_{b+1})$ and each pair $(i, j)$, set rate
+   to the demes rate of any window covering this interval (windows for
+   the same pair are disjoint by demes spec).
+4. Emit `'em'` events at each $t_b$ for pairs whose rate changes.
+
+Tested in Phase 7.
+
+### 8.5 Convention 1 anchoring corner case
+
+When a user mixes `-eg t p alpha` with a subsequent `-en t' p N`, the
+size at $t'$ might be discontinuous (the exponential extrapolation does
+not necessarily pass through `N`). This is intentional: `-en` is an
+instantaneous snap. Document in `docs/population_structure.rst`.
+
+When the importer composes shape transitions, it must compute the
+anchor value of the new shape from the prior shape evaluated at the
+transition time. Tested via the multi-epoch demes parity tests.
+
+## 9. Out-of-Scope for This Design
+
+- Time-varying selection coefficient $s(t)$ during sweeps. Sweep math
+  with $s(t)$ is materially harder; the deterministic logistic does
+  not have a closed form for non-constant $s$ even before adding $N(t)$.
+- Time-varying recombination rate. Demes does not specify it; users
+  can approximate with multiple discoal runs.
+- Migration during sweep phase. Suspended today, suspended after this
+  change.
+- Shape-aware tree-sequence output annotations. Trees output already
+  records discrete events; shape state is engine-internal.
+- Removing CLI duplicates. `-en` stays exactly as is.
+
+## 10. Concrete Deliverables
+
+- `src/core/shapes.h`, `src/core/shapes.c` — shape state, accessors,
+  drawWaitingTime functions. Unit-tested.
+- `src/core/discoal.h` — extended `event` struct with `Shape newShape`
+  and shape-state globals.
+- `src/core/discoalFunctions.c` — refactored `neutralPhaseGeneralPopNumber`,
+  `proposeTrajectory`, `sweepPhaseEventsConditionalTrajectory`,
+  `sweepPhaseEventsGeneralPopNumber`, `recurrentSweepPhaseGeneralPopNumber`
+  to use shape accessors. Back-derivation hack at lines 222-261 removed.
+- `src/core/discoal_multipop.c` — CLI parsing of `-eg`, `-eG`, `-em`,
+  `-eM`. Inner-loop dispatch case for `'g'` and `'em'`.
+- `src/core/demesInterface.c` — emit `'g'`/`'em'` events; remove
+  exp/linear rejection; piecewise migration matrix construction.
+- `src/core/configInterface.c` — YAML acceptance of growth-rate and
+  multi-window migration.
+- `test/unit/test_shapes.c` — Phase 1 tests.
+- `test/parity/test_sweep_regression.{c,sh}` — Phase 2 + Phase 5.
+- `test/parity/test_msprime_*.py` — Phase 4, 6, 7 parity vs msprime.
+- `docs/population_structure.rst`, `docs/demes_integration.md`,
+  `docs/yaml_configuration.md` — documentation updates.
+- This design document, committed at start of work.
+
+## 11. Acceptance
+
+- All parity tests in 6.1 and 6.2 green.
+- Issue #82 fixture (`config_examples/demes_example.demes.yaml`)
+  produces statistical parity with msprime.
+- Existing YAML validation suite (`testing/yaml_validation_suite.sh`)
+  remains 100% green.
+- Existing unit test suite green.
+- Documentation updated to reflect new flags and demes coverage.
+- Back-derivation hack at `discoalFunctions.c:222-261` is gone.
