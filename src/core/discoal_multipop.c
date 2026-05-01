@@ -23,6 +23,7 @@
 #include "ranlib.h"
 #include "discoal.h"
 #include "discoalFunctions.h"
+#include "shapes.h"
 #include "alleleTraj.h"
 #include "tskitInterface.h"
 #include <tskit/tables.h>
@@ -260,6 +261,36 @@ int main(int argc, const char * argv[]){
 				}
 			//	printf("pn0:%d pn1:%d alleleNumber: %d sp1: %d sp2: %d \n", popnSizes[0],popnSizes[1], alleleNumber,sweepPopnSizes[1],
 			//							sweepPopnSizes[0]);
+				break;
+				case 'g':
+				currentTime = events[j].time;
+				popShape[events[j].popID].type = SHAPE_EXPONENTIAL;
+				popShape[events[j].popID].anchor_value = sizeAt(events[j].popID, currentTime);
+				popShape[events[j].popID].rate_param = events[j].popnSize;  /* alpha is stored in popnSize field */
+				popShape[events[j].popID].anchor_time = currentTime;
+				/* Now run the inter-event interval the same way 'n' does. */
+				if(activeSweepFlag == 0){
+					if(recurSweepMode == 0){
+						currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+					}
+				}
+				else{
+					if(recurSweepMode == 0){
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
+								currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+							currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
+								currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+							currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+					}
+				}
 				break;
 				case 's':
 				assert(activeSweepFlag == 0);
