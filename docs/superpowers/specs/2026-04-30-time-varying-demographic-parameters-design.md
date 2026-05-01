@@ -1082,3 +1082,97 @@ produced silently-wrong simulations. The runtime back-derivation hack
 is gone. Pi parity vs msprime confirms the demographic backbone is
 faithful. A separate ~8% mutation-count divergence is documented as
 a known pre-existing residual to be investigated in future work.
+
+## Addendum (2026-05-01): currentSize replicate bleed bug — fixed
+
+The branch-mode parity diagnostic on the issue #82 fixture
+(`test/parity/phase7_msprime/test_issue82_branch_mode.py`) initially
+reported $D = 0.42$, $p = 4 \times 10^{-39}$ for Tajima's D — a tree-shape
+divergence that scale-invariant rescaling could not explain. Bisection
+isolated the trigger: a non-reference population with an `-en` size
+change followed by an `-ed`/`-ej` merge into another population.
+
+The root cause turned out to be a subtle replicate-bleed bug in the
+discoal runtime, *not* in the importer or in any time/size convention.
+
+**Mechanism:**
+
+- The `'n'` event handler at `discoal_multipop.c:230` does
+  `currentSize[popID] = events[j].popnSize` to record the new
+  per-population size.
+- At the start of each replicate, `initialize()` calls
+  `initializeShapesFromGlobals()` which seeds `popShape[i]` from
+  `currentSize[i]`.
+- `currentSize` itself was never restored between replicates. After
+  rep $N$'s `'n'` event mutated `currentSize[1]`, rep $N+1$'s
+  `initializeShapesFromGlobals()` read the *post-mutation* value
+  and started rep $N+1$ with pop 1 already at the wrong size.
+
+For multi-replicate fixtures that combine `-en` with a downstream
+merge, the daughter pop in subsequent reps coalesced at the post-`'n'`
+rate from $t=0$ instead of switching at the size-change time. This
+matches the empirical finding: discoal's pop B mean pair coal time
+was ~45% larger than msprime's because pop B was already at the
+"expanded" size from the simulation start, slowing coalescence
+throughout the entire pre-merge window.
+
+The reference population (pop 0) is unaffected because the runtime
+emits a "bogus" `'n'` event at $t=0$ for pop 0 with size 1.0 at the
+start of every replicate's event stream. That event refreshes
+`popShape[0]` to 1.0 before any coalescent activity, masking the bug
+for the reference pop. Non-reference pops with `'n'` events have no
+such auto-emitted reset.
+
+This is also why the bit-equality regression suite didn't catch the
+bug: no config in the suite exercises an `-en` event on a non-reference
+pop. The new `test_issue82_branch_mode.py` is the first parity test
+that probes this path systematically.
+
+**Fix** (commit `31a2107`):
+
+1. Added `double currentSizeConst[MAXPOPS]` to `discoal.h` (mirroring
+   `migMatConst`).
+2. After `getParameters()` returns in `main()`, snapshot
+   `currentSize[]` into `currentSizeConst[]`.
+3. At the start of each replicate's `initialize()`, restore
+   `currentSize[]` from `currentSizeConst[]` before
+   `initializeShapesFromGlobals()` is called.
+
+**Result:**
+
+Phase 7 issue #82 fixture parity at REPS=500, after fix:
+
+Site-mode test (`test_issue82_fixture.py`):
+
+| stat | before fix | after fix |
+|---|---|---|
+| ss | $D = 0.314$, REJECT | $D = 0.034$, p = 0.94, **PASS** |
+| pi | $D = 0.10$, p = 0.013 | $D = 0.046$, p = 0.67 |
+| Tajima's D | $D = 0.316$, REJECT | $D = 0.052$, p = 0.51, **PASS** |
+| Watterson $\theta$ | $D = 0.314$, REJECT | $D = 0.034$, p = 0.94, **PASS** |
+| haplotype diversity | $D = 0.062$, p = 0.29 | $D = 0.060$, p = 0.33 |
+| n haplotypes | $D = 0.062$, p = 0.29 | $D = 0.060$, p = 0.33 |
+
+All six within Bonferroni-corrected $p > 1.7 \times 10^{-3}$.
+
+Branch-mode test (`test_issue82_branch_mode.py`):
+
+| stat | before fix | after fix |
+|---|---|---|
+| diversity | $D = 0.088$, p = 0.04 | $D = 0.078$, p = 0.10 |
+| segregating sites | $D = 0.046$, p = 0.67 | $D = 0.042$, p = 0.77 |
+| Tajima's D | $D = 0.42$, p = $4 \times 10^{-39}$ | $D = 0.056$, p = 0.41, **PASS** |
+
+All three within Bonferroni-corrected $p > 3.3 \times 10^{-3}$.
+
+Issue #82 is now fully closed: the importer rewrite + back-derivation
+removal is correct (Phase 7 spec scope) AND the runtime now
+faithfully simulates the demographic backbone described by the demes
+graph.
+
+The bit-equality regressions (Phase 3, Phase 5) still pass because
+they don't exercise the buggy path, and the bug was deterministic
+under a fixed seed (so byte-equality between two runs with the same
+seed held both before and after the fix; the fix changes the
+*content*, not the *reproducibility*, of multi-replicate output
+involving non-reference `-en` events).
