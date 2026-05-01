@@ -2,6 +2,12 @@
 
 double detSweepFreq(double t, double s);
 
+/* Generalized deterministic-sweep frequency under (possibly time-varying)
+ * alpha_eff. A is the integrated selection coefficient int_0^tau alpha_eff(s) ds.
+ * For constant alpha_eff = alpha, A = alpha * tau and this reduces to
+ * detSweepFreq(tau, alpha) bit-exactly. */
+double detSweepFreqGeneral(double alpha, double A);
+
 /* Euler-step variant of detSweepFreq for time-varying N support.
  * Given current frequency x and per-step backward-time increment dt,
  * advance by one Euler step on the backward-time logistic ODE:
