@@ -42,8 +42,16 @@ double migAt(int srcPopID, int dstPopID, double t) {
 }
 
 double integratedHazardSize(int popID, double t0, double T, int k) {
-    (void)popID; (void)t0; (void)T; (void)k;
-    return 0.0;
+    Shape *s = &popShape[popID];
+    double pairs = (double)k * (k - 1) / 2.0;
+    if (pairs == 0.0) return 0.0;
+    (void)t0;
+    switch (s->type) {
+        case SHAPE_CONSTANT:
+            return pairs * T / s->anchor_value;
+        default:
+            return 0.0;
+    }
 }
 
 double integratedHazardMig(int srcPopID, int dstPopID, double t0, double T, int k) {

@@ -163,6 +163,15 @@ void test_migAt_pair_isolation(void) {
     TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.7, migAt(1, 0, 0.0));
 }
 
+void test_integratedHazardSize_constant(void) {
+    popShape[0].type = SHAPE_CONSTANT;
+    popShape[0].anchor_value = 2.0;
+    /* k=2, T=4: H = 1*4/2 = 2 */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 2.0, integratedHazardSize(0, 0.0, 4.0, 2));
+    /* k=4, T=10: H = 6*10/2 = 30 */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 30.0, integratedHazardSize(0, 0.0, 10.0, 4));
+}
+
 #ifndef TEST_RUNNER_MODE
 int main(void) {
     UNITY_BEGIN();
@@ -180,6 +189,7 @@ int main(void) {
     RUN_TEST(test_migAt_linear_declines_backward_with_positive_delta);
     RUN_TEST(test_migAt_linear_grows_backward_with_negative_delta);
     RUN_TEST(test_migAt_pair_isolation);
+    RUN_TEST(test_integratedHazardSize_constant);
     return UNITY_END();
 }
 #endif
