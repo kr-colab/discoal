@@ -260,6 +260,12 @@ void test_integratedHazardSize_linear_diverges_at_zero_crossing(void) {
 }
 
 void test_integratedHazardSize_linear_quadrature_match(void) {
+    /* Tolerance is 1e-5, not 1e-6, because the integrand 1/N(s) ranges from
+     * 0.54 to 20 over the interval (N at the far end is 0.05), and midpoint-
+     * rule O(dt^2) error at N=16384 is ~4e-6 for this parameterization. The
+     * closed form is exact within float precision; this test bounds residual
+     * algebraic error well below any sign/factor mistake. The EXP analog
+     * passes 1e-6 because its integrand is smoother. */
     popShape[0].type = SHAPE_LINEAR;
     popShape[0].anchor_value = 2.0;
     popShape[0].rate_param = 0.3;
@@ -276,7 +282,7 @@ void test_integratedHazardSize_linear_quadrature_match(void) {
         sum += pairs / sizeAt(0, t0 + s_mid) * dt;
     }
     double closed = integratedHazardSize(0, t0, T, k);
-    TEST_ASSERT_DOUBLE_WITHIN(1e-6, sum, closed);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-5, sum, closed);
 }
 
 #ifndef TEST_RUNNER_MODE

@@ -829,7 +829,11 @@ void test_integratedHazardSize_linear_quadrature_match(void) {
         sum += pairs / sizeAt(0, t0 + s_mid) * dt;
     }
     double closed = integratedHazardSize(0, t0, T, k);
-    TEST_ASSERT_DOUBLE_WITHIN(1e-6, sum, closed);
+    /* 1e-5 not 1e-6 -- midpoint-rule error is ~4e-6 here because the
+     * integrand 1/N(s) ranges from 0.54 to 20 (N near the far end is 0.05).
+     * The closed form is exact; this test still catches any algebraic
+     * mistake in the implementation. */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-5, sum, closed);
 }
 ```
 
@@ -837,15 +841,17 @@ void test_integratedHazardSize_linear_quadrature_match(void) {
 
 - [ ] **Step 3: Implement**
 
-Add to `integratedHazardSize`:
+Add to `integratedHazardSize`. Use the `log1p` form for numerical
+stability — `log(N0/end) = -log1p(-frac)` where `frac = g*T/N0`,
+mathematically identical and more accurate when `frac` is small.
 
 ```c
 case SHAPE_LINEAR: {
     double g = s->rate_param;
     if (g == 0.0) return pairs * T / N0;
-    double end = N0 - g * T;
-    if (end <= 0.0) return INFINITY;
-    return pairs * log(N0 / end) / g;
+    double frac = g * T / N0;
+    if (frac >= 1.0) return INFINITY;  /* end <= 0 case */
+    return -pairs * log1p(-frac) / g;
 }
 ```
 
