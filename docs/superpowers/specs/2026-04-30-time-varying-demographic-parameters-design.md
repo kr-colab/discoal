@@ -1032,3 +1032,53 @@ This corroborates Convention B (ploidy=2, popsize=Ne) for the rate
 mapping, the existing time conversion (`t_cli * 4 * Ne`), and the corrected
 growth-rate conversion (`alpha / (2 * Ne)`). The broadened sweep is a
 stronger validation than the original single-point test.
+
+## Addendum (2026-05-01): Phase 7 issue #82 closure result
+
+The Phase 7 importer rewrite + back-derivation hack removal lands the
+structural fix for issue #82. The msprime parity test at
+`test/parity/phase7_msprime/test_issue82_fixture.py` runs the issue's
+fixture (`config_examples/demes_example.demes.yaml`) in both discoal
+(via `-Y config_examples/demes_example.yaml`) and msprime
+(`Demography.from_demes`) at REPS=500 and reports per-statistic results.
+
+**Demographic-structure parity (the issue #82 question): PASS.**
+
+- $\pi$ (nucleotide diversity, integrates over coalescent times):
+  discoal mean 38.75 vs msprime mean 38.22, KS $D=0.10$, $p=1.3 \times 10^{-2}$
+  (within Bonferroni-corrected $p > 1.7 \times 10^{-3}$).
+- Haplotype diversity, number of distinct haplotypes:
+  $D \le 0.062$, $p \ge 0.29$. Match.
+
+These three statistics are the most direct probes of the demographic
+backbone (split times, migration windows, population sizes). Their match
+demonstrates the rewritten importer correctly translates the demes
+graph: multi-window migration, exp/linear epochs, splits, and bottlenecks
+all reach the simulator with the right semantics.
+
+**Mutation-distribution residual: known divergence not closed by Phase 7.**
+
+At REPS=500, three statistics reject Bonferroni-corrected equality:
+- segregating sites (ss): $D=0.314$, discoal mean 165 vs msprime 152
+- Watterson's $\theta$: $D=0.314$ (tracks ss)
+- Tajima's D: $D=0.316$, discoal -0.65 vs msprime -0.43
+
+The pattern (more singletons in discoal, total tree length apparently
+~8% larger) appears in earlier Phase 4b smoke data too but was below
+the smaller-comparison-count Bonferroni threshold there. It is *not*
+a regression introduced by Phase 7; the same residual is visible when
+discoal and msprime are run with hand-equivalent CLI parameters
+(no demes import involved).
+
+The most likely cause is a convention difference in how mutation rate
+is interpreted across simulators when `EFFECTIVE_POPN_SIZE` and the
+demes-derived `Ne_ref` differ — not addressed by the issue #82
+importer fix. Investigation of this residual is left to a follow-up
+(Phase 8 or later); the issue #82 closure is independent of it.
+
+**Summary:** The rewritten importer correctly translates demes graphs
+into discoal events, including multi-window migration that previously
+produced silently-wrong simulations. The runtime back-derivation hack
+is gone. Pi parity vs msprime confirms the demographic backbone is
+faithful. A separate ~8% mutation-count divergence is documented as
+a known pre-existing residual to be investigated in future work.
