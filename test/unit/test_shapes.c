@@ -388,6 +388,56 @@ void test_drawWaitingTimeSize_linear_zero_crossing(void) {
     }
 }
 
+void test_drawWaitingTimeMig_constant_inverts(void) {
+    migShape[0][1].type = SHAPE_CONSTANT;
+    migShape[0][1].anchor_value = 0.5;
+    /* xi=2, k=4: T = 2/(4*0.5) = 1 */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 1.0, drawWaitingTimeMig(0, 1, 0.0, 2.0, 4));
+}
+
+void test_drawWaitingTimeMig_exponential_round_trip(void) {
+    migShape[0][1].type = SHAPE_EXPONENTIAL;
+    migShape[0][1].anchor_value = 0.5;
+    migShape[0][1].rate_param = 0.3;
+    migShape[0][1].anchor_time = 0.0;
+    double xi = 1.0;
+    int k = 3;
+    double T = drawWaitingTimeMig(0, 1, 0.0, xi, k);
+    TEST_ASSERT_TRUE(T > 0.0);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-10, xi, integratedHazardMig(0, 1, 0.0, T, k));
+}
+
+void test_drawWaitingTimeMig_exponential_unreachable_xi(void) {
+    /* m(s) = 0.5 exp(-0.3 s). Total integrated hazard over [0,inf) for k=3:
+     * 3 * 0.5 / 0.3 = 5. Any xi >= 5 should be unreachable. */
+    migShape[0][1].type = SHAPE_EXPONENTIAL;
+    migShape[0][1].anchor_value = 0.5;
+    migShape[0][1].rate_param = 0.3;
+    migShape[0][1].anchor_time = 0.0;
+    TEST_ASSERT_TRUE(drawWaitingTimeMig(0, 1, 0.0, 5.5, 3) < 0.0);
+    TEST_ASSERT_TRUE(drawWaitingTimeMig(0, 1, 0.0, 100.0, 3) < 0.0);
+}
+
+void test_drawWaitingTimeMig_linear_round_trip(void) {
+    /* delta = -0.05 (forward decline => backward growth) so m(s) = 0.1+0.05s
+     * grows monotonically and the round-trip is well-defined for any xi. */
+    migShape[0][1].type = SHAPE_LINEAR;
+    migShape[0][1].anchor_value = 0.1;
+    migShape[0][1].rate_param = -0.05;
+    migShape[0][1].anchor_time = 0.0;
+    double xi = 0.8;
+    int k = 4;
+    double T = drawWaitingTimeMig(0, 1, 0.0, xi, k);
+    TEST_ASSERT_TRUE(T > 0.0);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-10, xi, integratedHazardMig(0, 1, 0.0, T, k));
+}
+
+void test_drawWaitingTimeMig_zero_rate_returns_negative(void) {
+    migShape[0][1].type = SHAPE_CONSTANT;
+    migShape[0][1].anchor_value = 0.0;
+    TEST_ASSERT_TRUE(drawWaitingTimeMig(0, 1, 0.0, 1.0, 4) < 0.0);
+}
+
 #ifndef TEST_RUNNER_MODE
 int main(void) {
     UNITY_BEGIN();
@@ -423,6 +473,11 @@ int main(void) {
     RUN_TEST(test_drawWaitingTimeSize_linear_inverts);
     RUN_TEST(test_drawWaitingTimeSize_returns_negative_for_k_lt_2);
     RUN_TEST(test_drawWaitingTimeSize_linear_zero_crossing);
+    RUN_TEST(test_drawWaitingTimeMig_constant_inverts);
+    RUN_TEST(test_drawWaitingTimeMig_exponential_round_trip);
+    RUN_TEST(test_drawWaitingTimeMig_exponential_unreachable_xi);
+    RUN_TEST(test_drawWaitingTimeMig_linear_round_trip);
+    RUN_TEST(test_drawWaitingTimeMig_zero_rate_returns_negative);
     return UNITY_END();
 }
 #endif

@@ -117,6 +117,31 @@ double drawWaitingTimeSize(int popID, double t0, double xi, int k) {
 }
 
 double drawWaitingTimeMig(int srcPopID, int dstPopID, double t0, double xi, int k) {
-    (void)srcPopID; (void)dstPopID; (void)t0; (void)xi; (void)k;
-    return -1.0;
+    if (k <= 0) return -1.0;
+    Shape *s = &migShape[srcPopID][dstPopID];
+    double m0 = migAt(srcPopID, dstPopID, t0);
+    if (m0 <= 0.0) return -1.0;
+    double km0 = k * m0;
+    switch (s->type) {
+        case SHAPE_CONSTANT:
+            return xi / km0;
+        case SHAPE_EXPONENTIAL: {
+            double b = s->rate_param;
+            if (b == 0.0) return xi / km0;
+            double arg = b * xi / km0;
+            if (arg >= 1.0) return -1.0;  /* unreachable */
+            return -log1p(-arg) / b;
+        }
+        case SHAPE_LINEAR: {
+            double d = s->rate_param;
+            if (d == 0.0) return xi / km0;
+            double disc = m0 * m0 - 2.0 * d * xi / k;
+            if (disc < 0.0) return -1.0;
+            double T = (m0 - sqrt(disc)) / d;
+            if (T < 0.0) return -1.0;
+            return T;
+        }
+        default:
+            return -1.0;
+    }
 }
