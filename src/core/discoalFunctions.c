@@ -1587,6 +1587,86 @@ double neutralPhaseMigExclude(int *bpArray,double startTime, double endTime, dou
 }
 
 
+/* Draw the next event time across all rate components using NHPP per-component
+ * draws. Returns the minimum waiting time and writes the firing event class
+ * + index into *winnerKind / *winnerArg.
+ *
+ * winnerKind values:
+ *   0 = recomb       (winnerArg unused; caller samples pop proportional to rRate[i])
+ *   1 = gene conv    (winnerArg unused; caller samples pop proportional to gcRate[i])
+ *   2 = migration    (winnerArg = src_pop * MAXPOPS + dst_pop)
+ *   3 = coalescence  (winnerArg = popID)
+ *
+ * Recombination and gene-conversion rates are constant in time within an
+ * interval (depend only on lineage counts and rho/gamma), so an Exp(total)
+ * draw is exact under any shape mix. Coalescence and migration rates can
+ * vary in time when shapes are non-constant; we use closed-form
+ * drawWaitingTime accessors per component.
+ *
+ * cRate and mRate are accepted in the signature for symmetry with the
+ * caller's rate vector and possible future use; they are not consumed
+ * directly by this routine. */
+static double drawNHPPWaitingTime(double *cRate, double *rRate, double *gcRate,
+                                  double *mRate, double totRRate, double totGCRate,
+                                  double t0, int *winnerKind, int *winnerArg) {
+    double T_min = 1e300;  /* effectively +infinity */
+    int i, j;
+    *winnerKind = -1;
+    *winnerArg = -1;
+
+    /* Recombination: aggregate exponential draw across all populations */
+    if (totRRate > 0.0) {
+        double T = -log(ranf()) / totRRate;
+        if (T < T_min) {
+            T_min = T;
+            *winnerKind = 0;
+            *winnerArg = -1;
+        }
+    }
+
+    /* Gene conversion: aggregate exponential draw across all populations */
+    if (totGCRate > 0.0) {
+        double T = -log(ranf()) / totGCRate;
+        if (T < T_min) {
+            T_min = T;
+            *winnerKind = 1;
+            *winnerArg = -1;
+        }
+    }
+
+    /* Coalescence per population */
+    for (i = 0; i < npops; i++) {
+        if (popnSizes[i] < 2) continue;
+        double xi = -log(ranf());
+        double T = drawWaitingTimeSize(i, t0, xi, popnSizes[i]);
+        if (T > 0.0 && T < T_min) {
+            T_min = T;
+            *winnerKind = 3;
+            *winnerArg = i;
+        }
+    }
+
+    /* Migration per ordered pair */
+    for (i = 0; i < npops; i++) {
+        if (popnSizes[i] < 1) continue;
+        for (j = 0; j < npops; j++) {
+            if (i == j) continue;
+            double m = migAt(i, j, t0);
+            if (m <= 0.0) continue;
+            double xi = -log(ranf());
+            double T = drawWaitingTimeMig(i, j, t0, xi, popnSizes[i]);
+            if (T > 0.0 && T < T_min) {
+                T_min = T;
+                *winnerKind = 2;
+                *winnerArg = i * MAXPOPS + j;
+            }
+        }
+    }
+
+    (void)cRate; (void)mRate;
+    return T_min;
+}
+
 /*neutralPhaseGeneralPopNumber--coalescent, recombination, gc events until
 specified time. returns endTime. can handle multiple popns*/
 double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *sizeRatio){
@@ -1628,18 +1708,106 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 		}
 		//printf("totRate: %f totCRate: %f totRRate: %f \n",totRate,totCRate,totRRate);
 
-		//find time of next event
-		waitTime = genexp(1.0)  * (1.0/ totRate);
-		cTime += waitTime;
-		
-		if (cTime >= endTime){
-			return(endTime);
+		if (allShapesConstant()) {
+			//find time of next event
+			waitTime = genexp(1.0)  * (1.0/ totRate);
+			cTime += waitTime;
+
+			if (cTime >= endTime){
+				return(endTime);
+			}
+			//find event type
+			else{
+				r =ranf();
+				if (r < (totRRate/ totRate)){
+					//pick popn
+					eSum = rRate[0];
+					i = 0;
+					r2 = ranf();
+					while(eSum/totRRate < r2) eSum += rRate[++i];
+					bp = recombineAtTimePopn(cTime,i);
+					if (bp != 666){
+						addBreakPoint(bp);
+					}
+				}
+				else{
+					if(r < ((totRRate + totGCRate)/totRate)){
+						//pick popn
+						eSum = gcRate[0];
+						i = 0;
+						r2 = ranf();
+						while(eSum/totGCRate < r2) eSum += gcRate[++i];
+						geneConversionAtTimePopn(cTime,i);
+					}
+					else{
+						if(r < ((totMRate+totRRate + totGCRate)/totRate)){
+							//pick source popn
+							eSum = mRate[0];
+							i = 0;
+							j = 0;
+							r2 = ranf();
+							while(eSum/totMRate < r2) eSum += mRate[++i];
+							//printf("outer totMRate: %f eSum: %f i:%d\n",totMRate,eSum,i);
+							//pick dest popn
+							eSum = migAt(i, 0, currentTime) * popnSizes[i] * 0.5;
+							//printf("outer eSumNew:%f mRate[%d]:%f\n",eSum,i,mRate[i]);
+							r2 = ranf();
+							while(eSum/mRate[i] < r2){
+							//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
+								eSum += migAt(i, ++j, currentTime) * popnSizes[i] * 0.5;
+							//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
+
+							}
+							migrateAtTime(cTime,i,j);
+						}
+
+						else{
+							//coalesce
+							//pick popn
+							eSum = cRate[0];
+							i = 0;
+							r2 = ranf();
+							while(eSum/totCRate < r2){
+								 eSum += cRate[++i];
+								}
+							coalesceAtTimePopn(cTime,i);
+
+							// Increment coalescence counter and sweep
+							coalescenceCounter++;
+							if (coalescenceCounter % SWEEP_INTERVAL == 0) {
+								// Flush buffered edges before freeing nodes to avoid referencing freed nodes
+								extern int tskit_flush_edges_periodic(void);
+								tskit_flush_edges_periodic();
+								sweepAndFreeRemovedNodes();
+							}
+
+
+						}
+					}
+				}
+			}
 		}
-		//find event type
-		else{ 
-			r =ranf();
-			if (r < (totRRate/ totRate)){
-				//pick popn
+		else {
+			/* Non-constant shapes: NHPP per-component sampler. Each rate
+			 * component draws its own waiting time using the closed-form
+			 * inverse hazard for size/migration shapes; recomb / gc are
+			 * time-constant within an interval so an Exp(total) draw is
+			 * exact for those classes. The minimum across components is
+			 * the next event; its identity is returned via winnerKind /
+			 * winnerArg, so we dispatch directly without a second
+			 * within-class lottery for migration / coalescence. */
+			int winnerKind = -1, winnerArg = -1;
+			waitTime = drawNHPPWaitingTime(cRate, rRate, gcRate, mRate,
+			                               totRRate, totGCRate, cTime,
+			                               &winnerKind, &winnerArg);
+			cTime += waitTime;
+
+			if (cTime >= endTime){
+				return(endTime);
+			}
+
+			if (winnerKind == 0) {
+				/* recombination: pick population proportional to rRate */
 				eSum = rRate[0];
 				i = 0;
 				r2 = ranf();
@@ -1649,60 +1817,38 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 					addBreakPoint(bp);
 				}
 			}
-			else{
-				if(r < ((totRRate + totGCRate)/totRate)){
-					//pick popn
-					eSum = gcRate[0];
-					i = 0;
-					r2 = ranf();
-					while(eSum/totGCRate < r2) eSum += gcRate[++i];
-					geneConversionAtTimePopn(cTime,i);
+			else if (winnerKind == 1) {
+				/* gene conversion: pick population proportional to gcRate */
+				eSum = gcRate[0];
+				i = 0;
+				r2 = ranf();
+				while(eSum/totGCRate < r2) eSum += gcRate[++i];
+				geneConversionAtTimePopn(cTime,i);
+			}
+			else if (winnerKind == 2) {
+				/* migration: src/dst already chosen by the per-pair NHPP draw */
+				int src = winnerArg / MAXPOPS;
+				int dst = winnerArg % MAXPOPS;
+				migrateAtTime(cTime, src, dst);
+			}
+			else if (winnerKind == 3) {
+				/* coalescence: population already chosen by per-pop NHPP draw */
+				int popID = winnerArg;
+				coalesceAtTimePopn(cTime, popID);
+
+				// Increment coalescence counter and sweep
+				coalescenceCounter++;
+				if (coalescenceCounter % SWEEP_INTERVAL == 0) {
+					// Flush buffered edges before freeing nodes to avoid referencing freed nodes
+					extern int tskit_flush_edges_periodic(void);
+					tskit_flush_edges_periodic();
+					sweepAndFreeRemovedNodes();
 				}
-				else{
-					if(r < ((totMRate+totRRate + totGCRate)/totRate)){
-						//pick source popn
-						eSum = mRate[0];
-						i = 0;
-						j = 0;
-						r2 = ranf();
-						while(eSum/totMRate < r2) eSum += mRate[++i];
-						//printf("outer totMRate: %f eSum: %f i:%d\n",totMRate,eSum,i);
-						//pick dest popn
-						eSum = migAt(i, 0, currentTime) * popnSizes[i] * 0.5;
-						//printf("outer eSumNew:%f mRate[%d]:%f\n",eSum,i,mRate[i]);
-						r2 = ranf();
-						while(eSum/mRate[i] < r2){
-						//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
-							eSum += migAt(i, ++j, currentTime) * popnSizes[i] * 0.5;
-						//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
-							
-						} 
-						migrateAtTime(cTime,i,j);
-					}
-				
-					else{
-						//coalesce 
-						//pick popn
-						eSum = cRate[0];
-						i = 0;
-						r2 = ranf();
-						while(eSum/totCRate < r2){
-							 eSum += cRate[++i];
-							}
-						coalesceAtTimePopn(cTime,i);
-						
-						// Increment coalescence counter and sweep
-						coalescenceCounter++;
-						if (coalescenceCounter % SWEEP_INTERVAL == 0) {
-							// Flush buffered edges before freeing nodes to avoid referencing freed nodes
-							extern int tskit_flush_edges_periodic(void);
-							tskit_flush_edges_periodic();
-							sweepAndFreeRemovedNodes();
-						}
-					
-					
-					}
-				}
+			}
+			else {
+				/* No event drawable (all rates zero / unreachable). Advance
+				 * to endTime to terminate the phase cleanly. */
+				return(endTime);
 			}
 		}
 	}
