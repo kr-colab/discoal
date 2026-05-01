@@ -2089,6 +2089,8 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	double minF;
 	double cTime = startTime;
 	int insweepphase, i;
+	double A_now = 0.0;
+	double A_prev = 0.0;
 
 	//initialize stuff
 	pCoalB = pCoalb = pRecB = pRecb = totRate = pRecurMut = pLeftRecB = pLeftRecb = totGCRate = totCRate = totRRate = 0;
@@ -2108,7 +2110,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 				if(partialSweepMode == 1){
 					//for partial sweeps choose randomly acccording to final sweep freq
 					if(ranf()>partialSweepFinalFreq){
-						nodes[i]->sweepPopn = 0;						
+						nodes[i]->sweepPopn = 0;
 					}
 					else{
 						nodes[i]->sweepPopn = 1;
@@ -2125,7 +2127,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 		}
 	*stillSweeping = 1;
 	}
-	
+
 	//assume that sweep always happens in popn 0!!!
 	//using popnSize global to manage bookkeeping
 	sweepPopnSizes[1] = nodePopnSweepSize(0,1);
@@ -2136,31 +2138,40 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	tInc = 1.0 / (deltaTMod * N);
 	tIncOrig = 1.0 / (deltaTMod * EFFECTIVE_POPN_SIZE);
 	insweepphase = 1;
-	
+
 	//go for epoch time, sweep freq, or root
-	while( x > 1.0/(2.*N) && (cTime+ttau) < endTime && popnSizes[0] > 1){ 
+	while( x > 1.0/(2.*N) && (cTime+ttau) < endTime && popnSizes[0] > 1){
 		//rejection algorithm of Braverman et al. 1995
 		eventRand = ranf();
 		eventProb = 1.0;
 		//wait for something
 		while(eventProb > eventRand && x > (1.0 / (2*N)) && (cTime+ttau) < endTime){
 			ttau += tIncOrig;
+			double sr_now = sizeAt(0, cTime + ttau);
 
 			if(x > minF && insweepphase)
 			{
 				//get next sweep allele freq
 				switch(sweepMode){
 					case 'd':
-					if (detSweepMode == 0) {
-						x = detSweepFreq(ttau, alpha * sizeRatio[0]);
+					if (allShapesConstant()) {
+						if (detSweepMode == 0) {
+							x = detSweepFreq(ttau, alpha * sr_now);
+						} else {
+							x = detSweepFreqEuler(x, tIncOrig, alpha * sr_now);
+						}
 					} else {
-						x = detSweepFreqEuler(x, tIncOrig, alpha * sizeRatio[0]);
+						/* Time-varying alpha_eff: closed-form general formula with
+						 * incrementally-tracked integrated alpha. */
+						A_now = A_prev + alpha * integratedSizeRatio(0, cTime + ttau - tIncOrig, tIncOrig);
+						x = detSweepFreqGeneral(alpha, A_now);
+						A_prev = A_now;
 					}
 				//	printf("x here:%f ttau: %f alpha*sizeRatio: %f\n",x,ttau,alpha*sizeRatio);
 
 					break;
 					case 's':
-					x = 1.0 - genicSelectionStochasticForwardsOptimized(tInc, (1.0 - x), alpha * sizeRatio[0]);
+					x = 1.0 - genicSelectionStochasticForwardsOptimized(tInc, (1.0 - x), alpha * sr_now);
 				//	printf("x here:%f ttau: %f alpha*sizeRatio: %f\n",x,ttau,alpha*sizeRatio[0]);
 					break;
 					case 'N':
@@ -2178,8 +2189,8 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 
 			//calculate event probs
 			//first 4 events are probs of events in population 0
-			pCoalB = ((sweepPopnSizes[1] * (sweepPopnSizes[1] - 1) ) * 0.5)/x*tIncOrig / sizeRatio[0];
-			pCoalb = ((sweepPopnSizes[0] * (sweepPopnSizes[0] - 1) ) * 0.5)/(1-x)*tIncOrig / sizeRatio[0];
+			pCoalB = ((sweepPopnSizes[1] * (sweepPopnSizes[1] - 1) ) * 0.5)/x*tIncOrig / sr_now;
+			pCoalb = ((sweepPopnSizes[0] * (sweepPopnSizes[0] - 1) ) * 0.5)/(1-x)*tIncOrig / sr_now;
 			pRecB = rho * sweepPopnSizes[1]*0.5 *tIncOrig; // / sizeRatio[0];
 			pRecb = rho * sweepPopnSizes[0]*0.5 *tIncOrig;// / sizeRatio[0];
 			pGCB = my_gamma * sweepPopnSizes[1]*0.5 *tIncOrig;// / sizeRatio[0];
@@ -2197,10 +2208,10 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 			totRRate = 0.0;
 			totGCRate = 0.0;
 			totRate = sweepPopTotRate;
-			
+
 			//printf("currPopSize[0]: %d currPopSize[1]: %d\n",popnSizes[0],popnSizes[1]);
 			for(i=1;i<npops;i++){
-				cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 * tIncOrig / sizeRatio[i];
+				cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 * tIncOrig / sizeAt(i, cTime + ttau);
 				rRate[i] = rho * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
 				gcRate[i] = my_gamma * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
 				totCRate += cRate[i];
