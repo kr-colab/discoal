@@ -493,6 +493,51 @@ void test_drawWaitingTimeSize_distribution_linear(void) {
     TEST_ASSERT_TRUE(D < 0.05);
 }
 
+static double ks_statistic_mig(int src, int dst, int k, int n) {
+    double *T = malloc(sizeof(double) * n);
+    int valid = 0;
+    for (int i = 0; i < n; i++) {
+        double xi = -log(ranf());
+        double t = drawWaitingTimeMig(src, dst, 0.0, xi, k);
+        if (t > 0.0) T[valid++] = t;
+    }
+    if (valid < n / 2) { free(T); return 1.0; }  /* too many unreachable; fail */
+    qsort(T, valid, sizeof(double), compare_doubles);
+    double max_d = 0.0;
+    for (int i = 0; i < valid; i++) {
+        double F_emp = (double)(i + 1) / valid;
+        double F_theory = 1.0 - exp(-integratedHazardMig(src, dst, 0.0, T[i], k));
+        /* Note: F_theory here is conditional-on-finite, which matches valid sample */
+        double d = fabs(F_emp - F_theory);
+        if (d > max_d) max_d = d;
+    }
+    free(T);
+    return max_d;
+}
+
+void test_drawWaitingTimeMig_distribution_constant(void) {
+    migShape[0][1].type = SHAPE_CONSTANT;
+    migShape[0][1].anchor_value = 0.3;
+    TEST_ASSERT_TRUE(ks_statistic_mig(0, 1, 4, 10000) < 0.05);
+}
+
+void test_drawWaitingTimeMig_distribution_exponential(void) {
+    migShape[0][1].type = SHAPE_EXPONENTIAL;
+    migShape[0][1].anchor_value = 1.0;
+    migShape[0][1].rate_param = 0.5;
+    migShape[0][1].anchor_time = 0.0;
+    /* H(infty) = k*m0/beta = 4*1/0.5 = 8. Most xi will resolve. */
+    TEST_ASSERT_TRUE(ks_statistic_mig(0, 1, 4, 10000) < 0.05);
+}
+
+void test_drawWaitingTimeMig_distribution_linear(void) {
+    migShape[0][1].type = SHAPE_LINEAR;
+    migShape[0][1].anchor_value = 0.5;
+    migShape[0][1].rate_param = 0.1;
+    migShape[0][1].anchor_time = 0.0;
+    TEST_ASSERT_TRUE(ks_statistic_mig(0, 1, 3, 10000) < 0.05);
+}
+
 #ifndef TEST_RUNNER_MODE
 int main(void) {
     UNITY_BEGIN();
@@ -536,6 +581,9 @@ int main(void) {
     RUN_TEST(test_drawWaitingTimeSize_distribution_constant);
     RUN_TEST(test_drawWaitingTimeSize_distribution_exponential);
     RUN_TEST(test_drawWaitingTimeSize_distribution_linear);
+    RUN_TEST(test_drawWaitingTimeMig_distribution_constant);
+    RUN_TEST(test_drawWaitingTimeMig_distribution_exponential);
+    RUN_TEST(test_drawWaitingTimeMig_distribution_linear);
     return UNITY_END();
 }
 #endif
