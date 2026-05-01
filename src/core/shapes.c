@@ -45,10 +45,15 @@ double integratedHazardSize(int popID, double t0, double T, int k) {
     Shape *s = &popShape[popID];
     double pairs = (double)k * (k - 1) / 2.0;
     if (pairs == 0.0) return 0.0;
-    (void)t0;
+    double N0 = sizeAt(popID, t0);
     switch (s->type) {
         case SHAPE_CONSTANT:
-            return pairs * T / s->anchor_value;
+            return pairs * T / N0;
+        case SHAPE_EXPONENTIAL: {
+            double a = s->rate_param;
+            if (a == 0.0) return pairs * T / N0;
+            return pairs * (exp(a * T) - 1.0) / (N0 * a);
+        }
         default:
             return 0.0;
     }

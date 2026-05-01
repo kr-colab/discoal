@@ -172,6 +172,62 @@ void test_integratedHazardSize_constant(void) {
     TEST_ASSERT_DOUBLE_WITHIN(1e-12, 30.0, integratedHazardSize(0, 0.0, 10.0, 4));
 }
 
+void test_integratedHazardSize_exponential_at_anchor(void) {
+    popShape[0].type = SHAPE_EXPONENTIAL;
+    popShape[0].anchor_value = 2.0;
+    popShape[0].rate_param = 0.5;
+    popShape[0].anchor_time = 0.0;
+    /* k=2, T=4, alpha=0.5, N_0 at t=0 = 2.0 */
+    /* H = 1/(2*0.5) * (exp(2) - 1) = (exp(2)-1) */
+    double expected = (exp(2.0) - 1.0);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-10, expected, integratedHazardSize(0, 0.0, 4.0, 2));
+}
+
+void test_integratedHazardSize_exponential_offset_t0(void) {
+    /* If t0 != anchor_time, the relevant N_0 is sizeAt(t0) */
+    popShape[0].type = SHAPE_EXPONENTIAL;
+    popShape[0].anchor_value = 1.0;
+    popShape[0].rate_param = 0.2;
+    popShape[0].anchor_time = 0.0;
+    /* At t0=5, N(t0) = exp(-1). Then H over T=2 with that as anchor:
+     * H = 1/(N(t0)*0.2) * (exp(0.2*2) - 1) = 1/(exp(-1)*0.2) * (exp(0.4)-1) */
+    double N_t0 = exp(-1.0);
+    double expected = 1.0 * (exp(0.4) - 1.0) / (N_t0 * 0.2);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-10, expected, integratedHazardSize(0, 5.0, 2.0, 2));
+}
+
+void test_integratedHazardSize_exponential_alpha_zero(void) {
+    popShape[0].type = SHAPE_EXPONENTIAL;
+    popShape[0].anchor_value = 3.0;
+    popShape[0].rate_param = 0.0;
+    popShape[0].anchor_time = 0.0;
+    /* alpha=0 should match constant: H = 1*5/3 */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-10, 5.0/3.0, integratedHazardSize(0, 0.0, 5.0, 2));
+}
+
+void test_integratedHazardSize_exponential_quadrature_match(void) {
+    /* High-resolution numerical quadrature should match the closed form */
+    popShape[0].type = SHAPE_EXPONENTIAL;
+    popShape[0].anchor_value = 1.5;
+    popShape[0].rate_param = 0.7;
+    popShape[0].anchor_time = 2.0;
+    double t0 = 3.5;
+    double T = 4.0;
+    int k = 5;
+    double pairs = k*(k-1)/2.0;
+    int N = 16384;
+    double dt = T / N;
+    double sum = 0.0;
+    for (int i = 0; i < N; i++) {
+        double s_lo = i * dt;
+        double s_hi = (i+1) * dt;
+        double s_mid = 0.5 * (s_lo + s_hi);
+        sum += pairs / sizeAt(0, t0 + s_mid) * dt;  /* midpoint rule */
+    }
+    double closed = integratedHazardSize(0, t0, T, k);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, sum, closed);
+}
+
 #ifndef TEST_RUNNER_MODE
 int main(void) {
     UNITY_BEGIN();
@@ -190,6 +246,10 @@ int main(void) {
     RUN_TEST(test_migAt_linear_grows_backward_with_negative_delta);
     RUN_TEST(test_migAt_pair_isolation);
     RUN_TEST(test_integratedHazardSize_constant);
+    RUN_TEST(test_integratedHazardSize_exponential_at_anchor);
+    RUN_TEST(test_integratedHazardSize_exponential_offset_t0);
+    RUN_TEST(test_integratedHazardSize_exponential_alpha_zero);
+    RUN_TEST(test_integratedHazardSize_exponential_quadrature_match);
     return UNITY_END();
 }
 #endif
