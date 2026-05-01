@@ -1507,10 +1507,12 @@ After the existing `detSweepFreq` declaration:
 
 ```c
 /* Euler-step variant of detSweepFreq for time-varying N support.
- * Given current frequency x and per-step time increment dt,
- * advance by one logistic-ODE Euler step:
- *   x_{t+dt} = x_t + alpha_eff * x * (1 - x) * dt
- * Caller is responsible for clamping x in [0, 1]. */
+ * Given current frequency x and per-step backward-time increment dt,
+ * advance by one Euler step on the backward-time logistic ODE:
+ *   x_{ttau+dt} = x_ttau - alpha_eff * x * (1 - x) * dt
+ * Matches detSweepFreq(ttau, alpha)'s parameterization: x near 1 at
+ * ttau=0 decreasing toward epsilon at ttau=ts. Caller is responsible
+ * for clamping x in [0, 1]; the function clamps defensively as well. */
 double detSweepFreqEuler(double x, double dt, double alpha_eff);
 ```
 
@@ -1518,7 +1520,12 @@ double detSweepFreqEuler(double x, double dt, double alpha_eff);
 
 ```c
 double detSweepFreqEuler(double x, double dt, double alpha_eff) {
-    double dx = alpha_eff * x * (1.0 - x) * dt;
+    /* Backward-time logistic ODE: dx/dttau = -alpha * x * (1 - x).
+     * The negative sign reflects coalescent simulation running backward
+     * in time -- as ttau increases (going further into the past), x
+     * decreases from ~1 (sweep just fixed) toward ~epsilon (start of
+     * sweep). This matches detSweepFreq(ttau, alpha)'s parameterization. */
+    double dx = -alpha_eff * x * (1.0 - x) * dt;
     double x_new = x + dx;
     if (x_new < 0.0) x_new = 0.0;
     if (x_new > 1.0) x_new = 1.0;
@@ -1541,20 +1548,23 @@ void tearDown(void) { }
 #endif
 
 void test_detSweepFreqEuler_against_closed_form(void) {
-    /* Run both methods over the entire sweep and compare endpoints */
+    /* Backward-time integration: start at ttau=0 (x near 1 just after the
+     * sweep finishes fixing), walk forward in backward-time toward ttau=ts
+     * (x near epsilon, sweep starting). Both detSweepFreq and
+     * detSweepFreqEuler should track the same trajectory. */
     double alpha = 200.0;
-    /* closed-form sweep duration */
     double epsilon = 0.05 / alpha;
     double ts = -2.0 * log(epsilon) / alpha;
-    /* fine Euler grid */
     int N_steps = 100000;
     double dt = ts / N_steps;
-    double x_euler = epsilon / (epsilon + (1.0 - epsilon));  /* matches detSweepFreq(0, alpha) */
+    /* Start at the present (ttau=0); detSweepFreq returns ~1 here. */
+    double x_euler = detSweepFreq(0.0, alpha);
     for (int i = 0; i < N_steps; i++) {
         x_euler = detSweepFreqEuler(x_euler, dt, alpha);
     }
+    /* End at ttau=ts; detSweepFreq returns ~epsilon. */
     double x_closed = detSweepFreq(ts, alpha);
-    /* Euler with 100k steps should match closed form to 1e-3 relative */
+    /* Euler with 100k steps should match closed form to 1e-3 relative. */
     TEST_ASSERT_DOUBLE_WITHIN(1e-3 * x_closed, x_closed, x_euler);
 }
 

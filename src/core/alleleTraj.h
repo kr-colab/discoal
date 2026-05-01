@@ -2,20 +2,13 @@
 
 double detSweepFreq(double t, double s);
 
-/**
- * Euler-step variant of detSweepFreq for time-varying N support.
- *
- * Given current frequency x and per-step time increment dt,
- * advance by one logistic-ODE Euler step:
- *   x_{t+dt} = x_t + alpha_eff * x * (1 - x) * dt
- *
- * Caller is responsible for clamping x in [0, 1].
- *
- * @param x          current allele frequency
- * @param dt         per-step time increment
- * @param alpha_eff  effective selection coefficient (alpha) for this step
- * @return new allele frequency after one Euler step
- */
+/* Euler-step variant of detSweepFreq for time-varying N support.
+ * Given current frequency x and per-step backward-time increment dt,
+ * advance by one Euler step on the backward-time logistic ODE:
+ *   x_{ttau+dt} = x_ttau - alpha_eff * x * (1 - x) * dt
+ * Matches detSweepFreq(ttau, alpha)'s parameterization: x near 1 at
+ * ttau=0 decreasing toward epsilon at ttau=ts. Caller is responsible
+ * for clamping x in [0, 1]; the function clamps defensively as well. */
 double detSweepFreqEuler(double x, double dt, double alpha_eff);
 
 double neutralStochastic(double dt, double currentFreq);
