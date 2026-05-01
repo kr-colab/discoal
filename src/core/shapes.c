@@ -2,15 +2,16 @@
 #include <stdlib.h>
 #include "shapes.h"
 
-/* sizeAt -- evaluate the size shape for population popID at absolute time t.
+/* sizeAt / migAt -- evaluate a shape (size or migration rate) at absolute
+ * time t. sizeAt indexes popShape[popID]; migAt indexes migShape[src][dst].
  *
- * Sign convention (msprime-aligned, applies uniformly across shape types):
- * rate_param is the per-generation FORWARD-time rate of change. The
- * coalescent simulator runs backward in time, so positive rate_param
- * means the past held a smaller value.
- *   SHAPE_CONSTANT:    N(t) = anchor_value (rate_param unused)
- *   SHAPE_EXPONENTIAL: N(t) = anchor_value * exp(-rate_param * (t - anchor_time))
- *   SHAPE_LINEAR:      N(t) = anchor_value - rate_param * (t - anchor_time)
+ * Sign convention (msprime-aligned, applies uniformly across shape types
+ * and to both sizes and migration rates): rate_param is the per-generation
+ * FORWARD-time rate of change. The coalescent simulator runs backward in
+ * time, so positive rate_param means the past held a smaller value.
+ *   SHAPE_CONSTANT:    value(t) = anchor_value (rate_param unused)
+ *   SHAPE_EXPONENTIAL: value(t) = anchor_value * exp(-rate_param * (t - anchor_time))
+ *   SHAPE_LINEAR:      value(t) = anchor_value - rate_param * (t - anchor_time)
  */
 double sizeAt(int popID, double t) {
     Shape *s = &popShape[popID];

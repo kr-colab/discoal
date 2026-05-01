@@ -525,10 +525,20 @@ void test_migAt_exponential(void) {
     TEST_ASSERT_DOUBLE_WITHIN(1e-12, exp(-1.0), migAt(0, 1, 2.0));
 }
 
-void test_migAt_linear(void) {
+void test_migAt_linear_declines_backward_with_positive_delta(void) {
+    /* delta > 0 = forward growth = backward decline. m(t) = 0.5 - 0.05*t. */
+    migShape[0][1].type = SHAPE_LINEAR;
+    migShape[0][1].anchor_value = 0.5;
+    migShape[0][1].rate_param = 0.05;
+    migShape[0][1].anchor_time = 0.0;
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.3, migAt(0, 1, 4.0));
+}
+
+void test_migAt_linear_grows_backward_with_negative_delta(void) {
+    /* delta < 0 = forward decline = backward growth. m(t) = 0.1 + 0.05*t. */
     migShape[0][1].type = SHAPE_LINEAR;
     migShape[0][1].anchor_value = 0.1;
-    migShape[0][1].rate_param = 0.05;
+    migShape[0][1].rate_param = -0.05;
     migShape[0][1].anchor_time = 0.0;
     TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.6, migAt(0, 1, 10.0));
 }
@@ -545,7 +555,7 @@ void test_migAt_pair_isolation(void) {
 
 Register in `main`.
 
-- [ ] **Step 2: Verify failure** — 4 tests FAIL.
+- [ ] **Step 2: Verify failure** — 5 tests FAIL.
 
 - [ ] **Step 3: Implement `migAt` in `src/core/shapes.c`**
 
@@ -558,7 +568,7 @@ double migAt(int srcPopID, int dstPopID, double t) {
         case SHAPE_EXPONENTIAL:
             return s->anchor_value * exp(-s->rate_param * (t - s->anchor_time));
         case SHAPE_LINEAR:
-            return s->anchor_value + s->rate_param * (t - s->anchor_time);
+            return s->anchor_value - s->rate_param * (t - s->anchor_time);
         default:
             return 0.0;
     }
@@ -573,8 +583,10 @@ double migAt(int srcPopID, int dstPopID, double t) {
 git add src/core/shapes.c test/unit/test_shapes.c
 git commit -m "Implement migAt for all shapes
 
-Mirrors sizeAt structure but indexes migShape[src][dst].
-Tested per shape and for src/dst pair isolation."
+Mirrors sizeAt structure but indexes migShape[src][dst]. Same
+forward-time msprime convention: positive rate_param means past
+held a smaller migration rate. Tested per shape and for src/dst
+pair isolation."
 ```
 
 ---
