@@ -3,8 +3,13 @@
 #include "shapes.h"
 
 double sizeAt(int popID, double t) {
-    (void)popID; (void)t;
-    return 0.0;  /* TBD: implemented in Tasks 3-5 */
+    Shape *s = &popShape[popID];
+    switch (s->type) {
+        case SHAPE_CONSTANT:
+            return s->anchor_value;
+        default:
+            return 0.0;  /* other shapes implemented in subsequent tasks */
+    }
 }
 
 double migAt(int srcPopID, int dstPopID, double t) {

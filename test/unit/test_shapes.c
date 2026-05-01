@@ -32,14 +32,30 @@ void setUp(void) {
 void tearDown(void) { }
 #endif
 
-void test_placeholder(void) {
-    TEST_ASSERT_EQUAL(SHAPE_CONSTANT, 0);
+void test_sizeAt_constant_returns_anchor(void) {
+    popShape[0].type = SHAPE_CONSTANT;
+    popShape[0].anchor_value = 2.5;
+    popShape[0].anchor_time = 10.0;
+    /* For CONSTANT, t should be irrelevant */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 2.5, sizeAt(0, 0.0));
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 2.5, sizeAt(0, 50.0));
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 2.5, sizeAt(0, 1e6));
+}
+
+void test_sizeAt_constant_per_population(void) {
+    popShape[1].type = SHAPE_CONSTANT;
+    popShape[1].anchor_value = 0.5;
+    popShape[2].type = SHAPE_CONSTANT;
+    popShape[2].anchor_value = 4.0;
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.5, sizeAt(1, 0.0));
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 4.0, sizeAt(2, 0.0));
 }
 
 #ifndef TEST_RUNNER_MODE
 int main(void) {
     UNITY_BEGIN();
-    RUN_TEST(test_placeholder);
+    RUN_TEST(test_sizeAt_constant_returns_anchor);
+    RUN_TEST(test_sizeAt_constant_per_population);
     return UNITY_END();
 }
 #endif
