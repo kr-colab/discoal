@@ -1987,6 +1987,14 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			double sr_now = sizeAt(events[i].popID, events[i].time);
 			if(sr_now > Nmax) Nmax = sr_now;
 		}
+		if(events[i].type == 'l'){
+			popShape[events[i].popID].type = SHAPE_LINEAR;
+			popShape[events[i].popID].anchor_value = sizeAt(events[i].popID, events[i].time);
+			popShape[events[i].popID].rate_param = events[i].popnSize;
+			popShape[events[i].popID].anchor_time = events[i].time;
+			double sr_now = sizeAt(events[i].popID, events[i].time);
+			if(sr_now > Nmax) Nmax = sr_now;
+		}
 		if(minF < 1.0/(2.*N)) minF = 1.0/(2.*N);
 		tInc = 1.0 / (deltaTMod * N);
 		//iterate until epoch time or sweep freq
