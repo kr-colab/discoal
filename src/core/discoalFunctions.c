@@ -16,6 +16,7 @@
 #include "ranlib.h"
 #include "alleleTraj.h"
 #include "tskitInterface.h"
+#include "shapes.h"
 
 
 // Initial capacity for breakPoints array
@@ -211,6 +212,8 @@ void initialize(){
 
 	}
 	
+	//initialize shape state for time-varying parameter framework
+	initializeShapesFromGlobals();
 	activeSites = nSites;
 	if (npops>1){
 		if(tDiv==666 && migFlag == 0){
