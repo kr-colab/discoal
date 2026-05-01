@@ -67,6 +67,23 @@ discoal_edited: libyaml demes-c libcyaml $(SRC_CORE)/discoal_multipop.c $(SRC_CO
 	@mkdir -p build
 	$(CC) $(CFLAGS) -DUSE_XOSHIRO256PP -o build/discoal_edited $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/activeSegment.c $(SRC_TSKIT)/tskitInterface.c $(SRC_CORE)/demesInterface.c $(SRC_CORE)/configInterface.c $(SRC_CORE)/shapes.c $(POOL_SOURCES) $(TSKIT_SOURCES) $(EXTERN_LIB) -lm -fcommon
 
+# Phase 3 regression reference: discoal binary at the SHA where Phase 3 began.
+# This recipe checks out that SHA in a temp worktree, builds discoal there,
+# copies the binary to build/discoal_pre_phase3, and removes the worktree.
+PHASE3_REF_SHA = 9b7c4e0
+discoal_pre_phase3:
+	@mkdir -p build
+	@if [ -x build/discoal_pre_phase3 ]; then \
+		echo "build/discoal_pre_phase3 already present; remove it to rebuild"; \
+		exit 0; \
+	fi
+	@WT=$$(mktemp -d) && \
+	  git worktree add --detach "$$WT" $(PHASE3_REF_SHA) && \
+	  $(MAKE) -C "$$WT" discoal && \
+	  cp "$$WT/build/discoal" build/discoal_pre_phase3 && \
+	  git worktree remove "$$WT"
+	@echo "Built pre-Phase-3 reference: build/discoal_pre_phase3"
+
 # Build debug version with ancestry verification
 discoal_debug: libyaml demes-c libcyaml $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/discoal.h $(SRC_CORE)/discoalFunctions.h $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegment.h $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/ancestrySegmentAVL.h $(SRC_CORE)/activeSegment.c $(SRC_CORE)/activeSegment.h $(SRC_CORE)/shapes.h $(SRC_CORE)/shapes.c $(TSKIT_SOURCES)
 	@mkdir -p build
