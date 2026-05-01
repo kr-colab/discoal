@@ -215,10 +215,26 @@ Three sweep modes:
 - **Neutral stochastic (`'N'`)**: drift-diffusion Euler step. Same.
 - **Deterministic (`'d'`)**: today uses `detSweepFreq(\tau, \alpha_{\text{eff}})`,
   the Stephan et al. 1992 closed-form logistic. This formula assumes
-  *constant* $\alpha_{\text{eff}}$. Under continuous $N(t)$ it does not
-  apply. Replace with a one-line Euler step on the deterministic
-  logistic ODE: $x_{t+dt} = x_t + \alpha_{\text{eff}}(t)\,x(1-x)\,dt$.
-  See section 6 for verification testing of this swap.
+  *constant* $\alpha_{\text{eff}}$. Under continuous $N(t)$ the
+  closed form **still applies** — the deterministic ODE
+  $dx/d\tau = -\alpha_{\text{eff}}(\tau)\,x(1-x)$ is separable, so
+
+  $$x(\tau) = \frac{x_0\,e^{-A(\tau)}}{1 - x_0 + x_0\,e^{-A(\tau)}}$$
+
+  where $A(\tau) := \int_0^{\tau}\alpha_{\text{eff}}(s)\,ds$. For
+  constant $\alpha_{\text{eff}}$, $A(\tau)=\alpha\tau$ recovers the
+  Stephan form bit-exactly. For our shape vocabulary $A(\tau)$ has
+  closed forms (just $\alpha_0$ times the integral of `sizeAt`):
+
+  - CONSTANT: $A = \alpha_0\,N_0\,\tau$ (with $N_0 = N_{\text{ref}}$)
+  - EXPONENTIAL ($N(s)=N_0 e^{-\alpha_g s}$): $A = (\alpha_0 N_0/\alpha_g)(1-e^{-\alpha_g\tau})$, $\alpha_g\to 0$ degenerate
+  - LINEAR ($N(s)=N_0 - \gamma_g s$): $A = \alpha_0(N_0\tau - \tfrac{1}{2}\gamma_g\tau^2)$
+
+  Phase 5 introduces `detSweepFreqGeneral(x_0, A_\tau, A_{\tau_s})` and
+  a sister `integratedSizeRatio(popID, t_0, T)` that returns
+  $\int_{t_0}^{t_0+T}\text{sizeAt}(s)\,ds$. The dispatch on shape type
+  for the deterministic path collapses to a single closed-form call;
+  no Euler step, no truncation error.
 
 Migration is suspended during sweep phases (existing behavior). Remains
 suspended; time-varying migration is silently ignored across sweep
@@ -378,26 +394,28 @@ suspended during sweeps).
 `sizeAt(i, t)` if it tracks other pops; it does not in current code).
 
 Deterministic-mode sweep: replace the `detSweepFreq` call with the
-Euler step:
+shape-aware closed form using the integrated selection coefficient
+$A(\tau) = \alpha_0 \cdot S(0,\tau)$:
 
 ```c
 case 'd':
-    if (popShape[0].type == SHAPE_CONSTANT) {
-        // unchanged: closed-form logistic
-        x = detSweepFreq(ttau, alpha * sizeAt(0, currentTime + ttau));
-    } else {
-        // Euler step on the deterministic logistic ODE
-        double alpha_eff = alpha * sizeAt(0, currentTime + ttau);
-        x += alpha_eff * x * (1.0 - x) * tIncOrig;
-    }
+    /* x_0 was set at the start of the sweep walk to a value just below 1
+     * (e.g., 1 - 1/(2*N(0))). A_now = alpha_0 * integratedSizeRatio(0, 0, ttau)
+     * accumulates incrementally from A_prev and the per-step closed-form
+     * size integral. */
+    A_now = A_prev + alpha * integratedSizeRatio(0, currentTime + ttau - tIncOrig, tIncOrig);
+    x = detSweepFreqGeneral(x_0, A_now);
+    A_prev = A_now;
     break;
 ```
 
-This branch on shape type is the conservative form: it preserves bit-equal
-output for piecewise-constant demography (the regime current discoal
-handles) while enabling continuous shapes. If the Q1 verification test
-(section 6.1) confirms statistical equivalence between the two paths
-under constant $N$, the branch can be collapsed to always-Euler.
+For SHAPE_CONSTANT, `integratedSizeRatio` returns `anchor_value * dt` and
+$A(\tau) = \alpha_0 \cdot N_0 \cdot \tau$, recovering `detSweepFreq`
+bit-exactly when expressed in the boundary-condition form. For
+SHAPE_EXPONENTIAL and SHAPE_LINEAR, the per-step `integratedSizeRatio`
+is the closed-form integral above. No Euler step appears; no truncation
+error. The Q1 verification (section 6.3) ruled out plain Euler, but the
+separable-ODE closed form sidesteps the issue entirely.
 
 ### 4.6 Initialization
 
@@ -907,19 +925,25 @@ Bonferroni-corrected $p < 9.26 \times 10^{-5}$
 - Older sweeps (tau=0.5) wash out trajectory differences in
   post-sweep neutral coalescent.
 
-**Conclusion: the dispatch on shape type specified in section 4.5
-must be kept. The Phase 5 sweep-accessor wiring must use the
-closed-form `detSweepFreq` for `SHAPE_CONSTANT` populations and
-fall back to the Euler step only when the size shape is non-constant
-(EXP or LIN).** Collapsing to always-Euler would change the simulation
-distribution for constant-N sweep configurations in regimes that
-existing users may rely on.
+**Conclusion (initial reading): keep dispatch on shape type, use
+Euler only when N is non-constant.**
 
-The existing `--det-sweep-mode` runtime flag is preserved as a
-debugging aid; once Phase 5 ships and integrates `sizeAt` per-step,
-the flag's meaning becomes "force Euler even when the shape is
-constant" rather than "select algorithm". Users normally should not
-need to touch it.
+**Conclusion (revised, post-Q1): don't use Euler at all.** The
+deterministic-sweep ODE $dx/d\tau = -\alpha_{\text{eff}}(\tau)\,x(1-x)$
+is separable, so under arbitrary time-varying $N$ it has a closed-form
+solution: $x(\tau) = x_0 e^{-A(\tau)}/(1-x_0+x_0 e^{-A(\tau)})$ with
+$A(\tau) = \int_0^\tau \alpha_{\text{eff}}(s)\,ds = \alpha_0\,S(0,\tau)$,
+where $S$ is the integral of `sizeAt`. For our shape vocabulary $S$ has
+closed forms for all three types (see section 4.5). Phase 5 implements
+`detSweepFreqGeneral` and a sister `integratedSizeRatio` and replaces
+the deterministic-mode sweep call with a single closed-form invocation
+that handles constant, exponential, and linear shapes uniformly. No
+Euler step, no truncation error, no Q1-style discrepancy possible.
+
+The Q1 verification, the harness in `test/parity/`, the
+`--det-sweep-mode` runtime flag, and the `detSweepFreqEuler` function
+are kept on the branch as a record of how the design pivoted. They
+will be deleted in Phase 5 when the closed-form general path lands.
 
 **Raw results:** `test/parity/q1_results/analysis.txt` on
 `feature/issue-82-time-varying-demography`. Re-running the harness
