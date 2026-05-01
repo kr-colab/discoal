@@ -1772,8 +1772,8 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 	double Nmax, localNextTime,localCurrentTime, currentSizeRatio;
 	int i, insweepphase;
 	long int j;
-	float x;
-	
+	double x;
+
 	// For sweep simulations, write directly to a temporary file
 	char tempFilename[256];
 	snprintf(tempFilename, sizeof(tempFilename), "/tmp/discoal_traj_%d_%ld_%d.tmp", 
@@ -1850,7 +1850,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			}
 			
 			// Write to buffer
-			writeBuffer[bufferPos++] = x;
+			writeBuffer[bufferPos++] = (float)x;
 			if (bufferPos >= 1024) {
 				// Flush buffer to file
 				fwrite(writeBuffer, sizeof(float), bufferPos, trajFile);
