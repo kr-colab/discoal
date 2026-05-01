@@ -862,3 +862,66 @@ transition time. Tested via the multi-epoch demes parity tests.
 - Existing unit test suite green.
 - Documentation updated to reflect new flags and demes coverage.
 - Back-derivation hack at `discoalFunctions.c:222-261` is gone.
+
+## Addendum (2026-05-01): Q1 Verification Result
+
+Phase 2 of the foundations implementation plan ran the Q1 verification
+harness at `test/parity/q1_detsweep_verification.sh` across 9
+(alpha, tau) configurations with $10^3$ replicates each (n=1000;
+the plan called for $10^4$, scaled down for harness runtime —
+$10^3$ still gives K-S statistical power well past the
+Bonferroni-corrected threshold for 108 comparisons). The harness
+compared the closed-form `detSweepFreq` and the Euler-step
+`detSweepFreqEuler` paths under constant N via the
+`--det-sweep-mode {closed,euler}` runtime flag.
+
+**Configuration grid:** alpha in {50, 200, 1000}, tau in {0.01, 0.1, 0.5},
+n=10, theta=10, rho=10, nsites=10000.
+
+**Result:** **FAIL.**
+
+29 of 108 comparisons rejected distributional equality at
+Bonferroni-corrected $p < 9.26 \times 10^{-5}$
+($\alpha = 0.01 / 108$). The pattern of failures is informative:
+
+| alpha | tau=0.01 | tau=0.1 | tau=0.5 |
+|---|---|---|---|
+| 50 | 11/12 reject | 4/12 reject | 0/12 reject |
+| 200 | 11/12 reject | 4/12 reject | 0/12 reject |
+| 1000 | 0/12 reject | 0/12 reject | 0/12 reject |
+
+- Recent sweeps (tau=0.01) with smaller alpha (50, 200) reject
+  heavily — the Euler integrator's $O(\text{dt}^2)$ error per step
+  accumulates over a relatively short trajectory whose tail-shape
+  has strong influence on observable summary statistics when the
+  sweep finished recently.
+- Larger alpha (1000) does not reject at any tau, because the per-step
+  error for an Euler step on $dx/d\tau = \alpha x(1-x)$ scales as
+  $\alpha^2 x^2 (1-x)^2 \cdot \text{dt}^2$, but the trajectory duration
+  also shrinks like $1/\alpha$, so total error scales like $\alpha$
+  for fixed total integration time. With our fixed `tIncOrig`, the
+  *number* of steps grows with alpha, mitigating the per-step error.
+  The empirical effect is that closed-form and Euler track each
+  other closely at large alpha despite the formal $O(\text{dt}^2)$
+  truncation.
+- Older sweeps (tau=0.5) wash out trajectory differences in
+  post-sweep neutral coalescent.
+
+**Conclusion: the dispatch on shape type specified in section 4.5
+must be kept. The Phase 5 sweep-accessor wiring must use the
+closed-form `detSweepFreq` for `SHAPE_CONSTANT` populations and
+fall back to the Euler step only when the size shape is non-constant
+(EXP or LIN).** Collapsing to always-Euler would change the simulation
+distribution for constant-N sweep configurations in regimes that
+existing users may rely on.
+
+The existing `--det-sweep-mode` runtime flag is preserved as a
+debugging aid; once Phase 5 ships and integrates `sizeAt` per-step,
+the flag's meaning becomes "force Euler even when the shape is
+constant" rather than "select algorithm". Users normally should not
+need to touch it.
+
+**Raw results:** `test/parity/q1_results/analysis.txt` on
+`feature/issue-82-time-varying-demography`. Re-running the harness
+(`./test/parity/q1_detsweep_verification.sh`) regenerates the .ms
+and .stats files (gitignored due to size; ~30 MB total).
