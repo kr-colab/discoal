@@ -2,7 +2,7 @@
 #
 # YAML parser regression suite.
 #
-# Walks every fixture in config_examples/debug_yaml/ exercising it
+# Walks every fixture in testing/debug_yaml/ exercising it
 # against `./build/discoal -Y`:
 #
 #   error_*.yaml  must exit non-zero AND emit the error message that the
@@ -16,7 +16,7 @@
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 DISCOAL=${DISCOAL:-$REPO_ROOT/build/discoal}
-FIXTURES="$REPO_ROOT/config_examples/debug_yaml"
+FIXTURES="$REPO_ROOT/testing/debug_yaml"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'

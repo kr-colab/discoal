@@ -42,7 +42,7 @@ This builds `niceStats` from the msUtils library and creates a symlink in the pr
 | `msprime_comparison_suite.sh` | Statistical comparison with msprime simulator | 5-10 min |
 | `demes_validation_suite.sh` | Demes format demographic model validation | 5 min |
 | `yaml_validation_suite.sh` | YAML configuration file validation | 2 min |
-| `yaml_parser_suite.sh` | YAML parser regression suite (walks `config_examples/debug_yaml/`) | < 5 sec |
+| `yaml_parser_suite.sh` | YAML parser regression suite (walks `testing/debug_yaml/`) | < 5 sec |
 
 ## Documentation
 
