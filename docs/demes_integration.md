@@ -41,14 +41,19 @@ If your demes file contains unsupported features, discoal will report an error a
 Discoal uses different time and rate units than the demes specification. The integration handles these conversions automatically:
 
 ### Time Conversion
-- Demes: time in generations
-- Discoal: internal coalescent time
-- Conversion: `discoal_time = demes_time / (2 * N_ref)`
+- Demes: time in the units the graph specifies (`time_units: generations`
+  or `time_units: years`).
+- Discoal: internal coalescent time.
+- Conversion: `discoal_time = demes_time / generation_time / (2 * N_ref)`
 
-Where `N_ref` is the size of the first present-day deme in the demes
-file. (This matches the discoal CLI convention that command-line
-times in units of `2N` are internally stored as `4N` units; the
-importer halves the `4N` factor to land in the same internal scale.)
+Where `N_ref` is the size of the first present-day deme in the demes file.
+For `time_units: generations`, the demes spec requires `generation_time = 1`,
+so the formula reduces to `demes_time / (2 * N_ref)`. For `time_units: years`,
+`generation_time` is the years-per-generation conversion factor, and the
+formula correctly lands in coalescent units regardless. (This matches the
+discoal CLI convention that command-line times in units of `2N` are
+internally stored as `4N` units; the importer halves the `4N` factor to
+land in the same internal scale.)
 
 ### Population Size Conversion
 - Demes: absolute population size

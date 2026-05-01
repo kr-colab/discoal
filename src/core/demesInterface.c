@@ -34,14 +34,12 @@ static int findPopulationIndex(struct demes_graph *graph, const char *name) {
     return -1;
 }
 
-// Convert demes time to coalescent time
+// Convert demes time to coalescent time. demes_time is in the units the
+// graph specifies; for time_units="generations" generation_time is 1 (demes
+// validates this), and for time_units="years" generation_time is the years
+// per generation, so dividing yields generations either way.
 static double demesTimeToCoalTime(double demes_time, double generation_time, double N) {
-    // demes_time is in the time units specified (typically generations)
-    // In discoal, times from command line are in units of 2N generations, but
-    // internally stored as units of 4N. So command line time T becomes 2T internally.
-    // To match this behavior, we need to convert demes time (in generations) to
-    // the same internal units: generations / (2 * N)
-    return demes_time * generation_time / (2.0 * N);
+    return demes_time / generation_time / (2.0 * N);
 }
 
 // Convert demes size to coalescent size (relative to ancestral N)
@@ -350,14 +348,15 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
                 /* Forward-time per-generation rate.  start_time is the older
                  * boundary (forward-time start), end_time is the more recent
                  * (forward-time end).  end_size > start_size => positive alpha
-                 * (forward growth, past was smaller). */
+                 * (forward growth, past was smaller).  Divide the time delta
+                 * by generation_time to land in generations regardless of
+                 * the graph's time_units. */
+                double dt_gens = (startTime - endTime) / graph->generation_time;
                 double alpha_per_gen = log(epoch->end_size / epoch->start_size)
-                                       / (startTime - endTime);
+                                       / dt_gens;
                 /* Convert to discoal internal alpha (4N-scaled).  Mirrors the
                  * Phase 4b parity-validated alpha_per_gen = alpha_internal/(2N)
-                 * inverse.  Assumes generation_time == 1 (consistent with the
-                 * rest of this importer); for generations-as-time-units the
-                 * factor is unity. */
+                 * inverse. */
                 double alpha_internal = alpha_per_gen * 2.0 * N;
                 double t_internal = demesTimeToCoalTime(epoch->end_time,
                                                         graph->generation_time, N);
@@ -382,9 +381,11 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
                 epoch->start_size != epoch->end_size) {
                 /* Forward-time linear growth rate per generation: positive when
                  * end_size > start_size (forward growth, past was smaller).
-                 * (start_time - end_time) is positive (older - more recent). */
+                 * (start_time - end_time) is positive (older - more recent).
+                 * Divide by generation_time to handle non-generation time_units. */
+                double dt_gens = (startTime - endTime) / graph->generation_time;
                 double gamma_per_gen = (epoch->end_size - epoch->start_size)
-                                       / (startTime - endTime);
+                                       / dt_gens;
                 double gamma_internal = gamma_per_gen * 2.0 * N;
                 double t_internal = demesTimeToCoalTime(epoch->end_time,
                                                         graph->generation_time, N);

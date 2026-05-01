@@ -1,0 +1,5 @@
+simulation: {sample_size: 20, num_replicates: 20, num_sites: 50000, seed: [31337, 4242]}
+genetics: {mutation_rate: 20.0, recombination_rate: 15.0}
+demography:
+  deme_sample_size: [10, 5, 5]
+  demes_filename: "test/parity/phase8_demes_units/gens.demes.yaml"

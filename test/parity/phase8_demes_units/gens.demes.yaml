@@ -1,0 +1,30 @@
+description: Generations-based equivalent of years.demes.yaml.
+time_units: generations
+demes:
+  - name: A
+    epochs:
+      - end_time: 10000
+        start_size: 1000
+      - end_time: 0
+        start_size: 10000
+  - name: B
+    ancestors: [A]
+    start_time: 40000
+    epochs:
+      - end_time: 20000
+        start_size: 20000
+      - end_time: 0
+        start_size: 10000
+  - name: C
+    ancestors: [A]
+    start_time: 60000
+    epochs:
+      - end_time: 0
+        start_size: 10000
+migrations:
+  - demes: [A, B]
+    rate: 2.5e-06
+  - demes: [B, C]
+    rate: 2.5e-06
+  - demes: [A, C]
+    rate: 2.5e-06
