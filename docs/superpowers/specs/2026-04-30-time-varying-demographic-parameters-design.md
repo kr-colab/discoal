@@ -104,9 +104,23 @@ redrawn after each event because the lineage state may have changed.
 
 ### 3.2 Closed-form integrals for the three shapes
 
+#### Sign convention
+
+discoal follows the **msprime forward-time per-generation rate
+convention** for `Shape.rate_param` across all shape types. Each
+population has an initial absolute size $N_e$ and a per-generation
+forward-time rate of change ($\alpha$ for exponential, $\gamma$ for
+linear). The size at backward-time $s$ in the simulator's natural
+direction is $N(s) = N_e\,e^{-\alpha s}$ for exponential and
+$N(s) = N_e - \gamma s$ for linear. Migration rates use the same
+convention. A *positive* rate parameter means forward-time growth,
+which means the past held a *smaller* value.
+
+#### Setup
+
 Let $\binom{k}{2}$ denote the within-population pair count and $k_i$
 the lineage count in population $i$. Coalescent rate within
-population $i$ at time $s$ is
+population $i$ at backward-time $s$ is
 
 $$\lambda_C^{(i)}(s) = \binom{k_i}{2} \big/ N_i(s),$$
 
@@ -120,9 +134,9 @@ shapes give:
 **Constant.** $N(s) = N_0$ or $m(s) = m_0$. $T = \xi / \lambda$.
 This is the existing case.
 
-**Exponential.** $N(s) = N_0 e^{-\alpha s}$ (forward growth at rate
-$\alpha > 0$ implies backward decline; backward time $s$ is the
-coalescent's natural direction).
+**Exponential.** $N(s) = N_0 e^{-\alpha s}$ where $\alpha$ is the
+forward-time growth rate. $\alpha > 0$ ⇒ backward decline (past was
+smaller).
 
 For the coalescent rate, $\lambda_C(s) = \binom{k}{2} e^{\alpha s}/N_0$
 and
@@ -133,30 +147,54 @@ inverts to
 
 $$T = \frac{1}{\alpha}\,\log\!\left(1 + \frac{N_0\alpha}{\binom{k}{2}}\,\xi\right).$$
 
-For exponential migration $m(s) = m_0 e^{\beta s}$ similarly,
+For exponential migration $m(s) = m_0 e^{-\beta s}$ where $\beta$ is
+the forward-time growth rate of migration, $\lambda_M(s) = k\,m_0\,
+e^{-\beta s}$ and
 
-$$T = \frac{1}{\beta}\,\log\!\left(1 + \frac{\beta\,\xi}{k_i\,m_0}\right).$$
-
-**Linear.** $N(s) = N_0 + \gamma s$ (so $\gamma > 0$ grows backward
-in time, $\gamma < 0$ declines).
-
-$$\int_0^T \frac{\binom{k}{2}}{N_0 + \gamma s}\,ds = \frac{\binom{k}{2}}{\gamma}\,\log\!\left(\frac{N_0 + \gamma T}{N_0}\right) = \xi$$
+$$\int_0^T \lambda_M(s)\,ds = \frac{k\,m_0}{\beta}\,(1 - e^{-\beta T}) = \xi$$
 
 inverts to
 
-$$T = \frac{N_0}{\gamma}\left(\exp\!\left(\frac{\gamma\xi}{\binom{k}{2}}\right) - 1\right).$$
+$$T = -\frac{1}{\beta}\,\log\!\left(1 - \frac{\beta\,\xi}{k\,m_0}\right).$$
 
-(Care: if $\gamma < 0$ and $\xi$ is large enough, $N_0 + \gamma T$ goes
-non-positive — the coalescent rate diverges to infinity inside the
-epoch and a coalescence is forced before the rate becomes pathological.
-The integrator must clip $T$ at the time the linear extrapolation hits
-zero, force a coalescent there, and refuse to extrapolate past it. In
-demes this case corresponds to a population shrinking linearly to size
-zero, which the spec would not normally produce, but the integrator
-must be robust to it.)
+If $\beta\xi/(k\,m_0) \ge 1$ the integrated hazard over $[0,\infty)$
+is finite and $\xi$ exceeds it — the draw is unreachable; return
+$-1$ at the call site.
 
-The migration linear case is identical with $k_i\,m_0$ in place of
-$\binom{k}{2}$.
+**Linear.** $N(s) = N_0 - \gamma s$ where $\gamma$ is the forward-time
+growth rate. $\gamma > 0$ ⇒ backward decline (past was smaller); 
+$\gamma < 0$ ⇒ backward growth.
+
+$$\int_0^T \frac{\binom{k}{2}}{N_0 - \gamma s}\,ds = \frac{\binom{k}{2}}{\gamma}\,\log\!\left(\frac{N_0}{N_0 - \gamma T}\right) = \xi$$
+
+inverts to
+
+$$T = \frac{N_0}{\gamma}\left(1 - \exp\!\left(-\frac{\gamma\xi}{\binom{k}{2}}\right)\right).$$
+
+The $\gamma = 0$ degenerate case reduces to the constant formula
+$T = \xi N_0/\binom{k}{2}$.
+
+(Care: if $\gamma > 0$ — the population was growing forward in time
+— $N(s) = N_0 - \gamma s$ goes non-positive at the zero-crossing
+$T^* = N_0/\gamma$. The integrated hazard from 0 to $T^*$ diverges
+to $+\infty$, so any finite $\xi$ produces $T < T^*$ from the closed
+form — but the inversion must clamp at $T^*$ via $\texttt{nextafter}$
+to guard against floating-point ties. If $\gamma < 0$ — past was
+larger — $N$ never reaches zero and the closed form is well-behaved
+for all $T > 0$.)
+
+The migration linear case has integrand $k\,(m_0 - \delta s)$ where
+$\delta$ is the forward-time rate of migration change.
+$\int_0^T k\,(m_0 - \delta s)\,ds = k\,m_0\,T - \tfrac{1}{2}\,k\,\delta\,T^2 = \xi$
+is a quadratic in $T$ with positive root
+
+$$T = \frac{m_0 - \sqrt{m_0^2 - 2\,\delta\,\xi/k}}{\delta}.$$
+
+If the discriminant is negative the draw is unreachable; return
+$-1$ at the call site. (When $\delta > 0$ the migration rate
+declines backward to zero at $T^* = m_0/\delta$ and the integrated
+hazard caps at $k\,m_0\,T^*/2$.) The $\delta = 0$ degenerate case
+reduces to $T = \xi/(k\,m_0)$.
 
 ### 3.3 Sweep-phase math under continuous $N(t)$
 

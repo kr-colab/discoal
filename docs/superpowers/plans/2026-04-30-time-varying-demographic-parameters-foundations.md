@@ -437,7 +437,7 @@ the alpha=0 degenerate case."
 - Modify: `test/unit/test_shapes.c`
 - Modify: `src/core/shapes.c`
 
-Linear shape: $N(t) = N_0 + \gamma (t - t_0)$. Note: $\gamma > 0$ means $N$ grows backward-in-time.
+Linear shape (msprime forward-time convention): $N(t) = N_0 - \gamma (t - t_0)$. $\gamma$ is the forward-time growth rate. $\gamma > 0$ means $N$ *declines* backward-in-time (past was smaller); $\gamma < 0$ means $N$ grows backward.
 
 - [ ] **Step 1: Failing test**
 
@@ -450,22 +450,24 @@ void test_sizeAt_linear_at_anchor(void) {
     TEST_ASSERT_DOUBLE_WITHIN(1e-12, 1.5, sizeAt(0, 0.0));
 }
 
-void test_sizeAt_linear_grows_with_t(void) {
-    popShape[0].type = SHAPE_LINEAR;
-    popShape[0].anchor_value = 1.0;
-    popShape[0].rate_param = 2.0;
-    popShape[0].anchor_time = 0.0;
-    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 5.0, sizeAt(0, 2.0));   /* 1 + 2*2 */
-    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 11.0, sizeAt(0, 5.0));  /* 1 + 2*5 */
-}
-
-void test_sizeAt_linear_negative_gamma(void) {
+void test_sizeAt_linear_declines_backward_with_positive_gamma(void) {
+    /* gamma > 0 = forward growth = backward decline (past smaller) */
     popShape[0].type = SHAPE_LINEAR;
     popShape[0].anchor_value = 5.0;
+    popShape[0].rate_param = 2.0;
+    popShape[0].anchor_time = 0.0;
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 1.0, sizeAt(0, 2.0));   /* 5 - 2*2 */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 3.0, sizeAt(0, 1.0));   /* 5 - 2*1 */
+}
+
+void test_sizeAt_linear_grows_backward_with_negative_gamma(void) {
+    /* gamma < 0 = forward decline = backward growth (past larger) */
+    popShape[0].type = SHAPE_LINEAR;
+    popShape[0].anchor_value = 1.0;
     popShape[0].rate_param = -1.0;
     popShape[0].anchor_time = 0.0;
-    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 4.0, sizeAt(0, 1.0));
-    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 1.0, sizeAt(0, 4.0));
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 2.0, sizeAt(0, 1.0));   /* 1 - (-1)*1 */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 5.0, sizeAt(0, 4.0));   /* 1 - (-1)*4 */
 }
 ```
 
@@ -475,11 +477,11 @@ Register all three in `main`.
 
 - [ ] **Step 3: Implement**
 
-Add to `sizeAt`:
+Add to `sizeAt` BEFORE `default:`:
 
 ```c
 case SHAPE_LINEAR:
-    return s->anchor_value + s->rate_param * (t - s->anchor_time);
+    return s->anchor_value - s->rate_param * (t - s->anchor_time);
 ```
 
 - [ ] **Step 4: Verify pass**: tests PASS.
@@ -490,7 +492,9 @@ case SHAPE_LINEAR:
 git add src/core/shapes.c test/unit/test_shapes.c
 git commit -m "Implement sizeAt for SHAPE_LINEAR
 
-N(t) = anchor_value + rate_param * (t - anchor_time)."
+N(t) = anchor_value - rate_param * (t - anchor_time). rate_param is
+the forward-time growth rate (msprime convention); positive value
+means past was smaller."
 ```
 
 ---
@@ -750,13 +754,13 @@ subintervals. Includes alpha=0 degenerate case and offset t0."
 
 ## Task 9: `integratedHazardSize` for `SHAPE_LINEAR`
 
-For linear $N(s) = N_0 + \gamma s$ (with $N_0$ at $t_0$):
+For linear $N(s) = N_0 - \gamma s$ (forward-time convention; $\gamma > 0$ means past was smaller):
 
-$$H(T) = \int_0^T \frac{\binom{k}{2}}{N_0 + \gamma s}\,ds = \frac{\binom{k}{2}}{\gamma}\,\log\!\left(\frac{N_0 + \gamma T}{N_0}\right).$$
+$$H(T) = \int_0^T \frac{\binom{k}{2}}{N_0 - \gamma s}\,ds = \frac{\binom{k}{2}}{\gamma}\,\log\!\left(\frac{N_0}{N_0 - \gamma T}\right).$$
 
 Special cases:
 - $\gamma = 0$ ⇒ matches CONSTANT.
-- $N_0 + \gamma T \le 0$ (size hits zero before $T$) ⇒ hazard diverges; return $+\infty$ (the caller in `drawWaitingTime` will clip $T$ at the crossing).
+- $N_0 - \gamma T \le 0$ (size hits zero before $T$ when $\gamma > 0$) ⇒ hazard diverges; return $+\infty$ (the caller in `drawWaitingTime` clamps $T$ at the crossing).
 
 **Files:**
 - Modify: `test/unit/test_shapes.c`
@@ -766,11 +770,13 @@ Special cases:
 
 ```c
 void test_integratedHazardSize_linear_basic(void) {
+    /* gamma = -0.5 (forward decline => backward growth):
+     * N(s) = 1 - (-0.5)*s = 1 + 0.5 s, k=2, T=4
+     * H = 1/(-0.5) * log(1/(1+0.5*4)) = -2 * log(1/3) = 2*log(3) */
     popShape[0].type = SHAPE_LINEAR;
     popShape[0].anchor_value = 1.0;
-    popShape[0].rate_param = 0.5;
+    popShape[0].rate_param = -0.5;
     popShape[0].anchor_time = 0.0;
-    /* k=2, T=4, gamma=0.5, N0=1. H = 1/0.5 * log((1+0.5*4)/1) = 2*log(3) */
     TEST_ASSERT_DOUBLE_WITHIN(1e-10, 2.0 * log(3.0), integratedHazardSize(0, 0.0, 4.0, 2));
 }
 
@@ -784,10 +790,11 @@ void test_integratedHazardSize_linear_zero_gamma(void) {
 }
 
 void test_integratedHazardSize_linear_diverges_at_zero_crossing(void) {
-    /* N(t) = 1 - 0.5 t, hits zero at t=2. integration to T=2 should diverge. */
+    /* gamma = 0.5 (forward growth => backward decline):
+     * N(t) = 1 - 0.5 t hits zero at t=2. Integration to T=2.5 should diverge. */
     popShape[0].type = SHAPE_LINEAR;
     popShape[0].anchor_value = 1.0;
-    popShape[0].rate_param = -0.5;
+    popShape[0].rate_param = 0.5;
     popShape[0].anchor_time = 0.0;
     double H = integratedHazardSize(0, 0.0, 2.5, 2);
     TEST_ASSERT_TRUE(isinf(H) || H > 1e15);
@@ -824,9 +831,9 @@ Add to `integratedHazardSize`:
 case SHAPE_LINEAR: {
     double g = s->rate_param;
     if (g == 0.0) return pairs * T / N0;
-    double end = N0 + g * T;
+    double end = N0 - g * T;
     if (end <= 0.0) return INFINITY;
-    return pairs * log(end / N0) / g;
+    return pairs * log(N0 / end) / g;
 }
 ```
 
@@ -847,13 +854,13 @@ coalescence to the waiting-time draw."
 
 ## Task 10: `integratedHazardMig` for all three shapes
 
-For migration, the integrand is $\lambda_M(s) = k_i\,m_{ij}(s)$, *not* $\binom{k}{2}/N$. The closed forms have the same structural shape but with $k$ in place of $\binom{k}{2}$ and $m_0$ in place of $1/N_0$:
+For migration, the integrand is $\lambda_M(s) = k_i\,m_{ij}(s)$, *not* $\binom{k}{2}/N$. All shapes follow the msprime forward-time convention ($\beta$, $\delta$ are forward-time growth rates):
 
-- CONST: $H(T) = k\,m_0\,T$
-- EXP: $H(T) = k\,m_0\,(1 - e^{-\beta T}) / \beta$ — note the sign! Migration "exponential" follows the *same* convention as size: $m(t) = m_0 e^{-\beta(t-t_0)}$, so the integrand $k m_0 e^{-\beta s}$ gives $H = k m_0 (1 - e^{-\beta T})/\beta$.
-- LIN: $H(T) = k\,(m_0\,T + \gamma T^2 / 2)$ — direct integral of an affine function.
+- CONST: $m(s) = m_0$, $H(T) = k\,m_0\,T$.
+- EXP: $m(s) = m_0\,e^{-\beta s}$, $H(T) = k\,m_0\,(1 - e^{-\beta T}) / \beta$.
+- LIN: $m(s) = m_0 - \delta s$, $H(T) = k\,(m_0\,T - \tfrac{1}{2}\,\delta\,T^2)$.
 
-(The migration linear case integrates differently from the size linear case because the integrand is $k(m_0 + \gamma s)$ — affine in $s$ — not $k/(\text{affine})$.)
+(The migration linear case integrates as a simple polynomial because the integrand is affine in $s$, not the reciprocal-of-affine form size has.)
 
 **Files:**
 - Modify: `test/unit/test_shapes.c`
@@ -880,11 +887,13 @@ void test_integratedHazardMig_exponential(void) {
 }
 
 void test_integratedHazardMig_linear(void) {
+    /* delta = -0.05 (forward decline => backward growth):
+     * m(s) = 0.1 - (-0.05)*s = 0.1 + 0.05 s, k=2, T=4
+     * H = 2*(0.1*4 - (-0.05)*16/2) = 2*(0.4 + 0.4) = 1.6 */
     migShape[0][1].type = SHAPE_LINEAR;
     migShape[0][1].anchor_value = 0.1;
-    migShape[0][1].rate_param = 0.05;
+    migShape[0][1].rate_param = -0.05;
     migShape[0][1].anchor_time = 0.0;
-    /* k=2, T=4: integrand 2*(0.1+0.05s); H = 2*(0.1*4 + 0.05*16/2) = 2*(0.4+0.4) = 1.6 */
     TEST_ASSERT_DOUBLE_WITHIN(1e-10, 1.6, integratedHazardMig(0, 1, 0.0, 4.0, 2));
 }
 
@@ -928,8 +937,8 @@ double integratedHazardMig(int srcPopID, int dstPopID, double t0, double T, int 
             return k * m0 * (1.0 - exp(-b * T)) / b;
         }
         case SHAPE_LINEAR: {
-            double g = s->rate_param;
-            return k * (m0 * T + 0.5 * g * T * T);
+            double d = s->rate_param;
+            return k * (m0 * T - 0.5 * d * T * T);
         }
         default:
             return 0.0;
@@ -946,7 +955,8 @@ git add src/core/shapes.c test/unit/test_shapes.c
 git commit -m "Implement integratedHazardMig for all shapes
 
 Constant: k*m0*T. Exponential: k*m0*(1-exp(-beta*T))/beta.
-Linear: k*(m0*T + gamma*T^2/2). Quadrature match to 1e-6."
+Linear: k*(m0*T - delta*T^2/2). Forward-time convention
+(msprime); quadrature match to 1e-6."
 ```
 
 ---
@@ -957,7 +967,7 @@ Given $\xi$, solve $H(T) = \xi$ for $T$:
 
 - CONST: $T = \xi N_0 / \binom{k}{2}$
 - EXP: $T = \log\!\big(1 + N_0 \alpha \xi / \binom{k}{2}\big) / \alpha$ if $\alpha \ne 0$, else CONST formula
-- LIN: $T = N_0 (\exp(\gamma \xi / \binom{k}{2}) - 1) / \gamma$ if $\gamma \ne 0$, else CONST formula. **Plus zero-crossing protection**: if $\gamma < 0$ and the crossing $T^* = -N_0/\gamma$ is finite, the integrated hazard from 0 to $T^*$ is $+\infty$, so the draw must succeed — but we cap $T$ at $T^*$ if the closed form happens to yield $T \ge T^*$ due to floating-point noise. (In exact arithmetic the closed form returns a $T < T^*$ for any finite $\xi$.)
+- LIN: $T = (N_0/\gamma)(1 - \exp(-\gamma \xi / \binom{k}{2}))$ if $\gamma \ne 0$, else CONST formula. **Plus zero-crossing protection**: if $\gamma > 0$ (forward growth ⇒ backward decline) the crossing $T^* = N_0/\gamma$ is finite. The closed form returns $T < T^*$ for any finite $\xi$ in exact arithmetic, but we clamp via `nextafter` to defend against floating-point ties.
 
 Returns $-1$ if $k < 2$ (no possible coalescence).
 
@@ -1009,10 +1019,11 @@ void test_drawWaitingTimeSize_returns_negative_for_k_lt_2(void) {
 }
 
 void test_drawWaitingTimeSize_linear_zero_crossing(void) {
-    /* N(t) = 1 - 0.5 t hits zero at t=2. H(2) = +inf, so any finite xi maps to T<2. */
+    /* gamma = 0.5 (forward growth => backward decline):
+     * N(t) = 1 - 0.5 t hits zero at t=2. H(2) = +inf, so any finite xi maps to T<2. */
     popShape[0].type = SHAPE_LINEAR;
     popShape[0].anchor_value = 1.0;
-    popShape[0].rate_param = -0.5;
+    popShape[0].rate_param = 0.5;
     popShape[0].anchor_time = 0.0;
     int k = 2;
     /* Try a battery of xi values; T must always be < 2. */
@@ -1046,9 +1057,9 @@ double drawWaitingTimeSize(int popID, double t0, double xi, int k) {
         case SHAPE_LINEAR: {
             double g = s->rate_param;
             if (g == 0.0) return xi * N0 / pairs;
-            double T = N0 * (exp(g * xi / pairs) - 1.0) / g;
-            if (g < 0.0) {
-                double T_cross = -N0 / g;
+            double T = (N0 / g) * (1.0 - exp(-g * xi / pairs));
+            if (g > 0.0) {
+                double T_cross = N0 / g;
                 if (T >= T_cross) T = nextafter(T_cross, 0.0);
             }
             return T;
@@ -1068,19 +1079,20 @@ git add src/core/shapes.c test/unit/test_shapes.c
 git commit -m "Implement drawWaitingTimeSize for all shapes
 
 Closed-form inversion of integrated hazard. log1p used for
-numerical stability near alpha*xi -> 0. Linear shape clips T
-at the zero-crossing boundary using nextafter to ensure
-strict less-than."
+numerical stability near alpha*xi -> 0. Linear shape (msprime
+forward-time convention: gamma > 0 means past was smaller)
+clips T at the zero-crossing boundary using nextafter to
+ensure strict less-than."
 ```
 
 ---
 
 ## Task 12: `drawWaitingTimeMig` — invert migration closed forms
 
-Same idea for migration:
+Same idea for migration (msprime forward-time convention: $\beta$, $\delta$ are forward-time growth rates of migration):
 - CONST: $T = \xi / (k\,m_0)$
-- EXP: $T = -\log(1 - \beta \xi / (k m_0))/\beta$ when $\beta \ne 0$. (If $\beta\,\xi/(k m_0) \ge 1$, the integrated hazard over $[0,\infty)$ is finite and $\xi$ exceeds it — return $-1$.)
-- LIN: integrand $k(m_0 + \gamma s)$; integral $k(m_0 T + \gamma T^2/2) = \xi$. Quadratic: $T = (-m_0 + \sqrt{m_0^2 + 2 \gamma \xi/k}) / \gamma$ when $\gamma \ne 0$. Negative discriminant ⇒ unreachable.
+- EXP: $m(s) = m_0 e^{-\beta s}$, $T = -\log(1 - \beta \xi / (k m_0))/\beta$ when $\beta \ne 0$. (If $\beta\,\xi/(k m_0) \ge 1$, the integrated hazard over $[0,\infty)$ is finite and $\xi$ exceeds it — return $-1$.)
+- LIN: integrand $k(m_0 - \delta s)$; integral $k(m_0 T - \delta T^2/2) = \xi$. Quadratic root: $T = (m_0 - \sqrt{m_0^2 - 2 \delta \xi/k}) / \delta$ when $\delta \ne 0$. Negative discriminant (when $\delta > 0$ and $\xi > k m_0^2/(2\delta)$, i.e. xi exceeds the cap reached at the migration zero-crossing) ⇒ unreachable, return $-1$.
 
 **Files:**
 - Modify: `test/unit/test_shapes.c`
@@ -1120,9 +1132,11 @@ void test_drawWaitingTimeMig_exponential_unreachable_xi(void) {
 }
 
 void test_drawWaitingTimeMig_linear_round_trip(void) {
+    /* delta = -0.05 (forward decline => backward growth) so m(s) = 0.1+0.05s
+     * grows monotonically and the round-trip is well-defined for any xi. */
     migShape[0][1].type = SHAPE_LINEAR;
     migShape[0][1].anchor_value = 0.1;
-    migShape[0][1].rate_param = 0.05;
+    migShape[0][1].rate_param = -0.05;
     migShape[0][1].anchor_time = 0.0;
     double xi = 0.8;
     int k = 4;
@@ -1160,11 +1174,11 @@ double drawWaitingTimeMig(int srcPopID, int dstPopID, double t0, double xi, int 
             return -log1p(-arg) / b;
         }
         case SHAPE_LINEAR: {
-            double g = s->rate_param;
-            if (g == 0.0) return xi / km0;
-            double disc = m0 * m0 + 2.0 * g * xi / k;
+            double d = s->rate_param;
+            if (d == 0.0) return xi / km0;
+            double disc = m0 * m0 - 2.0 * d * xi / k;
             if (disc < 0.0) return -1.0;
-            double T = (-m0 + sqrt(disc)) / g;
+            double T = (m0 - sqrt(disc)) / d;
             if (T < 0.0) return -1.0;
             return T;
         }
@@ -1183,8 +1197,9 @@ git add src/core/shapes.c test/unit/test_shapes.c
 git commit -m "Implement drawWaitingTimeMig for all shapes
 
 Constant: T = xi/(k*m0). Exponential: T = -log1p(-b*xi/(k*m0))/b
-with unreachable-xi detection. Linear: positive root of the
-quadratic k*m0*T + k*g*T^2/2 = xi."
+with unreachable-xi detection. Linear: smaller positive root
+of the quadratic k*m0*T - k*delta*T^2/2 = xi. Forward-time
+convention (msprime)."
 ```
 
 ---
@@ -1360,17 +1375,19 @@ The earlier `test_drawWaitingTimeSize_linear_zero_crossing` ensures $T < T^*$ fo
 
 ```c
 void test_drawWaitingTimeSize_linear_zero_crossing_stress(void) {
-    /* Battery of (gamma, N0) configurations that drive N -> 0 */
+    /* Battery of (gamma, N0) configurations that drive N -> 0 going backward.
+     * Under msprime forward-time convention, gamma > 0 (forward growth) means
+     * past was smaller, hitting zero at T_cross = N0/gamma. */
     struct { double N0; double gamma; } configs[] = {
-        {1.0, -0.1}, {1.0, -1.0}, {1.0, -10.0},
-        {0.01, -0.001}, {100.0, -50.0}
+        {1.0, 0.1}, {1.0, 1.0}, {1.0, 10.0},
+        {0.01, 0.001}, {100.0, 50.0}
     };
     for (int c = 0; c < (int)(sizeof(configs)/sizeof(configs[0])); c++) {
         popShape[0].type = SHAPE_LINEAR;
         popShape[0].anchor_value = configs[c].N0;
         popShape[0].rate_param = configs[c].gamma;
         popShape[0].anchor_time = 0.0;
-        double T_cross = -configs[c].N0 / configs[c].gamma;
+        double T_cross = configs[c].N0 / configs[c].gamma;
         for (int trial = 0; trial < 1000; trial++) {
             double xi = -log(ranf());
             double T = drawWaitingTimeSize(0, 0.0, xi, 2);
