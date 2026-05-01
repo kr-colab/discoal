@@ -16,7 +16,7 @@ NICESTATS="$ROOT/build/niceStats"
 [[ -x "$DISCOAL" ]] || { echo "build discoal first"; exit 1; }
 [[ -x "$NICESTATS" ]] || { echo "build niceStats first"; exit 1; }
 
-REPS=10000
+REPS="${REPS:-1000}"  # override via REPS=10000 ./q1_detsweep_verification.sh
 N=10
 NSITES=10000
 THETA=10
