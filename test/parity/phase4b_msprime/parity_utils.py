@@ -175,19 +175,68 @@ def sfs(rep: MsHaplotypes) -> np.ndarray:
     return np.bincount(folded, minlength=n // 2 + 1)[1:n // 2 + 1].astype(float)
 
 
+def watterson_theta(rep: MsHaplotypes) -> float:
+    """Watterson's theta = S / sum_{k=1}^{n-1}(1/k)."""
+    if rep.haplotypes.size == 0:
+        return 0.0
+    n, S = rep.haplotypes.shape
+    if S == 0 or n < 2:
+        return 0.0
+    a1 = sum(1.0 / k for k in range(1, n))
+    return float(S / a1)
+
+
+def haplotype_diversity(rep: MsHaplotypes) -> float:
+    """Haplotype diversity h = (n / (n-1)) * (1 - sum p_i^2) where p_i is the
+    frequency of haplotype i. Returns 0.0 if n < 2."""
+    if rep.haplotypes.size == 0:
+        return 0.0
+    n, S = rep.haplotypes.shape
+    if n < 2:
+        return 0.0
+    if S == 0:
+        return 0.0  # all identical
+    # Convert each row to a tuple, count occurrences
+    rows = [tuple(row) for row in rep.haplotypes]
+    counts = {}
+    for r in rows:
+        counts[r] = counts.get(r, 0) + 1
+    p = np.array(list(counts.values()), dtype=float) / n
+    return float(n / (n - 1) * (1.0 - np.sum(p * p)))
+
+
+def num_haplotypes(rep: MsHaplotypes) -> int:
+    """Number of distinct haplotype patterns."""
+    if rep.haplotypes.size == 0:
+        return 1
+    rows = {tuple(row) for row in rep.haplotypes}
+    return len(rows)
+
+
 def collect_stats(reps: Iterable[MsHaplotypes], n: int) -> dict:
     """Compute per-replicate stats; return arrays."""
-    ss_list, pi_list, td_list, sfs_list = [], [], [], []
+    ss_list, pi_list, td_list, wt_list, hd_list, nh_list, sfs_list = [], [], [], [], [], [], []
+    n_bins = n // 2
     for r in reps:
         ss_list.append(segsites(r))
         pi_list.append(pi(r))
         td_list.append(tajima_D(r))
-        sfs_list.append(sfs(r))
-    sfs_arr = np.array(sfs_list) if sfs_list else np.zeros((0, n // 2))
+        wt_list.append(watterson_theta(r))
+        hd_list.append(haplotype_diversity(r))
+        nh_list.append(num_haplotypes(r))
+        sfs_row = sfs(r)
+        # Pad/truncate empty-replicate SFS (shape 0,) to length n_bins for stacking.
+        if sfs_row.shape[0] != n_bins:
+            sfs_row = np.zeros(n_bins)
+        sfs_list.append(sfs_row)
+    sfs_arr = np.array(sfs_list) if sfs_list else np.zeros((0, n_bins))
     return dict(
         ss=np.array(ss_list, dtype=float),
         pi=np.array(pi_list),
         td=np.array(td_list),
+        wtheta=np.array(wt_list),
+        hapdiv=np.array(hd_list),
+        nhap=np.array(nh_list, dtype=float),
         sfs=sfs_arr,
     )
 
@@ -217,8 +266,24 @@ def discoal_time_to_msp_gen(t_cli: float, Ne: int) -> float:
 
 
 def discoal_alpha_to_msp_growth(alpha: float, Ne: int) -> float:
-    """Convert discoal alpha (4N-scaled) to msprime per-generation growth rate."""
-    return alpha / (4 * Ne)
+    """Convert discoal alpha to msprime per-generation growth rate.
+
+    discoal stores `alpha` as the rate_param of an exponential shape applied in
+    discoal *internal* time units. From shapes.c:
+        size(t_internal) = anchor_value * exp(-alpha * (t_internal - t0_internal))
+    Discoal internal time runs at the standard pair-coalescent rate of 1.0 per
+    unit (see neutralPhase: cRate = n*(n-1)/2 / sizeRatio), so 1 internal unit
+    equals 2*Ne_diploid generations under the WF coalescent. Therefore:
+
+        alpha * t_internal = g * t_gen
+        g = alpha / (2 * Ne)
+
+    Note: the discoal CLI multiplies the user-supplied event time by 2.0 to
+    convert it to internal units, so the time conversion (CLI -> generations)
+    has an extra factor of 2 (4*Ne). The growth rate does not; it is anchored
+    in internal units directly.
+    """
+    return alpha / (2 * Ne)
 
 
 def discoal_theta_to_msp_mu(theta: float, Ne: int, L: int) -> float:
