@@ -220,65 +220,17 @@ void initialize(){
 			fprintf(stderr,"tDiv or migration not set in population split model\n");
 			exit(1);
 		}
-		//initialize migration matrix
+		//initialize migration matrix from migMatConst, which is set by the
+		//CLI parser (-m / -M) and by the demes importer's interval-based
+		//'m' event emission for the t=0 active interval. The runtime needs
+		//no event-scanning back-derivation; time-varying migration is
+		//handled by 'm' events firing during simulation.
 		for(i=0;i<npops;i++){
 			for(j=0;j<npops;j++){
 				migMat[i][j]=migMatConst[i][j];
 			}
 		}
-		
-		// Process migration events from demes (type 'M')
-		// We need to find what migration rates should be active at time 0
-		// by looking at all migration events and finding the most recent one
-		// that affects the present (time 0)
-		for(i=1;i<eventNumber;i++){
-			if(events[i].type == 'M'){
-				fprintf(stderr, "Found migration event: time=%f, pop%d->pop%d, rate=%f\n", 
-				        events[i].time, events[i].popID2, events[i].popID, events[i].popnSize);
-			}
-		}
-		
-		// For each population pair, find the migration rate at time 0
-		for(int src=0; src<npops; src++){
-			for(int dst=0; dst<npops; dst++){
-				if(src != dst){
-					double currentRate = 0.0;
-					// Find the most recent migration event for this pair
-					// Events are sorted by time (descending), so we want the last one with time > 0
-					for(i=eventNumber-1; i>=1; i--){
-						if(events[i].type == 'M' && 
-						   events[i].popID2 == src && 
-						   events[i].popID == dst &&
-						   events[i].time > 0.0){
-							currentRate = events[i].popnSize;
-							break;
-						}
-					}
-					if(currentRate > 0.0){
-						migMat[src][dst] = currentRate;
-						fprintf(stderr, "Setting initial migration: pop%d -> pop%d = %f\n", 
-						        src, dst, currentRate);
-					}
-				}
-			}
-		}
-		
-		// Debug: Print migration matrix
-		fprintf(stderr, "\n=== MIGRATION MATRIX DEBUG ===\n");
-		fprintf(stderr, "Number of populations: %d\n", npops);
-		fprintf(stderr, "Migration matrix (migMat[from][to]):\n");
-		fprintf(stderr, "     ");
-		for(j=0;j<npops;j++) fprintf(stderr, "  Pop%d  ", j);
-		fprintf(stderr, "\n");
-		for(i=0;i<npops;i++){
-			fprintf(stderr, "Pop%d ", i);
-			for(j=0;j<npops;j++){
-				fprintf(stderr, "%7.4f ", migMat[i][j]);
-			}
-			fprintf(stderr, "\n");
-		}
-		fprintf(stderr, "=== END MIGRATION MATRIX DEBUG ===\n\n");
-		
+
 		eventFlag = 0;
 	}
 	
