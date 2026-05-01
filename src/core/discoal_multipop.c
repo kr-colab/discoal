@@ -1032,6 +1032,30 @@ void getParameters(int argc,const char **argv){
 							}
 						}
 						break;
+					case 'l':
+						/* -el time popID gamma — linear-growth event */
+						ensureEventsCapacity();
+						events[eventNumber].time = atof(argv[++args]) * 2.0;
+						events[eventNumber].popID = atoi(argv[++args]);
+						events[eventNumber].popnSize = atof(argv[++args]);  /* gamma stored in popnSize field */
+						events[eventNumber].type = 'l';
+						eventNumber++;
+						break;
+					case 'L':
+						/* -eL time gamma — applies to all populations */
+						{
+							double t = atof(argv[++args]) * 2.0;
+							double gamma_val = atof(argv[++args]);
+							for (int p = 0; p < npops; p++) {
+								ensureEventsCapacity();
+								events[eventNumber].time = t;
+								events[eventNumber].popID = p;
+								events[eventNumber].popnSize = gamma_val;
+								events[eventNumber].type = 'l';
+								eventNumber++;
+							}
+						}
+						break;
 				}
 			break;
 			case 'w':
