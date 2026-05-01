@@ -98,22 +98,24 @@ void test_sizeAt_linear_at_anchor(void) {
     TEST_ASSERT_DOUBLE_WITHIN(1e-12, 1.5, sizeAt(0, 0.0));
 }
 
-void test_sizeAt_linear_grows_with_t(void) {
-    popShape[0].type = SHAPE_LINEAR;
-    popShape[0].anchor_value = 1.0;
-    popShape[0].rate_param = 2.0;
-    popShape[0].anchor_time = 0.0;
-    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 5.0, sizeAt(0, 2.0));   /* 1 + 2*2 */
-    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 11.0, sizeAt(0, 5.0));  /* 1 + 2*5 */
-}
-
-void test_sizeAt_linear_negative_gamma(void) {
+void test_sizeAt_linear_declines_backward_with_positive_gamma(void) {
+    /* gamma > 0 = forward growth = backward decline (past smaller) */
     popShape[0].type = SHAPE_LINEAR;
     popShape[0].anchor_value = 5.0;
+    popShape[0].rate_param = 2.0;
+    popShape[0].anchor_time = 0.0;
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 1.0, sizeAt(0, 2.0));   /* 5 - 2*2 */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 3.0, sizeAt(0, 1.0));   /* 5 - 2*1 */
+}
+
+void test_sizeAt_linear_grows_backward_with_negative_gamma(void) {
+    /* gamma < 0 = forward decline = backward growth (past larger) */
+    popShape[0].type = SHAPE_LINEAR;
+    popShape[0].anchor_value = 1.0;
     popShape[0].rate_param = -1.0;
     popShape[0].anchor_time = 0.0;
-    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 4.0, sizeAt(0, 1.0));
-    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 1.0, sizeAt(0, 4.0));
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 2.0, sizeAt(0, 1.0));   /* 1 - (-1)*1 */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 5.0, sizeAt(0, 4.0));   /* 1 - (-1)*4 */
 }
 
 #ifndef TEST_RUNNER_MODE
@@ -126,8 +128,8 @@ int main(void) {
     RUN_TEST(test_sizeAt_exponential_grows_forward);
     RUN_TEST(test_sizeAt_exponential_zero_alpha_equals_constant);
     RUN_TEST(test_sizeAt_linear_at_anchor);
-    RUN_TEST(test_sizeAt_linear_grows_with_t);
-    RUN_TEST(test_sizeAt_linear_negative_gamma);
+    RUN_TEST(test_sizeAt_linear_declines_backward_with_positive_gamma);
+    RUN_TEST(test_sizeAt_linear_grows_backward_with_negative_gamma);
     return UNITY_END();
 }
 #endif

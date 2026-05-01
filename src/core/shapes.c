@@ -4,13 +4,13 @@
 
 /* sizeAt -- evaluate the size shape for population popID at absolute time t.
  *
- * Sign convention: rate_param holds the FORWARD-time growth rate.
- * Coalescent simulation runs backward in time, so:
+ * Sign convention (msprime-aligned, applies uniformly across shape types):
+ * rate_param is the per-generation FORWARD-time rate of change. The
+ * coalescent simulator runs backward in time, so positive rate_param
+ * means the past held a smaller value.
+ *   SHAPE_CONSTANT:    N(t) = anchor_value (rate_param unused)
  *   SHAPE_EXPONENTIAL: N(t) = anchor_value * exp(-rate_param * (t - anchor_time))
- *     (forward growth alpha > 0 means backward decline)
- *   SHAPE_LINEAR:      N(t) = anchor_value + rate_param * (t - anchor_time)
- *     (gamma > 0 means N grows as t increases backward in time)
- *   SHAPE_CONSTANT:    rate_param is unused.
+ *   SHAPE_LINEAR:      N(t) = anchor_value - rate_param * (t - anchor_time)
  */
 double sizeAt(int popID, double t) {
     Shape *s = &popShape[popID];
@@ -20,7 +20,7 @@ double sizeAt(int popID, double t) {
         case SHAPE_EXPONENTIAL:
             return s->anchor_value * exp(-s->rate_param * (t - s->anchor_time));
         case SHAPE_LINEAR:
-            return s->anchor_value + s->rate_param * (t - s->anchor_time);
+            return s->anchor_value - s->rate_param * (t - s->anchor_time);
         default:
             return 0.0;  /* other shapes implemented in subsequent tasks */
     }
