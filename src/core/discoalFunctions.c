@@ -150,17 +150,6 @@ void initialize(){
 	int i,j,p, count=0;
 	int leafID=0;
 	int tmpCount = 0;
-	extern double *currentSize;
-
-	/* Restore per-pop sizes from the snapshot taken after parameter parsing.
-	 * 'n' / 'g' / 'l' events mutate currentSize within a replicate; without
-	 * this restore, the mutation leaks into the next replicate via the
-	 * initializeShapesFromGlobals() call below. (Guarded: unit tests that
-	 * call initialize() without going through main don't allocate
-	 * currentSize.) */
-	if (currentSize != NULL) {
-		for (p = 0; p < MAXPOPS; p++) currentSize[p] = currentSizeConst[p];
-	}
 
 	/* Initialize the arrays */
 	totChunkNumber = 0;
@@ -222,7 +211,10 @@ void initialize(){
 		}
 
 	}
-	
+
+	/* Restore initial sizes; 'n'/'g'/'l' events mutate currentSize per replicate. */
+	for (p = 0; p < MAXPOPS; p++) currentSize[p] = currentSizeConst[p];
+
 	//initialize shape state for time-varying parameter framework
 	initializeShapesFromGlobals();
 	activeSites = nSites;
