@@ -653,6 +653,71 @@ void test_allShapesConstant_ignores_pops_outside_npops(void) {
     TEST_ASSERT_EQUAL(1, allShapesConstant());
 }
 
+void test_integratedSizeRatio_constant(void) {
+    popShape[0].type = SHAPE_CONSTANT;
+    popShape[0].anchor_value = 2.5;
+    /* T=4 -> 2.5 * 4 = 10 */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 10.0, integratedSizeRatio(0, 0.0, 4.0));
+}
+
+void test_integratedSizeRatio_exponential(void) {
+    /* sizeAt(s) = 1.0 * exp(-0.5 * s); integral over [0, 4] = (1 - exp(-2))/0.5 */
+    popShape[0].type = SHAPE_EXPONENTIAL;
+    popShape[0].anchor_value = 1.0;
+    popShape[0].rate_param = 0.5;
+    popShape[0].anchor_time = 0.0;
+    double expected = (1.0 - exp(-2.0)) / 0.5;
+    TEST_ASSERT_DOUBLE_WITHIN(1e-10, expected, integratedSizeRatio(0, 0.0, 4.0));
+}
+
+void test_integratedSizeRatio_exponential_offset_t0(void) {
+    /* If t0 != anchor_time, the relevant N_0 is sizeAt(t0). */
+    popShape[0].type = SHAPE_EXPONENTIAL;
+    popShape[0].anchor_value = 1.0;
+    popShape[0].rate_param = 0.2;
+    popShape[0].anchor_time = 0.0;
+    /* At t0=5, N(t0) = exp(-1). Integral over T=2: N(t0) * (1 - exp(-0.4))/0.2 */
+    double N_t0 = exp(-1.0);
+    double expected = N_t0 * (1.0 - exp(-0.4)) / 0.2;
+    TEST_ASSERT_DOUBLE_WITHIN(1e-10, expected, integratedSizeRatio(0, 5.0, 2.0));
+}
+
+void test_integratedSizeRatio_exponential_alpha_zero(void) {
+    popShape[0].type = SHAPE_EXPONENTIAL;
+    popShape[0].anchor_value = 3.0;
+    popShape[0].rate_param = 0.0;
+    popShape[0].anchor_time = 0.0;
+    /* alpha=0 -> matches constant: 3 * 5 = 15 */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-10, 15.0, integratedSizeRatio(0, 0.0, 5.0));
+}
+
+void test_integratedSizeRatio_linear(void) {
+    /* sizeAt(s) = 5 - 0.5 * s. Integral over [0, 4] = 5*4 - 0.5*16/2 = 20 - 4 = 16 */
+    popShape[0].type = SHAPE_LINEAR;
+    popShape[0].anchor_value = 5.0;
+    popShape[0].rate_param = 0.5;
+    popShape[0].anchor_time = 0.0;
+    TEST_ASSERT_DOUBLE_WITHIN(1e-10, 16.0, integratedSizeRatio(0, 0.0, 4.0));
+}
+
+void test_integratedSizeRatio_quadrature_match(void) {
+    popShape[0].type = SHAPE_EXPONENTIAL;
+    popShape[0].anchor_value = 1.5;
+    popShape[0].rate_param = 0.7;
+    popShape[0].anchor_time = 2.0;
+    double t0 = 3.5;
+    double T = 4.0;
+    int N = 16384;
+    double dt = T / N;
+    double sum = 0.0;
+    for (int i = 0; i < N; i++) {
+        double s_mid = (i + 0.5) * dt;
+        sum += sizeAt(0, t0 + s_mid) * dt;
+    }
+    double closed = integratedSizeRatio(0, t0, T);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, sum, closed);
+}
+
 #ifndef TEST_RUNNER_MODE
 int main(void) {
     UNITY_BEGIN();
@@ -707,6 +772,12 @@ int main(void) {
     RUN_TEST(test_allShapesConstant_false_when_a_pop_is_linear);
     RUN_TEST(test_allShapesConstant_false_when_a_pair_is_exponential);
     RUN_TEST(test_allShapesConstant_ignores_pops_outside_npops);
+    RUN_TEST(test_integratedSizeRatio_constant);
+    RUN_TEST(test_integratedSizeRatio_exponential);
+    RUN_TEST(test_integratedSizeRatio_exponential_offset_t0);
+    RUN_TEST(test_integratedSizeRatio_exponential_alpha_zero);
+    RUN_TEST(test_integratedSizeRatio_linear);
+    RUN_TEST(test_integratedSizeRatio_quadrature_match);
     return UNITY_END();
 }
 #endif

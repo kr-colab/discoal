@@ -175,3 +175,23 @@ int allShapesConstant(void) {
     }
     return 1;
 }
+
+double integratedSizeRatio(int popID, double t0, double T) {
+    Shape *s = &popShape[popID];
+    double N0 = sizeAt(popID, t0);
+    switch (s->type) {
+        case SHAPE_CONSTANT:
+            return N0 * T;
+        case SHAPE_EXPONENTIAL: {
+            double a = s->rate_param;
+            if (a == 0.0) return N0 * T;
+            return N0 * (1.0 - exp(-a * T)) / a;
+        }
+        case SHAPE_LINEAR: {
+            double g = s->rate_param;
+            return N0 * T - 0.5 * g * T * T;
+        }
+        default:
+            return 0.0;
+    }
+}

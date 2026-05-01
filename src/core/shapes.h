@@ -30,4 +30,10 @@ void initializeShapesFromGlobals(void);
  * non-homogeneous Poisson process per-component path. */
 int allShapesConstant(void);
 
+/* Integrated size ratio: returns int_{t0}^{t0+T} sizeAt(popID, s) ds.
+ * Sister to integratedHazardSize but integrates sizeAt directly rather than
+ * 1/sizeAt. Used by detSweepFreqGeneral to compute the integrated selection
+ * coefficient A(tau) = alpha * integratedSizeRatio(0, sweep_start, tau). */
+double integratedSizeRatio(int popID, double t0, double T);
+
 #endif /* SHAPES_H */
