@@ -18,4 +18,9 @@ double integratedHazardMig(int srcPopID, int dstPopID, double t0, double T, int 
 double drawWaitingTimeSize(int popID, double t0, double xi, int k);
 double drawWaitingTimeMig(int srcPopID, int dstPopID, double t0, double xi, int k);
 
+/* Initialize popShape[] and migShape[][] from the current values in
+ * currentSize[] and migMatConst[][]. Sets all shapes to SHAPE_CONSTANT
+ * anchored at t=0. Called once per replicate from initialize(). */
+void initializeShapesFromGlobals(void);
+
 #endif /* SHAPES_H */

@@ -145,3 +145,22 @@ double drawWaitingTimeMig(int srcPopID, int dstPopID, double t0, double xi, int 
             return -1.0;
     }
 }
+
+void initializeShapesFromGlobals(void) {
+    extern double *currentSize;
+    extern double migMatConst[MAXPOPS][MAXPOPS];
+    extern int npops;
+
+    for (int i = 0; i < npops; i++) {
+        popShape[i].type = SHAPE_CONSTANT;
+        popShape[i].anchor_value = currentSize[i];
+        popShape[i].rate_param = 0.0;
+        popShape[i].anchor_time = 0.0;
+        for (int j = 0; j < npops; j++) {
+            migShape[i][j].type = SHAPE_CONSTANT;
+            migShape[i][j].anchor_value = migMatConst[i][j];
+            migShape[i][j].rate_param = 0.0;
+            migShape[i][j].anchor_time = 0.0;
+        }
+    }
+}

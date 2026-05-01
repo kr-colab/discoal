@@ -6,6 +6,7 @@
 
 extern long seed1, seed2;
 extern void setall(long iseed1, long iseed2);
+extern double *currentSize;
 
 #ifndef TEST_RUNNER_MODE
 void setUp(void) {
@@ -13,6 +14,14 @@ void setUp(void) {
     seed1 = 12345;
     seed2 = 67890;
     setall(seed1, seed2);
+
+    /* Allocate currentSize if not already; tests for
+     * initializeShapesFromGlobals write into currentSize[i]. */
+    if (currentSize == NULL) {
+        currentSize = (double *)calloc(MAXPOPS, sizeof(double));
+    } else {
+        for (int i = 0; i < MAXPOPS; i++) currentSize[i] = 0.0;
+    }
 
     /* Reset shape state for every test */
     for (int i = 0; i < MAXPOPS; i++) {
@@ -563,6 +572,56 @@ void test_drawWaitingTimeMig_distribution_linear(void) {
     TEST_ASSERT_TRUE(ks_statistic_mig(0, 1, 3, 10000) < 0.05);
 }
 
+extern double migMatConst[MAXPOPS][MAXPOPS];
+extern int npops;
+
+void test_initializeShapesFromGlobals_copies_currentSize(void) {
+    /* Set globals as if parameters were just parsed */
+    npops = 3;
+    currentSize[0] = 1.0;
+    currentSize[1] = 0.5;
+    currentSize[2] = 2.0;
+
+    /* Pre-condition: popShape entries set to defaults by setUp */
+    /* Pre-condition: migMatConst entries are zero by default */
+
+    initializeShapesFromGlobals();
+
+    TEST_ASSERT_EQUAL(SHAPE_CONSTANT, popShape[0].type);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 1.0, popShape[0].anchor_value);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.0, popShape[0].rate_param);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.0, popShape[0].anchor_time);
+
+    TEST_ASSERT_EQUAL(SHAPE_CONSTANT, popShape[1].type);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.5, popShape[1].anchor_value);
+
+    TEST_ASSERT_EQUAL(SHAPE_CONSTANT, popShape[2].type);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 2.0, popShape[2].anchor_value);
+}
+
+void test_initializeShapesFromGlobals_copies_migMatConst(void) {
+    npops = 2;
+    currentSize[0] = 1.0;
+    currentSize[1] = 1.0;
+    migMatConst[0][1] = 0.7;
+    migMatConst[1][0] = 0.3;
+    migMatConst[0][0] = 0.0;  /* diagonals are zero */
+    migMatConst[1][1] = 0.0;
+
+    initializeShapesFromGlobals();
+
+    TEST_ASSERT_EQUAL(SHAPE_CONSTANT, migShape[0][1].type);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.7, migShape[0][1].anchor_value);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.0, migShape[0][1].rate_param);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.0, migShape[0][1].anchor_time);
+
+    TEST_ASSERT_EQUAL(SHAPE_CONSTANT, migShape[1][0].type);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.3, migShape[1][0].anchor_value);
+
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.0, migShape[0][0].anchor_value);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.0, migShape[1][1].anchor_value);
+}
+
 #ifndef TEST_RUNNER_MODE
 int main(void) {
     UNITY_BEGIN();
@@ -610,6 +669,8 @@ int main(void) {
     RUN_TEST(test_drawWaitingTimeMig_distribution_exponential);
     RUN_TEST(test_drawWaitingTimeMig_distribution_linear);
     RUN_TEST(test_drawWaitingTimeSize_linear_zero_crossing_stress);
+    RUN_TEST(test_initializeShapesFromGlobals_copies_currentSize);
+    RUN_TEST(test_initializeShapesFromGlobals_copies_migMatConst);
     return UNITY_END();
 }
 #endif
