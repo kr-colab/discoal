@@ -1614,7 +1614,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 		}
 		//printf("currPopSize[0]: %d currPopSize[1]: %d alleleNumber: %d totNodeNumber: %d activeSites: %d cTime: %f\n",popnSizes[0],popnSizes[1],alleleNumber,totNodeNumber, activeSites, cTime);
 		for(i=0;i<npops;i++){
-			cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 / sizeRatio[i];
+			cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 / sizeAt(i, currentTime);
 			rRate[i] = rho * popnSizes[i] * 0.5;// * ((float)activeSites/nSites);
 			gcRate[i] = my_gamma * popnSizes[i] * 0.5 ;
 			
