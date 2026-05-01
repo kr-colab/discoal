@@ -1,7 +1,7 @@
 # Simulate using an external demes file to specify the demographic model.
 # Mirrors the topology of demographic_example.yaml via the sibling
 # demes file demes_example.demes.yaml.
-# Equivalent to: TODO CLI
+# Equivalent to: discoal 20 10 50000 -t 20.0 -r 15.0 -p 3 10 5 5 -M 0.1 -en 0.5 0 0.1 -en 1.0 1 2.0 -ed 2.0 1 0 -ed 3.0 2 0 -d 31337 4242
 
 simulation:
   sample_size: 20

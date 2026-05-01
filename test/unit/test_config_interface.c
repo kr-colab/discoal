@@ -1,7 +1,7 @@
 /*
  * test_config_interface.c
  *
- * Unit tests for src/core/configInterface_alt.[ch], the YAML config
+ * Unit tests for src/core/configInterface.[ch], the YAML config
  * parser invoked by discoal's -Y option. These tests check the
  * parse_* validation functions and apply_yaml_config; they do not
  * try to test libcyaml's own schema parser (missing required fields,
@@ -39,7 +39,7 @@
  * for both this translation unit and unity.c; the Makefile target adds
  * -DUNITY_INCLUDE_DOUBLE so both see it. */
 #include "unity.h"
-#include "configInterface_alt.h"
+#include "configInterface.h"
 #include "discoal.h"
 #include <limits.h>
 #include <stdio.h>
@@ -323,7 +323,7 @@ void test_simulation_rejects_nonpositive_num_sites(void) {
  * When no demography block is present, parse_simulation_block sets
  * up a single population containing every sample and currentSize[0]
  * = 1.0. This is what downstream code in initialize() assumes; see
- * the comment in configInterface_alt.c near "without this, YAMLs
+ * the comment in configInterface.c near "without this, YAMLs
  * that omit the optional demography block left ... at zero".
  */
 void test_simulation_sets_single_pop_defaults(void) {
@@ -640,6 +640,81 @@ void test_demography_demes_filename_loads_events(void) {
      * so it does not become coupled to demes-c implementation
      * details. */
     TEST_ASSERT_GREATER_THAN_INT(0, eventNumber);
+}
+
+/*
+ * demes_filename pointing at a path that does not exist on disk
+ * surfaces as DEMES_ERR_IO from demes_graph_load, which
+ * loadDemesFile turns into a non-zero return. No fixture file is
+ * needed; the path simply must not resolve from the per-test
+ * working directory.
+ */
+void test_demography_demes_filename_missing_file_rejected(void) {
+    const char *yaml =
+        "simulation:\n"
+        "  sample_size: 2\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "demography:\n"
+        "  deme_sample_size: [2]\n"
+        "  demes_filename: \"nonexistent_demes_xyzabc.yaml\"\n";
+    TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+}
+
+/*
+ * A demes file that is not syntactically valid YAML surfaces as
+ * DEMES_ERR_YAML from demes_graph_load. The fixture
+ * malformed_demes.yaml contains an unclosed flow sequence — the
+ * canonical YAML parse error.
+ */
+void test_demography_demes_filename_malformed_rejected(void) {
+    copy_fixture_to_workdir("malformed_demes.yaml");
+
+    const char *yaml =
+        "simulation:\n"
+        "  sample_size: 2\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "demography:\n"
+        "  deme_sample_size: [2]\n"
+        "  demes_filename: \"malformed_demes.yaml\"\n";
+    TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+}
+
+/*
+ * The demes importer rejects exponential growth epochs (and
+ * several other unsupported demes-spec features: linear growth,
+ * selfing, cloning, disconnected populations). The fixture
+ * exponential_growth_demes.yaml is a single-deme model whose most
+ * recent epoch has unequal start_size and end_size with
+ * size_function: exponential, which trips the importer's
+ * unsupported-feature check and returns non-zero.
+ *
+ * Only this one rejection is unit-tested. The other unsupported
+ * features share the same plumbing; adding fixtures for each is
+ * straightforward once the template here exists.
+ */
+void test_demography_demes_filename_unsupported_feature_rejected(void) {
+    copy_fixture_to_workdir("exponential_growth_demes.yaml");
+
+    const char *yaml =
+        "simulation:\n"
+        "  sample_size: 2\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "demography:\n"
+        "  deme_sample_size: [2]\n"
+        "  demes_filename: \"exponential_growth_demes.yaml\"\n";
+    TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
 }
 
 /*
@@ -1463,6 +1538,127 @@ void test_selection_recurrent_sets_flags_without_event(void) {
     TEST_ASSERT_EQUAL_INT(0, eventNumber);
 }
 
+/*
+ * Setting selection.final_frequency activates partialSweepMode and
+ * writes the value into partialSweepFinalFreq. Mirror of
+ * test_load_soft_sweep, which covers the initial_frequency path;
+ * here softSweepMode stays off because no initial_frequency is set.
+ */
+void test_load_partial_sweep(void) {
+    const char *yaml =
+        "simulation:\n"
+        "  sample_size: 10\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "selection:\n"
+        "  sweep_mode: stochastic\n"
+        "  selection_coefficient: 100.0\n"
+        "  sweep_position: 0.5\n"
+        "  fixation_time_ago: 0.05\n"
+        "  final_frequency: 0.8\n";
+
+    int rc = apply_from_yaml_string(yaml);
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, rc);
+    TEST_ASSERT_EQUAL_DOUBLE(0.8, partialSweepFinalFreq);
+    TEST_ASSERT_EQUAL_INT(1, partialSweepMode);
+    TEST_ASSERT_EQUAL_INT(0, softSweepMode);
+}
+
+/*
+ * selection.beneficial_mutation_rate writes its value into the uA
+ * global. This is the YAML form of the -uA CLI flag, which sets the
+ * sweep-from-recurrent-mutation rate; it is a separate mechanism
+ * from a soft sweep from standing variation (initial_frequency) and
+ * from a recurrent sweep (recurrent_sweep_rate), and uses none of
+ * those flags.
+ */
+void test_load_recurrent_adaptive_mutation(void) {
+    const char *yaml =
+        "simulation:\n"
+        "  sample_size: 10\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "selection:\n"
+        "  sweep_mode: stochastic\n"
+        "  selection_coefficient: 100.0\n"
+        "  sweep_position: 0.5\n"
+        "  fixation_time_ago: 0.05\n"
+        "  beneficial_mutation_rate: 1.0e-3\n";
+
+    int rc = apply_from_yaml_string(yaml);
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, rc);
+    TEST_ASSERT_EQUAL_DOUBLE(1.0e-3, uA);
+}
+
+/*
+ * sweep_mode "neutral" with selection_coefficient 0 and a
+ * fixation_time_ago is the YAML form of -wn: a sweep with no
+ * selection (neutral fixation). Sets sweepMode to 'N' and emits a
+ * sweep event at tau, the same as the deterministic and stochastic
+ * modes do.
+ */
+void test_load_neutral_sweep(void) {
+    const char *yaml =
+        "simulation:\n"
+        "  sample_size: 10\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "selection:\n"
+        "  sweep_mode: neutral\n"
+        "  selection_coefficient: 0.0\n"
+        "  sweep_position: 0.5\n"
+        "  fixation_time_ago: 0.05\n";
+
+    int rc = apply_from_yaml_string(yaml);
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, rc);
+    TEST_ASSERT_EQUAL_INT('N', sweepMode);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, alpha);
+    TEST_ASSERT_EQUAL_DOUBLE(0.10, tau);  /* 0.05 * 2.0 */
+    TEST_ASSERT_EQUAL_INT(1, eventNumber);
+    TEST_ASSERT_EQUAL_INT('s', events[0].type);
+    TEST_ASSERT_EQUAL_DOUBLE(0.10, events[0].time);
+}
+
+/*
+ * Setting both initial_frequency and final_frequency in the same
+ * selection block engages both soft-sweep and partial-sweep modes
+ * simultaneously: a sweep that begins from standing variation and
+ * stops before fixation. All four globals are populated together.
+ */
+void test_load_soft_partial_sweep(void) {
+    const char *yaml =
+        "simulation:\n"
+        "  sample_size: 10\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "selection:\n"
+        "  sweep_mode: stochastic\n"
+        "  selection_coefficient: 100.0\n"
+        "  sweep_position: 0.5\n"
+        "  fixation_time_ago: 0.05\n"
+        "  initial_frequency: 0.1\n"
+        "  final_frequency: 0.9\n";
+
+    int rc = apply_from_yaml_string(yaml);
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, rc);
+    TEST_ASSERT_EQUAL_INT(1, softSweepMode);
+    TEST_ASSERT_EQUAL_INT(1, partialSweepMode);
+    TEST_ASSERT_EQUAL_DOUBLE(0.1, f0);
+    TEST_ASSERT_EQUAL_DOUBLE(0.9, partialSweepFinalFreq);
+}
+
 /* ----- Output block + load-level + end-to-end ----- */
 
 /*
@@ -1537,6 +1733,29 @@ void test_output_tree_sequence_requires_filename(void) {
 }
 
 /*
+ * The tree_sequence_filename check rejects two flavours of "no
+ * filename": the field omitted entirely (covered by
+ * test_output_tree_sequence_requires_filename above) and the field
+ * present but set to an empty string. This test covers the second
+ * branch of the parser's `cfg->tree_sequence_filename == NULL ||
+ * cfg->tree_sequence_filename[0] == '\0'` check.
+ */
+void test_output_rejects_empty_tree_sequence_filename(void) {
+    const char *yaml =
+        "simulation:\n"
+        "  sample_size: 10\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "output:\n"
+        "  output_type: tree_sequence\n"
+        "  tree_sequence_filename: \"\"\n";  /* empty string */
+    TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+}
+
+/*
  * tree_sequence_filename is only meaningful when output_type is
  * tree_sequence. Setting it for haplotype or snp_array output is a
  * configuration error rather than a silently-ignored field.
@@ -1590,7 +1809,7 @@ void test_output_unsimplified_tree_sequence_unsets_minimal(void) {
 /*
  * load_yaml_config rejects empty input. libcyaml itself returns OK
  * with a NULL top-level for empty files; the wrapper in
- * configInterface_alt.c (around line 819) turns that case into
+ * configInterface.c (around line 819) turns that case into
  * EXIT_FAILURE explicitly. Globals must remain unchanged since no
  * parsing took place.
  */
@@ -1611,7 +1830,19 @@ void test_load_empty_yaml(void) {
 void test_load_nonexistent_file(void) {
     struct discoal_config *cfg = NULL;
     int rc = load_yaml_config(
-        "/tmp/configInterface_alt_nonexistent_xyzabc.yaml", &cfg);
+        "/tmp/configInterface_nonexistent_xyzabc.yaml", &cfg);
+    TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, rc);
+}
+
+/*
+ * load_yaml_config returns failure when the file is syntactically
+ * malformed (libcyaml's cyaml_load_file refuses to parse it). This
+ * exercises the explicit error branch in load_yaml_config that
+ * complements the empty-file and missing-file branches above. The
+ * unclosed flow sequence is a canonical YAML parse error.
+ */
+void test_load_malformed_yaml(void) {
+    int rc = apply_from_yaml_string("simulation: [10, 20,\n");
     TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, rc);
 }
 
@@ -1771,6 +2002,9 @@ int main(void) {
     RUN_TEST(test_load_population_size_change_event);
     RUN_TEST(test_load_population_split_event);
     RUN_TEST(test_demography_demes_filename_loads_events);
+    RUN_TEST(test_demography_demes_filename_missing_file_rejected);
+    RUN_TEST(test_demography_demes_filename_malformed_rejected);
+    RUN_TEST(test_demography_demes_filename_unsupported_feature_rejected);
     RUN_TEST(test_demography_rejects_negative_deme_sample_size);
     RUN_TEST(test_demography_rejects_deme_sum_mismatch);
     RUN_TEST(test_demography_rejects_negative_effective_population_size);
@@ -1809,15 +2043,21 @@ int main(void) {
     RUN_TEST(test_selection_requires_fixation_time_ago_when_not_recurrent);
     RUN_TEST(test_selection_emits_sweep_event_at_tau);
     RUN_TEST(test_selection_recurrent_sets_flags_without_event);
+    RUN_TEST(test_load_partial_sweep);
+    RUN_TEST(test_load_recurrent_adaptive_mutation);
+    RUN_TEST(test_load_neutral_sweep);
+    RUN_TEST(test_load_soft_partial_sweep);
 
     /* Output block + load-level + end-to-end */
     RUN_TEST(test_load_output_section);
     RUN_TEST(test_load_tskit_output);
     RUN_TEST(test_output_tree_sequence_requires_filename);
+    RUN_TEST(test_output_rejects_empty_tree_sequence_filename);
     RUN_TEST(test_output_filename_without_tree_sequence_mode_rejected);
     RUN_TEST(test_output_unsimplified_tree_sequence_unsets_minimal);
     RUN_TEST(test_load_empty_yaml);
     RUN_TEST(test_load_nonexistent_file);
+    RUN_TEST(test_load_malformed_yaml);
     RUN_TEST(test_apply_full_config);
     RUN_TEST(test_apply_zero_block_yaml);
     return UNITY_END();

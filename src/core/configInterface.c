@@ -1,1188 +1,825 @@
 #include "configInterface.h"
-#include "demesInterface.h"
-#include "discoalFunctions.h"
-#include <stdio.h>
-#include <stdlib.h>
+#include <assert.h>
+#include <limits.h>
+#include <math.h>
 #include <string.h>
-#include <yaml.h>
 
-extern int eventNumber;
-extern int eventsCapacity;
-extern struct event *events;
-extern double *currentSize;
+void ensureEventsCapacity();
 
-// Initialize configuration with default values
-void initializeDefaultConfig(SimulationConfig *config) {
-    memset(config, 0, sizeof(SimulationConfig));
-    
-    // Set default values that match discoal defaults
-    config->sample_size = 0;
-    config->num_replicates = 0;
-    config->num_sites = 0;
-    config->seed1 = 0;
-    config->seed2 = 0;
-    config->has_seed = 0;
-    
-    config->npops = 1;
-    config->effective_popn_size = 1000000;  // EFFECTIVE_POPN_SIZE default
-    config->has_populations = 0;
-    
-    config->theta = 0.0;
-    config->rho = 0.0;
-    config->gamma = 0.0;
-    config->gc_mean = 0;
-    config->gamma_co_ratio = 0.0;
-    config->gamma_co_ratio_mode = 0;
-    config->has_genetics = 0;
-    
-    config->alpha = 0.0;
-    config->sweep_site = 0.5;
-    config->sweep_mode = 's';  // default to stochastic
-    config->tau = 0.0;
-    config->f0 = 0.0;
-    config->ua = 0.0;
-    config->partial_sweep_final_freq = 0.0;
-    config->recur_sweep_mode = 0;
-    config->recur_sweep_rate = 0.0;
-    config->partial_sweep_mode = 0;
-    config->soft_sweep_mode = 0;
-    config->has_selection = 0;
-    
-    config->output_style = 'h';
-    config->finite_output_flag = 0;
-    config->hide_partial_snp = 0;
-    config->tskit_output = 0;
-    config->tskit_output_filename[0] = '\0';
-    config->minimal_tree_seq = 1;
-    config->has_output = 0;
-    
-    config->mig_flag = 0;
-    for (int i = 0; i < MAXPOPS; i++) {
-        for (int j = 0; j < MAXPOPS; j++) {
-            config->mig_mat_const[i][j] = 0.0;
-        }
+
+/* input validation */
+static int check_pop_index(const char *arr, const char *field, int idx,
+    int pop, unsigned num_demes)
+{
+    if (pop < 0 || pop >= (int)num_demes) {
+        fprintf(stderr,
+            "Error parsing config: %s[%d].%s (%d) must be in [0, %u)\n",
+            arr, idx, field, pop, num_demes);
+        return EXIT_FAILURE;
     }
-    
-    config->demes_file[0] = '\0';
-    config->use_demes = 0;
-    config->num_explicit_events = 0;
-    
-    config->anc_sample_flag = 0;
-    config->anc_sample_size = 0;
+    return EXIT_SUCCESS;
 }
 
-// Helper function to parse YAML scalar values
-static int parseScalarValue(yaml_event_t *event, char *buffer, size_t buffer_size) {
-    if (event->type != YAML_SCALAR_EVENT) return 0;
-    
-    size_t length = event->data.scalar.length;
-    if (length >= buffer_size) length = buffer_size - 1;
-    
-    strncpy(buffer, (char*)event->data.scalar.value, length);
-    buffer[length] = '\0';
-    
-    return 1;
+static int check_positive_double(const char *arr, const char *field, int idx,
+    double val)
+{
+    if (val <= 0) {
+        fprintf(stderr,
+            "Error parsing config: %s[%d].%s (%g) must be > 0\n",
+            arr, idx, field, val);
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
 }
 
-// Parse simulation section
-static int parseSimulationSection(yaml_parser_t *parser, SimulationConfig *config) {
-    yaml_event_t event;
-    char key[256], value[256];
-    int done = 0;
-    
-    // fprintf(stderr, "DEBUG: Entering parseSimulationSection\n");
-    
-    while (!done) {
-        if (!yaml_parser_parse(parser, &event)) {
-            fprintf(stderr, "Error parsing YAML in simulation section\n");
-            return -1;
-        }
-        
-        switch (event.type) {
-            case YAML_SCALAR_EVENT:
-                if (!parseScalarValue(&event, key, sizeof(key))) {
-                    yaml_event_delete(&event);
-                    continue;
-                }
-                
-                // Get the value
-                yaml_event_delete(&event);
-                if (!yaml_parser_parse(parser, &event)) {
-                    fprintf(stderr, "Error parsing YAML value for key: %s\n", key);
-                    return -1;
-                }
-                
-                if (!parseScalarValue(&event, value, sizeof(value))) {
-                    yaml_event_delete(&event);
-                    continue;
-                }
-                
-                // Process key-value pairs
-                // fprintf(stderr, "DEBUG: Processing key='%s', value='%s'\n", key, value);
-                if (strcmp(key, "sample_size") == 0) {
-                    config->sample_size = atoi(value);
-                } else if (strcmp(key, "num_replicates") == 0) {
-                    config->num_replicates = atoi(value);
-                } else if (strcmp(key, "num_sites") == 0) {
-                    config->num_sites = atoi(value);
-                } else if (strcmp(key, "effective_popn_size") == 0) {
-                    config->effective_popn_size = atof(value);
-                } else if (strcmp(key, "seed") == 0) {
-                    // Handle seed as array - for now just parse first value
-                    // fprintf(stderr, "DEBUG: Parsing scalar seed: %s\n", value);
-                    config->seed1 = atoi(value);
-                    config->has_seed = 1;
-                } else {
-                    // Check if this might be seed array elements (numeric keys)
-                    char *endptr;
-                    long first_seed = strtol(key, &endptr, 10);
-                    if (*endptr == '\0') {  // key is a valid number
-                        long second_seed = strtol(value, &endptr, 10);
-                        if (*endptr == '\0') {  // value is also a valid number
-                            // fprintf(stderr, "DEBUG: Detected seed array elements: %ld, %ld\n", first_seed, second_seed);
-                            config->seed1 = (int)first_seed;
-                            config->seed2 = (int)second_seed;
-                            config->has_seed = 1;
-                        }
-                    }
-                }
-                break;
-                
-            case YAML_SEQUENCE_START_EVENT:
-                // Handle sequences (like seed array)
-                if (strcmp(key, "seed") == 0) {
-                    // fprintf(stderr, "DEBUG: Parsing seed sequence\n");
-                    yaml_event_delete(&event);
-                    
-                    // Parse first seed value
-                    if (yaml_parser_parse(parser, &event) && event.type == YAML_SCALAR_EVENT) {
-                        parseScalarValue(&event, value, sizeof(value));
-                        config->seed1 = atoi(value);
-                        // fprintf(stderr, "DEBUG: First seed: %s -> %d\n", value, config->seed1);
-                        yaml_event_delete(&event);
-                        
-                        // Parse second seed value
-                        if (yaml_parser_parse(parser, &event) && event.type == YAML_SCALAR_EVENT) {
-                            parseScalarValue(&event, value, sizeof(value));
-                            config->seed2 = atoi(value);
-                            config->has_seed = 1;
-                            // fprintf(stderr, "DEBUG: Second seed: %s -> %d, has_seed set to 1\n", value, config->seed2);
-                        }
-                    }
-                    
-                    // Skip to end of sequence
-                    while (yaml_parser_parse(parser, &event) && event.type != YAML_SEQUENCE_END_EVENT) {
-                        yaml_event_delete(&event);
-                    }
-                }
-                break;
-                
-            case YAML_MAPPING_END_EVENT:
-                done = 1;
-                break;
-                
-            default:
-                break;
-        }
-        
-        yaml_event_delete(&event);
+static int check_nonneg_double(const char *arr, const char *field, int idx,
+    double val)
+{
+    if (val < 0) {
+        fprintf(stderr,
+            "Error parsing config: %s[%d].%s (%g) must be >= 0\n",
+            arr, idx, field, val);
+        return EXIT_FAILURE;
     }
-    
-    return 0;
+    return EXIT_SUCCESS;
 }
 
-// Parse genetics section
-static int parseGeneticsSection(yaml_parser_t *parser, SimulationConfig *config) {
-    yaml_event_t event;
-    char key[256], value[256];
-    int done = 0;
-    
-    config->has_genetics = 1;
-    
-    while (!done) {
-        if (!yaml_parser_parse(parser, &event)) {
-            fprintf(stderr, "Error parsing YAML in genetics section\n");
-            return -1;
-        }
-        
-        switch (event.type) {
-            case YAML_SCALAR_EVENT:
-                if (!parseScalarValue(&event, key, sizeof(key))) {
-                    yaml_event_delete(&event);
-                    continue;
-                }
-                
-                // Get the value
-                yaml_event_delete(&event);
-                if (!yaml_parser_parse(parser, &event)) {
-                    fprintf(stderr, "Error parsing YAML value for key: %s\n", key);
-                    return -1;
-                }
-                
-                if (event.type == YAML_SCALAR_EVENT) {
-                    parseScalarValue(&event, value, sizeof(value));
-                    
-                    // Process key-value pairs
-                    if (strcmp(key, "mutation_rate") == 0) {
-                        config->theta = atof(value);
-                    } else if (strcmp(key, "recombination_rate") == 0) {
-                        config->rho = atof(value);
-                    }
-                } else if (event.type == YAML_MAPPING_START_EVENT) {
-                    // Handle nested mappings like gene_conversion
-                    if (strcmp(key, "gene_conversion") == 0) {
-                        // Parse gene conversion sub-section
-                        yaml_event_t gc_event;
-                        char gc_key[256], gc_value[256];
-                        
-                        while (yaml_parser_parse(parser, &gc_event)) {
-                            if (gc_event.type == YAML_MAPPING_END_EVENT) {
-                                yaml_event_delete(&gc_event);
-                                break;
-                            }
-                            
-                            if (gc_event.type == YAML_SCALAR_EVENT) {
-                                parseScalarValue(&gc_event, gc_key, sizeof(gc_key));
-                                yaml_event_delete(&gc_event);
-                                
-                                if (yaml_parser_parse(parser, &gc_event) && gc_event.type == YAML_SCALAR_EVENT) {
-                                    parseScalarValue(&gc_event, gc_value, sizeof(gc_value));
-                                    
-                                    if (strcmp(gc_key, "rate") == 0) {
-                                        config->gamma = atof(gc_value);
-                                    } else if (strcmp(gc_key, "tract_length") == 0) {
-                                        config->gc_mean = atoi(gc_value);
-                                    } else if (strcmp(gc_key, "crossover_ratio") == 0) {
-                                        config->gamma_co_ratio = atof(gc_value);
-                                        config->gamma_co_ratio_mode = 1;
-                                    }
-                                }
-                            }
-                            yaml_event_delete(&gc_event);
-                        }
-                    }
-                }
-                break;
-                
-            case YAML_MAPPING_END_EVENT:
-                done = 1;
-                break;
-                
-            default:
-                break;
-        }
-        
-        yaml_event_delete(&event);
-    }
-    
-    return 0;
-}
+/* for string-valued options, use enums so that CYAML can automatically check
+ * for invalid values */
+static const cyaml_strval_t output_types_strings[] = {
+    {"haplotype",     OUTPUT_HAPLOTYPE},
+    {"snp_array",     OUTPUT_SNP_ARRAY},
+    {"tree_sequence", OUTPUT_TREE_SEQN},
+};
 
-// Parse populations section
-static int parsePopulationsSection(yaml_parser_t *parser, SimulationConfig *config) {
-    yaml_event_t event;
-    char key[256], value[256];
-    int done = 0;
-    
-    config->has_populations = 1;
-    
-    while (!done) {
-        if (!yaml_parser_parse(parser, &event)) {
-            fprintf(stderr, "Error parsing YAML in populations section\n");
-            return -1;
-        }
-        
-        switch (event.type) {
-            case YAML_SCALAR_EVENT:
-                if (!parseScalarValue(&event, key, sizeof(key))) {
-                    yaml_event_delete(&event);
-                    continue;
-                }
-                
-                // Get the value
-                yaml_event_delete(&event);
-                if (!yaml_parser_parse(parser, &event)) {
-                    fprintf(stderr, "Error parsing YAML value for key: %s\n", key);
-                    return -1;
-                }
-                
-                if (event.type == YAML_SCALAR_EVENT) {
-                    parseScalarValue(&event, value, sizeof(value));
-                    
-                    if (strcmp(key, "count") == 0) {
-                        config->npops = atoi(value);
-                    }
-                } else if (event.type == YAML_SEQUENCE_START_EVENT) {
-                    if (strcmp(key, "sample_sizes") == 0) {
-                        int pop_index = 0;
-                        yaml_event_t seq_event;
-                        
-                        while (yaml_parser_parse(parser, &seq_event) && seq_event.type != YAML_SEQUENCE_END_EVENT) {
-                            if (seq_event.type == YAML_SCALAR_EVENT && pop_index < MAXPOPS) {
-                                parseScalarValue(&seq_event, value, sizeof(value));
-                                config->sample_sizes[pop_index] = atoi(value);
-                                pop_index++;
-                            }
-                            yaml_event_delete(&seq_event);
-                        }
-                        yaml_event_delete(&seq_event);
-                        
-                        // Set npops based on number of sample sizes
-                        config->npops = pop_index;
-                        
-                        // Calculate total sample size
-                        config->sample_size = 0;
-                        for (int i = 0; i < pop_index; i++) {
-                            config->sample_size += config->sample_sizes[i];
-                        }
-                    }
-                }
-                break;
-                
-            case YAML_MAPPING_END_EVENT:
-                done = 1;
-                break;
-                
-            default:
-                break;
-        }
-        
-        yaml_event_delete(&event);
-    }
-    
-    return 0;
-}
+static const cyaml_strval_t sweep_modes_strings[] = {
+    {"stochastic",    SWEEP_STOCHASTIC},
+    {"deterministic", SWEEP_DETERMINISTIC},
+    {"neutral",       SWEEP_NEUTRAL},
+};
 
-// Parse events section
-static int parseEventsSection(yaml_parser_t *parser, SimulationConfig *config) {
-    yaml_event_t event;
-    char key[256], value[256];
-    int done = 0;
-    int in_sequence = 0;
-    
-    // Check if we're already in a sequence (called from main parser after YAML_SEQUENCE_START_EVENT)
-    if (!yaml_parser_parse(parser, &event)) {
-        fprintf(stderr, "Error parsing YAML in events section\n");
-        return -1;
-    }
-    
-    // If we got a mapping start, we're directly in the event sequence
-    if (event.type == YAML_MAPPING_START_EVENT) {
-        in_sequence = 1;
-        yaml_event_delete(&event);
-        
-        // Parse events directly
-        yaml_event_t ev_event;
-        do {
-            // Parse individual event
-            char item_key[256], item_value[256];
-            char event_type[256] = "";
-            double event_time = 0.0;
-            int pop_id = 0, pop_id2 = 0;
-            double size_or_rate = 0.0;
-            
-            while (yaml_parser_parse(parser, &ev_event)) {
-                if (ev_event.type == YAML_MAPPING_END_EVENT) {
-                    yaml_event_delete(&ev_event);
-                    break;
-                }
-                
-                if (ev_event.type == YAML_SCALAR_EVENT) {
-                    parseScalarValue(&ev_event, item_key, sizeof(item_key));
-                    yaml_event_delete(&ev_event);
-                    
-                    if (yaml_parser_parse(parser, &ev_event) && ev_event.type == YAML_SCALAR_EVENT) {
-                        parseScalarValue(&ev_event, item_value, sizeof(item_value));
-                        
-                        if (strcmp(item_key, "type") == 0) {
-                            strncpy(event_type, item_value, sizeof(event_type) - 1);
-                        } else if (strcmp(item_key, "time") == 0) {
-                            event_time = atof(item_value);
-                        } else if (strcmp(item_key, "population") == 0) {
-                            pop_id = atoi(item_value);
-                        } else if (strcmp(item_key, "source") == 0) {
-                            pop_id = atoi(item_value);
-                        } else if (strcmp(item_key, "destination") == 0) {
-                            pop_id2 = atoi(item_value);
-                        } else if (strcmp(item_key, "derived") == 0) {
-                            pop_id = atoi(item_value);
-                        } else if (strcmp(item_key, "ancestral") == 0) {
-                            pop_id2 = atoi(item_value);
-                        } else if (strcmp(item_key, "new_size") == 0) {
-                            size_or_rate = atof(item_value);
-                        } else if (strcmp(item_key, "rate") == 0) {
-                            size_or_rate = atof(item_value);
-                        }
-                    }
-                }
-                yaml_event_delete(&ev_event);
-            }
-            
-            // Add event to config
-            if (config->num_explicit_events < 1000) {
-                struct event *ev = &config->explicit_events[config->num_explicit_events];
-                ev->time = event_time;
-                ev->popID = pop_id;
-                ev->popID2 = pop_id2;
-                
-                if (strcmp(event_type, "population_size_change") == 0) {
-                    ev->type = 'g';
-                    ev->popnSize = size_or_rate;
-                } else if (strcmp(event_type, "population_split") == 0) {
-                    ev->type = 'p';
-                } else if (strcmp(event_type, "migration_rate_change") == 0) {
-                    ev->type = 'm';
-                    ev->popnSize = size_or_rate; // Migration rate stored in popnSize
-                }
-                
-                config->num_explicit_events++;
-            }
-            
-            // Check for next event
-            if (!yaml_parser_parse(parser, &ev_event)) {
-                return -1;
-            }
-            
-            if (ev_event.type == YAML_SEQUENCE_END_EVENT) {
-                yaml_event_delete(&ev_event);
-                return 0;
-            } else if (ev_event.type == YAML_MAPPING_START_EVENT) {
-                yaml_event_delete(&ev_event);
-                // Continue to parse next event
-            } else {
-                yaml_event_delete(&ev_event);
-                return -1;
-            }
-        } while (1);
-        
-        return 0;
-    }
-    
-    // Handle original parsing logic (sequence might be nested under a key)
-    yaml_event_delete(&event);
-    
-    while (!done) {
-        if (!yaml_parser_parse(parser, &event)) {
-            fprintf(stderr, "Error parsing YAML in events section\n");
-            return -1;
-        }
-        
-        switch (event.type) {
-            case YAML_SEQUENCE_START_EVENT:
-                // Handle direct event sequence under "events:" key
-                {
-                    yaml_event_t ev_event;
-                    while (yaml_parser_parse(parser, &ev_event)) {
-                        if (ev_event.type == YAML_SEQUENCE_END_EVENT) {
-                            yaml_event_delete(&ev_event);
-                            break;
-                        }
-                        
-                        if (ev_event.type == YAML_MAPPING_START_EVENT) {
-                            // Parse individual event
-                            yaml_event_t item_event;
-                            char item_key[256], item_value[256];
-                            char event_type[256] = "";
-                            double event_time = 0.0;
-                            int pop_id = 0, pop_id2 = 0;
-                            double size_or_rate = 0.0;
-                            
-                            while (yaml_parser_parse(parser, &item_event)) {
-                                if (item_event.type == YAML_MAPPING_END_EVENT) {
-                                    yaml_event_delete(&item_event);
-                                    break;
-                                }
-                                
-                                if (item_event.type == YAML_SCALAR_EVENT) {
-                                    parseScalarValue(&item_event, item_key, sizeof(item_key));
-                                    yaml_event_delete(&item_event);
-                                    
-                                    if (yaml_parser_parse(parser, &item_event) && item_event.type == YAML_SCALAR_EVENT) {
-                                        parseScalarValue(&item_event, item_value, sizeof(item_value));
-                                        
-                                        if (strcmp(item_key, "type") == 0) {
-                                            strncpy(event_type, item_value, sizeof(event_type) - 1);
-                                        } else if (strcmp(item_key, "time") == 0) {
-                                            event_time = atof(item_value);
-                                        } else if (strcmp(item_key, "population") == 0) {
-                                            pop_id = atoi(item_value);
-                                        } else if (strcmp(item_key, "source") == 0) {
-                                            pop_id = atoi(item_value);
-                                        } else if (strcmp(item_key, "destination") == 0) {
-                                            pop_id2 = atoi(item_value);
-                                        } else if (strcmp(item_key, "derived") == 0) {
-                                            pop_id = atoi(item_value);
-                                        } else if (strcmp(item_key, "ancestral") == 0) {
-                                            pop_id2 = atoi(item_value);
-                                        } else if (strcmp(item_key, "new_size") == 0) {
-                                            size_or_rate = atof(item_value);
-                                        } else if (strcmp(item_key, "rate") == 0) {
-                                            size_or_rate = atof(item_value);
-                                        }
-                                    }
-                                }
-                                yaml_event_delete(&item_event);
-                            }
-                            
-                            // Add event to config
-                            if (config->num_explicit_events < 1000) {
-                                struct event *ev = &config->explicit_events[config->num_explicit_events];
-                                ev->time = event_time;
-                                ev->popID = pop_id;
-                                ev->popID2 = pop_id2;
-                                
-                                if (strcmp(event_type, "population_size_change") == 0) {
-                                    ev->type = 'g';
-                                    ev->popnSize = size_or_rate;
-                                } else if (strcmp(event_type, "population_split") == 0) {
-                                    ev->type = 'p';
-                                } else if (strcmp(event_type, "migration_rate_change") == 0) {
-                                    ev->type = 'm';
-                                    ev->popnSize = size_or_rate; // Migration rate stored in popnSize
-                                }
-                                
-                                config->num_explicit_events++;
-                            }
-                        }
-                        yaml_event_delete(&ev_event);
-                    }
-                }
-                break;
-                
-            case YAML_SCALAR_EVENT:
-                if (!parseScalarValue(&event, key, sizeof(key))) {
-                    yaml_event_delete(&event);
-                    continue;
-                }
-                
-                // Get the value
-                yaml_event_delete(&event);
-                if (!yaml_parser_parse(parser, &event)) {
-                    fprintf(stderr, "Error parsing YAML value for key: %s\n", key);
-                    return -1;
-                }
-                
-                if (event.type == YAML_SCALAR_EVENT) {
-                    parseScalarValue(&event, value, sizeof(value));
-                    
-                    if (strcmp(key, "demes_file") == 0) {
-                        strncpy(config->demes_file, value, sizeof(config->demes_file) - 1);
-                        config->demes_file[sizeof(config->demes_file) - 1] = '\0';
-                        config->use_demes = 1;
-                    }
-                } else if (event.type == YAML_SEQUENCE_START_EVENT) {
-                    // Handle demographic or selection events sequences
-                    if (strcmp(key, "selection") == 0) {
-                        config->has_selection = 1;
-                        
-                        // Parse selection events sequence
-                        yaml_event_t sel_event;
-                        while (yaml_parser_parse(parser, &sel_event)) {
-                            if (sel_event.type == YAML_SEQUENCE_END_EVENT) {
-                                yaml_event_delete(&sel_event);
-                                break;
-                            }
-                            
-                            if (sel_event.type == YAML_MAPPING_START_EVENT) {
-                                // Parse individual selection event
-                                yaml_event_t sweep_event;
-                                char sweep_key[256], sweep_value[256];
-                                char sweep_type[256] = "";
-                                char sweep_mode[256] = "stochastic";
-                                double sweep_time = 0.0;
-                                double selection_coeff = 0.0;
-                                double sweep_position = 0.5;
-                                double initial_freq = 0.0;
-                                
-                                while (yaml_parser_parse(parser, &sweep_event)) {
-                                    if (sweep_event.type == YAML_MAPPING_END_EVENT) {
-                                        yaml_event_delete(&sweep_event);
-                                        break;
-                                    }
-                                    
-                                    if (sweep_event.type == YAML_SCALAR_EVENT) {
-                                        parseScalarValue(&sweep_event, sweep_key, sizeof(sweep_key));
-                                        yaml_event_delete(&sweep_event);
-                                        
-                                        if (yaml_parser_parse(parser, &sweep_event) && sweep_event.type == YAML_SCALAR_EVENT) {
-                                            parseScalarValue(&sweep_event, sweep_value, sizeof(sweep_value));
-                                            
-                                            if (strcmp(sweep_key, "type") == 0) {
-                                                strncpy(sweep_type, sweep_value, sizeof(sweep_type) - 1);
-                                            } else if (strcmp(sweep_key, "mode") == 0) {
-                                                strncpy(sweep_mode, sweep_value, sizeof(sweep_mode) - 1);
-                                            } else if (strcmp(sweep_key, "time") == 0) {
-                                                sweep_time = atof(sweep_value);
-                                            } else if (strcmp(sweep_key, "selection_coeff") == 0) {
-                                                selection_coeff = atof(sweep_value);
-                                            } else if (strcmp(sweep_key, "position") == 0) {
-                                                sweep_position = atof(sweep_value);
-                                            } else if (strcmp(sweep_key, "initial_freq") == 0) {
-                                                initial_freq = atof(sweep_value);
-                                            }
-                                        }
-                                    }
-                                    yaml_event_delete(&sweep_event);
-                                }
-                                
-                                // Apply parsed selection event to config
-                                if (strcmp(sweep_type, "sweep") == 0) {
-                                    config->alpha = selection_coeff;
-                                    config->tau = sweep_time * 2.0;  // Convert to discoal time units
-                                    config->sweep_site = sweep_position;
-                                    
-                                    if (strcmp(sweep_mode, "deterministic") == 0) {
-                                        config->sweep_mode = 'd';
-                                    } else if (strcmp(sweep_mode, "neutral") == 0) {
-                                        config->sweep_mode = 'N';
-                                    } else {
-                                        config->sweep_mode = 's';  // default to stochastic
-                                    }
-                                    
-                                    if (initial_freq > 0.0) {
-                                        config->f0 = initial_freq;
-                                        config->soft_sweep_mode = 1;
-                                    }
-                                }
-                            }
-                            yaml_event_delete(&sel_event);
-                        }
-                    } else if (strcmp(key, "demographic") == 0) {
-                        // Parse demographic events sequence (only when not using demes)
-                        if (!config->use_demes) {
-                            yaml_event_t demo_event;
-                            while (yaml_parser_parse(parser, &demo_event)) {
-                                if (demo_event.type == YAML_SEQUENCE_END_EVENT) {
-                                    yaml_event_delete(&demo_event);
-                                    break;
-                                }
-                                
-                                if (demo_event.type == YAML_MAPPING_START_EVENT) {
-                                    // Parse individual demographic event
-                                    yaml_event_t dem_event;
-                                    char dem_key[256], dem_value[256];
-                                    char event_type[256] = "";
-                                    double event_time = 0.0;
-                                    int pop_id = 0, pop_id2 = 0;
-                                    double size_or_rate = 0.0;
-                                    
-                                    while (yaml_parser_parse(parser, &dem_event)) {
-                                        if (dem_event.type == YAML_MAPPING_END_EVENT) {
-                                            yaml_event_delete(&dem_event);
-                                            break;
-                                        }
-                                        
-                                        if (dem_event.type == YAML_SCALAR_EVENT) {
-                                            parseScalarValue(&dem_event, dem_key, sizeof(dem_key));
-                                            yaml_event_delete(&dem_event);
-                                            
-                                            if (yaml_parser_parse(parser, &dem_event) && dem_event.type == YAML_SCALAR_EVENT) {
-                                                parseScalarValue(&dem_event, dem_value, sizeof(dem_value));
-                                                
-                                                if (strcmp(dem_key, "type") == 0) {
-                                                    strncpy(event_type, dem_value, sizeof(event_type) - 1);
-                                                } else if (strcmp(dem_key, "time") == 0) {
-                                                    event_time = atof(dem_value);
-                                                } else if (strcmp(dem_key, "population") == 0) {
-                                                    pop_id = atoi(dem_value);
-                                                } else if (strcmp(dem_key, "source_pop") == 0) {
-                                                    pop_id = atoi(dem_value);
-                                                } else if (strcmp(dem_key, "dest_pop") == 0) {
-                                                    pop_id2 = atoi(dem_value);
-                                                } else if (strcmp(dem_key, "size") == 0) {
-                                                    size_or_rate = atof(dem_value);
-                                                } else if (strcmp(dem_key, "rate") == 0) {
-                                                    size_or_rate = atof(dem_value);
-                                                }
-                                            }
-                                        }
-                                        yaml_event_delete(&dem_event);
-                                    }
-                                    
-                                    // Add demographic event to config
-                                    if (config->num_explicit_events < 1000) {
-                                        struct event *ev = &config->explicit_events[config->num_explicit_events];
-                                        ev->time = event_time * 2.0;  // Convert to discoal time units
-                                        ev->popID = pop_id;
-                                        ev->popID2 = pop_id2;
-                                        
-                                        if (strcmp(event_type, "size_change") == 0) {
-                                            ev->type = 'n';
-                                            ev->popnSize = size_or_rate;
-                                        } else if (strcmp(event_type, "population_split") == 0) {
-                                            ev->type = 'p';
-                                        } else if (strcmp(event_type, "migration_change") == 0) {
-                                            ev->type = 'M';
-                                            // Migration rate handling would be more complex
-                                        }
-                                        
-                                        config->num_explicit_events++;
-                                    }
-                                }
-                                yaml_event_delete(&demo_event);
-                            }
-                        } else {
-                            // Skip demographic events if using demes file
-                            fprintf(stderr, "Warning: Ignoring demographic events in YAML - using demes file instead\n");
-                            int sequence_depth = 1;
-                            while (sequence_depth > 0 && yaml_parser_parse(parser, &event)) {
-                                if (event.type == YAML_SEQUENCE_START_EVENT) sequence_depth++;
-                                else if (event.type == YAML_SEQUENCE_END_EVENT) sequence_depth--;
-                                yaml_event_delete(&event);
-                            }
-                        }
-                    }
-                }
-                break;
-                
-            case YAML_MAPPING_END_EVENT:
-                done = 1;
-                break;
-                
-            default:
-                break;
-        }
-        
-        yaml_event_delete(&event);
-    }
-    
-    return 0;
-}
 
-// Parse selection section
-static int parseSelectionSection(yaml_parser_t *parser, SimulationConfig *config) {
-    yaml_event_t event;
-    char key[256], value[256];
-    int done = 0;
-    
-    config->has_selection = 1;
-    
-    while (!done) {
-        if (!yaml_parser_parse(parser, &event)) {
-            fprintf(stderr, "Error parsing YAML in selection section\n");
-            return -1;
-        }
-        
-        switch (event.type) {
-            case YAML_SCALAR_EVENT:
-                if (!parseScalarValue(&event, key, sizeof(key))) {
-                    yaml_event_delete(&event);
-                    continue;
-                }
-                
-                // Get the value
-                yaml_event_delete(&event);
-                if (!yaml_parser_parse(parser, &event)) {
-                    fprintf(stderr, "Error parsing YAML value for key: %s\n", key);
-                    return -1;
-                }
-                
-                if (event.type == YAML_SCALAR_EVENT) {
-                    parseScalarValue(&event, value, sizeof(value));
-                    
-                    // Process key-value pairs
-                    if (strcmp(key, "alpha") == 0) {
-                        config->alpha = atof(value);
-                    } else if (strcmp(key, "sweep_site") == 0) {
-                        config->sweep_site = atof(value);
-                    } else if (strcmp(key, "sweep_mode") == 0) {
-                        if (strcmp(value, "deterministic") == 0) {
-                            config->sweep_mode = 'd';
-                        } else if (strcmp(value, "neutral") == 0) {
-                            config->sweep_mode = 'N';
-                        } else {
-                            config->sweep_mode = 's';  // default to stochastic
-                        }
-                    } else if (strcmp(key, "tau") == 0) {
-                        config->tau = atof(value);
-                    }
-                } else if (event.type == YAML_MAPPING_START_EVENT) {
-                    // Handle nested mappings like soft_sweep
-                    if (strcmp(key, "soft_sweep") == 0) {
-                        // Parse soft sweep sub-section
-                        yaml_event_t ss_event;
-                        char ss_key[256], ss_value[256];
-                        
-                        while (yaml_parser_parse(parser, &ss_event)) {
-                            if (ss_event.type == YAML_MAPPING_END_EVENT) {
-                                yaml_event_delete(&ss_event);
-                                break;
-                            }
-                            
-                            if (ss_event.type == YAML_SCALAR_EVENT) {
-                                parseScalarValue(&ss_event, ss_key, sizeof(ss_key));
-                                yaml_event_delete(&ss_event);
-                                
-                                if (yaml_parser_parse(parser, &ss_event) && ss_event.type == YAML_SCALAR_EVENT) {
-                                    parseScalarValue(&ss_event, ss_value, sizeof(ss_value));
-                                    
-                                    if (strcmp(ss_key, "initial_frequency") == 0) {
-                                        config->f0 = atof(ss_value);
-                                        config->soft_sweep_mode = 1;
-                                    }
-                                }
-                            }
-                            yaml_event_delete(&ss_event);
-                        }
-                    }
-                }
-                break;
-                
-            case YAML_MAPPING_END_EVENT:
-                done = 1;
-                break;
-                
-            default:
-                break;
-        }
-        
-        yaml_event_delete(&event);
-    }
-    
-    return 0;
-}
+/* for sequence valued options, define a schema for the data type used
+ * held by the sequence */
+static const cyaml_schema_value_t int_array_schema = {
+    CYAML_VALUE_INT(CYAML_FLAG_DEFAULT, int),
+};
 
-// Parse output section
-static int parseOutputSection(yaml_parser_t *parser, SimulationConfig *config) {
-    yaml_event_t event;
-    char key[256], value[256];
-    int done = 0;
-    
-    config->has_output = 1;
-    
-    while (!done) {
-        if (!yaml_parser_parse(parser, &event)) {
-            fprintf(stderr, "Error parsing YAML in output section\n");
-            return -1;
-        }
-        
-        switch (event.type) {
-            case YAML_SCALAR_EVENT:
-                if (!parseScalarValue(&event, key, sizeof(key))) {
-                    yaml_event_delete(&event);
-                    continue;
-                }
-                
-                // Get the value
-                yaml_event_delete(&event);
-                if (!yaml_parser_parse(parser, &event)) {
-                    fprintf(stderr, "Error parsing YAML value for key: %s\n", key);
-                    return -1;
-                }
-                
-                if (event.type == YAML_SCALAR_EVENT) {
-                    parseScalarValue(&event, value, sizeof(value));
-                    
-                    // Process key-value pairs
-                    if (strcmp(key, "style") == 0) {
-                        if (strcmp(value, "snp_matrix") == 0) {
-                            config->output_style = 's';
-                        } else if (strcmp(value, "haplotype") == 0) {
-                            config->output_style = 'h';
-                        }
-                    } else if (strcmp(key, "finite_output") == 0) {
-                        config->finite_output_flag = (strcmp(value, "true") == 0) ? 1 : 0;
-                    } else if (strcmp(key, "hide_partial_snp") == 0) {
-                        config->hide_partial_snp = (strcmp(value, "true") == 0) ? 1 : 0;
-                    }
-                } else if (event.type == YAML_MAPPING_START_EVENT) {
-                    // Handle nested mappings like tskit
-                    if (strcmp(key, "tskit") == 0) {
-                        // Parse tskit sub-section
-                        yaml_event_t ts_event;
-                        char ts_key[256], ts_value[256];
+static const cyaml_schema_value_t float_array_schema = {
+    CYAML_VALUE_FLOAT(CYAML_FLAG_DEFAULT, double),
+};
 
-                        config->tskit_output = 1;
-                        
-                        while (yaml_parser_parse(parser, &ts_event)) {
-                            if (ts_event.type == YAML_MAPPING_END_EVENT) {
-                                yaml_event_delete(&ts_event);
-                                break;
-                            }
-                            
-                            if (ts_event.type == YAML_SCALAR_EVENT) {
-                                parseScalarValue(&ts_event, ts_key, sizeof(ts_key));
-                                yaml_event_delete(&ts_event);
-                                
-                                if (yaml_parser_parse(parser, &ts_event) && ts_event.type == YAML_SCALAR_EVENT) {
-                                    parseScalarValue(&ts_event, ts_value, sizeof(ts_value));
-                                    
-                                    if (strcmp(ts_key, "filename") == 0) {
-                                        strncpy(config->tskit_output_filename, ts_value, sizeof(config->tskit_output_filename) - 1);
-                                        config->tskit_output_filename[sizeof(config->tskit_output_filename) - 1] = '\0';
-                                    } else if (strcmp(ts_key, "minimal") == 0) {
-                                        config->minimal_tree_seq = (strcmp(ts_value, "true") == 0) ? 1 : 0;
-                                    }
-                                }
-                            }
-                            yaml_event_delete(&ts_event);
-                        }
-                    }
-                }
-                break;
-                
-            case YAML_MAPPING_END_EVENT:
-                done = 1;
-                break;
-                
-            default:
-                break;
-        }
-        
-        yaml_event_delete(&event);
-    }
-    
-    return 0;
-}
 
-// Main function to load configuration from YAML file
-int loadConfigFile(const char *filename, SimulationConfig *config) {
-    FILE *file = fopen(filename, "r");
-    if (!file) {
-        fprintf(stderr, "Error: Cannot open configuration file '%s'\n", filename);
-        return -1;
-    }
-    
-    yaml_parser_t parser;
-    yaml_event_t event;
-    
-    if (!yaml_parser_initialize(&parser)) {
-        fprintf(stderr, "Error: Failed to initialize YAML parser\n");
-        fclose(file);
-        return -1;
-    }
-    
-    yaml_parser_set_input_file(&parser, file);
-    
-    // Initialize config with defaults
-    initializeDefaultConfig(config);
-    
-    // Parse YAML document
-    int done = 0;
-    char current_section[256] = "";
-    
-    while (!done) {
-        if (!yaml_parser_parse(&parser, &event)) {
-            fprintf(stderr, "Error: YAML parsing failed\n");
-            yaml_parser_delete(&parser);
-            fclose(file);
-            return -1;
-        }
-        
-        switch (event.type) {
-            case YAML_STREAM_START_EVENT:
-            case YAML_DOCUMENT_START_EVENT:
-            case YAML_MAPPING_START_EVENT:
-                break;
-                
-            case YAML_SCALAR_EVENT:
-                {
-                    char key[256];
-                    if (parseScalarValue(&event, key, sizeof(key))) {
-                        strcpy(current_section, key);
-                        
-                        yaml_event_delete(&event);
-                        if (!yaml_parser_parse(&parser, &event)) {
-                            fprintf(stderr, "Error parsing section: %s\n", key);
-                            break;
-                        }
-                        
-                        if (event.type == YAML_MAPPING_START_EVENT) {
-                            if (strcmp(key, "simulation") == 0) {
-                                yaml_event_delete(&event);
-                                if (parseSimulationSection(&parser, config) != 0) {
-                                    done = 1;
-                                }
-                                continue;
-                            } else if (strcmp(key, "genetics") == 0) {
-                                yaml_event_delete(&event);
-                                if (parseGeneticsSection(&parser, config) != 0) {
-                                    done = 1;
-                                }
-                                continue;
-                            } else if (strcmp(key, "populations") == 0) {
-                                yaml_event_delete(&event);
-                                if (parsePopulationsSection(&parser, config) != 0) {
-                                    done = 1;
-                                }
-                                continue;
-                            } else if (strcmp(key, "selection") == 0) {
-                                yaml_event_delete(&event);
-                                if (parseSelectionSection(&parser, config) != 0) {
-                                    done = 1;
-                                }
-                                continue;
-                            } else if (strcmp(key, "output") == 0) {
-                                yaml_event_delete(&event);
-                                if (parseOutputSection(&parser, config) != 0) {
-                                    done = 1;
-                                }
-                                continue;
-                            }
-                        } else if (event.type == YAML_SEQUENCE_START_EVENT && strcmp(key, "events") == 0) {
-                            // Handle events as a direct sequence
-                            yaml_event_delete(&event);
-                            if (parseEventsSection(&parser, config) != 0) {
-                                done = 1;
-                            }
-                            continue;
-                        } else if (event.type == YAML_SCALAR_EVENT && strcmp(key, "demes") == 0) {
-                            // Handle demes: filename directly
-                            char value[256];
-                            if (parseScalarValue(&event, value, sizeof(value))) {
-                                strncpy(config->demes_file, value, sizeof(config->demes_file) - 1);
-                                config->demes_file[sizeof(config->demes_file) - 1] = '\0';
-                                config->use_demes = 1;
-                            }
-                        }
-                    }
-                }
-                break;
-                
-            case YAML_DOCUMENT_END_EVENT:
-            case YAML_STREAM_END_EVENT:
-                done = 1;
-                break;
-                
-            default:
-                break;
-        }
-        
-        yaml_event_delete(&event);
-    }
-    
-    yaml_parser_delete(&parser);
-    fclose(file);
-    
-    return 0;
-}
+/* schema for fields within simulation block */
+static const cyaml_schema_field_t simulation_fields_schema[] = {
+    /* required arguments */
+    CYAML_FIELD_INT("sample_size", CYAML_FLAG_DEFAULT, 
+        struct simulation_config, sample_size),
+    CYAML_FIELD_INT("num_replicates", CYAML_FLAG_DEFAULT, 
+        struct simulation_config, num_replicates),
+    CYAML_FIELD_INT("num_sites", CYAML_FLAG_DEFAULT, 
+        struct simulation_config, num_sites),
+    /* optional arguments */
+    CYAML_FIELD_SEQUENCE_FIXED("seed", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL, 
+        struct simulation_config, seed, &int_array_schema, 2),
+    CYAML_FIELD_END
+};
 
-// Apply configuration to global variables (called after command line parsing for backwards compatibility)
-int applyConfiguration(const SimulationConfig *config) {
+
+/* schema for fields within genetics block */
+static const cyaml_schema_field_t genetics_fields_schema[] = {
+    /* required arguments */
+    CYAML_FIELD_FLOAT("mutation_rate", CYAML_FLAG_DEFAULT, 
+        struct genetics_config, mutation_rate),
+    CYAML_FIELD_FLOAT("recombination_rate", CYAML_FLAG_DEFAULT, 
+        struct genetics_config, recombination_rate),
+    /* optional arguments */
+    CYAML_FIELD_FLOAT("gene_conversion_rate", CYAML_FLAG_OPTIONAL, 
+        struct genetics_config, gene_conversion_rate),
+    CYAML_FIELD_INT("gene_conversion_tract_length", CYAML_FLAG_OPTIONAL, 
+        struct genetics_config, gene_conversion_tract_length),
+    CYAML_FIELD_FLOAT("crossover_ratio", CYAML_FLAG_OPTIONAL, 
+        struct genetics_config, crossover_ratio),
+    CYAML_FIELD_END
+};
+
+
+/* schema for specific demographic event types and event sub-block */
+static const cyaml_schema_field_t population_size_change_fields_schema[] = {
+    /* required arguments */
+    CYAML_FIELD_FLOAT("time", CYAML_FLAG_DEFAULT, struct population_size_change, time),
+    CYAML_FIELD_FLOAT("size", CYAML_FLAG_DEFAULT, struct population_size_change, size),
+    CYAML_FIELD_INT("population", CYAML_FLAG_DEFAULT, struct population_size_change, population),
+    /* optional arguments */
+    CYAML_FIELD_END
+};
+static const cyaml_schema_value_t population_size_change_schema = {
+    CYAML_VALUE_MAPPING(CYAML_FLAG_DEFAULT, struct population_size_change, 
+        population_size_change_fields_schema),
+};
+
+static const cyaml_schema_field_t migration_rate_change_fields_schema[] = {
+    /* required arguments */
+    CYAML_FIELD_FLOAT("time", CYAML_FLAG_DEFAULT, struct migration_rate_change, time),
+    CYAML_FIELD_FLOAT("rate", CYAML_FLAG_DEFAULT, struct migration_rate_change, rate),
+    CYAML_FIELD_INT("source", CYAML_FLAG_DEFAULT, struct migration_rate_change, source),
+    CYAML_FIELD_INT("destination", CYAML_FLAG_DEFAULT, struct migration_rate_change, destination),
+    /* optional arguments */
+    CYAML_FIELD_END
+};
+static const cyaml_schema_value_t migration_rate_change_schema = {
+    CYAML_VALUE_MAPPING(CYAML_FLAG_DEFAULT, struct migration_rate_change, 
+        migration_rate_change_fields_schema),
+};
+
+static const cyaml_schema_field_t population_split_fields_schema[] = {
+    /* required arguments */
+    CYAML_FIELD_FLOAT("time", CYAML_FLAG_DEFAULT, struct population_split, time),
+    CYAML_FIELD_INT("ancestral", CYAML_FLAG_DEFAULT, struct population_split, ancestral),
+    CYAML_FIELD_INT("derived", CYAML_FLAG_DEFAULT, struct population_split, derived),
+    /* optional arguments */
+    CYAML_FIELD_END
+};
+static const cyaml_schema_value_t population_split_schema = {
+    CYAML_VALUE_MAPPING(CYAML_FLAG_DEFAULT, struct population_split, 
+        population_split_fields_schema),
+};
+
+static const cyaml_schema_field_t ancient_sample_fields_schema[] = {
+    /* required arguments */
+    CYAML_FIELD_FLOAT("time", CYAML_FLAG_DEFAULT, struct ancient_sample, time),
+    CYAML_FIELD_INT("population", CYAML_FLAG_DEFAULT, struct ancient_sample, population),
+    CYAML_FIELD_INT("sample_size", CYAML_FLAG_DEFAULT, struct ancient_sample, sample_size),
+    /* optional arguments */
+    CYAML_FIELD_END
+};
+static const cyaml_schema_value_t ancient_sample_schema = {
+    CYAML_VALUE_MAPPING(CYAML_FLAG_DEFAULT, struct ancient_sample, 
+        ancient_sample_fields_schema),
+};
+
+static const cyaml_schema_field_t demographic_events_fields_schema[] = { /* sub-block */
+    /* optional arguments */
+    CYAML_FIELD_SEQUENCE_COUNT("population_size_changes", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        struct demographic_events, population_size_changes, num_population_size_changes,
+        &population_size_change_schema, 1, CYAML_UNLIMITED),
+    CYAML_FIELD_SEQUENCE_COUNT("migration_rate_changes", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        struct demographic_events, migration_rate_changes, num_migration_rate_changes,
+        &migration_rate_change_schema, 1, CYAML_UNLIMITED),
+    CYAML_FIELD_SEQUENCE_COUNT("population_splits", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        struct demographic_events, population_splits, num_population_splits,
+        &population_split_schema, 1, CYAML_UNLIMITED),
+    CYAML_FIELD_SEQUENCE_COUNT("ancient_samples", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        struct demographic_events, ancient_samples, num_ancient_samples,
+        &ancient_sample_schema, 1, CYAML_UNLIMITED),
+    CYAML_FIELD_END
+};
+
+
+/* schema for migration matrix */
+static const cyaml_schema_field_t migration_matrix_row_fields_schema[] = { 
+    CYAML_FIELD_SEQUENCE_COUNT("row", CYAML_FLAG_POINTER,
+        struct migration_matrix_row, rates, num_cols,
+        &float_array_schema, 0, CYAML_UNLIMITED),
+    CYAML_FIELD_END
+};
+static const cyaml_schema_value_t migration_matrix_row_schema = {
+    CYAML_VALUE_MAPPING(CYAML_FLAG_DEFAULT, struct migration_matrix_row, 
+        migration_matrix_row_fields_schema),
+};
+
+
+/* schema for fields within demography block */
+static const cyaml_schema_field_t demography_fields_schema[] = {
+    /* required arguments */
+    CYAML_FIELD_SEQUENCE_COUNT("deme_sample_size", CYAML_FLAG_POINTER,
+        struct demography_config, deme_sample_size, num_demes, &int_array_schema, 
+        1, MAXPOPS),
+    /* optional arguments */
+    CYAML_FIELD_FLOAT("effective_population_size", CYAML_FLAG_OPTIONAL, 
+        struct demography_config, effective_population_size),
+    CYAML_FIELD_MAPPING_PTR("demographic_events", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        struct demography_config, demographic_events, demographic_events_fields_schema),
+    CYAML_FIELD_SEQUENCE_COUNT("migration_matrix", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        struct demography_config, migration_matrix, num_migration_matrix_rows,
+        &migration_matrix_row_schema, 1, MAXPOPS),
+    CYAML_FIELD_STRING_PTR("demes_filename", CYAML_FLAG_OPTIONAL,
+        struct demography_config, demes_filename, 0, PATH_MAX),
+    CYAML_FIELD_END
+};
+
+
+/* schema for fields within selection block */
+static const cyaml_schema_field_t selection_fields_schema[] = {
+    /* required arguments */
+    CYAML_FIELD_ENUM("sweep_mode", CYAML_FLAG_DEFAULT, 
+        struct selection_config, sweep_mode, 
+        sweep_modes_strings, CYAML_ARRAY_LEN(sweep_modes_strings)),
+    CYAML_FIELD_FLOAT("selection_coefficient", CYAML_FLAG_DEFAULT,
+        struct selection_config, selection_coefficient),
+    CYAML_FIELD_FLOAT("sweep_position", CYAML_FLAG_DEFAULT,
+        struct selection_config, sweep_position),
+    /* optional arguments */
+    CYAML_FIELD_FLOAT("fixation_time_ago", CYAML_FLAG_OPTIONAL,
+        struct selection_config, fixation_time_ago),
+    CYAML_FIELD_FLOAT("initial_frequency", CYAML_FLAG_OPTIONAL,
+        struct selection_config, initial_frequency),
+    CYAML_FIELD_FLOAT("final_frequency", CYAML_FLAG_OPTIONAL,
+        struct selection_config, final_frequency),
+    CYAML_FIELD_FLOAT("beneficial_mutation_rate", CYAML_FLAG_OPTIONAL,
+        struct selection_config, beneficial_mutation_rate),
+    CYAML_FIELD_FLOAT("recurrent_sweep_rate", CYAML_FLAG_OPTIONAL,
+        struct selection_config, recurrent_sweep_rate),
+    CYAML_FIELD_END
+};
+
+
+/* schema for fields within output block */
+static const cyaml_schema_field_t output_fields_schema[] = {
+    /* required arguments */
+    CYAML_FIELD_ENUM("output_type", CYAML_FLAG_DEFAULT, 
+        struct output_config, output_type, 
+        output_types_strings, CYAML_ARRAY_LEN(output_types_strings)),
+    /* optional arguments */
+    CYAML_FIELD_BOOL("finite_output", CYAML_FLAG_OPTIONAL,
+        struct output_config, finite_output),
+    CYAML_FIELD_BOOL("hide_partial_snp", CYAML_FLAG_OPTIONAL,
+        struct output_config, hide_partial_snp),
+    CYAML_FIELD_BOOL("unsimplified_tree_sequence", CYAML_FLAG_OPTIONAL,
+        struct output_config, unsimplified_tree_sequence),
+    CYAML_FIELD_STRING_PTR("tree_sequence_filename", CYAML_FLAG_OPTIONAL,
+        struct output_config, tree_sequence_filename, 0, PATH_MAX),
+    CYAML_FIELD_END
+};
+
+
+/* top level schema */
+static const cyaml_schema_field_t discoal_config_fields_schema[] = {
+    /* required blocks */
+    CYAML_FIELD_MAPPING_PTR("simulation", CYAML_FLAG_POINTER,
+        struct discoal_config, simulation, simulation_fields_schema),
+    CYAML_FIELD_MAPPING_PTR("genetics", CYAML_FLAG_POINTER,
+        struct discoal_config, genetics, genetics_fields_schema),
+    /* optional blocks */
+    CYAML_FIELD_MAPPING_PTR("demography", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        struct discoal_config, demography, demography_fields_schema),
+    CYAML_FIELD_MAPPING_PTR("selection", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        struct discoal_config, selection, selection_fields_schema),
+    CYAML_FIELD_MAPPING_PTR("output", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        struct discoal_config, output, output_fields_schema),
+    CYAML_FIELD_END
+};
+static const cyaml_schema_value_t discoal_config_schema = {
+    CYAML_VALUE_MAPPING(CYAML_FLAG_POINTER,
+        struct discoal_config, discoal_config_fields_schema),
+};
+
+
+/* options for cyaml parsing */
+static const cyaml_config_t cyaml_config = {
+    .log_fn = cyaml_log,            
+    .mem_fn = cyaml_mem,
+    .log_level = CYAML_LOG_WARNING,
+};
+
+
+/* libcyaml zeros every primitive struct field before populating it from
+ * the YAML, so a user-supplied 0 looks indistinguishable from a missing
+ * field. Each block parser below handles three flavours of input:
+ *
+ *   - Required fields with no semantic "unset" value (sample_size,
+ *     num_sites, mutation_rate, sweep_position, ...): cyaml guarantees
+ *     the field is set, so validate the range and assign unconditionally.
+ *
+ *   - Optional fields where 0 is semantically equivalent to "not
+ *     configured" (gene_conversion_rate, initial_frequency, ...): keep
+ *     the `if (x > 0)` copy guard, but reject explicit out-of-range
+ *     values like negatives or >= 1 for frequencies.
+ *
+ *   - Optional fields where 0 is a meaningful user choice distinct from
+ *     "absent" (none today): would need cyaml's pointer-typed optional
+ *     machinery so absence -> NULL. Left for follow-up.
+ *
+ * Booleans are assigned unconditionally; cyaml zeroing matches our
+ * default-false convention.
+ */
+
+int parse_simulation_block(struct simulation_config *cfg)
+{
     extern int sampleSize, sampleNumber, nSites;
-    extern long seed1, seed2;
-    extern int npops;
     extern int sampleSizes[MAXPOPS];
-    extern int EFFECTIVE_POPN_SIZE;
-    extern double theta, rho, my_gamma, gammaCoRatio;
+    extern int popnSizes[MAXPOPS];
+    extern int npops;
+    extern double *currentSize;
+    extern long seed1, seed2;
+    if (cfg != NULL) {
+        if (cfg->sample_size <= 0) {
+            fprintf(stderr,
+                "Error parsing config: sample_size (%d) must be > 0\n",
+                cfg->sample_size);
+            return EXIT_FAILURE;
+        }
+        sampleSize = cfg->sample_size;
+        if (cfg->num_replicates <= 0) {
+            fprintf(stderr,
+                "Error parsing config: num_replicates (%d) must be > 0\n",
+                cfg->num_replicates);
+            return EXIT_FAILURE;
+        }
+        sampleNumber = cfg->num_replicates;
+        if (cfg->num_sites <= 0) {
+            fprintf(stderr,
+                "Error parsing config: num_sites (%d) must be > 0\n",
+                cfg->num_sites);
+            return EXIT_FAILURE;
+        }
+        nSites = cfg->num_sites;
+        if (cfg->seed != NULL) {
+            seed1 = cfg->seed[0];
+            seed2 = cfg->seed[1];
+        }
+        /* Establish the single-population defaults implied by sample_size:
+         * one population containing every sample. parse_demography_block
+         * overrides these when an explicit demography block is present.
+         * Without this, YAMLs that omit the optional demography block left
+         * sampleSizes[]/currentSize[]/npops at zero, and the simulation
+         * crashed with no sample nodes. */
+        sampleSizes[0] = sampleSize;
+        popnSizes[0]   = sampleSize;
+        currentSize[0] = 1.0;
+        npops          = 1;
+    }
+    return EXIT_SUCCESS;
+}
+
+int parse_genetics_block(struct genetics_config *cfg)
+{
+    extern double theta, rho;
+    extern double gammaCoRatio, my_gamma, gammaCoRatioMode;
     extern int gcMean;
-    extern double gammaCoRatioMode;
-    extern double alpha, sweepSite, tau, f0, uA, partialSweepFinalFreq, recurSweepRate;
-    extern char sweepMode;
-    extern int recurSweepMode, partialSweepMode, softSweepMode;
-    extern int tskitOutputMode, minimalTreeSeq, hidePartialSNP;
-    extern char tskitOutputFilename[1024];
-    extern double migMatConst[MAXPOPS][MAXPOPS];
-    extern int migFlag;
-    
-    // Apply simulation settings from YAML (these are defaults that can be overridden by command line)
-    if (config->sample_size > 0) {
-        sampleSize = config->sample_size;
-    }
-    if (config->num_replicates > 0) {
-        sampleNumber = config->num_replicates;
-    }
-    if (config->num_sites > 0) {
-        nSites = config->num_sites;
-    }
-    if (config->has_seed) {
-        // fprintf(stderr, "DEBUG: Applying seeds from YAML: %d, %d\n", config->seed1, config->seed2);
-        seed1 = config->seed1;
-        seed2 = config->seed2;
-        // fprintf(stderr, "DEBUG: Seeds after application: %ld, %ld\n", seed1, seed2);
-    }
-    if (config->effective_popn_size > 0) {
-        EFFECTIVE_POPN_SIZE = config->effective_popn_size;
-    }
-    
-    // Apply genetics parameters from YAML
-    if (config->has_genetics) {
-        if (config->theta > 0) {
-            // fprintf(stderr, "DEBUG: Applying theta from YAML: %f\n", config->theta);
-            theta = config->theta;
+    if (cfg != NULL) {
+        if (cfg->mutation_rate < 0) {
+            fprintf(stderr,
+                "Error parsing config: mutation_rate (%g) must be >= 0\n",
+                cfg->mutation_rate);
+            return EXIT_FAILURE;
         }
-        if (config->rho > 0) {
-            rho = config->rho;
+        theta = cfg->mutation_rate;
+        if (cfg->recombination_rate < 0) {
+            fprintf(stderr,
+                "Error parsing config: recombination_rate (%g) must be >= 0\n",
+                cfg->recombination_rate);
+            return EXIT_FAILURE;
         }
-        if (config->gamma_co_ratio_mode) {
-            gammaCoRatio = config->gamma_co_ratio;
+        rho = cfg->recombination_rate;
+        if (cfg->crossover_ratio < 0) {
+            fprintf(stderr,
+                "Error parsing config: crossover_ratio (%g) must be >= 0\n",
+                cfg->crossover_ratio);
+            return EXIT_FAILURE;
+        }
+        if (cfg->gene_conversion_rate < 0) {
+            fprintf(stderr,
+                "Error parsing config: gene_conversion_rate (%g) must be >= 0\n",
+                cfg->gene_conversion_rate);
+            return EXIT_FAILURE;
+        }
+        if (cfg->gene_conversion_tract_length < 0) {
+            fprintf(stderr,
+                "Error parsing config: gene_conversion_tract_length (%d) "
+                "must be >= 0\n", cfg->gene_conversion_tract_length);
+            return EXIT_FAILURE;
+        }
+        if (cfg->crossover_ratio > 0) {
+            if (cfg->gene_conversion_rate > 0) {
+                fprintf(stderr,
+                  "Error parsing config: `gene_conversion_rate` "
+                  "and `crossover_ratio` cannot both be set\n"
+                );
+                return EXIT_FAILURE;
+            }
             gammaCoRatioMode = 1;
-            gcMean = config->gc_mean;
-            // Gene conversion rate will be calculated as rho * gammaCoRatio later
-        } else if (config->gamma > 0) {
-            my_gamma = config->gamma;
-            gcMean = config->gc_mean;
+            gammaCoRatio = cfg->crossover_ratio;
+        }
+        if (cfg->gene_conversion_rate > 0) {
+            my_gamma = cfg->gene_conversion_rate;
+        }
+        if (cfg->gene_conversion_tract_length > 0) {
+            gcMean = cfg->gene_conversion_tract_length;
         }
     }
-    
-    // Apply population configuration from YAML
-    if (config->has_populations) {
-        npops = config->npops;
-        for (int i = 0; i < npops && i < MAXPOPS; i++) {
-            sampleSizes[i] = config->sample_sizes[i];
+    return EXIT_SUCCESS;
+}
+
+int parse_demography_block(struct demography_config *cfg)
+{
+    extern int sampleSize;
+    extern int sampleSizes[MAXPOPS];
+    extern int npops;
+    extern int migFlag;
+    extern int EFFECTIVE_POPN_SIZE;
+    extern int eventNumber, eventsCapacity;
+    extern struct event *events;
+    extern double migMatConst[MAXPOPS][MAXPOPS];
+    extern double *currentSize;
+    extern double tDiv;
+    if (cfg != NULL) {
+        npops = cfg->num_demes;
+        assert(cfg->num_demes > 0);
+        int deme_sum = 0;
+        for (int i = 0; i < cfg->num_demes; ++i) {
+            int n = cfg->deme_sample_size[i];
+            if (n < 0) {
+                fprintf(stderr,
+                    "Error parsing config: deme_sample_size[%d] (%d) "
+                    "must be >= 0\n", i, n);
+                return EXIT_FAILURE;
+            }
+            sampleSizes[i] = n;
+            currentSize[i] = 1.0;
+            deme_sum += n;
         }
-    }
-    
-    // Apply selection parameters from YAML
-    if (config->has_selection) {
-        if (config->alpha > 0) {
-            alpha = config->alpha;
+        /* initialize() creates sum(sampleSizes) sample nodes but sets
+         * alleleNumber to sampleSize; a mismatch leaves popLists[] and
+         * nodes[] out of sync and later corrupts coalescence. */
+        if (deme_sum != sampleSize) {
+            fprintf(stderr,
+                "Error parsing config: sum of deme_sample_size (%d) does "
+                "not match sample_size (%d)\n", deme_sum, sampleSize);
+            return EXIT_FAILURE;
         }
-        if (config->sweep_site >= 0) {
-            sweepSite = config->sweep_site;
+        /* effective_population_size is optional; cyaml zero-fills, so 0
+         * means "not set". Reject any explicitly invalid value (negative,
+         * NaN) before falling through to the "is set" guard. */
+        if (cfg->effective_population_size < 0 ||
+            isnan(cfg->effective_population_size)) {
+            fprintf(stderr,
+                "Error parsing config: effective_population_size (%g) "
+                "must be >= 0\n", cfg->effective_population_size);
+            return EXIT_FAILURE;
         }
-        if (config->tau > 0) {
-            tau = config->tau;
+        if (cfg->effective_population_size > 0) {
+            /* EFFECTIVE_POPN_SIZE is int; cmdline `-N` uses strtol with a
+             * range check. Mirror that here so a fractional or out-of-range
+             * YAML value is rejected loudly rather than silently truncated. */
+            double ne = cfg->effective_population_size;
+            if (ne > (double)INT_MAX) {
+                fprintf(stderr,
+                    "Error parsing config: effective_population_size (%g) "
+                    "exceeds INT_MAX (%d)\n", ne, INT_MAX);
+                return EXIT_FAILURE;
+            }
+            if (ne != (double)(long)ne) {
+                fprintf(stderr,
+                    "Error parsing config: effective_population_size (%g) "
+                    "must be an integer\n", ne);
+                return EXIT_FAILURE;
+            }
+            EFFECTIVE_POPN_SIZE = (int)ne;
         }
-        sweepMode = config->sweep_mode;
-        if (config->soft_sweep_mode) {
-            softSweepMode = config->soft_sweep_mode;
-            if (config->f0 > 0) {
-                f0 = config->f0;
+        /* parse demographic events; these will be sorted into time order later */
+        if (cfg->demographic_events != NULL) {
+            if (cfg->demes_filename != NULL) {
+                fprintf(stderr, "Cannot use demographic_events if demes_filename is provided\n");
+                return EXIT_FAILURE;
+            }
+            struct demographic_events *dmo = cfg->demographic_events;
+            if (dmo->num_ancient_samples > 0) {
+                /* FIXME: not sure how to implement parsing */
+                /* FIXME: are these counted in deme_sample_sizes? */
+                fprintf(stderr, "Ancient sample events not yet implemented\n");
+                return EXIT_FAILURE;
+            }
+            /* Time-varying migration rate changes are not implemented in the
+             * main event loop yet (see discoalFunctions.c); reject rather than
+             * silently dropping them. */
+            if (dmo->num_migration_rate_changes > 0) {
+                fprintf(stderr,
+                    "Error parsing config: migration_rate_changes are not yet "
+                    "implemented (no handler in the main event loop)\n");
+                return EXIT_FAILURE;
+            }
+            /* Times in YAML follow the same convention as the command line:
+             * the user supplies them in 2N units and the parser scales by 2 to
+             * convert to discoal's internal 4N units. Keep this in sync with
+             * `-en`, `-ed`, and `-ws` time scaling in getParameters(). */
+            for (int i = 0; i < dmo->num_population_size_changes; ++i) {
+                struct population_size_change *psc = &dmo->population_size_changes[i];
+                if (check_pop_index("population_size_changes", "population",
+                        i, psc->population, cfg->num_demes) != EXIT_SUCCESS ||
+                    check_nonneg_double("population_size_changes", "time",
+                        i, psc->time) != EXIT_SUCCESS ||
+                    check_positive_double("population_size_changes", "size",
+                        i, psc->size) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
+                ensureEventsCapacity();
+                events[eventNumber].type = 'n';
+                events[eventNumber].time = psc->time * 2.0;
+                events[eventNumber].popID = psc->population;
+                events[eventNumber].popnSize = psc->size;
+                eventNumber++;
+            }
+            for (int i = 0; i < dmo->num_population_splits; ++i) {
+                struct population_split *split = &dmo->population_splits[i];
+                if (check_pop_index("population_splits", "derived",
+                        i, split->derived, cfg->num_demes) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
+                if (check_pop_index("population_splits", "ancestral",
+                        i, split->ancestral, cfg->num_demes) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
+                if (split->derived == split->ancestral) {
+                    fprintf(stderr,
+                        "Error parsing config: population_splits[%d] derived "
+                        "(%d) and ancestral (%d) must be distinct\n",
+                        i, split->derived, split->ancestral);
+                    return EXIT_FAILURE;
+                }
+                if (check_positive_double("population_splits", "time",
+                        i, split->time) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
+                ensureEventsCapacity();
+                events[eventNumber].type = 'p';
+                events[eventNumber].time = split->time * 2.0;
+                events[eventNumber].popID = split->derived;
+                events[eventNumber].popID2 = split->ancestral;
+                eventNumber++;
+                tDiv = split->time;  /* mark merger model active */
             }
         }
-        
-        // Add sweep event to events array
-        ensureEventsCapacity();
-        events[eventNumber].time = tau;
-        events[eventNumber].type = 's'; // sweep event
-        eventNumber++;
+        /* parse migration matrix */
+        if (cfg->migration_matrix != NULL) {
+            if (cfg->demes_filename != NULL) {
+                fprintf(stderr, "Cannot use migration_matrix if demes_filename "
+                    "is provided\n");
+                return EXIT_FAILURE;
+            }
+            if (cfg->num_migration_matrix_rows != cfg->num_demes) {
+                fprintf(stderr, "Number of migration matrix rows does not "
+                    "match number of demes\n");
+                return EXIT_FAILURE;
+            }
+            for (int i = 0; i < cfg->num_migration_matrix_rows; ++i) {
+                struct migration_matrix_row *row = &cfg->migration_matrix[i];
+                if (row->num_cols != cfg->num_demes) {
+                    fprintf(stderr, "Number of elements in migration matrix row "
+                        "does not match number of demes\n");
+                    return EXIT_FAILURE;
+                }
+                /* Self-migration is not meaningful in a coalescent; cmdline
+                 * `-M` forces the diagonal to zero. Reject rather than
+                 * silently massage the user's input. */
+                for (int j = 0; j < row->num_cols; ++j) {
+                    if (j == i) {
+                        if (row->rates[j] != 0.0) {
+                            fprintf(stderr,
+                                "Error parsing config: migration_matrix diagonal "
+                                "must be zero (row %d column %d = %g)\n",
+                                i, j, row->rates[j]);
+                            return EXIT_FAILURE;
+                        }
+                    } else if (row->rates[j] < 0.0) {
+                        fprintf(stderr,
+                            "Error parsing config: migration_matrix rate "
+                            "(row %d column %d = %g) must be >= 0\n",
+                            i, j, row->rates[j]);
+                        return EXIT_FAILURE;
+                    }
+                    migMatConst[i][j] = row->rates[j];
+                }
+            }
+            migFlag = 1;  /* set migration mode */
+        }
+        /* parse demes YAML into events */
+        if (cfg->demes_filename != NULL) {
+            int ret = loadDemesFile(cfg->demes_filename, &events, &eventNumber, 
+                &eventsCapacity, currentSize, &npops, sampleSizes, EFFECTIVE_POPN_SIZE);
+            if (ret != 0) {
+                fprintf(stderr, "Error: Failed to load demes file '%s' from YAML config\n", 
+                    cfg->demes_filename);
+                return EXIT_FAILURE;
+            }
+            fprintf(stderr, 
+                "Loaded %d populations and %d events from demes file '%s' "
+                "(via YAML config)\n", npops, eventNumber - 1, 
+                cfg->demes_filename);
+        }
     }
-    
-    // Apply explicit demographic events (only if not using demes)
-    if (!config->use_demes && config->num_explicit_events > 0) {
-        for (int i = 0; i < config->num_explicit_events; i++) {
+    return EXIT_SUCCESS;
+}
+
+int parse_selection_block(struct selection_config *cfg) 
+{
+    extern double alpha, sweepSite, tau, f0, uA;
+    extern double partialSweepFinalFreq, recurSweepRate;
+    extern int recurSweepMode, partialSweepMode, softSweepMode;
+    extern char sweepMode;
+    extern int eventNumber, eventsCapacity;
+    extern struct event *events;
+    if (cfg != NULL) {
+        switch (cfg->sweep_mode) {
+            case SWEEP_STOCHASTIC:
+                sweepMode = 's';
+                break;
+            case SWEEP_DETERMINISTIC:
+                sweepMode = 'd';
+                break;
+            case SWEEP_NEUTRAL:
+                sweepMode = 'N';
+                break;
+            default:
+                break;
+        } /* FIXME: need to add recurrent sweep modes */
+        if (cfg->selection_coefficient < 0) {
+            fprintf(stderr,
+                "Error parsing config: selection_coefficient (%g) "
+                "must be >= 0\n", cfg->selection_coefficient);
+            return EXIT_FAILURE;
+        }
+        if (cfg->sweep_mode == SWEEP_NEUTRAL && cfg->selection_coefficient > 0) {
+            fprintf(stderr,
+                "Error parsing config: selection_coefficient (%g) must be 0 "
+                "when sweep_mode is 'neutral'\n", cfg->selection_coefficient);
+            return EXIT_FAILURE;
+        }
+        alpha = cfg->selection_coefficient;
+        if (cfg->sweep_position < 0.0 || cfg->sweep_position > 1.0) {
+            fprintf(stderr,
+                "Error parsing config: sweep_position (%g) must be in [0, 1]\n",
+                cfg->sweep_position);
+            return EXIT_FAILURE;
+        }
+        sweepSite = cfg->sweep_position;
+        if (cfg->fixation_time_ago > 0) {
+            /* User supplies tau in 2N units (matching `-ws`); scale to 4N. */
+            tau = cfg->fixation_time_ago * 2.0;
+        }
+        if (cfg->initial_frequency < 0 || cfg->initial_frequency >= 1.0) {
+            fprintf(stderr,
+                "Error parsing config: initial_frequency (%g) "
+                "must be in (0, 1)\n", cfg->initial_frequency);
+            return EXIT_FAILURE;
+        }
+        if (cfg->initial_frequency > 0) {
+            f0 = cfg->initial_frequency;
+            softSweepMode = 1;
+        }
+        if (cfg->final_frequency < 0 || cfg->final_frequency >= 1.0) {
+            fprintf(stderr,
+                "Error parsing config: final_frequency (%g) "
+                "must be in (0, 1)\n", cfg->final_frequency);
+            return EXIT_FAILURE;
+        }
+        if (cfg->final_frequency > 0) {
+            partialSweepFinalFreq = cfg->final_frequency;
+            partialSweepMode = 1;
+        }
+        if (softSweepMode && partialSweepMode &&
+            cfg->initial_frequency >= cfg->final_frequency) {
+            fprintf(stderr,
+                "Error parsing config: initial_frequency (%g) must be less "
+                "than final_frequency (%g) when both are set\n",
+                cfg->initial_frequency, cfg->final_frequency);
+            return EXIT_FAILURE;
+        }
+        if (cfg->beneficial_mutation_rate < 0) {
+            fprintf(stderr,
+                "Error parsing config: beneficial_mutation_rate (%g) "
+                "must be >= 0\n", cfg->beneficial_mutation_rate);
+            return EXIT_FAILURE;
+        }
+        if (cfg->beneficial_mutation_rate > 0) {
+            uA = cfg->beneficial_mutation_rate;
+        }
+        if (cfg->recurrent_sweep_rate < 0) {
+            fprintf(stderr,
+                "Error parsing config: recurrent_sweep_rate (%g) "
+                "must be >= 0\n", cfg->recurrent_sweep_rate);
+            return EXIT_FAILURE;
+        }
+        if (cfg->recurrent_sweep_rate > 0) {
+            recurSweepRate = cfg->recurrent_sweep_rate;
+            recurSweepMode = 1;
+        }
+
+        if (cfg->fixation_time_ago > 0 && cfg->recurrent_sweep_rate > 0) {
+            fprintf(stderr,
+                "Error parsing config: fixation_time_ago and "
+                "recurrent_sweep_rate cannot both be set\n");
+            return EXIT_FAILURE;
+        }
+
+        /* Single sweep (matching `-ws`/`-wd`/`-wn`) requires fixation_time_ago
+         * and emits an `'s'` event at tau. Recurrent sweeps (matching `-R`)
+         * are driven by recurSweepMode + recurSweepRate alone and do not
+         * produce an event. */
+        if (cfg->recurrent_sweep_rate <= 0) {
+            if (cfg->fixation_time_ago <= 0) {
+                fprintf(stderr,
+                    "Error parsing config: selection block requires "
+                    "fixation_time_ago > 0 unless recurrent_sweep_rate "
+                    "is set\n");
+                return EXIT_FAILURE;
+            }
             ensureEventsCapacity();
-            events[eventNumber] = config->explicit_events[i];
+            events[eventNumber].time = tau;
+            events[eventNumber].type = 's';
             eventNumber++;
         }
     }
-    
-    // Handle demes file if specified
-    if (config->use_demes && strlen(config->demes_file) > 0) {
-        int ret = loadDemesFile(config->demes_file, &events, &eventNumber, &eventsCapacity, 
-                               currentSize, &npops, sampleSizes, EFFECTIVE_POPN_SIZE);
-        if (ret != 0) {
-            fprintf(stderr, "Error: Failed to load demes file '%s' from YAML config\n", config->demes_file);
-            return -1;
+    return EXIT_SUCCESS;
+}
+
+int parse_output_block(struct output_config *cfg) 
+{
+    extern int tskitOutputMode, minimalTreeSeq, hidePartialSNP;
+    extern int finiteOutputFlag;
+    extern char tskitOutputFilename[1024];
+    if (cfg != NULL) {
+        switch (cfg->output_type) {
+            case OUTPUT_HAPLOTYPE:
+                // FIXME: it is not clear what should be done here
+                break;
+            case OUTPUT_SNP_ARRAY:
+                // FIXME: it is not clear what should be done here
+                break;
+            case OUTPUT_TREE_SEQN:
+                if (cfg->tree_sequence_filename == NULL ||
+                    cfg->tree_sequence_filename[0] == '\0') {
+                    fprintf(stderr,
+                        "Must provide non-empty tree_sequence_filename if "
+                        "using output mode tree_sequence\n");
+                    return EXIT_FAILURE;
+                }
+                tskitOutputMode = 1;
+                break;
+            default:
+                break;
         }
-        
-        fprintf(stderr, "Loaded %d populations and %d events from demes file '%s' (via YAML config)\n", 
-                npops, eventNumber - 1, config->demes_file);
+        if (cfg->finite_output) {
+            finiteOutputFlag = 1;
+        }
+        if (cfg->hide_partial_snp) {
+            hidePartialSNP = 1;
+        }
+        if (cfg->unsimplified_tree_sequence) {
+            minimalTreeSeq = 0;
+        }
+        if (cfg->tree_sequence_filename != NULL) {
+            if (cfg->output_type != OUTPUT_TREE_SEQN) {
+                fprintf(stderr, 
+                    "Can only provide tree_sequence_filename if using "
+                    "output mode tree_sequence\n");
+                return EXIT_FAILURE;
+            }
+            // FIXME: safer way to do this?
+            strncpy(tskitOutputFilename, cfg->tree_sequence_filename, 
+                sizeof(tskitOutputFilename) - 1);
+            tskitOutputFilename[sizeof(tskitOutputFilename) - 1] = '\0';
+        }
     }
+    return EXIT_SUCCESS;
+}
 
-    // Handle tree sequence output
-    if (config->tskit_output && strlen(config->tskit_output_filename) > 0) {
-        tskitOutputMode = 1;
-        strncpy(tskitOutputFilename, config->tskit_output_filename, sizeof(tskitOutputFilename) - 1);
-        tskitOutputFilename[sizeof(tskitOutputFilename) - 1] = '\0';
-        // FIXME: is buffer size large enough for arbitrary paths? 
-        // Should these be initialized with size PATH_MAX? (use ifndef to define if not from system)
-        minimalTreeSeq = config->minimal_tree_seq;
-        fprintf(stderr, "Writing tree sequence to file '%s' (via YAML config)\n", tskitOutputFilename);
+int apply_yaml_config(struct discoal_config *config)
+{
+    int ret = EXIT_SUCCESS;
+    assert(config != NULL);
+    ret = parse_simulation_block(config->simulation);
+    if (ret != EXIT_SUCCESS) { goto out; }
+    ret = parse_genetics_block(config->genetics);
+    if (ret != EXIT_SUCCESS) { goto out; }
+    ret = parse_demography_block(config->demography);
+    if (ret != EXIT_SUCCESS) { goto out; }
+    ret = parse_selection_block(config->selection);
+    if (ret != EXIT_SUCCESS) { goto out; }
+    ret = parse_output_block(config->output);
+    if (ret != EXIT_SUCCESS) { goto out; }
+out:
+    cyaml_free(&cyaml_config, &discoal_config_schema, config, 0);
+    return ret;
+}
+
+int load_yaml_config(const char *yaml_path, struct discoal_config **config)
+{
+    int err;
+    assert(*config == NULL);
+    err = cyaml_load_file(yaml_path, &cyaml_config,
+        &discoal_config_schema, (void **) config, NULL);
+    if (err != CYAML_OK) {
+        fprintf(stderr, "ERROR: %s\n", cyaml_strerror(err));
+        cyaml_free(&cyaml_config, &discoal_config_schema, *config, 0);
+        return EXIT_FAILURE;
     }
-    // FIXME: other output options from YAML are currently ignored
-
-    
-    return 0;
+    /* cyaml returns OK with a NULL top-level when the file is empty or
+     * contains only comments; downstream parsers assume non-NULL. */
+    if (*config == NULL) {
+        fprintf(stderr, "Error parsing config: YAML file '%s' is empty or "
+            "contains no top-level mapping\n", yaml_path);
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
 }

@@ -30,7 +30,6 @@
 #include "segmentPool.h"
 #include "demesInterface.h"
 #include "configInterface.h"
-#include "configInterface_alt.h"
 
 
 

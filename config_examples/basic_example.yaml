@@ -1,5 +1,5 @@
 # Simulates a single population with mutation and recombination.
-# Equivalent to: TODO
+# Equivalent to: discoal 10 2 10000 -t 0.1 -r 0.1 -d 12345 67890
 
 simulation:
   sample_size: 10

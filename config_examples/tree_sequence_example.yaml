@@ -1,5 +1,5 @@
 # Simulates a simple population with mutation and recombination, outputing replicates to tree sequences.
-# Equivalent to: TODO
+# Equivalent to: discoal 20 5 10000 -t 10.0 -r 8.0 -ts tree_sequence_example.trees -d 12345 67890
 
 simulation:
   sample_size: 20

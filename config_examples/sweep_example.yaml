@@ -1,6 +1,6 @@
 # Simulates a soft selective sweep halfway along the contig that ended at
 # frequency 0.9 some time ago.
-# Equivalent to: TODO CLI
+# Equivalent to: discoal 15 10 50000 -t 20.0 -r 15.0 -ws 1.0 -a 10.0 -x 0.5 -f 0.1 -c 0.9 -d 42 54321
 
 simulation:
   sample_size: 15

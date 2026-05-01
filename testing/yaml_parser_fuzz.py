@@ -10,7 +10,7 @@ Usage:
 
 This is exploratory, not deterministic in scope. Not run by CI. Findings
 should be triaged by hand and, when reproducible, promoted to a
-`config_examples/debug_yaml/bug_*.yaml` reproducer.
+`testing/debug_yaml/bug_*.yaml` reproducer.
 """
 import argparse
 import copy
