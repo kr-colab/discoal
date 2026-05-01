@@ -622,6 +622,37 @@ void test_initializeShapesFromGlobals_copies_migMatConst(void) {
     TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.0, migShape[1][1].anchor_value);
 }
 
+void test_allShapesConstant_default_state_is_true(void) {
+    /* setUp resets all shapes to SHAPE_CONSTANT */
+    npops = 3;
+    TEST_ASSERT_EQUAL(1, allShapesConstant());
+}
+
+void test_allShapesConstant_false_when_a_pop_is_exponential(void) {
+    npops = 3;
+    popShape[1].type = SHAPE_EXPONENTIAL;
+    TEST_ASSERT_EQUAL(0, allShapesConstant());
+}
+
+void test_allShapesConstant_false_when_a_pop_is_linear(void) {
+    npops = 3;
+    popShape[2].type = SHAPE_LINEAR;
+    TEST_ASSERT_EQUAL(0, allShapesConstant());
+}
+
+void test_allShapesConstant_false_when_a_pair_is_exponential(void) {
+    npops = 2;
+    migShape[0][1].type = SHAPE_EXPONENTIAL;
+    TEST_ASSERT_EQUAL(0, allShapesConstant());
+}
+
+void test_allShapesConstant_ignores_pops_outside_npops(void) {
+    /* Shapes for pops 5..MAXPOPS that are not in use should not affect the answer */
+    npops = 2;
+    popShape[5].type = SHAPE_EXPONENTIAL;
+    TEST_ASSERT_EQUAL(1, allShapesConstant());
+}
+
 #ifndef TEST_RUNNER_MODE
 int main(void) {
     UNITY_BEGIN();
@@ -671,6 +702,11 @@ int main(void) {
     RUN_TEST(test_drawWaitingTimeSize_linear_zero_crossing_stress);
     RUN_TEST(test_initializeShapesFromGlobals_copies_currentSize);
     RUN_TEST(test_initializeShapesFromGlobals_copies_migMatConst);
+    RUN_TEST(test_allShapesConstant_default_state_is_true);
+    RUN_TEST(test_allShapesConstant_false_when_a_pop_is_exponential);
+    RUN_TEST(test_allShapesConstant_false_when_a_pop_is_linear);
+    RUN_TEST(test_allShapesConstant_false_when_a_pair_is_exponential);
+    RUN_TEST(test_allShapesConstant_ignores_pops_outside_npops);
     return UNITY_END();
 }
 #endif

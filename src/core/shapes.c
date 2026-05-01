@@ -164,3 +164,14 @@ void initializeShapesFromGlobals(void) {
         }
     }
 }
+
+int allShapesConstant(void) {
+    extern int npops;
+    for (int i = 0; i < npops; i++) {
+        if (popShape[i].type != SHAPE_CONSTANT) return 0;
+        for (int j = 0; j < npops; j++) {
+            if (migShape[i][j].type != SHAPE_CONSTANT) return 0;
+        }
+    }
+    return 1;
+}
