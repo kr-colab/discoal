@@ -1398,9 +1398,15 @@ void usage(){
 	fprintf(stderr,"\t -gr conversionToCrossoverRatio tractLengthMean (gene conversion where initiation rate = rho*conversionToCrossoverRatio)\n");
 	fprintf(stderr,"\t -p npops sampleSize1 sampleSize2 etc.\n");
 	fprintf(stderr,"\t -D demesFile.yaml (load demographic model from demes format file)\n");
-	fprintf(stderr,"\t -en time popnID size (changes size of popID)\n");	
-	fprintf(stderr,"\t -ed time popnID1 popnID2 (joins popnID1 into popnID2)\n");
+	fprintf(stderr,"\t -en time popnID size (changes size of popnID)\n");
+	fprintf(stderr,"\t -eg time popnID alpha (sets popnID to exponential growth at forward-time per-generation rate alpha; positive alpha = past was smaller)\n");
+	fprintf(stderr,"\t -eG time alpha (-eg applied to all populations)\n");
+	fprintf(stderr,"\t -el time popnID gamma (sets popnID to linear-in-time size profile with forward-time slope gamma)\n");
+	fprintf(stderr,"\t -eL time gamma (-el applied to all populations)\n");
+	fprintf(stderr,"\t -ed time popnID1 popnID2 (joins popnID1 into popnID2; -ej is an alias)\n");
 	fprintf(stderr,"\t -ea time daughterPopnID founderPopnID1 founderPopnID2 admixProp (admixture-- back in time daughterPopnID into two founders)\n");
+	fprintf(stderr,"\t -em time popnID1 popnID2 migRate (changes migration rate from popnID1 to popnID2 starting at time)\n");
+	fprintf(stderr,"\t -eM time migRate (sets all off-diagonal migration rates to migRate starting at time)\n");
 	
 	fprintf(stderr,"\t -ws tau (sweep happend tau generations ago- stochastic sweep)\n");  
 	fprintf(stderr,"\t -wd tau (sweep happend tau generations ago- deterministic sweep)\n"); 
