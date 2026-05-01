@@ -27,8 +27,17 @@ double sizeAt(int popID, double t) {
 }
 
 double migAt(int srcPopID, int dstPopID, double t) {
-    (void)srcPopID; (void)dstPopID; (void)t;
-    return 0.0;
+    Shape *s = &migShape[srcPopID][dstPopID];
+    switch (s->type) {
+        case SHAPE_CONSTANT:
+            return s->anchor_value;
+        case SHAPE_EXPONENTIAL:
+            return s->anchor_value * exp(-s->rate_param * (t - s->anchor_time));
+        case SHAPE_LINEAR:
+            return s->anchor_value - s->rate_param * (t - s->anchor_time);
+        default:
+            return 0.0;
+    }
 }
 
 double integratedHazardSize(int popID, double t0, double T, int k) {

@@ -118,6 +118,51 @@ void test_sizeAt_linear_grows_backward_with_negative_gamma(void) {
     TEST_ASSERT_DOUBLE_WITHIN(1e-12, 5.0, sizeAt(0, 4.0));   /* 1 - (-1)*4 */
 }
 
+void test_migAt_constant(void) {
+    migShape[0][1].type = SHAPE_CONSTANT;
+    migShape[0][1].anchor_value = 0.5;
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.5, migAt(0, 1, 0.0));
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.5, migAt(0, 1, 100.0));
+}
+
+void test_migAt_exponential(void) {
+    /* m(t) = 1.0 * exp(-0.5 * (t - 0)). At t=2: exp(-1). */
+    migShape[0][1].type = SHAPE_EXPONENTIAL;
+    migShape[0][1].anchor_value = 1.0;
+    migShape[0][1].rate_param = 0.5;
+    migShape[0][1].anchor_time = 0.0;
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, exp(-1.0), migAt(0, 1, 2.0));
+}
+
+void test_migAt_linear_declines_backward_with_positive_delta(void) {
+    /* delta > 0 = forward growth = backward decline.
+     * m(t) = 0.5 - 0.05*t. At t=4: 0.5 - 0.2 = 0.3. */
+    migShape[0][1].type = SHAPE_LINEAR;
+    migShape[0][1].anchor_value = 0.5;
+    migShape[0][1].rate_param = 0.05;
+    migShape[0][1].anchor_time = 0.0;
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.3, migAt(0, 1, 4.0));
+}
+
+void test_migAt_linear_grows_backward_with_negative_delta(void) {
+    /* delta < 0 = forward decline = backward growth.
+     * m(t) = 0.1 - (-0.05)*t = 0.1 + 0.05 t. At t=10: 0.6. */
+    migShape[0][1].type = SHAPE_LINEAR;
+    migShape[0][1].anchor_value = 0.1;
+    migShape[0][1].rate_param = -0.05;
+    migShape[0][1].anchor_time = 0.0;
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.6, migAt(0, 1, 10.0));
+}
+
+void test_migAt_pair_isolation(void) {
+    migShape[0][1].type = SHAPE_CONSTANT;
+    migShape[0][1].anchor_value = 0.3;
+    migShape[1][0].type = SHAPE_CONSTANT;
+    migShape[1][0].anchor_value = 0.7;
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.3, migAt(0, 1, 0.0));
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.7, migAt(1, 0, 0.0));
+}
+
 #ifndef TEST_RUNNER_MODE
 int main(void) {
     UNITY_BEGIN();
@@ -130,6 +175,11 @@ int main(void) {
     RUN_TEST(test_sizeAt_linear_at_anchor);
     RUN_TEST(test_sizeAt_linear_declines_backward_with_positive_gamma);
     RUN_TEST(test_sizeAt_linear_grows_backward_with_negative_gamma);
+    RUN_TEST(test_migAt_constant);
+    RUN_TEST(test_migAt_exponential);
+    RUN_TEST(test_migAt_linear_declines_backward_with_positive_delta);
+    RUN_TEST(test_migAt_linear_grows_backward_with_negative_delta);
+    RUN_TEST(test_migAt_pair_isolation);
     return UNITY_END();
 }
 #endif
