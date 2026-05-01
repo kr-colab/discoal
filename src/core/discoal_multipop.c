@@ -321,6 +321,36 @@ int main(int argc, const char * argv[]){
 					}
 				}
 				break;
+				case 'm':
+				currentTime = events[j].time;
+				migShape[events[j].popID2][events[j].popID].type = SHAPE_CONSTANT;
+				migShape[events[j].popID2][events[j].popID].anchor_value = events[j].popnSize;
+				migShape[events[j].popID2][events[j].popID].rate_param = 0.0;
+				migShape[events[j].popID2][events[j].popID].anchor_time = currentTime;
+				/* Run the inter-event interval as 'n' / 'g' / 'l' do. */
+				if(activeSweepFlag == 0){
+					if(recurSweepMode == 0){
+						currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+					}
+				}
+				else{
+					if(recurSweepMode == 0){
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
+								currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+							currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
+								currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+							currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+					}
+				}
+				break;
 				case 's':
 				assert(activeSweepFlag == 0);
 				currentTime = events[j].time;
