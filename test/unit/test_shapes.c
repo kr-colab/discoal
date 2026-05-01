@@ -51,11 +51,54 @@ void test_sizeAt_constant_per_population(void) {
     TEST_ASSERT_DOUBLE_WITHIN(1e-12, 4.0, sizeAt(2, 0.0));
 }
 
+void test_sizeAt_exponential_at_anchor_time(void) {
+    popShape[0].type = SHAPE_EXPONENTIAL;
+    popShape[0].anchor_value = 2.0;
+    popShape[0].rate_param = 0.5;
+    popShape[0].anchor_time = 10.0;
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 2.0, sizeAt(0, 10.0));
+}
+
+void test_sizeAt_exponential_decays_backward(void) {
+    /* alpha > 0 means N decreases as t grows past anchor_time */
+    popShape[0].type = SHAPE_EXPONENTIAL;
+    popShape[0].anchor_value = 1.0;
+    popShape[0].rate_param = 0.5;
+    popShape[0].anchor_time = 0.0;
+    /* t=2: N = 1 * exp(-0.5*2) = exp(-1) */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, exp(-1.0), sizeAt(0, 2.0));
+    /* t=4: N = exp(-2) */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, exp(-2.0), sizeAt(0, 4.0));
+}
+
+void test_sizeAt_exponential_grows_forward(void) {
+    /* For t < anchor_time, N is larger */
+    popShape[0].type = SHAPE_EXPONENTIAL;
+    popShape[0].anchor_value = 1.0;
+    popShape[0].rate_param = 0.5;
+    popShape[0].anchor_time = 5.0;
+    /* t=3: N = 1 * exp(-0.5 * (3-5)) = exp(1) */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, exp(1.0), sizeAt(0, 3.0));
+}
+
+void test_sizeAt_exponential_zero_alpha_equals_constant(void) {
+    popShape[0].type = SHAPE_EXPONENTIAL;
+    popShape[0].anchor_value = 3.0;
+    popShape[0].rate_param = 0.0;
+    popShape[0].anchor_time = 0.0;
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 3.0, sizeAt(0, 0.0));
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 3.0, sizeAt(0, 1e6));
+}
+
 #ifndef TEST_RUNNER_MODE
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_sizeAt_constant_returns_anchor);
     RUN_TEST(test_sizeAt_constant_per_population);
+    RUN_TEST(test_sizeAt_exponential_at_anchor_time);
+    RUN_TEST(test_sizeAt_exponential_decays_backward);
+    RUN_TEST(test_sizeAt_exponential_grows_forward);
+    RUN_TEST(test_sizeAt_exponential_zero_alpha_equals_constant);
     return UNITY_END();
 }
 #endif
