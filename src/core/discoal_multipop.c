@@ -230,6 +230,10 @@ int main(int argc, const char * argv[]){
 				case 'n':
 				currentTime = events[j].time;
 				currentSize[events[j].popID] = events[j].popnSize;
+				popShape[events[j].popID].type = SHAPE_CONSTANT;
+				popShape[events[j].popID].anchor_value = events[j].popnSize;
+				popShape[events[j].popID].rate_param = 0.0;
+				popShape[events[j].popID].anchor_time = events[j].time;
 				//for(i=0;i<npops;i++)
 				//	for(j=0;j<npops;j++) printf("%f\n",migMat[i][j]);
 				if(activeSweepFlag == 0){
