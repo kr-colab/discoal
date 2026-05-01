@@ -1915,13 +1915,19 @@ complications like changing population size, or soft sweeps, etc
 returns the acceptance probability of the trajectory */
 double proposeTrajectory(int currentEventNumber, float *currentTrajectory, double *sizeRatio, char sweepMode, \
 double initialFreq, double *finalFreq, double alpha, double f0, double currentTime)
-{	
+{
 	double tInc, tIncOrig, minF,ttau, N;
 	double N_0 = (double) EFFECTIVE_POPN_SIZE;
 	double Nmax, localNextTime,localCurrentTime, currentSizeRatio;
 	int i, insweepphase;
 	long int j;
 	double x;
+
+	/* Save popShape state; we'll mutate it as we walk events forward to track
+	 * 'n' and 'g' events, then restore at function exit so the caller's view
+	 * is unchanged. */
+	Shape saved_popShape[MAXPOPS];
+	memcpy(saved_popShape, popShape, sizeof(saved_popShape));
 
 	// For sweep simulations, write directly to a temporary file
 	char tempFilename[256];
@@ -1956,9 +1962,24 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			localNextTime = events[i+1].time;
 		}
 		if(events[i].type == 'n'){
-			currentSizeRatio = events[i].popnSize;
-			N = floor(N_0 *events[i].popnSize);
+			popShape[events[i].popID].type = SHAPE_CONSTANT;
+			popShape[events[i].popID].anchor_value = events[i].popnSize;
+			popShape[events[i].popID].rate_param = 0.0;
+			popShape[events[i].popID].anchor_time = events[i].time;
+			currentSizeRatio = events[i].popnSize;  /* legacy cache for inner loop */
+			N = floor(N_0 * events[i].popnSize);
 			if(currentSizeRatio > Nmax) Nmax = currentSizeRatio;
+		}
+		if(events[i].type == 'g'){
+			popShape[events[i].popID].type = SHAPE_EXPONENTIAL;
+			popShape[events[i].popID].anchor_value = sizeAt(events[i].popID, events[i].time);
+			popShape[events[i].popID].rate_param = events[i].popnSize;
+			popShape[events[i].popID].anchor_time = events[i].time;
+			/* Approximate Nmax tracking under EXP: sample sizeRatio at the
+			 * event time. A future refinement could compute the maximum
+			 * over the interval analytically. */
+			double sr_now = sizeAt(events[i].popID, events[i].time);
+			if(sr_now > Nmax) Nmax = sr_now;
 		}
 		if(minF < 1.0/(2.*N)) minF = 1.0/(2.*N);
 		tInc = 1.0 / (deltaTMod * N);
@@ -2022,9 +2043,12 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 	
 	// Note: We don't mmap here because this function may be called multiple times
 	// during rejection sampling. The accepted trajectory will be mmap'd later.
-	
+
+	/* Restore popShape state — caller expects it unchanged. */
+	memcpy(popShape, saved_popShape, sizeof(saved_popShape));
+
 	return(currentSizeRatio/Nmax);
-	
+
 }
 
 
