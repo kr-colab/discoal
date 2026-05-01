@@ -89,6 +89,23 @@ typedef struct event
 event;
 
 /******************************************************************************/
+/* Shape state for time-varying demographic parameters                         */
+/******************************************************************************/
+
+typedef enum {
+    SHAPE_CONSTANT = 0,
+    SHAPE_EXPONENTIAL = 1,
+    SHAPE_LINEAR = 2
+} ShapeType;
+
+typedef struct {
+    ShapeType type;
+    double anchor_value;   /* size or rate at anchor_time */
+    double rate_param;     /* alpha for EXP, gamma for LIN, unused for CONST */
+    double anchor_time;    /* time at which anchor_value applies */
+} Shape;
+
+/******************************************************************************/
 /* Population node list structure for O(1) node selection                     */
 /******************************************************************************/
 
@@ -156,6 +173,8 @@ double gammaCoRatioMode, gammaCoRatio;
 double pThetaUp, pThetaLow,pRhoMean,pRhoUp,pRhoLow,pAlphaUp,pAlphaLow,pTauUp,pTauLow,pXUp,pXLow,pF0Up,pF0Low,pUALow,pUAUp,pCUp,pCLow;
 double pE2TLow,pE1TLow, pE2THigh, pE1THigh, pE1SLow, pE1SHigh, pE2SLow,pE2SHigh;
 double migMat[MAXPOPS][MAXPOPS], migMatConst[MAXPOPS][MAXPOPS];
+Shape popShape[MAXPOPS];
+Shape migShape[MAXPOPS][MAXPOPS];
 double recurSweepRate;
 
 int EFFECTIVE_POPN_SIZE;
