@@ -5,8 +5,7 @@
 /* sizeAt / migAt -- evaluate a shape (size or migration rate) at absolute
  * time t. sizeAt indexes popShape[popID]; migAt indexes migShape[src][dst].
  *
- * Sign convention (msprime-aligned, applies uniformly across shape types
- * and to both sizes and migration rates): rate_param is the per-generation
+ * Sign convention: rate_param is the per-generation
  * FORWARD-time rate of change. The coalescent simulator runs backward in
  * time, so positive rate_param means the past held a smaller value.
  *   SHAPE_CONSTANT:    value(t) = anchor_value (rate_param unused)
