@@ -1341,6 +1341,10 @@ void getParameters(int argc,const char **argv){
 	// fprintf(stderr, "DEBUG: Final theta at end of getParameters: %f\n", theta);
 	sortEventArray(events,eventNumber);
 
+	if (validateShapeTrajectories(events, eventNumber) != 0) {
+		exit(1);
+	}
+
 	//make sure events are kosher
 	selCheck = 0;
 	nChangeCheck=0;

@@ -36,4 +36,13 @@ int allShapesConstant(void);
  * coefficient A(tau) = alpha * integratedSizeRatio(0, sweep_start, tau). */
 double integratedSizeRatio(int popID, double t0, double T);
 
+/* Preflight check on the parsed events array. Walks events in time order,
+ * tracks each population's shape state, and returns -1 if any population's
+ * size trajectory would reach zero or below — either via an 'n' event with
+ * popnSize <= 0 or via a positive-rate linear shape whose zero crossing
+ * lands inside an interval before the next shape-changing event. Prints an
+ * explanatory error to stderr on rejection. Returns 0 on success. */
+struct event;  /* forward decl; full type in discoal.h */
+int validateShapeTrajectories(struct event *events, int eventNumber);
+
 #endif /* SHAPES_H */

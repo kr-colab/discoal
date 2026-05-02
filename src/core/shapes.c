@@ -194,3 +194,86 @@ double integratedSizeRatio(int popID, double t0, double T) {
             return 0.0;
     }
 }
+
+static double sizeFromShape(Shape *s, double t) {
+    switch (s->type) {
+        case SHAPE_CONSTANT:    return s->anchor_value;
+        case SHAPE_EXPONENTIAL: return s->anchor_value * exp(-s->rate_param * (t - s->anchor_time));
+        case SHAPE_LINEAR:      return s->anchor_value - s->rate_param * (t - s->anchor_time);
+        default:                return 0.0;
+    }
+}
+
+int validateShapeTrajectories(struct event *events, int eventNumber) {
+    extern double *currentSize;
+    extern double currentSizeConst[MAXPOPS];
+
+    Shape state[MAXPOPS];
+    int merged[MAXPOPS];
+    for (int p = 0; p < MAXPOPS; p++) {
+        double init = (currentSize != NULL && currentSize[p] > 0.0)
+                          ? currentSize[p]
+                          : (currentSizeConst[p] > 0.0 ? currentSizeConst[p] : 1.0);
+        state[p].type = SHAPE_CONSTANT;
+        state[p].anchor_value = init;
+        state[p].rate_param = 0.0;
+        state[p].anchor_time = 0.0;
+        merged[p] = 0;
+    }
+
+    for (int i = 0; i < eventNumber; i++) {
+        struct event *e = &events[i];
+        char t = e->type;
+        int p = e->popID;
+        if (p < 0 || p >= MAXPOPS) continue;
+        if (merged[p]) continue;
+
+        /* Pop-p's prior linear shape must not have crossed zero by e->time. */
+        if (state[p].type == SHAPE_LINEAR && state[p].rate_param > 0.0) {
+            double t_cross = state[p].anchor_time + state[p].anchor_value / state[p].rate_param;
+            if (t_cross < e->time) {
+                fprintf(stderr,
+                    "Error: linear-growth trajectory drives population %d size to zero "
+                    "at internal time %g (before the next event for that population at "
+                    "time %g). Adjust the linear rate or shorten the interval.\n",
+                    p, t_cross, e->time);
+                return -1;
+            }
+        }
+
+        if (t == 'p') { merged[p] = 1; continue; }
+        if (t != 'n' && t != 'g' && t != 'l') continue;
+
+        double size_at_event = sizeFromShape(&state[p], e->time);
+        if (size_at_event <= 0.0) {
+            fprintf(stderr,
+                "Error: population %d size becomes non-positive (%g) at internal time %g.\n",
+                p, size_at_event, e->time);
+            return -1;
+        }
+
+        if (t == 'n') {
+            if (e->popnSize <= 0.0) {
+                fprintf(stderr,
+                    "Error: -en sets population %d size to %g at time %g; size must be "
+                    "strictly positive.\n", p, e->popnSize, e->time);
+                return -1;
+            }
+            state[p].type = SHAPE_CONSTANT;
+            state[p].anchor_value = e->popnSize;
+            state[p].rate_param = 0.0;
+            state[p].anchor_time = e->time;
+        } else if (t == 'g') {
+            state[p].type = SHAPE_EXPONENTIAL;
+            state[p].anchor_value = size_at_event;
+            state[p].rate_param = e->popnSize;  /* alpha */
+            state[p].anchor_time = e->time;
+        } else if (t == 'l') {
+            state[p].type = SHAPE_LINEAR;
+            state[p].anchor_value = size_at_event;
+            state[p].rate_param = e->popnSize;  /* gamma */
+            state[p].anchor_time = e->time;
+        }
+    }
+    return 0;
+}
