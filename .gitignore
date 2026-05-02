@@ -102,3 +102,6 @@ testing/fuzz_findings/
 
 # Internal planning docs and specs (kept local, not part of the published repo)
 docs/superpowers/
+
+# Parity scripts and fixtures (kept local for development, not for the published repo)
+test/parity/
