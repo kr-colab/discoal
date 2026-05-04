@@ -224,10 +224,11 @@ void initialize(){
 			exit(1);
 		}
 		//initialize migration matrix from migMatConst, which is set by the
-		//CLI parser (-m / -M) and by the demes importer's interval-based
-		//'m' event emission for the t=0 active interval. The runtime needs
-		//no event-scanning back-derivation; time-varying migration is
-		//handled by 'm' events firing during simulation.
+		//CLI parser (-m / -M), the YAML config loader, and the demes
+		//importer's interval-based 'm' event emission for the t=0 active
+		//interval. The runtime needs no event-scanning back-derivation;
+		//time-varying migration is handled by 'm' events firing during
+		//simulation.
 		for(i=0;i<npops;i++){
 			for(j=0;j<npops;j++){
 				migMat[i][j]=migMatConst[i][j];
