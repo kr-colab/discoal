@@ -1,6 +1,17 @@
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include "shapes.h"
+
+/* All current shapes (CONSTANT/EXPONENTIAL/LINEAR) are handled explicitly in
+ * each switch below. The default branches are unreachable; if a new shape
+ * type is added without updating one of these switches, abort loudly rather
+ * than silently returning a sentinel that would propagate as wrong rates. */
+static void unknownShape(const char *fn, int type) {
+    fprintf(stderr, "discoal: internal error: unhandled shape type %d in %s\n",
+            type, fn);
+    exit(1);
+}
 
 /* sizeAt / migAt -- evaluate a shape (size or migration rate) at absolute
  * time t. sizeAt indexes popShape[popID]; migAt indexes migShape[src][dst].
@@ -21,9 +32,9 @@ double sizeAt(int popID, double t) {
             return s->anchor_value * exp(-s->rate_param * (t - s->anchor_time));
         case SHAPE_LINEAR:
             return s->anchor_value - s->rate_param * (t - s->anchor_time);
-        default:
-            return 0.0;
     }
+    unknownShape("sizeAt", s->type);
+    return 0.0;
 }
 
 double migAt(int srcPopID, int dstPopID, double t) {
@@ -35,9 +46,9 @@ double migAt(int srcPopID, int dstPopID, double t) {
             return s->anchor_value * exp(-s->rate_param * (t - s->anchor_time));
         case SHAPE_LINEAR:
             return s->anchor_value - s->rate_param * (t - s->anchor_time);
-        default:
-            return 0.0;
     }
+    unknownShape("migAt", s->type);
+    return 0.0;
 }
 
 double integratedHazardSize(int popID, double t0, double T, int k) {
@@ -60,9 +71,9 @@ double integratedHazardSize(int popID, double t0, double T, int k) {
             if (frac >= 1.0) return INFINITY;  /* end <= 0 case */
             return -pairs * log1p(-frac) / g;
         }
-        default:
-            return 0.0;
     }
+    unknownShape("integratedHazardSize", s->type);
+    return 0.0;
 }
 
 double integratedHazardMig(int srcPopID, int dstPopID, double t0, double T, int k) {
@@ -81,9 +92,9 @@ double integratedHazardMig(int srcPopID, int dstPopID, double t0, double T, int 
             double d = s->rate_param;
             return k * (m0 * T - 0.5 * d * T * T);
         }
-        default:
-            return 0.0;
     }
+    unknownShape("integratedHazardMig", s->type);
+    return 0.0;
 }
 
 double drawWaitingTimeSize(int popID, double t0, double xi, int k) {
@@ -110,9 +121,9 @@ double drawWaitingTimeSize(int popID, double t0, double xi, int k) {
             }
             return T;
         }
-        default:
-            return -1.0;
     }
+    unknownShape("drawWaitingTimeSize", s->type);
+    return -1.0;
 }
 
 double drawWaitingTimeMig(int srcPopID, int dstPopID, double t0, double xi, int k) {
@@ -140,9 +151,9 @@ double drawWaitingTimeMig(int srcPopID, int dstPopID, double t0, double xi, int 
             if (T < 0.0) return -1.0;
             return T;
         }
-        default:
-            return -1.0;
     }
+    unknownShape("drawWaitingTimeMig", s->type);
+    return -1.0;
 }
 
 void initializeShapesFromGlobals(void) {
@@ -190,9 +201,9 @@ double integratedSizeRatio(int popID, double t0, double T) {
             double g = s->rate_param;
             return N0 * T - 0.5 * g * T * T;
         }
-        default:
-            return 0.0;
     }
+    unknownShape("integratedSizeRatio", s->type);
+    return 0.0;
 }
 
 static double sizeFromShape(Shape *s, double t) {
@@ -200,8 +211,9 @@ static double sizeFromShape(Shape *s, double t) {
         case SHAPE_CONSTANT:    return s->anchor_value;
         case SHAPE_EXPONENTIAL: return s->anchor_value * exp(-s->rate_param * (t - s->anchor_time));
         case SHAPE_LINEAR:      return s->anchor_value - s->rate_param * (t - s->anchor_time);
-        default:                return 0.0;
     }
+    unknownShape("sizeFromShape", s->type);
+    return 0.0;
 }
 
 int validateShapeTrajectories(struct event *events, int eventNumber) {
