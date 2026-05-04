@@ -733,6 +733,74 @@ void test_integratedSizeRatio_quadrature_match(void) {
     TEST_ASSERT_DOUBLE_WITHIN(1e-6, sum, closed);
 }
 
+/* validateShapeTrajectories migration coverage. The function reads npops,
+ * currentSize, currentSizeConst, and migMatConst as globals, so each test
+ * resets them before constructing a small events array. */
+
+static void preflight_reset_globals(int n) {
+    extern int npops;
+    extern double currentSizeConst[MAXPOPS];
+    npops = n;
+    for (int i = 0; i < MAXPOPS; i++) {
+        currentSize[i] = (i < n) ? 1.0 : 0.0;
+        currentSizeConst[i] = (i < n) ? 1.0 : 0.0;
+        for (int j = 0; j < MAXPOPS; j++) {
+            migMatConst[i][j] = 0.0;
+        }
+    }
+}
+
+void test_validateShapeTrajectories_passes_well_formed(void) {
+    preflight_reset_globals(2);
+    migMatConst[0][1] = 0.1;
+    migMatConst[1][0] = 0.2;
+    event evs[1];
+    evs[0].time = 0.5; evs[0].type = 'm';
+    evs[0].popID2 = 0; evs[0].popID = 1;
+    evs[0].popnSize = 0.05;
+    TEST_ASSERT_EQUAL(0, validateShapeTrajectories(evs, 1));
+}
+
+void test_validateShapeTrajectories_rejects_negative_initial_migMatConst(void) {
+    preflight_reset_globals(2);
+    migMatConst[0][1] = -0.01;
+    TEST_ASSERT_EQUAL(-1, validateShapeTrajectories(NULL, 0));
+}
+
+void test_validateShapeTrajectories_rejects_negative_em_event(void) {
+    preflight_reset_globals(2);
+    event evs[1];
+    evs[0].time = 0.3; evs[0].type = 'm';
+    evs[0].popID2 = 0; evs[0].popID = 1;
+    evs[0].popnSize = -0.1;
+    TEST_ASSERT_EQUAL(-1, validateShapeTrajectories(evs, 1));
+}
+
+void test_validateShapeTrajectories_accepts_zero_em_event(void) {
+    /* Zero migration is valid -- it just turns the pair off. */
+    preflight_reset_globals(2);
+    migMatConst[0][1] = 0.1;
+    event evs[1];
+    evs[0].time = 0.3; evs[0].type = 'm';
+    evs[0].popID2 = 0; evs[0].popID = 1;
+    evs[0].popnSize = 0.0;
+    TEST_ASSERT_EQUAL(0, validateShapeTrajectories(evs, 1));
+}
+
+void test_validateShapeTrajectories_skips_em_after_pop_merge(void) {
+    /* Pop 1 merges into pop 0 at t=0.2; migration event involving pop 1
+     * after that should be silently skipped, not rejected. */
+    preflight_reset_globals(2);
+    event evs[2];
+    evs[0].time = 0.2; evs[0].type = 'p'; evs[0].popID = 1;
+    evs[1].time = 0.4; evs[1].type = 'm';
+    evs[1].popID2 = 0; evs[1].popID = 1; evs[1].popnSize = -0.5;
+    /* The negative rate would normally reject, but src=0/dst=1 with pop 1
+     * merged means the validator skips this event entirely. */
+    TEST_ASSERT_EQUAL(0, validateShapeTrajectories(evs, 2));
+}
+
+
 #ifndef TEST_RUNNER_MODE
 int main(void) {
     UNITY_BEGIN();
@@ -794,6 +862,11 @@ int main(void) {
     RUN_TEST(test_integratedSizeRatio_exponential_alpha_zero);
     RUN_TEST(test_integratedSizeRatio_linear);
     RUN_TEST(test_integratedSizeRatio_quadrature_match);
+    RUN_TEST(test_validateShapeTrajectories_passes_well_formed);
+    RUN_TEST(test_validateShapeTrajectories_rejects_negative_initial_migMatConst);
+    RUN_TEST(test_validateShapeTrajectories_rejects_negative_em_event);
+    RUN_TEST(test_validateShapeTrajectories_accepts_zero_em_event);
+    RUN_TEST(test_validateShapeTrajectories_skips_em_after_pop_merge);
     return UNITY_END();
 }
 #endif

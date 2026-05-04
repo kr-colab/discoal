@@ -305,9 +305,22 @@ static double sizeFromShape(Shape *s, double t) {
 int validateShapeTrajectories(struct event *events, int eventNumber) {
     extern double *currentSize;
     extern double currentSizeConst[MAXPOPS];
+    extern double migMatConst[MAXPOPS][MAXPOPS];
+    extern int npops;
 
     Shape state[MAXPOPS];
     int merged[MAXPOPS];
+
+    /* Per-pair migration shape state. MAXPOPS^2 Shapes is too large for
+     * the stack (~580KB at MAXPOPS=121), so heap-allocate and index by
+     * src * npops + dst. */
+    int npops_eff = (npops > 0 && npops <= MAXPOPS) ? npops : MAXPOPS;
+    Shape *migState = (Shape *)calloc((size_t)npops_eff * npops_eff, sizeof(Shape));
+    if (migState == NULL) {
+        fprintf(stderr, "discoal: out of memory in validateShapeTrajectories\n");
+        return -1;
+    }
+
     for (int p = 0; p < MAXPOPS; p++) {
         double init = (currentSize != NULL && currentSize[p] > 0.0)
                           ? currentSize[p]
@@ -318,10 +331,78 @@ int validateShapeTrajectories(struct event *events, int eventNumber) {
         state[p].anchor_time = 0.0;
         merged[p] = 0;
     }
+    for (int src = 0; src < npops_eff; src++) {
+        for (int dst = 0; dst < npops_eff; dst++) {
+            double m_init = migMatConst[src][dst];
+            if (m_init < 0.0) {
+                fprintf(stderr,
+                    "Error: initial migration rate from population %d to %d is %g; "
+                    "rate must be non-negative.\n", src, dst, m_init);
+                free(migState);
+                return -1;
+            }
+            Shape *ms = &migState[src * npops_eff + dst];
+            ms->type = SHAPE_CONSTANT;
+            ms->anchor_value = m_init;
+            ms->rate_param = 0.0;
+            ms->anchor_time = 0.0;
+        }
+    }
 
     for (int i = 0; i < eventNumber; i++) {
         struct event *e = &events[i];
         char t = e->type;
+
+        /* Migration events: validate trajectory and the new rate. */
+        if (t == 'm') {
+            int src = e->popID2;
+            int dst = e->popID;
+            if (src < 0 || src >= npops_eff || dst < 0 || dst >= npops_eff) continue;
+            if (merged[src] || merged[dst]) continue;
+
+            Shape *ms = &migState[src * npops_eff + dst];
+
+            /* Prior linear shape must not have crossed zero by e->time. */
+            if (ms->type == SHAPE_LINEAR && ms->rate_param > 0.0) {
+                double t_cross = ms->anchor_time + ms->anchor_value / ms->rate_param;
+                if (t_cross < e->time) {
+                    fprintf(stderr,
+                        "Error: linear migration trajectory from population %d to %d "
+                        "drives the rate to zero at internal time %g (before the "
+                        "next event for that pair at time %g).\n",
+                        src, dst, t_cross, e->time);
+                    free(migState);
+                    return -1;
+                }
+            }
+
+            double mig_at_event = sizeFromShape(ms, e->time);
+            if (mig_at_event < 0.0) {
+                fprintf(stderr,
+                    "Error: migration rate from population %d to %d becomes negative "
+                    "(%g) at internal time %g.\n",
+                    src, dst, mig_at_event, e->time);
+                free(migState);
+                return -1;
+            }
+
+            if (e->popnSize < 0.0) {
+                fprintf(stderr,
+                    "Error: -em sets migration from population %d to %d to %g at time "
+                    "%g; rate must be non-negative.\n",
+                    src, dst, e->popnSize, e->time);
+                free(migState);
+                return -1;
+            }
+
+            ms->type = SHAPE_CONSTANT;
+            ms->anchor_value = e->popnSize;
+            ms->rate_param = 0.0;
+            ms->anchor_time = e->time;
+            continue;
+        }
+
+        /* Size events. */
         int p = e->popID;
         if (p < 0 || p >= MAXPOPS) continue;
         if (merged[p]) continue;
@@ -335,6 +416,7 @@ int validateShapeTrajectories(struct event *events, int eventNumber) {
                     "at internal time %g (before the next event for that population at "
                     "time %g). Adjust the linear rate or shorten the interval.\n",
                     p, t_cross, e->time);
+                free(migState);
                 return -1;
             }
         }
@@ -347,6 +429,7 @@ int validateShapeTrajectories(struct event *events, int eventNumber) {
             fprintf(stderr,
                 "Error: population %d size becomes non-positive (%g) at internal time %g.\n",
                 p, size_at_event, e->time);
+            free(migState);
             return -1;
         }
 
@@ -355,6 +438,7 @@ int validateShapeTrajectories(struct event *events, int eventNumber) {
                 fprintf(stderr,
                     "Error: -en sets population %d size to %g at time %g; size must be "
                     "strictly positive.\n", p, e->popnSize, e->time);
+                free(migState);
                 return -1;
             }
             state[p].type = SHAPE_CONSTANT;
@@ -373,5 +457,6 @@ int validateShapeTrajectories(struct event *events, int eventNumber) {
             state[p].anchor_time = e->time;
         }
     }
+    free(migState);
     return 0;
 }

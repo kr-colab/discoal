@@ -37,11 +37,21 @@ int allShapesConstant(void);
 double integratedSizeRatio(int popID, double t0, double T);
 
 /* Preflight check on the parsed events array. Walks events in time order,
- * tracks each population's shape state, and returns -1 if any population's
- * size trajectory would reach zero or below — either via an 'n' event with
- * popnSize <= 0 or via a positive-rate linear shape whose zero crossing
- * lands inside an interval before the next shape-changing event. Prints an
- * explanatory error to stderr on rejection. Returns 0 on success. */
+ * tracks each population's size shape state and each (src,dst) pair's
+ * migration shape state, and returns -1 if either trajectory would reach
+ * an invalid value before the next shape-changing event for that
+ * pop/pair:
+ *   - size:      'n' with popnSize <= 0; or linear-growth shape whose
+ *                zero crossing precedes the next event for that pop.
+ *                (Sizes must be strictly positive — coalescent rate would
+ *                blow up.)
+ *   - migration: 'm' with rate < 0; initial migMatConst[src][dst] < 0;
+ *                or linear migration shape whose zero crossing precedes
+ *                the next migration event for that pair. (Rates must be
+ *                non-negative — zero is fine, negative would corrupt the
+ *                aggregated mRate / dest-pop sampling in the inner loop.)
+ * Prints an explanatory error to stderr on rejection. Returns 0 on
+ * success. */
 struct event;  /* forward decl; full type in discoal.h */
 int validateShapeTrajectories(struct event *events, int eventNumber);
 
