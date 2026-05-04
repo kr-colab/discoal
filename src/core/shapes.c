@@ -51,6 +51,24 @@ double migAt(int srcPopID, int dstPopID, double t) {
     return 0.0;
 }
 
+/* Integrated coalescent hazard for k lineages over [t0, t0+T].
+ *
+ *   H(T) = integral_{0}^{T} (k choose 2) / N(t0 + s)  ds
+ *
+ * Closed forms below.  Let N0 = N(t0); recall the sign convention that
+ * rate_param is the FORWARD-time per-generation rate of change, so going
+ * backward in time N(t0+s) = N0 * exp(-a*s) (exponential) or
+ * N(t0+s) = N0 - g*s (linear).
+ *
+ *   CONSTANT:    H(T) = pairs * T / N0
+ *   EXPONENTIAL: integrand = pairs * exp(a*s) / N0
+ *                H(T) = pairs * (exp(a*T) - 1) / (N0 * a)
+ *   LINEAR:      integrand = pairs / (N0 - g*s)
+ *                H(T) = -(pairs/g) * log(1 - g*T/N0)
+ *                Diverges when g*T/N0 -> 1 (the linear shape would drive
+ *                N(t) to zero); we report INFINITY so the caller treats it
+ *                as "no event before the trajectory crashes".
+ */
 double integratedHazardSize(int popID, double t0, double T, int k) {
     Shape *s = &popShape[popID];
     double pairs = (double)k * (k - 1) / 2.0;
@@ -62,13 +80,15 @@ double integratedHazardSize(int popID, double t0, double T, int k) {
         case SHAPE_EXPONENTIAL: {
             double a = s->rate_param;
             if (a == 0.0) return pairs * T / N0;
+            /* expm1(a*T) = exp(a*T) - 1, accurate near a*T = 0. */
             return pairs * expm1(a * T) / (N0 * a);
         }
         case SHAPE_LINEAR: {
             double g = s->rate_param;
             if (g == 0.0) return pairs * T / N0;
             double frac = g * T / N0;
-            if (frac >= 1.0) return INFINITY;  /* end <= 0 case */
+            if (frac >= 1.0) return INFINITY;  /* N(t0+T) <= 0 */
+            /* log1p(-frac) = log(1 - frac), accurate near frac = 0. */
             return -pairs * log1p(-frac) / g;
         }
     }
@@ -76,6 +96,25 @@ double integratedHazardSize(int popID, double t0, double T, int k) {
     return 0.0;
 }
 
+/* Integrated migration hazard for k lineages over [t0, t0+T].
+ *
+ *   H(T) = integral_{0}^{T} k * m(t0 + s)  ds
+ *
+ * Let m0 = m(t0).  Closed forms:
+ *
+ *   CONSTANT:    H(T) = k * m0 * T
+ *   EXPONENTIAL: integrand = k * m0 * exp(-b*s)
+ *                H(T) = k * m0 * (1 - exp(-b*T)) / b
+ *   LINEAR:      integrand = k * (m0 - d*s) -- the antiderivative is
+ *                quadratic in T.  H_raw(T) = k*(m0*T - 0.5*d*T^2).
+ *                For d > 0 the migration rate hits zero at T_zero = m0/d
+ *                and is physically clamped at zero for s > T_zero, so the
+ *                integral plateaus at H(T_zero) = k*m0^2/(2*d).  Without
+ *                the clamp H_raw would peak at T_zero and then *decrease*
+ *                (eventually going negative at T = 2*m0/d), which is
+ *                meaningless for an integrated hazard.  We clamp T to
+ *                T_zero before evaluating.
+ */
 double integratedHazardMig(int srcPopID, int dstPopID, double t0, double T, int k) {
     Shape *s = &migShape[srcPopID][dstPopID];
     double m0 = migAt(srcPopID, dstPopID, t0);
@@ -86,17 +125,37 @@ double integratedHazardMig(int srcPopID, int dstPopID, double t0, double T, int 
         case SHAPE_EXPONENTIAL: {
             double b = s->rate_param;
             if (b == 0.0) return k * m0 * T;
+            /* -expm1(-b*T) = 1 - exp(-b*T), accurate near b*T = 0. */
             return k * m0 * -expm1(-b * T) / b;
         }
         case SHAPE_LINEAR: {
             double d = s->rate_param;
-            return k * (m0 * T - 0.5 * d * T * T);
+            double T_eff = T;
+            if (d > 0.0) {
+                double T_zero = m0 / d;
+                if (T_eff > T_zero) T_eff = T_zero;
+            }
+            return k * (m0 * T_eff - 0.5 * d * T_eff * T_eff);
         }
     }
     unknownShape("integratedHazardMig", s->type);
     return 0.0;
 }
 
+/* Inversion of integratedHazardSize: given xi ~ Exp(1), solve H(T) = xi
+ * for T.  Each branch is the algebraic inverse of the corresponding
+ * integratedHazardSize case.
+ *
+ *   CONSTANT:    T = xi * N0 / pairs
+ *   EXPONENTIAL: xi = pairs * (exp(a*T) - 1) / (N0 * a)
+ *                =>  T = log1p(N0 * a * xi / pairs) / a
+ *   LINEAR:      xi = -(pairs/g) * log(1 - g*T/N0)
+ *                =>  T = (N0/g) * (1 - exp(-g*xi/pairs))
+ *                For g > 0 the solution is bounded above by T_cross = N0/g
+ *                (where N -> 0); cap T just shy of T_cross to avoid
+ *                returning a value that the caller would interpret as a
+ *                physical event past the trajectory's crash time.
+ */
 double drawWaitingTimeSize(int popID, double t0, double xi, int k) {
     if (k < 2) return -1.0;
     Shape *s = &popShape[popID];
@@ -126,6 +185,21 @@ double drawWaitingTimeSize(int popID, double t0, double xi, int k) {
     return -1.0;
 }
 
+/* Inversion of integratedHazardMig: solve H(T) = xi for T.  Returns -1.0
+ * when xi exceeds the integrated hazard over [0, infinity) for the given
+ * shape (i.e. no event ever, given the rate trajectory).
+ *
+ *   CONSTANT:    T = xi / (k*m0)
+ *   EXPONENTIAL: xi = k*m0*(1 - exp(-b*T))/b
+ *                =>  T = -log(1 - b*xi/(k*m0)) / b
+ *                Unreachable when b*xi/(k*m0) >= 1 (the migration rate
+ *                decays to 0 in less hazard than xi requires).
+ *   LINEAR:      xi = k*(m0*T - 0.5*d*T^2)  =>  quadratic in T, take the
+ *                smaller positive root: T = (m0 - sqrt(m0^2 - 2*d*xi/k))/d.
+ *                Discriminant negative <=> xi > k*m0^2/(2*d), i.e. xi
+ *                exceeds the plateau hazard accumulated by the time the
+ *                rate hits zero.
+ */
 double drawWaitingTimeMig(int srcPopID, int dstPopID, double t0, double xi, int k) {
     if (k <= 0) return -1.0;
     Shape *s = &migShape[srcPopID][dstPopID];
@@ -139,14 +213,14 @@ double drawWaitingTimeMig(int srcPopID, int dstPopID, double t0, double xi, int 
             double b = s->rate_param;
             if (b == 0.0) return xi / km0;
             double arg = b * xi / km0;
-            if (arg >= 1.0) return -1.0;  /* unreachable */
+            if (arg >= 1.0) return -1.0;  /* xi exceeds k*m0/b, the asymptote */
             return -log1p(-arg) / b;
         }
         case SHAPE_LINEAR: {
             double d = s->rate_param;
             if (d == 0.0) return xi / km0;
             double disc = m0 * m0 - 2.0 * d * xi / k;
-            if (disc < 0.0) return -1.0;
+            if (disc < 0.0) return -1.0;  /* xi exceeds the plateau */
             double T = (m0 - sqrt(disc)) / d;
             if (T < 0.0) return -1.0;
             return T;
@@ -186,6 +260,18 @@ int allShapesConstant(void) {
     return 1;
 }
 
+/* Integral of N(t) (not 1/N(t)) from t0 to t0+T.  Used by detSweepFreqGeneral
+ * to track A(tau) = alpha * integratedSizeRatio over the sweep window.
+ *
+ *   CONSTANT:    N0 * T
+ *   EXPONENTIAL: N0 * (1 - exp(-a*T)) / a
+ *   LINEAR:      N0*T - 0.5*g*T^2  (antiderivative of N0 - g*s)
+ *
+ * The linear branch is left unguarded for now: callers track the sweep
+ * trajectory in small dt steps where the polynomial is well-behaved, and
+ * validateShapeTrajectories rejects any model where N(t) crosses zero
+ * before the next event.
+ */
 double integratedSizeRatio(int popID, double t0, double T) {
     Shape *s = &popShape[popID];
     double N0 = sizeAt(popID, t0);

@@ -322,6 +322,21 @@ void test_integratedHazardMig_linear(void) {
     TEST_ASSERT_DOUBLE_WITHIN(1e-10, 1.6, integratedHazardMig(0, 1, 0.0, 4.0, 2));
 }
 
+void test_integratedHazardMig_linear_clamps_past_zero_crossing(void) {
+    /* m(s) = 0.5 - 0.1*s hits zero at s = 5.  Past the zero crossing the
+     * physical migration rate is clamped at zero, so the integrated hazard
+     * plateaus at H(5) = k*m0^2/(2*d) = 2*0.25/0.2 = 2.5. */
+    migShape[0][1].type = SHAPE_LINEAR;
+    migShape[0][1].anchor_value = 0.5;
+    migShape[0][1].rate_param = 0.1;
+    migShape[0][1].anchor_time = 0.0;
+    /* Plateau hazard at the zero crossing. */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 2.5, integratedHazardMig(0, 1, 0.0, 5.0, 2));
+    /* Past the zero crossing the value is held; without the clamp the
+     * polynomial would peak at s=5 and decrease toward zero at s=10. */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 2.5, integratedHazardMig(0, 1, 0.0, 100.0, 2));
+}
+
 void test_integratedHazardMig_quadrature_match(void) {
     migShape[0][1].type = SHAPE_EXPONENTIAL;
     migShape[0][1].anchor_value = 0.3;
@@ -747,6 +762,7 @@ int main(void) {
     RUN_TEST(test_integratedHazardMig_constant);
     RUN_TEST(test_integratedHazardMig_exponential);
     RUN_TEST(test_integratedHazardMig_linear);
+    RUN_TEST(test_integratedHazardMig_linear_clamps_past_zero_crossing);
     RUN_TEST(test_integratedHazardMig_quadrature_match);
     RUN_TEST(test_drawWaitingTimeSize_constant_inverts);
     RUN_TEST(test_drawWaitingTimeSize_exponential_inverts);
