@@ -688,12 +688,11 @@ void test_demography_demes_filename_malformed_rejected(void) {
 }
 
 /*
- * Exponential-growth epochs are supported as of Phase 7 Task 5: the
- * importer emits a 'g' event with the per-generation forward-time
- * growth rate scaled to discoal's internal alpha (4N-scaled). The
- * fixture exponential_growth_demes.yaml is a single-deme model whose
- * most recent epoch has unequal start_size and end_size with
- * size_function: exponential. The importer should now accept it.
+ * Exponential-growth epochs: the importer emits a 'g' event with the
+ * per-generation forward-time growth rate scaled to discoal's internal
+ * alpha (4N-scaled). The fixture exponential_growth_demes.yaml is a
+ * single-deme model whose most recent epoch has unequal start_size and
+ * end_size with size_function: exponential.
  *
  * Other unsupported features (selfing, cloning, disconnected
  * populations) are still rejected; their plumbing mirrors the

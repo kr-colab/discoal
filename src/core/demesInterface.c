@@ -341,8 +341,8 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
             // Handle exponential growth within epoch.
             // Emit a 'g' event at the more-recent (smaller-internal-time) boundary
             // of the epoch with the forward-time per-generation growth rate
-            // converted to discoal's internal alpha (4N-scaled).  Phase 4 wires
-            // 'g' to SHAPE_EXPONENTIAL.  See -eg CLI parsing for the convention.
+            // converted to discoal's internal alpha (4N-scaled).  See -eg CLI
+            // parsing for the convention.
             if (epoch->size_function == DEMES_SIZE_FUNCTION_EXPONENTIAL &&
                 epoch->start_size != epoch->end_size) {
                 /* Forward-time per-generation rate.  start_time is the older
@@ -354,9 +354,8 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
                 double dt_gens = (startTime - endTime) / graph->generation_time;
                 double alpha_per_gen = log(epoch->end_size / epoch->start_size)
                                        / dt_gens;
-                /* Convert to discoal internal alpha (4N-scaled).  Mirrors the
-                 * Phase 4b parity-validated alpha_per_gen = alpha_internal/(2N)
-                 * inverse. */
+                /* Convert to discoal internal alpha (4N-scaled): inverse of
+                 * alpha_per_gen = alpha_internal / (2N). */
                 double alpha_internal = alpha_per_gen * 2.0 * N;
                 double t_internal = demesTimeToCoalTime(epoch->end_time,
                                                         graph->generation_time, N);
@@ -376,7 +375,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
             // Linear growth: any non-EXPONENTIAL size_function with differing
             // start_size and end_size.  demes-c may not expose a LINEAR enum
             // but the demes spec recognises this case.  Emit an 'l' event at
-            // the more-recent boundary; Phase 6 wires 'l' to SHAPE_LINEAR.
+            // the more-recent boundary.
             if (epoch->size_function != DEMES_SIZE_FUNCTION_EXPONENTIAL &&
                 epoch->start_size != epoch->end_size) {
                 /* Forward-time linear growth rate per generation: positive when

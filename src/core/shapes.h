@@ -26,8 +26,8 @@ void initializeShapesFromGlobals(void);
 /* Returns 1 if every popShape[i] for i in [0, npops) and every migShape[i][j]
  * for i,j in [0, npops) has type SHAPE_CONSTANT. Returns 0 otherwise.
  * Used by the inner-loop sampler to dispatch between the constant-rate
- * Exp(total) path (bit-equal with pre-Phase-4 behavior) and the
- * non-homogeneous Poisson process per-component path. */
+ * Exp(total) path and the non-homogeneous Poisson process per-component
+ * path. */
 int allShapesConstant(void);
 
 /* Integrated size ratio: returns int_{t0}^{t0+T} sizeAt(popID, s) ds.

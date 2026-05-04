@@ -1963,7 +1963,6 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 				switch(sweepMode){
 					case 'd':
 					if (allShapesConstant()) {
-						/* Bit-equal with pre-Phase-5: existing per-step detSweepFreq with current alpha_eff. */
 						x = detSweepFreq(ttau, alpha * sr_now);
 					} else {
 						/* Time-varying alpha_eff: use the closed-form general formula with the
