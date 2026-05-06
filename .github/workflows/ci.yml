@@ -128,10 +128,12 @@ jobs:
     
     - name: Download Unity test framework
       run: |
-        cd extern
-        git clone https://github.com/ThrowTheSwitch/Unity.git
-        cd ..
-    
+        if [ ! -d "extern/Unity" ]; then
+          cd extern
+          git clone https://github.com/ThrowTheSwitch/Unity.git
+          cd ..
+        fi
+
     - name: Build with debug symbols
       run: |
         make clean

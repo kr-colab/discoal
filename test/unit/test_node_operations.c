@@ -1,10 +1,15 @@
 #include "unity.h"
+#include <stdlib.h>
 #include "discoal.h"
 #include "discoalFunctions.h"
 
+extern double *currentSize;
+
 #ifndef TEST_RUNNER_MODE
 void setUp(void) {
-    // Initialize any test setup
+    if (currentSize == NULL) {
+        currentSize = (double *)calloc(MAXPOPS, sizeof(double));
+    }
     initialize();
 }
 

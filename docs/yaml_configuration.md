@@ -120,14 +120,14 @@ Notes:
 - `demes_filename` and explicit `demographic_events` /
   `migration_matrix` are mutually exclusive — use one or the other.
 
-The `demographic_events` block also accepts two field names that
-are part of the schema but are **not yet wired into the simulator**
-and will exit with an error if set:
+Time-varying migration *is* supported: use the CLI primitives
+`-em time popID1 popID2 rate` (single pair) or
+`-eM time rate` (all off-diagonal pairs), or load a demes file
+with multi-window migration via `-D` / `demes_filename`.
 
-- `migration_rate_changes` — time-varying migration. The CLI has no
-  matching primitive either; use a constant `migration_matrix` for
-  now.
-- `ancient_samples` — sampling some lineages at non-zero times.
+The `demographic_events` block also accepts the field name
+`ancient_samples`, which is part of the schema but is **not yet
+wired into the simulator** and will exit with an error if set.
 
 ## selection
 

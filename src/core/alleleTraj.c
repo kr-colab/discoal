@@ -32,6 +32,17 @@ double detSweepFreq(double t, double alpha){
 	return(epsilon/denom);
 }
 
+double detSweepFreqGeneral(double alpha, double A) {
+	double epsilon = 0.05 / alpha;
+	/* For constant alpha_eff, sweep duration tau_s satisfies alpha*tau_s = -2*log(eps),
+	 * so A_ts = -2*log(eps). For time-varying alpha_eff, this anchors the boundary
+	 * to the user-specified alpha (interpretation: alpha is the "intended" sweep
+	 * strength; the trajectory follows the time-varying alpha_eff). */
+	double A_ts = -2.0 * log(epsilon);
+	double denom = epsilon + ((1.0 - epsilon) * exp(A - A_ts));
+	return epsilon / denom;
+}
+
 /* neutralStochastic-- returns the frequency of a neutral allele
 which is sweeping through the population. This is the jump process
 corresponding to the condition diffusion towards loss (i.e. backwards).

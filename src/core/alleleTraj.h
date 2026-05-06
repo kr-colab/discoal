@@ -1,6 +1,13 @@
 #include <math.h>
 
 double detSweepFreq(double t, double s);
+
+/* Generalized deterministic-sweep frequency under (possibly time-varying)
+ * alpha_eff. A is the integrated selection coefficient int_0^tau alpha_eff(s) ds.
+ * For constant alpha_eff = alpha, A = alpha * tau and this reduces to
+ * detSweepFreq(tau, alpha) bit-exactly. */
+double detSweepFreqGeneral(double alpha, double A);
+
 double neutralStochastic(double dt, double currentFreq);
 double genicSelectionStochastic(double dt, double currentFreq, double alpha);
 double genicSelectionStochasticForwards(double dt, double currentFreq, double alpha);
