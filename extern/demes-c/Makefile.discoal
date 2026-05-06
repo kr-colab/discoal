@@ -1,6 +1,6 @@
 # Simplified Makefile for building demes-c as part of discoal
 
-CFLAGS=-Wall -O2 -g -fPIC -I.
+CFLAGS=-Wall -O2 -g -fPIC -I. -I../libyaml
 CC=gcc -std=c11 -D_POSIX_C_SOURCE=200809L
 
 all: libdemes.a

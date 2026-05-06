@@ -1,0 +1,19 @@
+# Fixes #62: population index in population_size_changes was copied straight
+# into events[].popID with no bounds check. A value >= num_demes would run
+# to completion (exit 0) producing degenerate output. Now rejected with:
+#   "Error parsing config: population_size_changes[0].population (5) must be in [0, 1)"
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [10]
+  effective_population_size: 10000
+  demographic_events:
+    population_size_changes:
+      - {time: 0.1, size: 0.5, population: 5}

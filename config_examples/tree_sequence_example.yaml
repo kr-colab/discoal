@@ -1,0 +1,16 @@
+# Simulates a simple population with mutation and recombination, outputing replicates to tree sequences.
+# Equivalent to: discoal 20 5 10000 -t 10.0 -r 8.0 -ts tree_sequence_example.trees -d 12345 67890
+
+simulation:
+  sample_size: 20
+  num_replicates: 5
+  num_sites: 10000
+  seed: [12345, 67890]
+
+genetics:
+  mutation_rate: 10.0
+  recombination_rate: 8.0
+
+output:
+  output_type: "tree_sequence"
+  tree_sequence_filename: "tree_sequence_example.trees"

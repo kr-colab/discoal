@@ -1,18 +1,18 @@
-# Example using external demes file
-# The demes file specifies the demographic model
+# Simulate using an external demes file to specify the demographic model.
+# Mirrors the topology of demographic_example.yaml via the sibling
+# demes file demes_example.demes.yaml.
+# Equivalent to: discoal 20 10 50000 -t 20.0 -r 15.0 -p 3 10 5 5 -M 0.1 -en 0.5 0 0.1 -en 1.0 1 2.0 -ed 2.0 1 0 -ed 3.0 2 0 -d 31337 4242
 
 simulation:
-  sample_size: 100
-  num_replicates: 1000
+  sample_size: 20
+  num_replicates: 10
   num_sites: 50000
+  seed: [31337, 4242]
 
 genetics:
   mutation_rate: 20.0
   recombination_rate: 15.0
 
-# Load demographic model from demes file
-events:
-  demes_file: ../testing/two_pop_migration.yaml
-
-# Note: When using demes file, specify sample sizes with -p flag:
-# discoal -Y demes_example.yaml -p 2 50 50
+demography:
+  deme_sample_size: [10, 5, 5]
+  demes_filename: "config_examples/demes_example.demes.yaml"

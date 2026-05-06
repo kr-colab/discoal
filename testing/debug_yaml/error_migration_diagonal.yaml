@@ -1,0 +1,21 @@
+# PR #53 (#44): non-zero migration_matrix diagonal would silently be copied
+# into migMatConst[i][i] -- nonsensical "self-migration" in a coalescent.
+# Now rejected with:
+#   "Error parsing config: migration_matrix diagonal must be zero (row 0 column 0 = 0.5)"
+
+simulation:
+  sample_size: 20
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [10, 10]
+  effective_population_size: 1.0
+  migration_matrix:
+    - row: [0.5, 0.1]
+    - row: [0.1, 0.0]
+output:
+  output_type: "snp_array"

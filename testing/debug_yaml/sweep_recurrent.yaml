@@ -1,0 +1,24 @@
+# PR #48 (#39): recurrent sweep. No 's' event is emitted; driven by
+# recurSweepMode + recurSweepRate only (matches -R).
+# Equivalent cmdline:
+#   discoal 20 2 10000 -d 42 4242 -t 0.5 -r 0.1 \
+#     -a 1000 -x 0.5 -N 1000000 -R 0.001
+
+simulation:
+  sample_size: 20
+  num_replicates: 2
+  num_sites: 10000
+  seed: [42, 4242]
+genetics:
+  mutation_rate: 0.5
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [20]
+  effective_population_size: 1000000
+selection:
+  sweep_mode: stochastic
+  selection_coefficient: 1000.0
+  sweep_position: 0.5
+  recurrent_sweep_rate: 0.001
+output:
+  output_type: "snp_array"

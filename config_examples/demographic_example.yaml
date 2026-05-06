@@ -1,30 +1,39 @@
-# Demographic model example
-# Population bottleneck followed by exponential growth
+# Simulate three populations with symmetric migration, pop-size changes,
+# and two mergers going backward in time.
+# Going backward: at t=0.5 pop 0 passes through a bottleneck (size x0.1);
+# at t=1.0 pop 1 has a larger ancestral size (size x2.0); at t=2.0 pop 1
+# merges into pop 0; at t=3.0 pop 2 merges into pop 0.
+# Equivalent to: discoal 20 2 10000 -t 0.1 -r 0.1 -p 3 10 5 5 -M 0.1 -en 0.5 0 0.1 -en 1.0 1 2.0 -ed 2.0 1 0 -ed 3.0 2 0 -d 12345 10102
 
 simulation:
-  sample_size: 100
-  num_replicates: 500
-  num_sites: 20000
+  sample_size: 20
+  num_replicates: 2
+  num_sites: 10000
+  seed: [12345, 10102]
 
 genetics:
-  mutation_rate: 15.0
-  recombination_rate: 10.0
-  gene_conversion:
-    tract_length: 500
-    crossover_ratio: 0.2  # Gene conversion rate = 0.2 * rho
+  mutation_rate: 1.0e-1
+  recombination_rate: 1.0e-1
 
-populations:
-  count: 1
-  sample_sizes: [100]
-
-events:
-  demographic:
-    - type: size_change
-      time: 0.02          # 0.02*4N generations ago
-      population: 0
-      size: 0.1           # Bottleneck to 10% of original size
-      
-    - type: size_change
-      time: 0.005         # 0.005*4N generations ago
-      population: 0
-      size: 5.0           # Recovery to 5x original size
+demography:
+  deme_sample_size: [10, 5, 5]
+  effective_population_size: 1.0
+  migration_matrix:
+    - row: [0.0, 1.0e-1, 1.0e-1]
+    - row: [1.0e-1, 0.0, 1.0e-1]
+    - row: [1.0e-1, 1.0e-1, 0.0]
+  demographic_events:
+    population_size_changes:
+      - time: 0.5
+        size: 0.1
+        population: 0
+      - time: 1.0
+        size: 2.0
+        population: 1
+    population_splits:
+      - time: 2.0
+        ancestral: 0
+        derived: 1
+      - time: 3.0
+        ancestral: 0
+        derived: 2

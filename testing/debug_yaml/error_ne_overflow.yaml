@@ -1,0 +1,17 @@
+# PR #52 (#43): effective_population_size > INT_MAX would overflow the int
+# cast with implementation-defined behaviour. Now rejected with:
+#   "Error parsing config: effective_population_size (3e+09) exceeds INT_MAX (2147483647)"
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [10]
+  effective_population_size: 3.0e9
+output:
+  output_type: "snp_array"

@@ -1,0 +1,23 @@
+# PR #48: migration_rate_changes are not implemented in the main event loop.
+# Should error out with:
+#   "Error parsing config: migration_rate_changes are not yet implemented ..."
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [5, 5]
+  effective_population_size: 1.0
+  demographic_events:
+    migration_rate_changes:
+      - time: 0.5
+        rate: 0.1
+        source: 0
+        destination: 1
+output:
+  output_type: "snp_array"

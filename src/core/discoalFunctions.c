@@ -16,6 +16,7 @@
 #include "ranlib.h"
 #include "alleleTraj.h"
 #include "tskitInterface.h"
+#include "shapes.h"
 
 
 // Initial capacity for breakPoints array
@@ -149,7 +150,7 @@ void initialize(){
 	int i,j,p, count=0;
 	int leafID=0;
 	int tmpCount = 0;
-	
+
 	/* Initialize the arrays */
 	totChunkNumber = 0;
 	initializeBreakPoints();
@@ -210,72 +211,30 @@ void initialize(){
 		}
 
 	}
-	
+
+	/* Restore initial sizes; 'n'/'g'/'l' events mutate currentSize per replicate. */
+	for (p = 0; p < MAXPOPS; p++) currentSize[p] = currentSizeConst[p];
+
+	//initialize shape state for time-varying parameter framework
+	initializeShapesFromGlobals();
 	activeSites = nSites;
 	if (npops>1){
 		if(tDiv==666 && migFlag == 0){
 			fprintf(stderr,"tDiv or migration not set in population split model\n");
 			exit(1);
 		}
-		//initialize migration matrix
+		//initialize migration matrix from migMatConst, which is set by the
+		//CLI parser (-m / -M), the YAML config loader, and the demes
+		//importer's interval-based 'm' event emission for the t=0 active
+		//interval. The runtime needs no event-scanning back-derivation;
+		//time-varying migration is handled by 'm' events firing during
+		//simulation.
 		for(i=0;i<npops;i++){
 			for(j=0;j<npops;j++){
 				migMat[i][j]=migMatConst[i][j];
 			}
 		}
-		
-		// Process migration events from demes (type 'M')
-		// We need to find what migration rates should be active at time 0
-		// by looking at all migration events and finding the most recent one
-		// that affects the present (time 0)
-		for(i=1;i<eventNumber;i++){
-			if(events[i].type == 'M'){
-				fprintf(stderr, "Found migration event: time=%f, pop%d->pop%d, rate=%f\n", 
-				        events[i].time, events[i].popID2, events[i].popID, events[i].popnSize);
-			}
-		}
-		
-		// For each population pair, find the migration rate at time 0
-		for(int src=0; src<npops; src++){
-			for(int dst=0; dst<npops; dst++){
-				if(src != dst){
-					double currentRate = 0.0;
-					// Find the most recent migration event for this pair
-					// Events are sorted by time (descending), so we want the last one with time > 0
-					for(i=eventNumber-1; i>=1; i--){
-						if(events[i].type == 'M' && 
-						   events[i].popID2 == src && 
-						   events[i].popID == dst &&
-						   events[i].time > 0.0){
-							currentRate = events[i].popnSize;
-							break;
-						}
-					}
-					if(currentRate > 0.0){
-						migMat[src][dst] = currentRate;
-						fprintf(stderr, "Setting initial migration: pop%d -> pop%d = %f\n", 
-						        src, dst, currentRate);
-					}
-				}
-			}
-		}
-		
-		// Debug: Print migration matrix
-		fprintf(stderr, "\n=== MIGRATION MATRIX DEBUG ===\n");
-		fprintf(stderr, "Number of populations: %d\n", npops);
-		fprintf(stderr, "Migration matrix (migMat[from][to]):\n");
-		fprintf(stderr, "     ");
-		for(j=0;j<npops;j++) fprintf(stderr, "  Pop%d  ", j);
-		fprintf(stderr, "\n");
-		for(i=0;i<npops;i++){
-			fprintf(stderr, "Pop%d ", i);
-			for(j=0;j<npops;j++){
-				fprintf(stderr, "%7.4f ", migMat[i][j]);
-			}
-			fprintf(stderr, "\n");
-		}
-		fprintf(stderr, "=== END MIGRATION MATRIX DEBUG ===\n\n");
-		
+
 		eventFlag = 0;
 	}
 	
@@ -430,6 +389,12 @@ rootedNode *newRootedNode(double cTime, int popn) {
 	temp->time = cTime;
 	temp->branchLength=0.0;
 	temp->population = popn;
+	/* -1 means "not yet classified into a sweep background". Sample-init,
+	 * sweepPhaseEvents* (via nodePopnSweepSize), and the sweep coalescence/
+	 * recombination paths overwrite this with 0 or 1. Consumers that update
+	 * sweepPopnSizes[] must guard with `sweepPopn >= 0` to avoid an OOB
+	 * write for nodes that haven't been classified yet (everything in a
+	 * no-sweep run, plus pre-sweep internal nodes). */
 	temp->sweepPopn = -1;
 	
 	// Initialize node state tracking
@@ -626,7 +591,7 @@ void migrateAtTime(double cTime,int srcPopn, int destPopn){
 
 	popnSizes[srcPopn]-=1;
 	popnSizes[destPopn]+=1;
-	if (srcPopn==0)
+	if (srcPopn==0 && temp->sweepPopn >= 0)
 		sweepPopnSizes[temp->sweepPopn]-=1;
 
 }
@@ -667,7 +632,7 @@ void migrateExceptSite(double site, double scalar, int srcPopn, int destPopn){
 		
 		popnSizes[srcPopn]-=1;
 		popnSizes[destPopn]+=1;
-		if (srcPopn==0)
+		if (srcPopn==0 && temp->sweepPopn >= 0)
 			sweepPopnSizes[temp->sweepPopn]-=1;
 	}
 	
@@ -1578,6 +1543,86 @@ double neutralPhaseMigExclude(int *bpArray,double startTime, double endTime, dou
 }
 
 
+/* Draw the next event time across all rate components using NHPP per-component
+ * draws. Returns the minimum waiting time and writes the firing event class
+ * + index into *winnerKind / *winnerArg.
+ *
+ * winnerKind values:
+ *   0 = recomb       (winnerArg unused; caller samples pop proportional to rRate[i])
+ *   1 = gene conv    (winnerArg unused; caller samples pop proportional to gcRate[i])
+ *   2 = migration    (winnerArg = src_pop * MAXPOPS + dst_pop)
+ *   3 = coalescence  (winnerArg = popID)
+ *
+ * Recombination and gene-conversion rates are constant in time within an
+ * interval (depend only on lineage counts and rho/gamma), so an Exp(total)
+ * draw is exact under any shape mix. Coalescence and migration rates can
+ * vary in time when shapes are non-constant; we use closed-form
+ * drawWaitingTime accessors per component.
+ *
+ * cRate and mRate are accepted in the signature for symmetry with the
+ * caller's rate vector and possible future use; they are not consumed
+ * directly by this routine. */
+static double drawNHPPWaitingTime(double *cRate, double *rRate, double *gcRate,
+                                  double *mRate, double totRRate, double totGCRate,
+                                  double t0, int *winnerKind, int *winnerArg) {
+    double T_min = 1e300;  /* effectively +infinity */
+    int i, j;
+    *winnerKind = -1;
+    *winnerArg = -1;
+
+    /* Recombination: aggregate exponential draw across all populations */
+    if (totRRate > 0.0) {
+        double T = -log(ranf()) / totRRate;
+        if (T < T_min) {
+            T_min = T;
+            *winnerKind = 0;
+            *winnerArg = -1;
+        }
+    }
+
+    /* Gene conversion: aggregate exponential draw across all populations */
+    if (totGCRate > 0.0) {
+        double T = -log(ranf()) / totGCRate;
+        if (T < T_min) {
+            T_min = T;
+            *winnerKind = 1;
+            *winnerArg = -1;
+        }
+    }
+
+    /* Coalescence per population */
+    for (i = 0; i < npops; i++) {
+        if (popnSizes[i] < 2) continue;
+        double xi = -log(ranf());
+        double T = drawWaitingTimeSize(i, t0, xi, popnSizes[i]);
+        if (T > 0.0 && T < T_min) {
+            T_min = T;
+            *winnerKind = 3;
+            *winnerArg = i;
+        }
+    }
+
+    /* Migration per ordered pair */
+    for (i = 0; i < npops; i++) {
+        if (popnSizes[i] < 1) continue;
+        for (j = 0; j < npops; j++) {
+            if (i == j) continue;
+            double m = migAt(i, j, t0);
+            if (m <= 0.0) continue;
+            double xi = -log(ranf());
+            double T = drawWaitingTimeMig(i, j, t0, xi, popnSizes[i]);
+            if (T > 0.0 && T < T_min) {
+                T_min = T;
+                *winnerKind = 2;
+                *winnerArg = i * MAXPOPS + j;
+            }
+        }
+    }
+
+    (void)cRate; (void)mRate;
+    return T_min;
+}
+
 /*neutralPhaseGeneralPopNumber--coalescent, recombination, gc events until
 specified time. returns endTime. can handle multiple popns*/
 double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *sizeRatio){
@@ -1605,11 +1650,11 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 		}
 		//printf("currPopSize[0]: %d currPopSize[1]: %d alleleNumber: %d totNodeNumber: %d activeSites: %d cTime: %f\n",popnSizes[0],popnSizes[1],alleleNumber,totNodeNumber, activeSites, cTime);
 		for(i=0;i<npops;i++){
-			cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 / sizeRatio[i];
+			cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 / sizeAt(i, currentTime);
 			rRate[i] = rho * popnSizes[i] * 0.5;// * ((float)activeSites/nSites);
 			gcRate[i] = my_gamma * popnSizes[i] * 0.5 ;
-			
-			for(j=0;j<npops;j++) mRate[i]+=migMat[i][j];
+
+			for(j=0;j<npops;j++) mRate[i]+=migAt(i, j, currentTime);
 			mRate[i] *= popnSizes[i] * 0.5;
 			totCRate += cRate[i];
 			totRRate += rRate[i];
@@ -1619,18 +1664,106 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 		}
 		//printf("totRate: %f totCRate: %f totRRate: %f \n",totRate,totCRate,totRRate);
 
-		//find time of next event
-		waitTime = genexp(1.0)  * (1.0/ totRate);
-		cTime += waitTime;
-		
-		if (cTime >= endTime){
-			return(endTime);
+		if (allShapesConstant()) {
+			//find time of next event
+			waitTime = genexp(1.0)  * (1.0/ totRate);
+			cTime += waitTime;
+
+			if (cTime >= endTime){
+				return(endTime);
+			}
+			//find event type
+			else{
+				r =ranf();
+				if (r < (totRRate/ totRate)){
+					//pick popn
+					eSum = rRate[0];
+					i = 0;
+					r2 = ranf();
+					while(eSum/totRRate < r2) eSum += rRate[++i];
+					bp = recombineAtTimePopn(cTime,i);
+					if (bp != 666){
+						addBreakPoint(bp);
+					}
+				}
+				else{
+					if(r < ((totRRate + totGCRate)/totRate)){
+						//pick popn
+						eSum = gcRate[0];
+						i = 0;
+						r2 = ranf();
+						while(eSum/totGCRate < r2) eSum += gcRate[++i];
+						geneConversionAtTimePopn(cTime,i);
+					}
+					else{
+						if(r < ((totMRate+totRRate + totGCRate)/totRate)){
+							//pick source popn
+							eSum = mRate[0];
+							i = 0;
+							j = 0;
+							r2 = ranf();
+							while(eSum/totMRate < r2) eSum += mRate[++i];
+							//printf("outer totMRate: %f eSum: %f i:%d\n",totMRate,eSum,i);
+							//pick dest popn
+							eSum = migAt(i, 0, currentTime) * popnSizes[i] * 0.5;
+							//printf("outer eSumNew:%f mRate[%d]:%f\n",eSum,i,mRate[i]);
+							r2 = ranf();
+							while(eSum/mRate[i] < r2){
+							//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
+								eSum += migAt(i, ++j, currentTime) * popnSizes[i] * 0.5;
+							//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
+
+							}
+							migrateAtTime(cTime,i,j);
+						}
+
+						else{
+							//coalesce
+							//pick popn
+							eSum = cRate[0];
+							i = 0;
+							r2 = ranf();
+							while(eSum/totCRate < r2){
+								 eSum += cRate[++i];
+								}
+							coalesceAtTimePopn(cTime,i);
+
+							// Increment coalescence counter and sweep
+							coalescenceCounter++;
+							if (coalescenceCounter % SWEEP_INTERVAL == 0) {
+								// Flush buffered edges before freeing nodes to avoid referencing freed nodes
+								extern int tskit_flush_edges_periodic(void);
+								tskit_flush_edges_periodic();
+								sweepAndFreeRemovedNodes();
+							}
+
+
+						}
+					}
+				}
+			}
 		}
-		//find event type
-		else{ 
-			r =ranf();
-			if (r < (totRRate/ totRate)){
-				//pick popn
+		else {
+			/* Non-constant shapes: NHPP per-component sampler. Each rate
+			 * component draws its own waiting time using the closed-form
+			 * inverse hazard for size/migration shapes; recomb / gc are
+			 * time-constant within an interval so an Exp(total) draw is
+			 * exact for those classes. The minimum across components is
+			 * the next event; its identity is returned via winnerKind /
+			 * winnerArg, so we dispatch directly without a second
+			 * within-class lottery for migration / coalescence. */
+			int winnerKind = -1, winnerArg = -1;
+			waitTime = drawNHPPWaitingTime(cRate, rRate, gcRate, mRate,
+			                               totRRate, totGCRate, cTime,
+			                               &winnerKind, &winnerArg);
+			cTime += waitTime;
+
+			if (cTime >= endTime){
+				return(endTime);
+			}
+
+			if (winnerKind == 0) {
+				/* recombination: pick population proportional to rRate */
 				eSum = rRate[0];
 				i = 0;
 				r2 = ranf();
@@ -1640,60 +1773,38 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 					addBreakPoint(bp);
 				}
 			}
-			else{
-				if(r < ((totRRate + totGCRate)/totRate)){
-					//pick popn
-					eSum = gcRate[0];
-					i = 0;
-					r2 = ranf();
-					while(eSum/totGCRate < r2) eSum += gcRate[++i];
-					geneConversionAtTimePopn(cTime,i);
+			else if (winnerKind == 1) {
+				/* gene conversion: pick population proportional to gcRate */
+				eSum = gcRate[0];
+				i = 0;
+				r2 = ranf();
+				while(eSum/totGCRate < r2) eSum += gcRate[++i];
+				geneConversionAtTimePopn(cTime,i);
+			}
+			else if (winnerKind == 2) {
+				/* migration: src/dst already chosen by the per-pair NHPP draw */
+				int src = winnerArg / MAXPOPS;
+				int dst = winnerArg % MAXPOPS;
+				migrateAtTime(cTime, src, dst);
+			}
+			else if (winnerKind == 3) {
+				/* coalescence: population already chosen by per-pop NHPP draw */
+				int popID = winnerArg;
+				coalesceAtTimePopn(cTime, popID);
+
+				// Increment coalescence counter and sweep
+				coalescenceCounter++;
+				if (coalescenceCounter % SWEEP_INTERVAL == 0) {
+					// Flush buffered edges before freeing nodes to avoid referencing freed nodes
+					extern int tskit_flush_edges_periodic(void);
+					tskit_flush_edges_periodic();
+					sweepAndFreeRemovedNodes();
 				}
-				else{
-					if(r < ((totMRate+totRRate + totGCRate)/totRate)){
-						//pick source popn
-						eSum = mRate[0];
-						i = 0;
-						j = 0;
-						r2 = ranf();
-						while(eSum/totMRate < r2) eSum += mRate[++i];
-						//printf("outer totMRate: %f eSum: %f i:%d\n",totMRate,eSum,i);
-						//pick dest popn
-						eSum = migMat[i][0]* popnSizes[i] * 0.5;
-						//printf("outer eSumNew:%f mRate[%d]:%f\n",eSum,i,mRate[i]);
-						r2 = ranf();
-						while(eSum/mRate[i] < r2){
-						//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
-							eSum += migMat[i][++j] * popnSizes[i] * 0.5;
-						//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
-							
-						} 
-						migrateAtTime(cTime,i,j);
-					}
-				
-					else{
-						//coalesce 
-						//pick popn
-						eSum = cRate[0];
-						i = 0;
-						r2 = ranf();
-						while(eSum/totCRate < r2){
-							 eSum += cRate[++i];
-							}
-						coalesceAtTimePopn(cTime,i);
-						
-						// Increment coalescence counter and sweep
-						coalescenceCounter++;
-						if (coalescenceCounter % SWEEP_INTERVAL == 0) {
-							// Flush buffered edges before freeing nodes to avoid referencing freed nodes
-							extern int tskit_flush_edges_periodic(void);
-							tskit_flush_edges_periodic();
-							sweepAndFreeRemovedNodes();
-						}
-					
-					
-					}
-				}
+			}
+			else {
+				/* No event drawable (all rates zero / unreachable). Advance
+				 * to endTime to terminate the phase cleanly. */
+				return(endTime);
 			}
 		}
 	}
@@ -1760,14 +1871,26 @@ complications like changing population size, or soft sweeps, etc
 returns the acceptance probability of the trajectory */
 double proposeTrajectory(int currentEventNumber, float *currentTrajectory, double *sizeRatio, char sweepMode, \
 double initialFreq, double *finalFreq, double alpha, double f0, double currentTime)
-{	
+{
 	double tInc, tIncOrig, minF,ttau, N;
 	double N_0 = (double) EFFECTIVE_POPN_SIZE;
 	double Nmax, localNextTime,localCurrentTime, currentSizeRatio;
 	int i, insweepphase;
 	long int j;
-	float x;
-	
+	double x;
+
+	/* Integrated alpha_eff for the closed-form general detSweepFreq under
+	 * non-constant shapes. Reset to 0 at function entry; updated in the
+	 * inner loop's case 'd' when the dispatch chooses the general path. */
+	double A_now = 0.0;
+	double A_prev = 0.0;
+
+	/* Save popShape state; we'll mutate it as we walk events forward to track
+	 * 'n' and 'g' events, then restore at function exit so the caller's view
+	 * is unchanged. */
+	Shape saved_popShape[MAXPOPS];
+	memcpy(saved_popShape, popShape, sizeof(saved_popShape));
+
 	// For sweep simulations, write directly to a temporary file
 	char tempFilename[256];
 	snprintf(tempFilename, sizeof(tempFilename), "/tmp/discoal_traj_%d_%ld_%d.tmp", 
@@ -1801,23 +1924,58 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			localNextTime = events[i+1].time;
 		}
 		if(events[i].type == 'n'){
-			currentSizeRatio = events[i].popnSize;
-			N = floor(N_0 *events[i].popnSize);
+			popShape[events[i].popID].type = SHAPE_CONSTANT;
+			popShape[events[i].popID].anchor_value = events[i].popnSize;
+			popShape[events[i].popID].rate_param = 0.0;
+			popShape[events[i].popID].anchor_time = events[i].time;
+			currentSizeRatio = events[i].popnSize;  /* legacy cache for inner loop */
+			N = floor(N_0 * events[i].popnSize);
 			if(currentSizeRatio > Nmax) Nmax = currentSizeRatio;
+		}
+		if(events[i].type == 'g'){
+			popShape[events[i].popID].type = SHAPE_EXPONENTIAL;
+			popShape[events[i].popID].anchor_value = sizeAt(events[i].popID, events[i].time);
+			popShape[events[i].popID].rate_param = events[i].popnSize;
+			popShape[events[i].popID].anchor_time = events[i].time;
+			/* Approximate Nmax tracking under EXP: sample sizeRatio at the
+			 * event time. A future refinement could compute the maximum
+			 * over the interval analytically. */
+			double sr_now = sizeAt(events[i].popID, events[i].time);
+			if(sr_now > Nmax) Nmax = sr_now;
+		}
+		if(events[i].type == 'l'){
+			popShape[events[i].popID].type = SHAPE_LINEAR;
+			popShape[events[i].popID].anchor_value = sizeAt(events[i].popID, events[i].time);
+			popShape[events[i].popID].rate_param = events[i].popnSize;
+			popShape[events[i].popID].anchor_time = events[i].time;
+			double sr_now = sizeAt(events[i].popID, events[i].time);
+			if(sr_now > Nmax) Nmax = sr_now;
 		}
 		if(minF < 1.0/(2.*N)) minF = 1.0/(2.*N);
 		tInc = 1.0 / (deltaTMod * N);
 		//iterate until epoch time or sweep freq
 		while( x > 1.0/(2.*N) && (currentTime+ttau) < localNextTime){
 			ttau += tIncOrig;
+			double sr_now = sizeAt(0, currentTime + ttau);
+			N = floor(N_0 * sr_now);
+			tInc = 1.0 / (deltaTMod * N);
 			if(x > minF && insweepphase){
 				//get next sweep allele freq
 				switch(sweepMode){
 					case 'd':
-					x = detSweepFreq(ttau, alpha * currentSizeRatio);
+					if (allShapesConstant()) {
+						x = detSweepFreq(ttau, alpha * sr_now);
+					} else {
+						/* Time-varying alpha_eff: use the closed-form general formula with the
+						 * incrementally-tracked integrated alpha. A_now = A_prev + alpha *
+						 * integratedSizeRatio over the most recent dt step. */
+						A_now = A_prev + alpha * integratedSizeRatio(0, currentTime + ttau - tIncOrig, tIncOrig);
+						x = detSweepFreqGeneral(alpha, A_now);
+						A_prev = A_now;
+					}
 					break;
 					case 's':
-					x = 1.0 - genicSelectionStochasticForwardsOptimized(tInc, (1.0 - x), alpha * currentSizeRatio);
+					x = 1.0 - genicSelectionStochasticForwardsOptimized(tInc, (1.0 - x), alpha * sr_now);
 					break;
 					case 'N':
 					x = neutralStochasticOptimized(tInc, x);
@@ -1826,7 +1984,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			}
 			else{
 				insweepphase = 0;
-				tInc = 1.0 / (deltaTMod * N );
+				/* tInc already set above */
 				x = neutralStochasticOptimized(tInc, x);
 			}
 			//printf("j: %ld x: %f\n",j,x);
@@ -1840,7 +1998,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			}
 			
 			// Write to buffer
-			writeBuffer[bufferPos++] = x;
+			writeBuffer[bufferPos++] = (float)x;
 			if (bufferPos >= 1024) {
 				// Flush buffer to file
 				fwrite(writeBuffer, sizeof(float), bufferPos, trajFile);
@@ -1863,9 +2021,12 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 	
 	// Note: We don't mmap here because this function may be called multiple times
 	// during rejection sampling. The accepted trajectory will be mmap'd later.
-	
+
+	/* Restore popShape state — caller expects it unchanged. */
+	memcpy(popShape, saved_popShape, sizeof(saved_popShape));
+
 	return(currentSizeRatio/Nmax);
-	
+
 }
 
 
@@ -1887,6 +2048,8 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	double minF;
 	double cTime = startTime;
 	int insweepphase, i;
+	double A_now = 0.0;
+	double A_prev = 0.0;
 
 	//initialize stuff
 	pCoalB = pCoalb = pRecB = pRecb = totRate = pRecurMut = pLeftRecB = pLeftRecb = totGCRate = totCRate = totRRate = 0;
@@ -1906,7 +2069,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 				if(partialSweepMode == 1){
 					//for partial sweeps choose randomly acccording to final sweep freq
 					if(ranf()>partialSweepFinalFreq){
-						nodes[i]->sweepPopn = 0;						
+						nodes[i]->sweepPopn = 0;
 					}
 					else{
 						nodes[i]->sweepPopn = 1;
@@ -1923,7 +2086,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 		}
 	*stillSweeping = 1;
 	}
-	
+
 	//assume that sweep always happens in popn 0!!!
 	//using popnSize global to manage bookkeeping
 	sweepPopnSizes[1] = nodePopnSweepSize(0,1);
@@ -1934,27 +2097,36 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	tInc = 1.0 / (deltaTMod * N);
 	tIncOrig = 1.0 / (deltaTMod * EFFECTIVE_POPN_SIZE);
 	insweepphase = 1;
-	
+
 	//go for epoch time, sweep freq, or root
-	while( x > 1.0/(2.*N) && (cTime+ttau) < endTime && popnSizes[0] > 1){ 
+	while( x > 1.0/(2.*N) && (cTime+ttau) < endTime && popnSizes[0] > 1){
 		//rejection algorithm of Braverman et al. 1995
 		eventRand = ranf();
 		eventProb = 1.0;
 		//wait for something
 		while(eventProb > eventRand && x > (1.0 / (2*N)) && (cTime+ttau) < endTime){
 			ttau += tIncOrig;
+			double sr_now = sizeAt(0, cTime + ttau);
 
 			if(x > minF && insweepphase)
 			{
 				//get next sweep allele freq
 				switch(sweepMode){
 					case 'd':
-					x = detSweepFreq(ttau, alpha * sizeRatio[0]);
+					if (allShapesConstant()) {
+						x = detSweepFreq(ttau, alpha * sr_now);
+					} else {
+						/* Time-varying alpha_eff: closed-form general formula with
+						 * incrementally-tracked integrated alpha. */
+						A_now = A_prev + alpha * integratedSizeRatio(0, cTime + ttau - tIncOrig, tIncOrig);
+						x = detSweepFreqGeneral(alpha, A_now);
+						A_prev = A_now;
+					}
 				//	printf("x here:%f ttau: %f alpha*sizeRatio: %f\n",x,ttau,alpha*sizeRatio);
 
 					break;
 					case 's':
-					x = 1.0 - genicSelectionStochasticForwardsOptimized(tInc, (1.0 - x), alpha * sizeRatio[0]);
+					x = 1.0 - genicSelectionStochasticForwardsOptimized(tInc, (1.0 - x), alpha * sr_now);
 				//	printf("x here:%f ttau: %f alpha*sizeRatio: %f\n",x,ttau,alpha*sizeRatio[0]);
 					break;
 					case 'N':
@@ -1972,8 +2144,8 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 
 			//calculate event probs
 			//first 4 events are probs of events in population 0
-			pCoalB = ((sweepPopnSizes[1] * (sweepPopnSizes[1] - 1) ) * 0.5)/x*tIncOrig / sizeRatio[0];
-			pCoalb = ((sweepPopnSizes[0] * (sweepPopnSizes[0] - 1) ) * 0.5)/(1-x)*tIncOrig / sizeRatio[0];
+			pCoalB = ((sweepPopnSizes[1] * (sweepPopnSizes[1] - 1) ) * 0.5)/x*tIncOrig / sr_now;
+			pCoalb = ((sweepPopnSizes[0] * (sweepPopnSizes[0] - 1) ) * 0.5)/(1-x)*tIncOrig / sr_now;
 			pRecB = rho * sweepPopnSizes[1]*0.5 *tIncOrig; // / sizeRatio[0];
 			pRecb = rho * sweepPopnSizes[0]*0.5 *tIncOrig;// / sizeRatio[0];
 			pGCB = my_gamma * sweepPopnSizes[1]*0.5 *tIncOrig;// / sizeRatio[0];
@@ -1991,10 +2163,10 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 			totRRate = 0.0;
 			totGCRate = 0.0;
 			totRate = sweepPopTotRate;
-			
+
 			//printf("currPopSize[0]: %d currPopSize[1]: %d\n",popnSizes[0],popnSizes[1]);
 			for(i=1;i<npops;i++){
-				cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 * tIncOrig / sizeRatio[i];
+				cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 * tIncOrig / sizeAt(i, cTime + ttau);
 				rRate[i] = rho * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
 				gcRate[i] = my_gamma * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
 				totCRate += cRate[i];
@@ -2216,8 +2388,8 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 
 			//calculate event probs
 			//first 4 events are probs of events in population 0
-			pCoalB = ((sweepPopnSizes[1] * (sweepPopnSizes[1] - 1) ) * 0.5)/x*tIncOrig / sizeRatio[0];
-			pCoalb = ((sweepPopnSizes[0] * (sweepPopnSizes[0] - 1) ) * 0.5)/(1-x)*tIncOrig / sizeRatio[0];
+			pCoalB = ((sweepPopnSizes[1] * (sweepPopnSizes[1] - 1) ) * 0.5)/x*tIncOrig / sizeAt(0, cTime + ttau);
+			pCoalb = ((sweepPopnSizes[0] * (sweepPopnSizes[0] - 1) ) * 0.5)/(1-x)*tIncOrig / sizeAt(0, cTime + ttau);
 			pRecB = rho * sweepPopnSizes[1]*0.5 *tIncOrig; // / sizeRatio[0];
 			pRecb = rho * sweepPopnSizes[0]*0.5 *tIncOrig;// / sizeRatio[0];
 			pGCB = my_gamma * sweepPopnSizes[1]*0.5 *tIncOrig;// / sizeRatio[0];
@@ -2235,10 +2407,10 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 			totRRate = 0.0;
 			totGCRate = 0.0;
 			totRate = sweepPopTotRate;
-			
+
 			//printf("currPopSize[0]: %d currPopSize[1]: %d\n",popnSizes[0],popnSizes[1]);
 			for(i=1;i<npops;i++){
-				cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 * tIncOrig / sizeRatio[i];
+				cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 * tIncOrig / sizeAt(i, cTime + ttau);
 				rRate[i] = rho * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
 				gcRate[i] = my_gamma * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
 				totCRate += cRate[i];
@@ -2990,6 +3162,14 @@ void mergePopns(int popnSrc, int popnDest){
 	//set migration rates to zero
 	migMat[popnSrc][popnDest] = 0.0;
 	migMat[popnDest][popnSrc] = 0.0;
+	migShape[popnSrc][popnDest].type = SHAPE_CONSTANT;
+	migShape[popnSrc][popnDest].anchor_value = 0.0;
+	migShape[popnSrc][popnDest].rate_param = 0.0;
+	migShape[popnSrc][popnDest].anchor_time = currentTime;
+	migShape[popnDest][popnSrc].type = SHAPE_CONSTANT;
+	migShape[popnDest][popnSrc].anchor_value = 0.0;
+	migShape[popnDest][popnSrc].rate_param = 0.0;
+	migShape[popnDest][popnSrc].anchor_time = currentTime;
 	
 }
 
@@ -3239,7 +3419,7 @@ void addNode(rootedNode *aNode){
 	alleleNumber += 1;
 	totNodeNumber += 1;
 	popnSizes[aNode->population]+=1;
-	if(aNode->population==0)
+	if(aNode->population==0 && aNode->sweepPopn >= 0)
 		sweepPopnSizes[aNode->sweepPopn]+=1;
 }
 
@@ -3268,7 +3448,7 @@ void removeNode(rootedNode *aNode){
 		i++;
 	}
 	popnSizes[aNode->population]-=1;
-	if (aNode->population==0)
+	if (aNode->population==0 && aNode->sweepPopn >= 0)
 		sweepPopnSizes[aNode->sweepPopn]-=1;
 	
 	// Remove from population list

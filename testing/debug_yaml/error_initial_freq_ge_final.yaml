@@ -1,0 +1,24 @@
+# Fixes #61: a partial sweep with initial_frequency >= final_frequency was
+# accepted (the two frequencies were validated independently against
+# [0, 1) but not cross-checked) and killed the simulator mid-run with
+# exit 154. Now rejected with:
+#   "Error parsing config: initial_frequency (0.9) must be less than final_frequency (0.1) when both are set"
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [10]
+  effective_population_size: 10000
+selection:
+  sweep_mode: stochastic
+  selection_coefficient: 100
+  sweep_position: 0.5
+  fixation_time_ago: 0.01
+  initial_frequency: 0.9
+  final_frequency: 0.1

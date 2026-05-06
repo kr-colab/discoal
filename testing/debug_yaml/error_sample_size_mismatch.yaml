@@ -1,0 +1,16 @@
+# PR #49 (#40): sum(deme_sample_size) != sample_size. Should error out with:
+#   "Error parsing config: sum of deme_sample_size (20) does not match sample_size (15)"
+
+simulation:
+  sample_size: 15
+  num_replicates: 1
+  num_sites: 10000
+  seed: [42, 4242]
+genetics:
+  mutation_rate: 0.5
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [10, 5, 5]
+  effective_population_size: 1.0
+output:
+  output_type: "snp_array"

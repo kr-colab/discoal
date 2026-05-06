@@ -1,0 +1,4 @@
+time_units: generations
+demes:
+  - name: A
+    start_time: [unclosed

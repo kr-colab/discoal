@@ -1,0 +1,18 @@
+# Fixes #73: effective_population_size used `if (x > 0)` as both
+# "is set" sentinel and validation, so anything non-positive (zero,
+# negative, NaN, -Inf) was silently treated as not-set and the default
+# Ne was used. Now negatives and NaN are rejected with:
+#   "Error parsing config: effective_population_size (-1) must be >= 0"
+# Found by testing/yaml_parser_fuzz.py.
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [10]
+  effective_population_size: -1

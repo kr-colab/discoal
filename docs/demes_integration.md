@@ -22,14 +22,15 @@ events:
 ### Supported
 - Multiple populations with specified sizes
 - Population size changes (instantaneous)
+- Exponential growth epochs (translated to discoal `-eg` events)
+- Linear growth epochs (translated to discoal `-el` events)
 - Population splits and mergers
-- Symmetric and asymmetric migration
+- Symmetric and asymmetric migration, including multi-window
+  piecewise-constant migration matrices
 - Pulse migration events
 - Sample size specification per population
 
 ### Not Supported
-- Exponential growth epochs (discoal only supports constant size epochs)
-- Linear growth epochs
 - Selfing rates
 - Cloning rates
 
@@ -40,11 +41,19 @@ If your demes file contains unsupported features, discoal will report an error a
 Discoal uses different time and rate units than the demes specification. The integration handles these conversions automatically:
 
 ### Time Conversion
-- Demes: time in generations
-- Discoal: time in units of 4N generations (coalescent time)
-- Conversion: `discoal_time = demes_time / (4N)`
+- Demes: time in the units the graph specifies (`time_units: generations`
+  or `time_units: years`).
+- Discoal: internal coalescent time.
+- Conversion: `discoal_time = demes_time / generation_time / (2 * N_ref)`
 
-Where N is the reference effective population size (the size of the first present-day deme).
+Where `N_ref` is the size of the first present-day deme in the demes file.
+For `time_units: generations`, the demes spec requires `generation_time = 1`,
+so the formula reduces to `demes_time / (2 * N_ref)`. For `time_units: years`,
+`generation_time` is the years-per-generation conversion factor, and the
+formula correctly lands in coalescent units regardless. (This matches the
+discoal CLI convention that command-line times in units of `2N` are
+internally stored as `4N` units; the importer halves the `4N` factor to
+land in the same internal scale.)
 
 ### Population Size Conversion
 - Demes: absolute population size

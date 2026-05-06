@@ -1,0 +1,21 @@
+# PR #48 (#39): selection block without fixation_time_ago or recurrent_sweep_rate.
+# Should error out with:
+#   "Error parsing config: selection block requires fixation_time_ago > 0 ..."
+
+simulation:
+  sample_size: 20
+  num_replicates: 1
+  num_sites: 10000
+  seed: [42, 4242]
+genetics:
+  mutation_rate: 0.5
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [20]
+  effective_population_size: 1000000
+selection:
+  sweep_mode: stochastic
+  selection_coefficient: 1000.0
+  sweep_position: 0.5
+output:
+  output_type: "snp_array"

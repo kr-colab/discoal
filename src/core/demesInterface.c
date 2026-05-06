@@ -34,14 +34,12 @@ static int findPopulationIndex(struct demes_graph *graph, const char *name) {
     return -1;
 }
 
-// Convert demes time to coalescent time
+// Convert demes time to coalescent time. demes_time is in the units the
+// graph specifies; for time_units="generations" generation_time is 1 (demes
+// validates this), and for time_units="years" generation_time is the years
+// per generation, so dividing yields generations either way.
 static double demesTimeToCoalTime(double demes_time, double generation_time, double N) {
-    // demes_time is in the time units specified (typically generations)
-    // In discoal, times from command line are in units of 2N generations, but
-    // internally stored as units of 4N. So command line time T becomes 2T internally.
-    // To match this behavior, we need to convert demes time (in generations) to
-    // the same internal units: generations / (2 * N)
-    return demes_time * generation_time / (2.0 * N);
+    return demes_time / generation_time / (2.0 * N);
 }
 
 // Convert demes size to coalescent size (relative to ancestral N)
@@ -57,6 +55,26 @@ static int compareEventsByTime(const void *a, const void *b) {
     if (ea->time > eb->time) return -1;
     return 0;
 }
+
+// Compare doubles ascending (used for migration boundary deduplication)
+static int compareDoublesAscending(const void *a, const void *b) {
+    double da = *(const double *)a;
+    double db = *(const double *)b;
+    if (da < db) return -1;
+    if (da > db) return  1;
+    return 0;
+}
+
+// Per-pair migration window collected from graph->migrations.
+// Times are in discoal internal coalescent units. Demes spec says
+// start_time > end_time (start_time is older, end_time is more recent),
+// so after conversion t_start > t_end as well.
+struct mig_window {
+    int src, dst;
+    double t_start;  // older boundary, larger internal time
+    double t_end;    // more-recent boundary, smaller internal time
+    double rate;     // 4*N*demes_rate
+};
 
 int loadDemesFile(const char *filename, event **events, int *eventNumber, int *eventsCapacity, 
                   double *currentSize, int *npops, int *sampleSizes, double N) {
@@ -273,10 +291,6 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
             fprintf(stderr, "\n");
         }
         
-        // Initialize sample sizes (assuming equal sampling from all populations for now)
-        // This should be updated based on actual sampling scheme
-        sampleSizes[popID] = 0;  // Will be set by user or sampling scheme
-        
         // Process epochs (population size changes)
         for (int j = 0; j < deme->n_epochs; j++) {
             struct demes_epoch *epoch = &deme->epochs[j];
@@ -324,28 +338,67 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
                 (*eventNumber)++;
             }
             
-            // Handle exponential growth within epoch
-            if (epoch->size_function == DEMES_SIZE_FUNCTION_EXPONENTIAL) {
-                // Exponential growth is not yet supported in discoal
-                fprintf(stderr, "\nError: Exponential growth epochs are not yet supported in discoal.\n");
-                fprintf(stderr, "Population '%s' has an exponential growth epoch from size %g to %g.\n", 
-                        deme->name, epoch->start_size, epoch->end_size);
-                fprintf(stderr, "Please use constant size epochs or implement exponential growth manually using -eG events.\n");
-                fprintf(stderr, "\nNote: You can approximate exponential growth with multiple constant-size epochs\n");
-                fprintf(stderr, "or use discoal's native -eG flag for exponential growth events.\n");
-                return -1;
+            // Handle exponential growth within epoch.
+            // Emit a 'g' event at the more-recent (smaller-internal-time) boundary
+            // of the epoch with the forward-time per-generation growth rate
+            // converted to discoal's internal alpha (4N-scaled).  See -eg CLI
+            // parsing for the convention.
+            if (epoch->size_function == DEMES_SIZE_FUNCTION_EXPONENTIAL &&
+                epoch->start_size != epoch->end_size) {
+                /* Forward-time per-generation rate.  start_time is the older
+                 * boundary (forward-time start), end_time is the more recent
+                 * (forward-time end).  end_size > start_size => positive alpha
+                 * (forward growth, past was smaller).  Divide the time delta
+                 * by generation_time to land in generations regardless of
+                 * the graph's time_units. */
+                double dt_gens = (startTime - endTime) / graph->generation_time;
+                double alpha_per_gen = log(epoch->end_size / epoch->start_size)
+                                       / dt_gens;
+                /* Convert to discoal internal alpha (4N-scaled): inverse of
+                 * alpha_per_gen = alpha_internal / (2N). */
+                double alpha_internal = alpha_per_gen * 2.0 * N;
+                double t_internal = demesTimeToCoalTime(epoch->end_time,
+                                                        graph->generation_time, N);
+
+                ensureDemesEventsCapacity(events, eventsCapacity, *eventNumber + 1);
+                (*events)[*eventNumber].time = t_internal;
+                (*events)[*eventNumber].popID = popID;
+                (*events)[*eventNumber].popnSize = alpha_internal;  /* alpha stored in popnSize, matches -eg */
+                (*events)[*eventNumber].type = 'g';
+                (*eventNumber)++;
+
+                fprintf(stderr, "  Epoch %d exponential: pop %d, %g -> %g, alpha=%g per gen (alpha_internal=%g) at t_internal=%g\n",
+                        j, popID, epoch->start_size, epoch->end_size,
+                        alpha_per_gen, alpha_internal, t_internal);
             }
-            
-            // Check for linear growth (not in demes-c enum but possible in demes spec)
-            // The demes-c library may not expose linear growth, but let's be defensive
-            if (epoch->start_size != epoch->end_size && 
-                epoch->size_function != DEMES_SIZE_FUNCTION_EXPONENTIAL) {
-                // This would be linear growth, which is also not supported
-                fprintf(stderr, "\nError: Linear growth epochs are not yet supported in discoal.\n");
-                fprintf(stderr, "Population '%s' has a size change from %g to %g that is not exponential.\n", 
-                        deme->name, epoch->start_size, epoch->end_size);
-                fprintf(stderr, "Please use constant size epochs only.\n");
-                return -1;
+
+            // Linear growth: any non-EXPONENTIAL size_function with differing
+            // start_size and end_size.  demes-c may not expose a LINEAR enum
+            // but the demes spec recognises this case.  Emit an 'l' event at
+            // the more-recent boundary.
+            if (epoch->size_function != DEMES_SIZE_FUNCTION_EXPONENTIAL &&
+                epoch->start_size != epoch->end_size) {
+                /* Forward-time linear growth rate per generation: positive when
+                 * end_size > start_size (forward growth, past was smaller).
+                 * (start_time - end_time) is positive (older - more recent).
+                 * Divide by generation_time to handle non-generation time_units. */
+                double dt_gens = (startTime - endTime) / graph->generation_time;
+                double gamma_per_gen = (epoch->end_size - epoch->start_size)
+                                       / dt_gens;
+                double gamma_internal = gamma_per_gen * 2.0 * N;
+                double t_internal = demesTimeToCoalTime(epoch->end_time,
+                                                        graph->generation_time, N);
+
+                ensureDemesEventsCapacity(events, eventsCapacity, *eventNumber + 1);
+                (*events)[*eventNumber].time = t_internal;
+                (*events)[*eventNumber].popID = popID;
+                (*events)[*eventNumber].popnSize = gamma_internal;  /* gamma stored in popnSize, matches -el */
+                (*events)[*eventNumber].type = 'l';
+                (*eventNumber)++;
+
+                fprintf(stderr, "  Epoch %d linear: pop %d, %g -> %g, gamma=%g per gen (gamma_internal=%g) at t_internal=%g\n",
+                        j, popID, epoch->start_size, epoch->end_size,
+                        gamma_per_gen, gamma_internal, t_internal);
             }
         }
         
@@ -401,49 +454,145 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
         }
     }
     
-    // Process migrations
+    // Process migrations: emit interval-based 'm' events (issue #82).
+    //
+    // Each unidirectional migration window in graph->migrations is a tuple
+    // (src, dst, t_start, t_end, rate) with t_start > t_end (both in the
+    // past, demes convention: end_time is the more-recent boundary).
+    //
+    // For each ordered pair (src, dst) we treat the rate as the sum of all
+    // windows that cover a given time t (this matches demes semantics; in
+    // practice a well-formed demes graph has at most one window per
+    // ordered pair active at a time, but we sum to be safe).
+    //
+    // Strategy:
+    //   A) collect all windows in their internal time units.
+    //   B) write the active-at-t=0 rate directly into migMatConst[src][dst]
+    //      so the runtime picks it up via its standard migMatConst -> migMat
+    //      copy at the start of dropChunks. This replaces the old back-
+    //      derivation hack that scanned 'M' events.
+    //   C) for every distinct boundary time > 0 (start or end of any window),
+    //      determine the active rate for each ordered pair just-after the
+    //      boundary (i.e., for time slightly older than the boundary, going
+    //      further into the past). If that differs from the rate just-before
+    //      the boundary, emit one 'm' event setting the post-boundary rate.
     fprintf(stderr, "\nMigrations: %zu\n", graph->n_migrations);
-    for (int i = 0; i < graph->n_migrations; i++) {
-        struct demes_migration *mig = &graph->migrations[i];
-        
-        // In demes format, migrations can be:
-        // 1. Symmetric: specified with demes: [pop1, pop2] - creates one migration object
-        // 2. Asymmetric: specified with separate source/dest/rate - creates one directional migration
-        
-        int sourceID = findPopulationIndex(graph, (char*)mig->source->name);
-        int destID = findPopulationIndex(graph, (char*)mig->dest->name);
-        
-        if (sourceID < 0 || destID < 0) {
-            fprintf(stderr, "Error: Could not find population for migration\n");
+    if (graph->n_migrations > 0) {
+        struct mig_window *windows = (struct mig_window *)malloc(
+            graph->n_migrations * sizeof(struct mig_window));
+        if (windows == NULL) {
+            fprintf(stderr, "Error: Failed to allocate migration windows\n");
             return -1;
         }
-        
-        fprintf(stderr, "Migration %d: %s (pop%d) -> %s (pop%d)\n", 
-                i, mig->source->name, sourceID, mig->dest->name, destID);
-        fprintf(stderr, "  Time interval: %g to %g generations\n", mig->start_time, mig->end_time);
-        fprintf(stderr, "  Demes rate: %g per generation\n", mig->rate);
-        
-        // Convert demes migration rate to discoal's scaled rate (4Nm)
-        double scaledRate = 4.0 * N * mig->rate;
-        fprintf(stderr, "  Conversion: %g * 4 * %g = %g (discoal -m equivalent)\n", 
-                mig->rate, N, scaledRate);
-        
-        // Create only unidirectional migration event (source -> dest)
-        // For symmetric migrations, demes-c will create two migration objects
-        (*events)[*eventNumber].time = demesTimeToCoalTime(mig->start_time, graph->generation_time, N);
-        (*events)[*eventNumber].popID = destID;     // destination
-        (*events)[*eventNumber].popID2 = sourceID;  // source
-        (*events)[*eventNumber].popnSize = scaledRate;  // Scaled migration rate
-        (*events)[*eventNumber].type = 'M';  // Migration start
-        (*eventNumber)++;
-        
-        // End event
-        (*events)[*eventNumber].time = demesTimeToCoalTime(mig->end_time, graph->generation_time, N);
-        (*events)[*eventNumber].popID = destID;
-        (*events)[*eventNumber].popID2 = sourceID;
-        (*events)[*eventNumber].popnSize = 0.0;  // Stop migration
-        (*events)[*eventNumber].type = 'M';  // Migration end
-        (*eventNumber)++;
+        int n_windows = 0;
+        for (int i = 0; i < (int)graph->n_migrations; i++) {
+            struct demes_migration *mig = &graph->migrations[i];
+            int sourceID = findPopulationIndex(graph, (char*)mig->source->name);
+            int destID   = findPopulationIndex(graph, (char*)mig->dest->name);
+            if (sourceID < 0 || destID < 0) {
+                fprintf(stderr, "Error: Could not find population for migration\n");
+                free(windows);
+                return -1;
+            }
+            double t_start = demesTimeToCoalTime(mig->start_time, graph->generation_time, N);
+            double t_end   = demesTimeToCoalTime(mig->end_time,   graph->generation_time, N);
+            double rate    = 4.0 * N * mig->rate;
+            fprintf(stderr, "Migration %d: %s (pop%d) -> %s (pop%d)\n",
+                    i, mig->source->name, sourceID, mig->dest->name, destID);
+            fprintf(stderr, "  Time interval (gens): %g to %g\n", mig->start_time, mig->end_time);
+            fprintf(stderr, "  Internal interval:    %g to %g\n", t_start, t_end);
+            fprintf(stderr, "  Demes rate: %g per gen, scaled (4Nm): %g\n", mig->rate, rate);
+            windows[n_windows].src     = sourceID;
+            windows[n_windows].dst     = destID;
+            windows[n_windows].t_start = t_start;
+            windows[n_windows].t_end   = t_end;
+            windows[n_windows].rate    = rate;
+            n_windows++;
+        }
+
+        // Step B: write the t=0 active matrix directly into migMatConst.
+        // The active rate at t=0 for (src, dst) is the sum of rates from
+        // windows whose more-recent boundary is at t=0 (i.e., they cover
+        // the present).
+        for (int w = 0; w < n_windows; w++) {
+            if (windows[w].t_end == 0.0) {
+                migMatConst[windows[w].src][windows[w].dst] += windows[w].rate;
+                fprintf(stderr, "  Active at t=0: pop%d -> pop%d = %g (added to migMatConst)\n",
+                        windows[w].src, windows[w].dst, windows[w].rate);
+            }
+        }
+
+        // Step C: collect boundary times > 0 (start_time and end_time of
+        // every window) and dedupe.
+        double *boundaries = (double *)malloc(2 * n_windows * sizeof(double));
+        if (boundaries == NULL) {
+            fprintf(stderr, "Error: Failed to allocate migration boundaries\n");
+            free(windows);
+            return -1;
+        }
+        int n_bounds = 0;
+        for (int w = 0; w < n_windows; w++) {
+            if (windows[w].t_start > 0.0) boundaries[n_bounds++] = windows[w].t_start;
+            if (windows[w].t_end   > 0.0) boundaries[n_bounds++] = windows[w].t_end;
+        }
+        qsort(boundaries, n_bounds, sizeof(double), compareDoublesAscending);
+        int n_unique = 0;
+        for (int i = 0; i < n_bounds; i++) {
+            if (i == 0 || boundaries[i] != boundaries[i-1]) {
+                boundaries[n_unique++] = boundaries[i];
+            }
+        }
+
+        // Worst case: at each boundary we emit one 'm' event per ordered
+        // (src, dst) pair. Reserve capacity accordingly.
+        int worst_extra = n_unique * (*npops) * (*npops);
+        ensureDemesEventsCapacity(events, eventsCapacity, *eventNumber + worst_extra + 10);
+
+        // Step D: for each boundary, for each ordered pair, emit an 'm'
+        // event when the post-boundary rate differs from the pre-boundary
+        // rate.
+        //
+        // Convention: discoal time grows going backward into the past.
+        // A window with internal interval [t_end, t_start) is active for
+        // times t in [t_end, t_start). Just-after a boundary (going further
+        // into the past) means t slightly larger than the boundary.
+        for (int b = 0; b < n_unique; b++) {
+            double t = boundaries[b];
+            for (int src = 0; src < *npops; src++) {
+                for (int dst = 0; dst < *npops; dst++) {
+                    if (src == dst) continue;
+                    double rate_after  = 0.0;  // for t' slightly > t (older)
+                    double rate_before = 0.0;  // for t' slightly < t (more recent)
+                    for (int w = 0; w < n_windows; w++) {
+                        if (windows[w].src != src || windows[w].dst != dst) continue;
+                        // Window covers [t_end, t_start). Just-after t means
+                        // t in [t_end, t_start), i.e. t_end <= t < t_start.
+                        if (windows[w].t_end <= t && t < windows[w].t_start) {
+                            rate_after += windows[w].rate;
+                        }
+                        // Just-before t means t' < t with t' in [t_end, t_start),
+                        // i.e. t_end < t and t <= t_start (window's recent
+                        // boundary is older than t', and t' < t_start).
+                        if (windows[w].t_end < t && t <= windows[w].t_start) {
+                            rate_before += windows[w].rate;
+                        }
+                    }
+                    if (rate_after != rate_before) {
+                        (*events)[*eventNumber].time     = t;
+                        (*events)[*eventNumber].popID2   = src;
+                        (*events)[*eventNumber].popID    = dst;
+                        (*events)[*eventNumber].popnSize = rate_after;
+                        (*events)[*eventNumber].type     = 'm';
+                        (*eventNumber)++;
+                        fprintf(stderr, "  Boundary t=%g: pop%d -> pop%d rate %g -> %g ('m' event emitted)\n",
+                                t, src, dst, rate_before, rate_after);
+                    }
+                }
+            }
+        }
+
+        free(boundaries);
+        free(windows);
     }
     
     // Process pulses (admixture events)

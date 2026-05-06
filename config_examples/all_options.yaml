@@ -1,0 +1,69 @@
+# Full discoal YAML configuration example: this will not run as it contains
+# conflicting options, but serves as a list of possible key-value pairs.
+
+simulation:
+  sample_size: 20
+  num_replicates: 2
+  num_sites: 10000
+  seed: [12345, 10102]
+
+genetics:
+  mutation_rate: 1.0e-1
+  recombination_rate: 1.0e-1
+  gene_conversion_rate: 1.0e-1
+  gene_conversion_tract_length: 100
+  crossover_ratio: 0.5
+
+demography:
+  deme_sample_size: [10, 5, 5]
+  effective_population_size: 1.0
+  migration_matrix:
+    - row: [0.0, 1.0e-1, 1.0e-1]
+    - row: [1.0e-1, 0.0, 1.0e-1]
+    - row: [1.0e-1, 1.0e-1, 0.0]
+  demographic_events:
+    population_size_changes:
+      - time: 1000
+        size: 2000
+        population: 0
+      - time: 1500
+        size: 100
+        population: 1
+    migration_rate_changes:
+      - time: 1000
+        rate: 1.0e-6
+        source: 0
+        destination: 1
+      - time: 2500
+        rate: 1.0e-6
+        source: 0
+        destination: 2
+    population_splits:
+      - time: 2.0
+        ancestral: 0
+        derived: 1
+      - time: 3.0
+        ancestral: 0
+        derived: 2
+  demes_filename: "/path/to/demes"
+
+selection:
+  sweep_mode: "stochastic"
+  sweep_mode: "deterministic"
+  sweep_mode: "neutral"
+  selection_coefficient: 10.0
+  sweep_position: 0.5
+  fixation_time_ago: 1.0
+  initial_frequency: 1.0e-1
+  final_frequency: 0.9
+  beneficial_mutation_rate: 1.0e-2
+  recurrent_sweep_rate: 0.1
+
+output:
+  output_type: "snp_array"
+  output_type: "tree_sequence"
+  output_type: "haplotype"
+  finite_output: true
+  hide_partial_snp: true
+  unsimplified_tree_sequence: false
+  tree_sequence_filename: "new_example.trees"

@@ -1,0 +1,18 @@
+# PR #52 (#43): effective_population_size is a YAML double but
+# EFFECTIVE_POPN_SIZE is an int. A fractional value used to be silently
+# truncated. Now rejected with:
+#   "Error parsing config: effective_population_size (1.5) must be an integer"
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [10]
+  effective_population_size: 1.5
+output:
+  output_type: "snp_array"

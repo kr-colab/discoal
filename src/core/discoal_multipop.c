@@ -23,6 +23,7 @@
 #include "ranlib.h"
 #include "discoal.h"
 #include "discoalFunctions.h"
+#include "shapes.h"
 #include "alleleTraj.h"
 #include "tskitInterface.h"
 #include <tskit/tables.h>
@@ -33,7 +34,7 @@
 
 
 
-int locusNumber; 
+int locusNumber;
 int leftRhoFlag=0;
 const char *fileName;
 double *currentSize;
@@ -103,6 +104,10 @@ int main(int argc, const char * argv[]){
 	double probAccept;
 	
 	getParameters(argc,argv);
+  fprintf(stderr, "DEBUG\t%d\t%f\t%f\t%f\t%ld\t%ld\t%d\n", migFlag, tDiv, theta, rho, seed1, seed2, EFFECTIVE_POPN_SIZE);
+  fprintf(stderr, "DEBUG\t%d\n", nSites);
+	/* Snapshot for per-replicate restore in initialize(); see currentSizeConst. */
+	for (i = 0; i < MAXPOPS; i++) currentSizeConst[i] = currentSize[i];
 	double N = EFFECTIVE_POPN_SIZE; // effective population size
 	// fprintf(stderr, "DEBUG: About to call setall() with seeds: %ld, %ld\n", seed1, seed2);
 	setall(seed1, seed2 );
@@ -227,6 +232,10 @@ int main(int argc, const char * argv[]){
 				case 'n':
 				currentTime = events[j].time;
 				currentSize[events[j].popID] = events[j].popnSize;
+				popShape[events[j].popID].type = SHAPE_CONSTANT;
+				popShape[events[j].popID].anchor_value = events[j].popnSize;
+				popShape[events[j].popID].rate_param = 0.0;
+				popShape[events[j].popID].anchor_time = events[j].time;
 				//for(i=0;i<npops;i++)
 				//	for(j=0;j<npops;j++) printf("%f\n",migMat[i][j]);
 				if(activeSweepFlag == 0){
@@ -253,6 +262,96 @@ int main(int argc, const char * argv[]){
 				}
 			//	printf("pn0:%d pn1:%d alleleNumber: %d sp1: %d sp2: %d \n", popnSizes[0],popnSizes[1], alleleNumber,sweepPopnSizes[1],
 			//							sweepPopnSizes[0]);
+				break;
+				case 'g':
+				currentTime = events[j].time;
+				popShape[events[j].popID].type = SHAPE_EXPONENTIAL;
+				popShape[events[j].popID].anchor_value = sizeAt(events[j].popID, currentTime);
+				popShape[events[j].popID].rate_param = events[j].popnSize;  /* alpha is stored in popnSize field */
+				popShape[events[j].popID].anchor_time = currentTime;
+				/* Now run the inter-event interval the same way 'n' does. */
+				if(activeSweepFlag == 0){
+					if(recurSweepMode == 0){
+						currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+					}
+				}
+				else{
+					if(recurSweepMode == 0){
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
+								currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+							currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
+								currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+							currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+					}
+				}
+				break;
+				case 'l':
+				currentTime = events[j].time;
+				popShape[events[j].popID].type = SHAPE_LINEAR;
+				popShape[events[j].popID].anchor_value = sizeAt(events[j].popID, currentTime);
+				popShape[events[j].popID].rate_param = events[j].popnSize;
+				popShape[events[j].popID].anchor_time = currentTime;
+				/* Run the inter-event interval as 'n' / 'g' does. */
+				if(activeSweepFlag == 0){
+					if(recurSweepMode == 0){
+						currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+					}
+				}
+				else{
+					if(recurSweepMode == 0){
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
+								currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+							currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
+								currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+							currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+					}
+				}
+				break;
+				case 'm':
+				currentTime = events[j].time;
+				migShape[events[j].popID2][events[j].popID].type = SHAPE_CONSTANT;
+				migShape[events[j].popID2][events[j].popID].anchor_value = events[j].popnSize;
+				migShape[events[j].popID2][events[j].popID].rate_param = 0.0;
+				migShape[events[j].popID2][events[j].popID].anchor_time = currentTime;
+				/* Run the inter-event interval as 'n' / 'g' / 'l' do. */
+				if(activeSweepFlag == 0){
+					if(recurSweepMode == 0){
+						currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+					}
+				}
+				else{
+					if(recurSweepMode == 0){
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
+								currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+							currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
+					}
+					else{
+						currentTime = sweepPhaseEventsConditionalTrajectory(breakPoints, currentTime, nextTime, sweepSite, \
+								currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
+						if (currentTime < nextTime)
+							currentTime = recurrentSweepPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
+					}
+				}
 				break;
 				case 's':
 				assert(activeSweepFlag == 0);
@@ -433,7 +532,21 @@ int main(int argc, const char * argv[]){
 					sample_node_ids[i] = node_map[samples[i]];
 				}
 			}
-			
+
+			/* Active discoal nodes cache the pre-simplify tskit ID on each
+			 * rootedNode. Downstream code (notably tskit_record_sweep_mutations)
+			 * reads node->tskit_node_id and hands it to the mutation table,
+			 * which now only has the simplified node rows -- the stale ID
+			 * dereferences an out-of-bounds row and the later sort fails with
+			 * TSK_ERR_NODE_OUT_OF_BOUNDS, silently dropping the replicate
+			 * (issue #76). Remap in place so cached IDs stay consistent. */
+			for (int i = 0; i < alleleNumber; i++) {
+				if (nodes[i] == NULL) continue;
+				tsk_id_t old_id = nodes[i]->tskit_node_id;
+				if (old_id == TSK_NULL) continue;
+				nodes[i]->tskit_node_id = node_map[old_id];
+			}
+
 			free(samples);
 			free(node_map);
 		}
@@ -705,49 +818,66 @@ void getParameters(int argc,const char **argv){
 	events[eventNumber].popnSize = 1.0;
 	events[eventNumber].type = 'n';
 	eventNumber++;
-	currentSize = malloc(sizeof(double) * MAXPOPS);
+	/* calloc, not malloc: the -p handler treats `currentSize[i] == 0.0` as
+	 * "not yet set by demes". glibc malloc on a fresh process happens to
+	 * return zeroed pages so the sentinel works; ASan's allocator returns
+	 * a non-zero poison pattern, which made -p skip the initialization and
+	 * left currentSize at garbage (#46). */
+	currentSize = calloc(MAXPOPS, sizeof(double));
 
-	// Check for YAML config first (special handling)
+	// Locate -Y first so we can validate "-Y xor positional args" before
+	// doing any work. The positional form "sampleSize numReplicates nSites"
+	// and -Y are mutually exclusive: loading YAML and then running the
+	// positional parser would feed "-Y" or another flag into atoi() (when -Y
+	// comes before the positional slots) or overwrite the per-pop state YAML
+	// just installed (when positional slots come first).
+	int yaml_arg_idx = -1;
 	for (i = 1; i < argc; i++) {
 		if (argv[i][0] == '-' && argv[i][1] == 'Y') {
-			if (i + 1 >= argc || argv[i + 1] == NULL || argv[i + 1][0] == '-' || strlen(argv[i + 1]) == 0) {
-				fprintf(stderr, "Error: -Y flag requires a YAML configuration filename argument\n");
-				fprintf(stderr, "Usage: %s [options] -Y <config_file.yaml>\n", argv[0]);
-				exit(1);
-			}
-			const char *configFile = argv[i + 1];
-			
-			// Load configuration from YAML file
-			SimulationConfig config;
-			int ret = loadConfigFile(configFile, &config);
-			if (ret != 0) {
-				fprintf(stderr, "Error: Failed to load YAML configuration file '%s'\n", configFile);
-				exit(1);
-			}
-			
-			// Apply configuration immediately
-			ret = applyConfiguration(&config);
-			if (ret != 0) {
-				fprintf(stderr, "Error: Failed to apply configuration from '%s'\n", configFile);
-				exit(1);
-			}
-			
-			// fprintf(stderr, "DEBUG: Seeds after YAML config applied: %ld, %ld\n", seed1, seed2);
-			fprintf(stderr, "Loaded configuration from YAML file '%s'\n", configFile);
-			yaml_config_loaded = 1;
+			yaml_arg_idx = i;
 			break;
 		}
 	}
-	
+	if (yaml_arg_idx != -1 && argc >= 2 && argv[1][0] != '-') {
+		fprintf(stderr,
+			"Error: positional arguments (sampleSize numReplicates nSites) "
+			"cannot be combined with -Y. Use either '-Y <config.yaml>' "
+			"(optionally with flag overrides) or the traditional positional "
+			"form without -Y.\n");
+		exit(1);
+	}
 
-	// If YAML config loaded basic parameters, we can skip the argc check
-	// Otherwise, require traditional 3 arguments
-	if (!yaml_config_loaded && argc < 4){
+	if (yaml_arg_idx != -1) {
+		i = yaml_arg_idx;
+		if (i + 1 >= argc || argv[i + 1] == NULL || argv[i + 1][0] == '-' || strlen(argv[i + 1]) == 0) {
+			fprintf(stderr, "Error: -Y flag requires a YAML configuration filename argument\n");
+			fprintf(stderr, "Usage: %s [options] -Y <config_file.yaml>\n", argv[0]);
+			exit(1);
+		}
+		const char *configFile = argv[i + 1];
+
+		struct discoal_config *config = NULL;
+		int ret = load_yaml_config(configFile, &config);
+		if (ret != EXIT_SUCCESS) {
+			fprintf(stderr, "Error: Failed to load YAML configuration file '%s'\n", configFile);
+			exit(1);
+		}
+
+		ret = apply_yaml_config(config);
+		if (ret != EXIT_SUCCESS) {
+			fprintf(stderr, "Error: Failed to apply configuration from '%s'\n", configFile);
+			exit(1);
+		}
+
+		fprintf(stderr, "Loaded configuration from YAML file '%s'\n", configFile);
+		yaml_config_loaded = 1;
+	}
+
+	if (!yaml_config_loaded && argc < 4) {
 		usage();
 	}
 
-	// Set basic parameters from command line (or defaults if YAML config loaded them)
-	if (!yaml_config_loaded || argc >= 4) {
+	if (!yaml_config_loaded) {
 		sampleSize = atoi(argv[1]);
 		if(sampleSize > 65535){
 			printf("Error: sampleSize > 65535. This exceeds the maximum supported by uint16_t ancestry counts.\n");
@@ -760,22 +890,17 @@ void getParameters(int argc,const char **argv){
 			exit(666);
 		}
 		args = 4;
-		
-		// Set sample sizes and population info
+
 		popnSizes[0]=sampleSize;
 		popnSizes[1]=0;
 		sampleSizes[0]=sampleSize;
 		sampleSizes[1]=0;
 		effectiveSampleSize = sampleSize;
 	} else {
-		// YAML config provided basic parameters, start parsing from argument 1
+		// sampleSize/sampleSizes[]/popnSizes[] already set via apply_yaml_config;
+		// skip positional parsing and start the flag loop at argv[1].
 		args = 1;
-		// Sample sizes should already be set by YAML config
 		if (sampleSize > 0) {
-			popnSizes[0]=sampleSize;
-			popnSizes[1]=0;
-			sampleSizes[0]=sampleSize;
-			sampleSizes[1]=0;
 			effectiveSampleSize = sampleSize;
 		}
 	}
@@ -799,7 +924,7 @@ void getParameters(int argc,const char **argv){
 			fprintf(stderr, "Error: Empty option '-'\n");
 			exit(1);
 		}
-		
+
 		switch(argv[args][1]){
 			case 'F' :
 			if (!tskitOutputMode) {
@@ -859,35 +984,12 @@ void getParameters(int argc,const char **argv){
 			alpha = parseDoubleArg(argc, argv, &args, "-a");
 			break;
 			case 'D' :
-			// -D flag for demes file
-			{
-				args++;
-				if (args >= argc || argv[args] == NULL || argv[args][0] == '-' || strlen(argv[args]) == 0) {
-					fprintf(stderr, "Error: -D flag requires a demes filename argument\n");
-					fprintf(stderr, "Usage: %s [options] -D <demes_file.yaml>\n", argv[0]);
-					exit(1);
-				}
-				const char *demesFile = argv[args];
-				
-				// Load demographic events from demes file
-				int ret = loadDemesFile(demesFile, &events, &eventNumber, &eventsCapacity, 
-				                       currentSize, &npops, sampleSizes, EFFECTIVE_POPN_SIZE);
-				if (ret != 0) {
-					fprintf(stderr, "Error: Failed to load demes file '%s'\n", demesFile);
-					exit(1);
-				}
-				
-				fprintf(stderr, "Loaded %d populations and %d events from demes file '%s'\n", 
-				        npops, eventNumber - 1, demesFile);  // -1 to exclude initial bogus event
-				
-				// Require user to specify sampling after loading demes
-				fprintf(stderr, "Note: You must use -p flag after -D to specify sample sizes for each population\n");
-				fprintf(stderr, "Example: -D file.yaml -p %d", npops);
-				for (i = 0; i < npops; i++) {
-					fprintf(stderr, " <sampleSize%d>", i);
-				}
-				fprintf(stderr, "\n");
-			}
+			fprintf(stderr,
+				"Error: the -D command-line flag for loading demes files is no "
+				"longer supported. Use a YAML config (-Y) with "
+				"demography.demes_filename instead. See "
+				"config_examples/demes_example.yaml.\n");
+			exit(1);
 			break;
 			case 'x' :
 			sweepSite = parseDoubleArg(argc, argv, &args, "-x");
@@ -968,6 +1070,85 @@ void getParameters(int argc,const char **argv){
 					events[eventNumber].type = 'a'; //admix split
 					eventNumber++;
 					break;
+					case 'g':
+						/* -eg time popID alpha */
+						ensureEventsCapacity();
+						events[eventNumber].time = atof(argv[++args]) * 2.0;
+						events[eventNumber].popID = atoi(argv[++args]);
+						events[eventNumber].popnSize = atof(argv[++args]);  /* alpha stored in popnSize field */
+						events[eventNumber].type = 'g';
+						eventNumber++;
+						break;
+					case 'G':
+						/* -eG time alpha -- applies to all populations */
+						{
+							double t = atof(argv[++args]) * 2.0;
+							double alpha_val = atof(argv[++args]);
+							for (int p = 0; p < npops; p++) {
+								ensureEventsCapacity();
+								events[eventNumber].time = t;
+								events[eventNumber].popID = p;
+								events[eventNumber].popnSize = alpha_val;
+								events[eventNumber].type = 'g';
+								eventNumber++;
+							}
+						}
+						break;
+					case 'l':
+						/* -el time popID gamma — linear-growth event */
+						ensureEventsCapacity();
+						events[eventNumber].time = atof(argv[++args]) * 2.0;
+						events[eventNumber].popID = atoi(argv[++args]);
+						events[eventNumber].popnSize = atof(argv[++args]);  /* gamma stored in popnSize field */
+						events[eventNumber].type = 'l';
+						eventNumber++;
+						break;
+					case 'L':
+						/* -eL time gamma — applies to all populations */
+						{
+							double t = atof(argv[++args]) * 2.0;
+							double gamma_val = atof(argv[++args]);
+							for (int p = 0; p < npops; p++) {
+								ensureEventsCapacity();
+								events[eventNumber].time = t;
+								events[eventNumber].popID = p;
+								events[eventNumber].popnSize = gamma_val;
+								events[eventNumber].type = 'l';
+								eventNumber++;
+							}
+						}
+						break;
+					case 'm':
+						/* -em time srcPop dstPop rate — change migration rate at this time */
+						{
+							ensureEventsCapacity();
+							events[eventNumber].time = atof(argv[++args]) * 2.0;
+							events[eventNumber].popID2 = atoi(argv[++args]);  /* source pop */
+							events[eventNumber].popID = atoi(argv[++args]);   /* destination pop */
+							events[eventNumber].popnSize = atof(argv[++args]); /* new rate stored in popnSize field */
+							events[eventNumber].type = 'm';  /* lowercase 'm' for time-varying migration event */
+							eventNumber++;
+						}
+						break;
+					case 'M':
+						/* -eM time rate — set all off-diagonal pairs to the given rate at this time */
+						{
+							double t = atof(argv[++args]) * 2.0;
+							double rate_val = atof(argv[++args]);
+							for (int src = 0; src < npops; src++) {
+								for (int dst = 0; dst < npops; dst++) {
+									if (src == dst) continue;
+									ensureEventsCapacity();
+									events[eventNumber].time = t;
+									events[eventNumber].popID2 = src;
+									events[eventNumber].popID = dst;
+									events[eventNumber].popnSize = rate_val;
+									events[eventNumber].type = 'm';
+									eventNumber++;
+								}
+							}
+						}
+						break;
 				}
 			break;
 			case 'w':
@@ -1160,6 +1341,10 @@ void getParameters(int argc,const char **argv){
 	// fprintf(stderr, "DEBUG: Final theta at end of getParameters: %f\n", theta);
 	sortEventArray(events,eventNumber);
 
+	if (validateShapeTrajectories(events, eventNumber) != 0) {
+		exit(1);
+	}
+
 	//make sure events are kosher
 	selCheck = 0;
 	nChangeCheck=0;
@@ -1217,9 +1402,15 @@ void usage(){
 	fprintf(stderr,"\t -gr conversionToCrossoverRatio tractLengthMean (gene conversion where initiation rate = rho*conversionToCrossoverRatio)\n");
 	fprintf(stderr,"\t -p npops sampleSize1 sampleSize2 etc.\n");
 	fprintf(stderr,"\t -D demesFile.yaml (load demographic model from demes format file)\n");
-	fprintf(stderr,"\t -en time popnID size (changes size of popID)\n");	
-	fprintf(stderr,"\t -ed time popnID1 popnID2 (joins popnID1 into popnID2)\n");
+	fprintf(stderr,"\t -en time popnID size (changes size of popnID)\n");
+	fprintf(stderr,"\t -eg time popnID alpha (sets popnID to exponential growth at forward-time per-generation rate alpha; positive alpha = past was smaller)\n");
+	fprintf(stderr,"\t -eG time alpha (-eg applied to all populations)\n");
+	fprintf(stderr,"\t -el time popnID gamma (sets popnID to linear-in-time size profile with forward-time slope gamma)\n");
+	fprintf(stderr,"\t -eL time gamma (-el applied to all populations)\n");
+	fprintf(stderr,"\t -ed time popnID1 popnID2 (joins popnID1 into popnID2; -ej is an alias)\n");
 	fprintf(stderr,"\t -ea time daughterPopnID founderPopnID1 founderPopnID2 admixProp (admixture-- back in time daughterPopnID into two founders)\n");
+	fprintf(stderr,"\t -em time popnID1 popnID2 migRate (changes migration rate from popnID1 to popnID2 starting at time)\n");
+	fprintf(stderr,"\t -eM time migRate (sets all off-diagonal migration rates to migRate starting at time)\n");
 	
 	fprintf(stderr,"\t -ws tau (sweep happend tau generations ago- stochastic sweep)\n");  
 	fprintf(stderr,"\t -wd tau (sweep happend tau generations ago- deterministic sweep)\n"); 
