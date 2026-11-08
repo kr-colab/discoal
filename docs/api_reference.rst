@@ -132,7 +132,13 @@ Demographic Options
    
    * numSamples: Number of ancient lineages
    * popID: Population to sample from
-   * time: Sampling time in past
+   * time: Sampling time in past, in units of 4N0 generations
+
+   The ancient samples are part of the population's sample count: with
+   ``-p 2 10 10 -A 4 1 0.3``, population 1 has 6 samples taken at time 0
+   and 4 taken at time 0.3. The ancient samples of a population must not
+   outnumber its samples. Give ``-A`` more than once for samples at
+   different times.
 
 Selection Options
 ^^^^^^^^^^^^^^^^^

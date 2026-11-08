@@ -99,10 +99,17 @@ def discoal_argv(case, reps, seed, tmp):
     return ["-Y", cfg]
 
 
-def msprime_mean(demography, samples, reps, seed):
-    """Expected segsites under msprime: mean branch length times MU."""
+def msprime_mean(demography, samples, reps, seed, ancient=()):
+    """Expected segsites under msprime: mean branch length times MU.
+    `ancient` lists (population, count, time in generations); as with
+    discoal's -A, these samples are part of the counts in `samples`."""
+    present = dict(samples)
+    for p, k, _ in ancient:
+        present[p] -= k
     sets = [msprime.SampleSet(k, population=p, ploidy=1)
-            for p, k in samples.items()]
+            for p, k in present.items() if k > 0]
+    sets += [msprime.SampleSet(k, population=p, time=t, ploidy=1)
+             for p, k, t in ancient]
     return mean_se([ts.segregating_sites(mode="branch") * MU
                     for ts in msprime.sim_ancestry(
                         samples=sets, demography=demography, ploidy=2,
@@ -393,6 +400,21 @@ def cases(tmp):
     def linear(k):
         return linear_pop(0.5 * 4 * N0, gamma / (k * N0), 1 - gamma * 0.5)
 
+    def ancient(k, sets):
+        """-A sample sets (population, count, time) with times in k N0."""
+        return [(pop, n, t * k * N0) for pop, n, t in sets]
+
+    # Lineages in P1 move to P0 backward in time; P1 merges into P0.
+    one_way = msprime.Demography()
+    # msprime keeps the ancestral population of a split inactive until the
+    # split unless told otherwise; P0 has samples and receives migrants.
+    one_way.add_population(name="P0", initial_size=N0, initially_active=True)
+    one_way.add_population(name="P1", initial_size=N0)
+    one_way.set_migration_rate(source="P1", dest="P0", rate=m / (4 * N0))
+    one_way.add_population_split(time=4 * N0, derived=["P1"], ancestral="P0")
+    anc1 = [("A", 3, 0.25), ("A", 2, 1.0)]
+    anc2 = [("P1", 4, 0.3), ("P0", 3, 0.6), ("P1", 2, 0.6)]
+
     return [
         dict(name="-en time in 4N0 generations", samples=s20,
              flags=["-en", "0.5", "0", "0.1"],
@@ -427,6 +449,19 @@ def cases(tmp):
              alts={"rate 2 x 4N0 m": two_pop(2 * m / (4 * N0), 4 * N0,
                                             "P1", "P0",
                                             growth_p1=-5 / (4 * N0))}),
+        dict(name="-A time in 4N0 generations, two ancient sets",
+             samples=s20,
+             flags=["-A", "3", "0", "0.25", "-A", "2", "0", "1.0"],
+             model=one_pop([]), ancient=ancient(4, anc1),
+             alts={"2N0 generations": (one_pop([]), ancient(2, anc1))}),
+        dict(name="-A in two populations with migration and a merge",
+             samples={"P0": 10, "P1": 10},
+             flags=["-p", "2", "10", "10", "-m", "1", "0", str(m),
+                    "-ed", "1.0", "1", "0",
+                    "-A", "4", "1", "0.3", "-A", "3", "0", "0.6",
+                    "-A", "2", "1", "0.6"],
+             model=one_way, ancient=ancient(4, anc2),
+             alts={"2N0 generations": (one_way, ancient(2, anc2))}),
         demes_case(tmp, "demes exponential epoch", s20, DEMES_GROWTH),
         demes_case(tmp, "demes exponential epoch between constant epochs",
                    s20, DEMES_GROWTH_MIDDLE),
@@ -558,9 +593,15 @@ def main():
         for i, case in enumerate(cases(tmp)):
             seed = 1010 + 10 * i
             d = run_discoal(discoal_argv(case, reps, seed, tmp), reps)
-            ref = msprime_mean(case["model"], case["samples"], reps, seed)
-            alts = {k: msprime_mean(mm, case["samples"], reps, seed + 1)
-                    for k, mm in case["alts"].items()}
+            anc = case.get("ancient", ())
+            ref = msprime_mean(case["model"], case["samples"], reps, seed,
+                               anc)
+            # An alternative is a model, or a (model, ancient samples) pair.
+            alts = {}
+            for k, mm in case["alts"].items():
+                model, alt_anc = mm if isinstance(mm, tuple) else (mm, anc)
+                alts[k] = msprime_mean(model, case["samples"], reps,
+                                       seed + 1, alt_anc)
             all_ok &= report(case["name"], d, ref, alts)
 
         for i, case in enumerate(tree_cases(tmp, reps)):

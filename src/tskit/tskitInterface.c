@@ -210,6 +210,17 @@ static void ensure_node_map_capacity(int required_size) {
     }
 }
 
+// Set the time of a node that is already in the node table. Sample nodes
+// are created at time 0 before discoal knows which of them are ancient;
+// an ancient sample must then get its sampling time, or its branch (and
+// the mutations placed on it) would start at time 0.
+void tskit_set_node_time(tsk_id_t node_id, double time) {
+    if (tsk_tables == NULL || node_id == TSK_NULL) {
+        return;
+    }
+    tsk_tables->nodes.time[node_id] = time;
+}
+
 // Record a new node
 tsk_id_t tskit_add_node(double time, int population, int is_sample) {
     tsk_flags_t flags = is_sample ? TSK_NODE_IS_SAMPLE : 0;

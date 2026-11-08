@@ -1353,7 +1353,6 @@ void getParameters(int argc,const char **argv){
 			events[eventNumber].type = 'A'; //ancient sample
 			ancSampleFlag = 1;
 			eventNumber++;
-			assert(events[eventNumber-1].lineageNumber < sampleSize);
 			break;
 			case 'T' :
 			fprintf(stderr, "Error: -T tree output mode has been removed.\n");
@@ -1374,6 +1373,31 @@ void getParameters(int argc,const char **argv){
 
 	if (validateShapeTrajectories(events, eventNumber) != 0) {
 		exit(1);
+	}
+
+	/* Ancient samples are taken from a population's sample count, so the
+	 * ancient samples of one population must not outnumber its samples.
+	 * initialize() relies on this when it marks sample nodes as ancient. */
+	{
+		int ancientPerPop[MAXPOPS] = {0};
+		for (i = 0; i < eventNumber; i++) {
+			if (events[i].type != 'A') continue;
+			int p = events[i].popID;
+			if (p < 0 || p >= npops || events[i].lineageNumber < 1) {
+				fprintf(stderr, "Error: ancient sample of %d lineages from "
+					"population %d; the count must be >= 1 and the population "
+					"between 0 and %d\n", events[i].lineageNumber, p, npops - 1);
+				exit(1);
+			}
+			ancientPerPop[p] += events[i].lineageNumber;
+			if (ancientPerPop[p] > sampleSizes[p]) {
+				fprintf(stderr, "Error: population %d has %d ancient samples "
+					"but only %d samples in all; ancient samples are part of "
+					"the population's sample count\n",
+					p, ancientPerPop[p], sampleSizes[p]);
+				exit(1);
+			}
+		}
 	}
 
 	//make sure events are kosher

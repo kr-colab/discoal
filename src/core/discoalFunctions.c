@@ -205,6 +205,8 @@ void initialize(){
 					// Remove from population list before changing population
 					removeNodeFromPopList(nodes[tmpCount+j]);
 					nodes[tmpCount+j]->population = (events[i].popID + 1) * -1;
+					tskit_set_node_time(get_tskit_node_id(nodes[tmpCount+j]),
+						events[i].time);
 					popnSizes[events[i].popID]--;
 				}
 			}
