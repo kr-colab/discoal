@@ -19,7 +19,9 @@ For each model:
      loads the demes file, with tree sequence output) and with msprime
      (Demography.from_demes), with recombination if --rho > 0. --rho is
      4 N_max r L, where N_max is the largest deme size in the model; discoal
-     gets the same r as its own rho = 4 N_ref r L.
+     gets the same r as its own rho = 4 N_ref r L. Where that would give
+     fewer than about MIN_TREES recombination breakpoints per replicate (a
+     very large size somewhere), r is raised to reach it.
   3. Compute branch-mode statistics on each tree sequence: diversity,
      segregating sites (total branch length) and Tajima's D over all
      samples, diversity within each sampled deme, and, with recombination,
@@ -181,8 +183,10 @@ def per_deme_sets(ts, pop_ids):
     return [ts.samples(population=p) for p in pop_ids]
 
 
-def collect(tree_seqs, pop_ids, names, time_scale):
-    """Statistics for each tree sequence; returns {stat name: array}."""
+def collect(tree_seqs, pop_ids, names, time_scale, count_trees):
+    """Statistics for each tree sequence; returns {stat name: array}. With
+    count_trees (recombination on), every replicate also records its number
+    of distinct trees, which tracks the recombination rate."""
     out = {}
     for ts in tree_seqs:
         sets = per_deme_sets(ts, pop_ids)
@@ -193,8 +197,7 @@ def collect(tree_seqs, pop_ids, names, time_scale):
                 ts.segregating_sites(allset, mode="branch") * time_scale,
             "tajimas_d": ts.Tajimas_D(allset, mode="branch"),
         }
-        if ts.num_trees > 1:
-            # Distinct trees along the sequence: tracks the recombination rate.
+        if count_trees:
             vals["num_trees"] = ts.num_trees
         if len(sets) > 1:
             for name, s in zip(names, sets):
@@ -239,7 +242,8 @@ def run_discoal(demes_path, graph, names, n, reps, seed, tmp, timeout,
                            f"{errs[-1] if errs else 'no error message'}")
     pop_ids = [index[name] for name in names]
     # Node times are in units of 2 N_ref generations.
-    res = collect((tskit.load(f) for f in files), pop_ids, names, 2 * n_ref)
+    res = collect((tskit.load(f) for f in files), pop_ids, names, 2 * n_ref,
+                  rho > 0)
     for f in files:
         os.remove(f)
     return res, n_ref
@@ -277,7 +281,7 @@ def run_msprime(graph, names, n, reps, seed, r, sites):
     tss = msprime.sim_ancestry(samples=samples, demography=dem, ploidy=2,
                                sequence_length=sites, recombination_rate=r,
                                num_replicates=reps, random_seed=seed)
-    return collect(tss, pop_ids, names, 1.0)
+    return collect(tss, pop_ids, names, 1.0, r > 0)
 
 
 # demes specification test cases with near-zero migration between demes:
@@ -290,6 +294,17 @@ SLOW_WITH_RECOMBINATION = {
     "valid/migration_07.yaml", "valid/migration_08.yaml",
     "valid/structure_02.yaml", "valid/structure_06.yaml",
 }
+
+
+HARNESS_ID = (hashlib.sha256(open(__file__, "rb").read()).hexdigest(),
+              msprime.__version__, tskit.__version__, demes.__version__,
+              stdpopsim.__version__)
+
+# With recombination, a model whose rho (scaled to its largest deme size)
+# would give fewer than about this many recombination breakpoints per
+# replicate gets its recombination rate raised, so that the tree-count test
+# means something (a very large size somewhere makes rho tiny elsewhere).
+MIN_TREES = 20
 
 
 class TimeLimit(Exception):
@@ -312,16 +327,22 @@ def time_limit(seconds):
 
 
 def cache_key(*parts):
-    return hashlib.sha256(json.dumps(parts, sort_keys=True,
+    """Key for a cached simulation. It includes this script's code and the
+    versions of the libraries that build the models and compute the
+    statistics, so a change to any of them is not served old results."""
+    return hashlib.sha256(json.dumps((HARNESS_ID, parts), sort_keys=True,
                                      default=str).encode()).hexdigest()
 
 
-def run_cached(cache_dir, key, limit, compute):
+def run_cached(cache_dir, key, limit, compute, deterministic):
     """Run compute() (which returns {stat: array} or ({stat: array}, extra))
     under the time limit, or reuse a cached result. Returns (result, cached),
     where result has "stats" and "extra", or "timed_out", or "failed", and
     always "seconds" (the time of the original run). A cached time-out is
-    reused only if the limit has not been raised since."""
+    reused only if the limit has not been raised since. A failure is cached
+    only if deterministic(exception) says it would happen again (a model
+    msprime cannot simulate, a discoal error); others, such as running out of
+    memory, are retried on the next run."""
     path = os.path.join(cache_dir, key[:2], key + ".json") if cache_dir else None
     if path and os.path.exists(path):
         with open(path) as f:
@@ -339,6 +360,9 @@ def run_cached(cache_dir, key, limit, compute):
         out = {"timed_out": True, "limit": limit}
     except Exception as e:
         out = {"failed": f"{type(e).__name__}: {e}"[:300]}
+        if not deterministic(e):
+            out["seconds"] = time.perf_counter() - t0
+            return out, False
     out["seconds"] = time.perf_counter() - t0
     if path:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -371,36 +395,57 @@ def audit_model(job):
             model_id = demes.dumps(graph)
         names = present_demes(graph)
         r, discoal_rho = recombination(graph, rho, sites)
-        common = (model_id, names, n, reps, seed, sites)
+        ms_id = ("msprime", msprime.__version__)
 
-        def simulate(name, key_parts, compute):
+        def simulate(name, key_parts, compute, deterministic):
             res, cached = run_cached(cache_dir, cache_key(name, *key_parts),
-                                     timeout, compute)
+                                     timeout, compute, deterministic)
             timings[name] = (res["seconds"], cached)
             return res
 
-        def quiet_msprime(rate):
+        def quiet_msprime(rate, n_reps):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                return run_msprime(graph, names, n, reps, seed, rate, sites)
+                return run_msprime(graph, names, n, n_reps, seed, rate, sites)
 
-        ms_id = ("msprime", msprime.__version__)
+        def msprime_cannot(e):
+            return "Infinite waiting time" in str(e)
+
+        def msprime_result(name, rate, n_reps):
+            """Run (or reuse) an msprime simulation; returns (stats, outcome)
+            where outcome is None, or a skip or an error for the model."""
+            res = simulate(name, (model_id, names, n, n_reps, seed, sites,
+                                  rate, ms_id),
+                           lambda: quiet_msprime(rate, n_reps), msprime_cannot)
+            if "stats" in res:
+                return {k: np.array(v) for k, v in res["stats"].items()}, None
+            if res.get("timed_out") or msprime_cannot(res["failed"]):
+                return None, dict(model=label, timings=timings,
+                                  skipped=skip_reason("msprime", res, timeout))
+            return None, dict(model=label, timings=timings,
+                              error="msprime failed: " + res["failed"])
+
+        rho_factor = 1.0
         if r > 0:
             # A model that can strand lineages makes msprime report "infinite
             # waiting time" without recombination; with recombination the
             # stranded lineages keep recombining and msprime never stops.
             # Find these models first.
-            res = simulate("msprime_check", (*common, 0.0, ms_id),
-                           lambda: quiet_msprime(0.0))
-            if "stats" not in res:
-                return dict(model=label, timings=timings,
-                            skipped=skip_reason("msprime", res, timeout))
-        res = simulate("msprime", (*common, r, ms_id),
-                       lambda: quiet_msprime(r))
-        if "stats" not in res:
-            return dict(model=label, timings=timings,
-                        skipped=skip_reason("msprime", res, timeout))
-        m = {k: np.array(v) for k, v in res["stats"].items()}
+            check, outcome = msprime_result("msprime_check", 0.0, reps)
+            if outcome:
+                return outcome
+            # The expected number of recombination breakpoints on the
+            # genealogy is about r * L * T, with T the total branch length in
+            # generations (branch-mode segregating sites without
+            # recombination). Raise r to give at least MIN_TREES.
+            r_min = MIN_TREES / (sites * check["segregating_sites"].mean())
+            if r < r_min:
+                rho_factor = r_min / r
+                r *= rho_factor
+                discoal_rho *= rho_factor
+        m, outcome = msprime_result("msprime", r, reps)
+        if outcome:
+            return outcome
 
         def run_d():
             with tempfile.TemporaryDirectory() as tmp:
@@ -408,7 +453,11 @@ def audit_model(job):
                 demes.dump(graph, path)
                 return run_discoal(path, graph, names, n, reps, seed, tmp,
                                    timeout, discoal_rho, sites)
-        res = simulate("discoal", (*common, discoal_rho, discoal_id), run_d)
+        # discoal errors (non-zero exit, missing tree files) repeat for the
+        # same binary and inputs; other exceptions are retried.
+        res = simulate("discoal", (model_id, names, n, reps, seed, sites,
+                                   discoal_rho, discoal_id), run_d,
+                       lambda e: isinstance(e, RuntimeError))
         if res.get("timed_out"):
             return dict(model=label, timings=timings,
                         error=f"discoal did not finish in {timeout} s")
@@ -419,15 +468,20 @@ def audit_model(job):
         if not np.isclose(n_ref, reference_size(graph)):
             raise RuntimeError(f"discoal N_ref {n_ref} differs from "
                                f"{reference_size(graph)}")
+        missing = sorted(set(d) ^ set(m))
+        if missing:
+            return dict(model=label, timings=timings,
+                        error="statistics missing from one simulator: "
+                              + ", ".join(missing))
         rows = []
-        for stat in d:
+        for stat in sorted(d):
             ks = stats.ks_2samp(d[stat], m[stat])
             rows.append(dict(model=label, stat=stat,
                              discoal_mean=d[stat].mean(),
                              msprime_mean=m[stat].mean(),
                              ks_d=ks.statistic, p=ks.pvalue))
         return dict(model=label, n_ref=n_ref, demes=names, rows=rows,
-                    scale=scale, timings=timings)
+                    scale=scale, rho_factor=rho_factor, timings=timings)
     except Exception as e:  # report and keep going with other models
         return dict(model=label, timings=timings,
                     error=f"{type(e).__name__}: {e}")
@@ -557,7 +611,7 @@ def main():
     if args.jobs_tsv:
         with open(args.jobs_tsv, "w") as f:
             f.write("model\tstatus\tmsprime_check_s\tmsprime_s\tdiscoal_s\t"
-                    "cached\treason\n")
+                    "cached\trho_factor\treason\n")
             for res in results:
                 t = res["timings"]
                 status = ("skipped" if "skipped" in res else
@@ -566,8 +620,9 @@ def main():
                         for k in ("msprime_check", "msprime", "discoal")]
                 cached = ",".join(k for k, (sec, c) in t.items() if c)
                 reason = res.get("skipped", res.get("error", ""))
+                factor = f"{res['rho_factor']:.3g}" if "rho_factor" in res else ""
                 f.write(f"{res['model']}\t{status}\t" + "\t".join(secs)
-                        + f"\t{cached}\t{reason}\n")
+                        + f"\t{cached}\t{factor}\t{reason}\n")
     computed = {}
     for res in results:
         for name, (sec, cached) in res["timings"].items():
@@ -583,6 +638,13 @@ def main():
     print("  slowest models: " + "; ".join(
         f"{res['model']} {sum(sec for sec, _ in res['timings'].values()):.0f} s"
         for res in slowest if res["timings"]))
+    trees = [r["msprime_mean"] for r in rows if r["stat"] == "num_trees"]
+    if trees:
+        raised = sum(1 for res in results if res.get("rho_factor", 1) > 1)
+        print(f"Recombination: {len(trees)} models compared on the number of "
+              f"trees; msprime mean trees per replicate min {min(trees):.1f}, "
+              f"median {np.median(trees):.0f}; rate raised (to about "
+              f"{MIN_TREES} breakpoints per replicate) in {raised} models.")
     bad = {r["model"] for r in rejected} | {e["model"] for e in errors}
     tested = len(results) - len(skipped)
     print(f"\n{tested - len(bad)} of {tested} tested models pass; "
