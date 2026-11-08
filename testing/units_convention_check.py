@@ -345,6 +345,19 @@ pulses:
 """
 
 
+# Two root demes joined only by a pulse that moves all lineages of B into A
+# (backward in time): no split and no migration connects them.
+DEMES_PULSE_ONLY = """time_units: generations
+demes:
+  - name: A
+    epochs: [{start_size: 10000}]
+  - name: B
+    epochs: [{start_size: 2000}]
+pulses:
+  - {sources: [A], dest: B, time: 1000, proportions: [1.0]}
+"""
+
+
 def demes_case(tmp, name, samples, text=None, path=None):
     """A case that loads a demes model, given as YAML text or a file path,
     and compares it with msprime's Demography.from_demes."""
@@ -425,6 +438,8 @@ def cases(tmp):
                    DEMES_SAME_TIME_PULSES),
         demes_case(tmp, "demes pulse at the time of an admixture", {"D": 20},
                    DEMES_PULSE_AND_ADMIXTURE),
+        demes_case(tmp, "demes joined only by a pulse", {"A": 10, "B": 10},
+                   DEMES_PULSE_ONLY),
         demes_case(tmp, "demes splits, sizes, migration windows",
                    {"A": 10, "B": 5, "C": 5},
                    path=os.path.join(REPO, "config_examples",
