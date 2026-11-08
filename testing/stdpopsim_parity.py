@@ -17,7 +17,9 @@ For each model:
   1. Write it as a demes file.
   2. Simulate `reps` genealogies with discoal (through a -Y config that
      loads the demes file, with tree sequence output) and with msprime
-     (Demography.from_demes), with recombination if --rho > 0.
+     (Demography.from_demes), with recombination if --rho > 0. --rho is
+     4 N_max r L, where N_max is the largest deme size in the model; discoal
+     gets the same r as its own rho = 4 N_ref r L.
   3. Compute branch-mode statistics on each tree sequence: diversity,
      segregating sites (total branch length) and Tajima's D over all
      samples, diversity within each sampled deme, and, with recombination,
@@ -238,15 +240,30 @@ def reference_size(graph):
     return next(d.epochs[-1].end_size for d in graph.demes if d.end_time == 0)
 
 
-def run_msprime(graph, names, n, reps, seed, rho, sites):
-    """msprime with the same samples. discoal's rho is 4 N_ref r L over its
-    L = `sites` sites (units_convention_check.py pins this), so msprime gets
-    r = rho / (4 N_ref L) on a discrete genome of length L."""
+def largest_size(graph):
+    return max(x for d in graph.demes for e in d.epochs
+               for x in (e.start_size, e.end_size))
+
+
+def recombination(graph, rho, sites):
+    """(rate per generation for msprime, rho for discoal). --rho is
+    4 N_max r L, with N_max the largest deme size in the model, so the
+    number of trees stays moderate even where some size is far above
+    discoal's N_ref. discoal's rho is 4 N_ref r L over its L = `sites`
+    sites (units_convention_check.py pins this)."""
+    if rho <= 0:
+        return 0.0, 0.0
+    r = rho / (4 * largest_size(graph) * sites)
+    return r, 4 * reference_size(graph) * r * sites
+
+
+def run_msprime(graph, names, n, reps, seed, r, sites):
+    """msprime with the same samples, recombination rate r per generation
+    on a discrete genome of length `sites`."""
     dem = msprime.Demography.from_demes(graph)
     samples = [msprime.SampleSet(n, population=name, ploidy=1, time=0)
                for name in names]
     pop_ids = [dem[name].id for name in names]
-    r = rho / (4 * reference_size(graph) * sites) if rho > 0 else 0.0
     tss = msprime.sim_ancestry(samples=samples, demography=dem, ploidy=2,
                                sequence_length=sites, recombination_rate=r,
                                num_replicates=reps, random_seed=seed)
@@ -272,7 +289,8 @@ def audit_model(job):
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                m = run_msprime(graph, names, n, reps, seed, rho, sites)
+                r, discoal_rho = recombination(graph, rho, sites)
+                m = run_msprime(graph, names, n, reps, seed, r, sites)
         except Exception as e:
             return dict(model=label,
                         skipped=f"msprime cannot simulate it: {e}"[:200])
@@ -280,7 +298,7 @@ def audit_model(job):
             path = os.path.join(tmp, "model.demes.yaml")
             demes.dump(graph, path)
             d, n_ref = run_discoal(path, graph, names, n, reps, seed, tmp,
-                                   timeout, rho, sites)
+                                   timeout, discoal_rho, sites)
         if not np.isclose(n_ref, reference_size(graph)):
             raise RuntimeError(f"discoal N_ref {n_ref} differs from "
                                f"{reference_size(graph)}")
@@ -316,7 +334,8 @@ def main():
                     help="comma-separated model labels (as printed) to run; "
                          "default all")
     ap.add_argument("--rho", type=float, default=0.0,
-                    help="recombination: 4 N_ref r over the whole locus")
+                    help="recombination: 4 N_max r L over the whole locus, "
+                         "N_max the largest deme size in each model")
     ap.add_argument("--sites", type=int, default=1000,
                     help="number of sites (discoal) and sequence length "
                          "(msprime)")
@@ -340,8 +359,19 @@ def main():
              args.timeout, args.rho, args.sites)
             for i, (kind, label, payload) in enumerate(specs)
             if not wanted or label in wanted]
+    # Report each model as it finishes; long runs then show progress.
+    results = []
     with concurrent.futures.ProcessPoolExecutor(args.workers) as pool:
-        results = list(pool.map(audit_model, jobs))
+        futures = [pool.submit(audit_model, job) for job in jobs]
+        for k, fut in enumerate(concurrent.futures.as_completed(futures), 1):
+            res = fut.result()
+            results.append(res)
+            state = ("skipped" if "skipped" in res else
+                     "error" if "error" in res else "done")
+            print(f"[{k}/{len(jobs)}] {res['model']}: {state}",
+                  file=sys.stderr, flush=True)
+    order = {job[1]: i for i, job in enumerate(jobs)}
+    results.sort(key=lambda res: order[res["model"]])
 
     rows = [r for res in results if "rows" in res for r in res["rows"]]
     errors = [res for res in results if "error" in res]
