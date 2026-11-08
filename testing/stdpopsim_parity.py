@@ -248,7 +248,9 @@ def audit_model(job):
         reason = unsupported(graph)
         if reason:
             return dict(model=label, skipped=reason)
-        graph, scale = rescale(graph)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            graph, scale = rescale(graph)
         names = present_demes(graph)
         # msprime first: a graph it cannot simulate is skipped, not an error.
         try:
