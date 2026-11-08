@@ -57,7 +57,7 @@ extern int popnSizes[MAXPOPS];
 extern int npops;
 extern int migFlag;
 extern int EFFECTIVE_POPN_SIZE;
-extern int gcMean;
+extern int gcMean, ancSampleFlag;
 extern int recurSweepMode, partialSweepMode, softSweepMode;
 extern int tskitOutputMode, minimalTreeSeq, hidePartialSNP;
 extern double theta, rho;
@@ -1124,10 +1124,12 @@ void test_demography_migration_rate_change_after_split_rejected(void) {
 }
 
 /*
- * ancient_samples are parsed by libcyaml but rejected by
- * parse_demography_block; the handler is not yet implemented.
+ * An ancient_samples entry becomes one 'A' event, as
+ * -A sample_size population time: popID is the population,
+ * lineageNumber the count, and the time is in internal units (twice
+ * the YAML value).
  */
-void test_demography_rejects_ancient_samples_not_implemented(void) {
+void test_demography_ancient_sample_event(void) {
     const char *yaml =
         "simulation:\n"
         "  sample_size: 10\n"
@@ -1143,7 +1145,79 @@ void test_demography_rejects_ancient_samples_not_implemented(void) {
         "      - time: 0.1\n"
         "        population: 0\n"
         "        sample_size: 5\n";
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    TEST_ASSERT_EQUAL_INT(1, eventNumber);
+    TEST_ASSERT_EQUAL_INT('A', events[0].type);
+    TEST_ASSERT_EQUAL_DOUBLE(0.2, events[0].time);
+    TEST_ASSERT_EQUAL_INT(0, events[0].popID);
+    TEST_ASSERT_EQUAL_INT(5, events[0].lineageNumber);
+    TEST_ASSERT_EQUAL_INT(1, ancSampleFlag);
+}
+
+/* Bad population, time or sample_size values are rejected. */
+void test_demography_ancient_sample_rejects_bad_values(void) {
+    const char *fmt =
+        "simulation:\n"
+        "  sample_size: 10\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "demography:\n"
+        "  deme_sample_size: [5, 5]\n"
+        "  migration_matrix:\n"
+        "    - row: [0.0, 0.1]\n"
+        "    - row: [0.1, 0.0]\n"
+        "  demographic_events:\n"
+        "    ancient_samples:\n"
+        "      - time: %s\n"
+        "        population: %s\n"
+        "        sample_size: %s\n";
+    const char *bad[][3] = {
+        {"0.1", "2", "1"},     /* population out of range */
+        {"0.1", "-1", "1"},    /* negative population */
+        {"-0.1", "0", "1"},    /* negative time */
+        {"0.1", "0", "0"},     /* no samples */
+    };
+    char yaml[2048];
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
+        reset_config_globals();
+        snprintf(yaml, sizeof(yaml), fmt, bad[i][0], bad[i][1], bad[i][2]);
+        TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    }
+}
+
+/*
+ * An ancient sample from a population at or after the time it merges
+ * away is rejected; one before the merge is accepted.
+ */
+void test_demography_ancient_sample_after_split_rejected(void) {
+    const char *fmt =
+        "simulation:\n"
+        "  sample_size: 10\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "demography:\n"
+        "  deme_sample_size: [5, 5]\n"
+        "  demographic_events:\n"
+        "    ancient_samples:\n"
+        "      - time: %s\n"
+        "        population: 1\n"
+        "        sample_size: 2\n"
+        "    population_splits:\n"
+        "      - time: 1.0\n"
+        "        ancestral: 0\n"
+        "        derived: 1\n";
+    char yaml[2048];
+    snprintf(yaml, sizeof(yaml), fmt, "1.0");
     TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    reset_config_globals();
+    snprintf(yaml, sizeof(yaml), fmt, "0.9");
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
 }
 
 /*
@@ -2188,7 +2262,9 @@ int main(void) {
     RUN_TEST(test_demography_migration_rate_change_to_zero);
     RUN_TEST(test_demography_migration_rate_change_rejects_bad_values);
     RUN_TEST(test_demography_migration_rate_change_after_split_rejected);
-    RUN_TEST(test_demography_rejects_ancient_samples_not_implemented);
+    RUN_TEST(test_demography_ancient_sample_event);
+    RUN_TEST(test_demography_ancient_sample_rejects_bad_values);
+    RUN_TEST(test_demography_ancient_sample_after_split_rejected);
     RUN_TEST(test_demography_migration_matrix_requires_square);
     RUN_TEST(test_demography_migration_matrix_requires_square_rows);
     RUN_TEST(test_demography_migration_matrix_rejects_nonzero_diagonal);

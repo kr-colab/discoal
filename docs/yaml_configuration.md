@@ -94,6 +94,8 @@ demography:
       - { time: 1.0, size: 2.0, population: 1 }
     migration_rate_changes:
       - { time: 0.2, rate: 0.5, source: 1, destination: 2 }
+    ancient_samples:
+      - { time: 0.1, population: 2, sample_size: 2 }
     population_splits:
       - { time: 2.0, derived: 1, ancestral: 0 }
       - { time: 3.0, derived: 2, ancestral: 0 }
@@ -137,12 +139,18 @@ Notes:
   error that names the stranded populations. To avoid this, keep a
   connecting migration rate, or add a `population_split` that merges
   the populations.
+- An `ancient_sample` takes `sample_size` of the population's
+  samples at `time` instead of at time 0. This is
+  `-A sample_size population time` on the CLI. The ancient samples
+  are part of `deme_sample_size`: with `deme_sample_size: [10, 5, 5]`
+  and the entry above, population 2 has 3 samples taken at time 0 and
+  2 taken at time 0.1. The ancient samples of a population must not
+  outnumber its samples. `time` must be `>= 0` and `sample_size`
+  `>= 1`. A sample from a population at or after the time it merges
+  into another one is rejected.
 - `demes_filename` and explicit `demographic_events` /
   `migration_matrix` are mutually exclusive — use one or the other.
 
-The `demographic_events` block also accepts the field name
-`ancient_samples`, which is part of the schema but is **not yet
-wired into the simulator** and will exit with an error if set.
 
 ## selection
 
@@ -217,7 +225,8 @@ command line as `-en 1.0 ...`.
 
 This convention applies to every time field in the schema:
 `population_size_changes.time`, `population_splits.time`,
-`migration_rate_changes.time`, `fixation_time_ago`, etc.
+`migration_rate_changes.time`, `ancient_samples.time`,
+`fixation_time_ago`, etc.
 
 A demes file does not use this convention: its times are in
 generations or years, and discoal converts them itself (see
@@ -304,9 +313,7 @@ The YAML interface does not currently expose:
 
 - prior distributions (`-Pt`, `-Pa`, `-Pu`, `-Px`, etc.);
 - linked-locus sweeps (`-ls`, `-ld`, `-ln`);
-- conditional simulation (`-C`);
-- ancient samples (the schema accepts the field name but the parser
-  rejects it at runtime — see the demography section).
+- conditional simulation (`-C`).
 
 Use the positional command-line interface for these. The CLI
 reference is in `docs/basic_usage.rst`,

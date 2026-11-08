@@ -52,6 +52,7 @@ declare -A FIXTURE_MODE=(
     [sweep_example.yaml]="ms"
     [demographic_example.yaml]="ms"
     [migration_change_example.yaml]="ms"
+    [ancient_samples_example.yaml]="ms"
     [demes_example.yaml]="ms"
     [tree_sequence_example.yaml]="trees"
 )
@@ -60,6 +61,7 @@ declare -A FIXTURE_SAMPLE=(
     [sweep_example.yaml]=15
     [demographic_example.yaml]=20
     [migration_change_example.yaml]=20
+    [ancient_samples_example.yaml]=20
     [demes_example.yaml]=20
     [tree_sequence_example.yaml]=20
 )
@@ -68,6 +70,7 @@ declare -A FIXTURE_REPS=(
     [sweep_example.yaml]=10
     [demographic_example.yaml]=2
     [migration_change_example.yaml]=2
+    [ancient_samples_example.yaml]=2
     [demes_example.yaml]=10
     [tree_sequence_example.yaml]=5
 )

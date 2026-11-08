@@ -482,11 +482,48 @@ int parse_demography_block(struct demography_config *cfg)
                 return EXIT_FAILURE;
             }
             struct demographic_events *dmo = cfg->demographic_events;
-            if (dmo->num_ancient_samples > 0) {
-                /* FIXME: not sure how to implement parsing */
-                /* FIXME: are these counted in deme_sample_sizes? */
-                fprintf(stderr, "Ancient sample events not yet implemented\n");
-                return EXIT_FAILURE;
+            /* Ancient samples, as -A sample_size population time: that many
+             * of the population's deme_sample_size samples are taken at
+             * `time` instead of at time 0. The count per population is
+             * checked against deme_sample_size after parsing, for the CLI
+             * and YAML alike. A sample from a population at or after the
+             * time it merges away is rejected, as for migration changes. */
+            for (int i = 0; i < dmo->num_ancient_samples; ++i) {
+                struct ancient_sample *as = &dmo->ancient_samples[i];
+                if (check_pop_index("ancient_samples", "population",
+                        i, as->population, cfg->num_demes) != EXIT_SUCCESS ||
+                    check_nonneg_double("ancient_samples", "time",
+                        i, as->time) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
+                if (as->sample_size < 1) {
+                    fprintf(stderr,
+                        "Error parsing config: ancient_samples[%d] "
+                        "sample_size (%d) must be >= 1\n",
+                        i, as->sample_size);
+                    return EXIT_FAILURE;
+                }
+                for (int k = 0; k < dmo->num_population_splits; ++k) {
+                    struct population_split *sp = &dmo->population_splits[k];
+                    if (as->population == sp->derived && as->time >= sp->time) {
+                        fprintf(stderr,
+                            "Error parsing config: ancient_samples[%d] at "
+                            "time %g is from population %d, which merges "
+                            "into population %d at time %g (population_splits"
+                            "[%d])\n",
+                            i, as->time, sp->derived, sp->ancestral,
+                            sp->time, k);
+                        return EXIT_FAILURE;
+                    }
+                }
+                ensureEventsCapacity();
+                events[eventNumber].type = 'A';
+                events[eventNumber].time = userTimeToInternal(as->time);
+                events[eventNumber].popID = as->population;
+                events[eventNumber].lineageNumber = as->sample_size;
+                ancSampleSize += as->sample_size;
+                ancSampleFlag = 1;
+                eventNumber++;
             }
             /* Migration rate changes, as -em time source destination rate:
              * from `time` back into the past, lineages in `source` move to

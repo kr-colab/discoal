@@ -1,0 +1,24 @@
+# An ancient sample from a population at or after the time it merges into
+# another one. Should error out with:
+#   "Error parsing config: ancient_samples[0] at time 2.5 is from population 1"
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [5, 5]
+  effective_population_size: 1.0
+  demographic_events:
+    ancient_samples:
+      - time: 2.5
+        population: 1
+        sample_size: 2
+    population_splits:
+      - time: 2.0
+        ancestral: 0
+        derived: 1
