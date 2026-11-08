@@ -51,7 +51,12 @@ Usage:
     python testing/stdpopsim_parity.py [--reps 1000] [--samples 10]
         [--workers 24] [--generic 20] [--seed 1] [--demes-dir DIR ...]
         [--rho 0] [--sites 1000] [--models LABEL,...] [--timeout 600]
-        [--tsv out.tsv]
+        [--cache-dir DIR | --no-cache] [--tsv out.tsv] [--jobs-tsv jobs.tsv]
+
+Each simulation's statistics are cached (default testing/.parity_cache), so
+a rerun repeats only what changed: after a discoal rebuild, only discoal
+runs again. Each model's simulation times are printed as it finishes,
+summarized at the end, and written with --jobs-tsv.
 
 Needs build/discoal, stdpopsim, msprime, demes, tskit and scipy.
 Exit code 0 if no test rejects and no model errors, 1 otherwise.
@@ -59,12 +64,17 @@ Exit code 0 if no test rejects and no model errors, 1 otherwise.
 
 import argparse
 import concurrent.futures
+import contextlib
 import glob
+import hashlib
+import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import warnings
 
 import demes
@@ -270,41 +280,142 @@ def run_msprime(graph, names, n, reps, seed, r, sites):
     return collect(tss, pop_ids, names, 1.0)
 
 
+# demes specification test cases with near-zero migration between demes:
+# the trees are extremely tall, and with recombination each replicate takes
+# many minutes in both simulators. Without recombination they run quickly
+# (and pass), so they are skipped only when --rho > 0.
+SLOW_WITH_RECOMBINATION = {
+    "valid/basic_resolution_04.yaml", "valid/basic_resolution_05.yaml",
+    "valid/migration_05.yaml", "valid/migration_06.yaml",
+    "valid/migration_07.yaml", "valid/migration_08.yaml",
+    "valid/structure_02.yaml", "valid/structure_06.yaml",
+}
+
+
+class TimeLimit(Exception):
+    pass
+
+
+@contextlib.contextmanager
+def time_limit(seconds):
+    """Raise TimeLimit in this process after `seconds` (msprime checks for
+    signals while it runs, so this interrupts a long simulation)."""
+    def on_alarm(signum, frame):
+        raise TimeLimit()
+    old = signal.signal(signal.SIGALRM, on_alarm)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+
+
+def cache_key(*parts):
+    return hashlib.sha256(json.dumps(parts, sort_keys=True,
+                                     default=str).encode()).hexdigest()
+
+
+def run_cached(cache_dir, key, limit, compute):
+    """Run compute() (which returns {stat: array} or ({stat: array}, extra))
+    under the time limit, or reuse a cached result. Returns (result, cached),
+    where result has "stats" and "extra", or "timed_out", or "failed", and
+    always "seconds" (the time of the original run). A cached time-out is
+    reused only if the limit has not been raised since."""
+    path = os.path.join(cache_dir, key[:2], key + ".json") if cache_dir else None
+    if path and os.path.exists(path):
+        with open(path) as f:
+            hit = json.load(f)
+        if not (hit.get("timed_out") and limit > hit["limit"]):
+            return hit, True
+    t0 = time.perf_counter()
+    try:
+        with time_limit(limit):
+            value = compute()
+        stats_, extra = value if isinstance(value, tuple) else (value, None)
+        out = {"stats": {k: v.tolist() for k, v in stats_.items()},
+               "extra": extra}
+    except (TimeLimit, subprocess.TimeoutExpired):
+        out = {"timed_out": True, "limit": limit}
+    except Exception as e:
+        out = {"failed": f"{type(e).__name__}: {e}"[:300]}
+    out["seconds"] = time.perf_counter() - t0
+    if path:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + f".{os.getpid()}"
+        with open(tmp, "w") as f:
+            json.dump(out, f)
+        os.replace(tmp, path)
+    return out, False
+
+
 def audit_model(job):
     """Run one model. Returns a dict with rows of test results, an error, or
-    a reason to skip it."""
-    kind, label, payload, reps, n, seed, timeout, rho, sites = job
+    a reason to skip it, and the time of each simulation."""
+    (kind, label, payload, reps, n, seed, timeout, rho, sites, cache_dir,
+     discoal_id) = job
+    timings = {}
     try:
+        if rho > 0 and label in SLOW_WITH_RECOMBINATION:
+            return dict(model=label, timings=timings, skipped="too slow with "
+                        "recombination (near-zero migration, very tall trees)")
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             graph = build_graph(kind, payload)
         reason = unsupported(graph)
         if reason:
-            return dict(model=label, skipped=reason)
+            return dict(model=label, timings=timings, skipped=reason)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             graph, scale = rescale(graph)
+            model_id = demes.dumps(graph)
         names = present_demes(graph)
-        # msprime first: a graph it cannot simulate is skipped, not an error.
-        try:
+        r, discoal_rho = recombination(graph, rho, sites)
+        common = (model_id, names, n, reps, seed, sites)
+
+        def simulate(name, key_parts, compute):
+            res, cached = run_cached(cache_dir, cache_key(name, *key_parts),
+                                     timeout, compute)
+            timings[name] = (res["seconds"], cached)
+            return res
+
+        def quiet_msprime(rate):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                r, discoal_rho = recombination(graph, rho, sites)
-                if r > 0:
-                    # A model that can strand lineages makes msprime report
-                    # "infinite waiting time" without recombination; with
-                    # recombination the stranded lineages keep recombining
-                    # and msprime never stops. Find these models first.
-                    run_msprime(graph, names, n, reps, seed, 0.0, sites)
-                m = run_msprime(graph, names, n, reps, seed, r, sites)
-        except Exception as e:
-            return dict(model=label,
-                        skipped=f"msprime cannot simulate it: {e}"[:200])
-        with tempfile.TemporaryDirectory() as tmp:
-            path = os.path.join(tmp, "model.demes.yaml")
-            demes.dump(graph, path)
-            d, n_ref = run_discoal(path, graph, names, n, reps, seed, tmp,
+                return run_msprime(graph, names, n, reps, seed, rate, sites)
+
+        ms_id = ("msprime", msprime.__version__)
+        if r > 0:
+            # A model that can strand lineages makes msprime report "infinite
+            # waiting time" without recombination; with recombination the
+            # stranded lineages keep recombining and msprime never stops.
+            # Find these models first.
+            res = simulate("msprime_check", (*common, 0.0, ms_id),
+                           lambda: quiet_msprime(0.0))
+            if "stats" not in res:
+                return dict(model=label, timings=timings,
+                            skipped=skip_reason("msprime", res, timeout))
+        res = simulate("msprime", (*common, r, ms_id),
+                       lambda: quiet_msprime(r))
+        if "stats" not in res:
+            return dict(model=label, timings=timings,
+                        skipped=skip_reason("msprime", res, timeout))
+        m = {k: np.array(v) for k, v in res["stats"].items()}
+
+        def run_d():
+            with tempfile.TemporaryDirectory() as tmp:
+                path = os.path.join(tmp, "model.demes.yaml")
+                demes.dump(graph, path)
+                return run_discoal(path, graph, names, n, reps, seed, tmp,
                                    timeout, discoal_rho, sites)
+        res = simulate("discoal", (*common, discoal_rho, discoal_id), run_d)
+        if res.get("timed_out"):
+            return dict(model=label, timings=timings,
+                        error=f"discoal did not finish in {timeout} s")
+        if "failed" in res:
+            return dict(model=label, timings=timings, error=res["failed"])
+        d = {k: np.array(v) for k, v in res["stats"].items()}
+        n_ref = res["extra"]
         if not np.isclose(n_ref, reference_size(graph)):
             raise RuntimeError(f"discoal N_ref {n_ref} differs from "
                                f"{reference_size(graph)}")
@@ -316,11 +427,29 @@ def audit_model(job):
                              msprime_mean=m[stat].mean(),
                              ks_d=ks.statistic, p=ks.pvalue))
         return dict(model=label, n_ref=n_ref, demes=names, rows=rows,
-                    scale=scale)
-    except subprocess.TimeoutExpired:
-        return dict(model=label, error=f"discoal did not finish in {timeout} s")
+                    scale=scale, timings=timings)
     except Exception as e:  # report and keep going with other models
-        return dict(model=label, error=f"{type(e).__name__}: {e}")
+        return dict(model=label, timings=timings,
+                    error=f"{type(e).__name__}: {e}")
+
+
+def skip_reason(simulator, res, timeout):
+    if res.get("timed_out"):
+        return f"{simulator} did not finish in {timeout} s"
+    return f"{simulator} cannot simulate it: {res['failed']}"[:200]
+
+
+def file_sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def timing_text(timings):
+    return ", ".join(f"{name} {sec:.1f} s{' (cached)' if cached else ''}"
+                     for name, (sec, cached) in timings.items())
 
 
 def main():
@@ -346,11 +475,25 @@ def main():
                     help="number of sites (discoal) and sequence length "
                          "(msprime)")
     ap.add_argument("--timeout", type=int, default=600,
-                    help="seconds allowed for each discoal run")
+                    help="seconds allowed for each simulation (msprime or "
+                         "discoal); a model over the limit is skipped "
+                         "(msprime) or reported as an error (discoal)")
+    ap.add_argument("--cache-dir",
+                    default=os.path.join(REPO, "testing", ".parity_cache"),
+                    help="reuse simulation results stored here; the key "
+                         "includes the model, settings, the msprime version "
+                         "and a hash of the discoal binary")
+    ap.add_argument("--no-cache", action="store_true",
+                    help="run every simulation and store nothing")
     ap.add_argument("--tsv", help="write per-test results to this file")
+    ap.add_argument("--jobs-tsv",
+                    help="write per-model status and simulation times to "
+                         "this file")
     args = ap.parse_args()
     if args.reps < 2:
         sys.exit("--reps must be at least 2")
+    cache_dir = None if args.no_cache else args.cache_dir
+    discoal_id = ("discoal", file_sha256(DISCOAL))
 
     specs = [("catalog", f"{sp.id}/{mdl.id}", (sp.id, mdl.id))
              for sp in stdpopsim.all_species() for mdl in sp.demographic_models]
@@ -362,7 +505,7 @@ def main():
             specs.append(("file", os.path.relpath(path, root), path))
     wanted = set(filter(None, args.models.split(",")))
     jobs = [(kind, label, payload, args.reps, args.samples, 1000 + 10 * i,
-             args.timeout, args.rho, args.sites)
+             args.timeout, args.rho, args.sites, cache_dir, discoal_id)
             for i, (kind, label, payload) in enumerate(specs)
             if not wanted or label in wanted]
     # Report each model as it finishes; long runs then show progress.
@@ -374,7 +517,8 @@ def main():
             results.append(res)
             state = ("skipped" if "skipped" in res else
                      "error" if "error" in res else "done")
-            print(f"[{k}/{len(jobs)}] {res['model']}: {state}",
+            print(f"[{k}/{len(jobs)}] {res['model']}: {state}"
+                  f"{' (' + timing_text(res['timings']) + ')' if res['timings'] else ''}",
                   file=sys.stderr, flush=True)
     order = {job[1]: i for i, job in enumerate(jobs)}
     results.sort(key=lambda res: order[res["model"]])
@@ -410,6 +554,35 @@ def main():
                 f.write(f"{r['model']}\t{r['stat']}\t{r['discoal_mean']:.6g}"
                         f"\t{r['msprime_mean']:.6g}\t{r['ks_d']:.4f}\t"
                         f"{r['p']:.3e}\t{int(r['p'] < threshold)}\n")
+    if args.jobs_tsv:
+        with open(args.jobs_tsv, "w") as f:
+            f.write("model\tstatus\tmsprime_check_s\tmsprime_s\tdiscoal_s\t"
+                    "cached\treason\n")
+            for res in results:
+                t = res["timings"]
+                status = ("skipped" if "skipped" in res else
+                          "error" if "error" in res else "done")
+                secs = [f"{t[k][0]:.2f}" if k in t else ""
+                        for k in ("msprime_check", "msprime", "discoal")]
+                cached = ",".join(k for k, (sec, c) in t.items() if c)
+                reason = res.get("skipped", res.get("error", ""))
+                f.write(f"{res['model']}\t{status}\t" + "\t".join(secs)
+                        + f"\t{cached}\t{reason}\n")
+    computed = {}
+    for res in results:
+        for name, (sec, cached) in res["timings"].items():
+            tot = computed.setdefault(name, [0.0, 0, 0])
+            tot[0] += sec
+            tot[1 if cached else 2] += 1
+    print("\nSimulation time (original run times, cached or not):")
+    for name, (sec, n_cached, n_run) in computed.items():
+        print(f"  {name:<14} {sec / 60:8.1f} min total; {n_run} run now, "
+              f"{n_cached} from cache")
+    slowest = sorted(results, key=lambda res: -sum(
+        sec for sec, _ in res["timings"].values()))[:5]
+    print("  slowest models: " + "; ".join(
+        f"{res['model']} {sum(sec for sec, _ in res['timings'].values()):.0f} s"
+        for res in slowest if res["timings"]))
     bad = {r["model"] for r in rejected} | {e["model"] for e in errors}
     tested = len(results) - len(skipped)
     print(f"\n{tested - len(bad)} of {tested} tested models pass; "
