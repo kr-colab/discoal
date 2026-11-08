@@ -20,4 +20,4 @@ demography:
         source: 0
         destination: 1
 output:
-  output_type: "snp_array"
+  output_type: "haplotype"

@@ -60,10 +60,8 @@ selection:
   recurrent_sweep_rate: 0.1
 
 output:
-  output_type: "snp_array"
-  output_type: "tree_sequence"
   output_type: "haplotype"
-  finite_output: true
+  output_type: "tree_sequence"
   hide_partial_snp: true
   unsimplified_tree_sequence: false
   tree_sequence_filename: "new_example.trees"

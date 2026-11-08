@@ -62,7 +62,7 @@ void reset_config_globals(void) {
     extern int npops;
     extern int migFlag;
     extern int EFFECTIVE_POPN_SIZE;
-    extern int gcMean, finiteOutputFlag;
+    extern int gcMean;
     extern int recurSweepMode, partialSweepMode, softSweepMode;
     extern int tskitOutputMode, minimalTreeSeq, hidePartialSNP;
     extern double theta, rho;
@@ -81,7 +81,6 @@ void reset_config_globals(void) {
     migFlag = 0;
     EFFECTIVE_POPN_SIZE = 0;
     gcMean = 0;
-    finiteOutputFlag = 0;
     recurSweepMode = 0;
     partialSweepMode = 0;
     softSweepMode = 0;

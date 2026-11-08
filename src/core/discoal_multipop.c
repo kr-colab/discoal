@@ -805,7 +805,6 @@ void getParameters(int argc,const char **argv){
 	priorTheta=priorRho=priorAlpha=priorTau=priorX=priorF0=priorUA=priorC=0;
 
 	eventFlag = 1;
-	finiteOutputFlag = 0;
 	outputStyle = 'h';
 	mask = 0;
 	migFlag = 0;

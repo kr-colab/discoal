@@ -57,7 +57,7 @@ extern int popnSizes[MAXPOPS];
 extern int npops;
 extern int migFlag;
 extern int EFFECTIVE_POPN_SIZE;
-extern int gcMean, finiteOutputFlag;
+extern int gcMean;
 extern int recurSweepMode, partialSweepMode, softSweepMode;
 extern int tskitOutputMode, minimalTreeSeq, hidePartialSNP;
 extern double theta, rho;
@@ -1673,10 +1673,8 @@ void test_load_soft_partial_sweep(void) {
 /* ----- Output block + load-level + end-to-end ----- */
 
 /*
- * An output block with finite_output and hide_partial_snp set
- * populates finiteOutputFlag and hidePartialSNP. The output_type is
- * haplotype here only because the boolean flags are independent of
- * which output_type is chosen.
+ * An output block with output_type haplotype and hide_partial_snp set
+ * populates hidePartialSNP and leaves tree sequence output off.
  */
 void test_load_output_section(void) {
     const char *yaml =
@@ -1689,13 +1687,63 @@ void test_load_output_section(void) {
         "  recombination_rate: 0.0\n"
         "output:\n"
         "  output_type: haplotype\n"
-        "  finite_output: true\n"
         "  hide_partial_snp: true\n";
 
     int rc = apply_from_yaml_string(yaml);
     TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, rc);
-    TEST_ASSERT_EQUAL_INT(1, finiteOutputFlag);
     TEST_ASSERT_EQUAL_INT(1, hidePartialSNP);
+    TEST_ASSERT_EQUAL_INT(0, tskitOutputMode);
+}
+
+/* output_type may be omitted: the output block then gives ms output. */
+void test_output_type_defaults_to_haplotype(void) {
+    const char *yaml =
+        "simulation:\n"
+        "  sample_size: 10\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "output:\n"
+        "  hide_partial_snp: true\n";
+
+    int rc = apply_from_yaml_string(yaml);
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, rc);
+    TEST_ASSERT_EQUAL_INT(1, hidePartialSNP);
+    TEST_ASSERT_EQUAL_INT(0, tskitOutputMode);
+}
+
+/* snp_array never had an implementation; it is rejected. */
+void test_output_rejects_snp_array(void) {
+    const char *yaml =
+        "simulation:\n"
+        "  sample_size: 10\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "output:\n"
+        "  output_type: snp_array\n";
+
+    TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+}
+
+/* finite_output never had an effect; it is no longer in the schema. */
+void test_output_rejects_finite_output(void) {
+    const char *yaml =
+        "simulation:\n"
+        "  sample_size: 10\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "output:\n"
+        "  finite_output: true\n";
+
+    TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
 }
 
 /*
@@ -1894,7 +1942,7 @@ void test_apply_full_config(void) {
         "  fixation_time_ago: 0.025\n"
         "output:\n"
         "  output_type: haplotype\n"
-        "  finite_output: true\n";
+        "  hide_partial_snp: true\n";
 
     int rc = apply_from_yaml_string(yaml);
     TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, rc);
@@ -1928,7 +1976,7 @@ void test_apply_full_config(void) {
     TEST_ASSERT_EQUAL_DOUBLE(0.05, tau);  /* 0.025 * 2.0 */
 
     /* output */
-    TEST_ASSERT_EQUAL_INT(1, finiteOutputFlag);
+    TEST_ASSERT_EQUAL_INT(1, hidePartialSNP);
 
     /* events: size-change at events[0] (demography first), sweep at events[1] */
     TEST_ASSERT_EQUAL_INT(2, eventNumber);
@@ -1975,7 +2023,6 @@ void test_apply_zero_block_yaml(void) {
 
     /* No output block: every output global unchanged. */
     TEST_ASSERT_EQUAL_INT(0, tskitOutputMode);
-    TEST_ASSERT_EQUAL_INT(0, finiteOutputFlag);
     TEST_ASSERT_EQUAL_INT(0, hidePartialSNP);
     TEST_ASSERT_EQUAL_INT(0, minimalTreeSeq);
 
@@ -2061,6 +2108,9 @@ int main(void) {
 
     /* Output block + load-level + end-to-end */
     RUN_TEST(test_load_output_section);
+    RUN_TEST(test_output_type_defaults_to_haplotype);
+    RUN_TEST(test_output_rejects_snp_array);
+    RUN_TEST(test_output_rejects_finite_output);
     RUN_TEST(test_load_tskit_output);
     RUN_TEST(test_output_tree_sequence_requires_filename);
     RUN_TEST(test_output_rejects_empty_tree_sequence_filename);

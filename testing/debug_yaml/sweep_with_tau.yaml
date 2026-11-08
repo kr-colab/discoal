@@ -20,4 +20,4 @@ selection:
   sweep_position: 0.5
   fixation_time_ago: 0.1
 output:
-  output_type: "snp_array"
+  output_type: "haplotype"

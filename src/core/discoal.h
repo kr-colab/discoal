@@ -151,7 +151,7 @@ ActiveMaterial activeMaterialSegments;  // New segment-based structure
 
 int sampleSize, sampleNumber, breakNumber, segSites,alleleNumber, \
 	totNodeNumber, totChunkNumber, npops, eventFlag, nSites, activeSites,\
-	mask, finiteOutputFlag, outputStyle, effectiveSampleSize, runMode, gcMean,\
+	mask, outputStyle, effectiveSampleSize, runMode, gcMean,\
 	*breakPoints, breakPointsCapacity, sampleSizes[MAXPOPS];
 
 double  leftRho, rho, theta, tDiv, alpha, sweepSite, tau, my_gamma, \

@@ -237,12 +237,10 @@ static const cyaml_schema_field_t selection_fields_schema[] = {
 /* schema for fields within output block */
 static const cyaml_schema_field_t output_fields_schema[] = {
     /* required arguments */
-    CYAML_FIELD_ENUM("output_type", CYAML_FLAG_DEFAULT, 
-        struct output_config, output_type, 
+    /* optional arguments; output_type defaults to haplotype (ms output) */
+    CYAML_FIELD_ENUM("output_type", CYAML_FLAG_OPTIONAL,
+        struct output_config, output_type,
         output_types_strings, CYAML_ARRAY_LEN(output_types_strings)),
-    /* optional arguments */
-    CYAML_FIELD_BOOL("finite_output", CYAML_FLAG_OPTIONAL,
-        struct output_config, finite_output),
     CYAML_FIELD_BOOL("hide_partial_snp", CYAML_FLAG_OPTIONAL,
         struct output_config, hide_partial_snp),
     CYAML_FIELD_BOOL("unsimplified_tree_sequence", CYAML_FLAG_OPTIONAL,
@@ -750,16 +748,20 @@ int parse_selection_block(struct selection_config *cfg)
 int parse_output_block(struct output_config *cfg) 
 {
     extern int tskitOutputMode, minimalTreeSeq, hidePartialSNP;
-    extern int finiteOutputFlag;
     extern char tskitOutputFilename[1024];
     if (cfg != NULL) {
         switch (cfg->output_type) {
+            case OUTPUT_DEFAULT:
             case OUTPUT_HAPLOTYPE:
-                // FIXME: it is not clear what should be done here
+                /* ms-format haplotypes on stdout, discoal's normal output */
                 break;
             case OUTPUT_SNP_ARRAY:
-                // FIXME: it is not clear what should be done here
-                break;
+                /* Kept in the value table only to give a clear error. */
+                fprintf(stderr,
+                    "Error parsing config: output_type \"snp_array\" is not "
+                    "supported; use \"haplotype\" (ms output, the default) "
+                    "or \"tree_sequence\"\n");
+                return EXIT_FAILURE;
             case OUTPUT_TREE_SEQN:
                 if (cfg->tree_sequence_filename == NULL ||
                     cfg->tree_sequence_filename[0] == '\0') {
@@ -772,9 +774,6 @@ int parse_output_block(struct output_config *cfg)
                 break;
             default:
                 break;
-        }
-        if (cfg->finite_output) {
-            finiteOutputFlag = 1;
         }
         if (cfg->hide_partial_snp) {
             hidePartialSNP = 1;

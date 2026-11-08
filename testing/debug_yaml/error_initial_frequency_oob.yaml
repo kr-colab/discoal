@@ -22,4 +22,4 @@ selection:
   fixation_time_ago: 0.1
   initial_frequency: 1.5
 output:
-  output_type: "snp_array"
+  output_type: "haplotype"

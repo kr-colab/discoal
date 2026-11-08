@@ -26,4 +26,4 @@ demography:
         ancestral: 0
         derived: 1
 output:
-  output_type: "snp_array"
+  output_type: "haplotype"

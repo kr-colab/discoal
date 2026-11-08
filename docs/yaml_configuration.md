@@ -164,20 +164,20 @@ and `recurrent_sweep_rate` must be `>= 0`.
 
 ```yaml
 output:
-  output_type: "tree_sequence"         # see notes; "haplotype" / "snp_array" are currently no-ops
+  output_type: "tree_sequence"         # optional; "haplotype" (default) or "tree_sequence"
   hide_partial_snp: false              # optional; suppresses the selected SNP (matches CLI -h)
   unsimplified_tree_sequence: false    # optional; only meaningful with tree_sequence output
   tree_sequence_filename: "out.trees"  # required if output_type is "tree_sequence"
-  finite_output: false                 # accepted but currently has no effect; see notes
 ```
 
 Notes:
 
-- Only `output_type: "tree_sequence"` actually changes simulator
-  behavior. Setting `"haplotype"` or `"snp_array"` is accepted by
-  the parser but currently has no effect — in either case discoal
-  emits its default ms-style stdout (one `//` block per replicate
-  with `segsites:`, `positions:`, and per-haplotype rows).
+- `output_type: "haplotype"` (the default) gives discoal's ms-format
+  output on stdout: one `//` block per replicate with `segsites:`,
+  `positions:`, and one row per haplotype. `"tree_sequence"` writes
+  tree sequence files instead (the CLI's `-ts`). The schema used to
+  accept `"snp_array"` and a `finite_output` field, which had no
+  effect; both are now rejected with an error.
 - When `output_type` is `"tree_sequence"`, discoal writes one
   `.trees` file per replicate, named by stripping the `.trees`
   suffix from `tree_sequence_filename` and appending
@@ -188,9 +188,6 @@ Notes:
   the selected SNP is excluded from the haplotype output. Useful
   when measuring θ from sweep simulations, where including the
   selected site biases the estimate.
-- `finite_output` is in the schema but is currently a stub: the
-  parser sets a global flag that nothing in the simulator
-  consults. Setting it has no effect today; treat it as reserved.
 
 ## Units
 
