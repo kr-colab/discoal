@@ -437,9 +437,13 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
             return -1;
         }
         int n_bounds = 0;
+        // A window that starts at time infinity (start_time: .inf) needs no
+        // event there; an event at infinite time would never be reached.
         for (int w = 0; w < n_windows; w++) {
-            if (windows[w].t_start > 0.0) boundaries[n_bounds++] = windows[w].t_start;
-            if (windows[w].t_end   > 0.0) boundaries[n_bounds++] = windows[w].t_end;
+            if (windows[w].t_start > 0.0 && isfinite(windows[w].t_start))
+                boundaries[n_bounds++] = windows[w].t_start;
+            if (windows[w].t_end > 0.0 && isfinite(windows[w].t_end))
+                boundaries[n_bounds++] = windows[w].t_end;
         }
         qsort(boundaries, n_bounds, sizeof(double), compareDoublesAscending);
         int n_unique = 0;

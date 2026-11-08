@@ -647,11 +647,12 @@ void test_demography_demes_filename_loads_events(void) {
      * is the regression covered by kr-colab/discoal#75. */
     TEST_ASSERT_EQUAL_INT(2, sampleSizes[0]);
     TEST_ASSERT_EQUAL_INT(2, sampleSizes[1]);
-    /* The demes importer emits at least one event for the migration
-     * band between A and B; the test does not check the exact count
-     * so it does not become coupled to demes-c implementation
-     * details. */
-    TEST_ASSERT_GREATER_THAN_INT(0, eventNumber);
+    /* The migration between A and B lasts for all time, so the importer
+     * writes it into the starting migration matrix (4 N m = 4 * 1000 *
+     * 1e-5 in each direction) and needs no event for it. */
+    extern double migMatConst[MAXPOPS][MAXPOPS];
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.04, migMatConst[0][1]);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.04, migMatConst[1][0]);
 }
 
 /*

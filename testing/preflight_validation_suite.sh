@@ -94,8 +94,11 @@ run_pass_case "eg_grows_backward" \
 run_pass_case "el_short_interval_no_zero_crossing" \
     5 1 100 -t 5 -el 0.1 0 0.5 -en 0.2 0 1.0
 
+# The -ed brings back lineages that moved to population 1 before
+# migration stops; without it they could never coalesce, and discoal
+# would stop with an error.
 run_pass_case "em_zero_turns_migration_off" \
-    5 1 100 -t 5 -p 2 5 0 -m 0 1 0.5 -em 0.1 0 1 0.0
+    5 1 100 -t 5 -p 2 5 0 -m 0 1 0.5 -em 0.1 0 1 0.0 -ed 0.2 1 0
 
 run_pass_case "em_after_pop_merge_skipped" \
     5 1 100 -t 5 -p 2 5 0 -m 0 1 0.5 -ed 0.05 1 0 -em 0.1 0 1 0.5

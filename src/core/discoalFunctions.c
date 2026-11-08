@@ -1685,7 +1685,9 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 	if(startTime == endTime){
 		return(endTime);
 	}
-	int finalInterval = (endTime >= MAXTIME && npops > 1);
+	/* Only sites without a common ancestor matter: lineages that carry no
+	 * ancestral material may stay apart forever. */
+	int finalInterval = (endTime >= MAXTIME && npops > 1 && activeSites > 0);
 	if (finalInterval) {
 		computeMigReach(startTime);
 		requireLineagesCanMeet(startTime);
