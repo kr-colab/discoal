@@ -26,6 +26,7 @@ Needs build/discoal, msprime and demes.
 import argparse
 import math
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -73,14 +74,17 @@ def run_discoal(argv, reps, timeout=300):
 
 def discoal_argv(case, reps, seed, tmp):
     """Command-line arguments for a case. A demes case runs through a -Y
-    config that loads the demes file."""
-    sizes = list(case["samples"].values())
+    config that loads the demes file; deme_sample_size follows the order of
+    demes in the file, extinct demes included."""
+    n = sum(case["samples"].values())
     if "demes" not in case:
-        return ([str(sum(sizes)), str(reps), "1000", "-t", str(THETA)]
+        return ([str(n), str(reps), "1000", "-t", str(THETA)]
                 + case["flags"] + ["-d", str(seed), str(seed + 1)])
+    sizes = [case["samples"].get(d.name, 0)
+             for d in demes.load(case["demes"]).demes]
     cfg = os.path.join(tmp, "config.yaml")
     with open(cfg, "w") as f:
-        f.write(f"simulation: {{sample_size: {sum(sizes)}, "
+        f.write(f"simulation: {{sample_size: {n}, "
                 f"num_replicates: {reps}, num_sites: 1000, "
                 f"seed: [{seed}, {seed + 1}]}}\n"
                 f"genetics: {{mutation_rate: {THETA}, recombination_rate: 0}}\n"
@@ -91,10 +95,8 @@ def discoal_argv(case, reps, seed, tmp):
 
 def msprime_mean(demography, samples, reps, seed):
     """Expected segsites under msprime: mean branch length times MU."""
-    # Zero entries keep discoal's deme_sample_size in graph order (extinct
-    # demes included); msprime needs only the sampled demes.
     sets = [msprime.SampleSet(k, population=p, ploidy=1)
-            for p, k in samples.items() if k > 0]
+            for p, k in samples.items()]
     return mean_se([ts.segregating_sites(mode="branch") * MU
                     for ts in msprime.sim_ancestry(
                         samples=sets, demography=demography, ploidy=2,
@@ -343,6 +345,17 @@ pulses:
 """
 
 
+def demes_case(tmp, name, samples, text=None, path=None):
+    """A case that loads a demes model, given as YAML text or a file path,
+    and compares it with msprime's Demography.from_demes."""
+    if path is None:
+        path = os.path.join(tmp, re.sub(r"\W+", "_", name) + ".demes.yaml")
+        with open(path, "w") as f:
+            f.write(text)
+    return dict(name=name, samples=samples, demes=path, alts={},
+                model=msprime.Demography.from_demes(demes.load(path)))
+
+
 def cases(tmp):
     """Each case has: name, samples ({population: count}), either discoal
     `flags` or a `demes` file, the msprime `model` for the documented
@@ -360,35 +373,6 @@ def cases(tmp):
 
     def linear(k):
         return linear_pop(0.5 * 4 * N0, gamma / (k * N0), 1 - gamma * 0.5)
-
-    growth_file = os.path.join(tmp, "growth.demes.yaml")
-    with open(growth_file, "w") as f:
-        f.write(DEMES_GROWTH)
-    middle_file = os.path.join(tmp, "growth_middle.demes.yaml")
-    with open(middle_file, "w") as f:
-        f.write(DEMES_GROWTH_MIDDLE)
-    extinct_file = os.path.join(tmp, "extinct_ancestor.demes.yaml")
-    with open(extinct_file, "w") as f:
-        f.write(DEMES_EXTINCT_ANCESTOR)
-    admix_file = os.path.join(tmp, "three_way_admixture.demes.yaml")
-    with open(admix_file, "w") as f:
-        f.write(DEMES_THREE_WAY_ADMIXTURE)
-    pulse_file = os.path.join(tmp, "two_source_pulse.demes.yaml")
-    with open(pulse_file, "w") as f:
-        f.write(DEMES_TWO_SOURCE_PULSE)
-    oneway_file = os.path.join(tmp, "one_way_migration.demes.yaml")
-    with open(oneway_file, "w") as f:
-        f.write(DEMES_ONE_WAY_MIGRATION)
-    empty_file = os.path.join(tmp, "empty_extinct_deme.demes.yaml")
-    with open(empty_file, "w") as f:
-        f.write(DEMES_EMPTY_EXTINCT_DEME)
-    sametime_file = os.path.join(tmp, "same_time_pulses.demes.yaml")
-    with open(sametime_file, "w") as f:
-        f.write(DEMES_SAME_TIME_PULSES)
-    pulse_admix_file = os.path.join(tmp, "pulse_and_admixture.demes.yaml")
-    with open(pulse_admix_file, "w") as f:
-        f.write(DEMES_PULSE_AND_ADMIXTURE)
-    example = os.path.join(REPO, "config_examples", "demes_example.demes.yaml")
 
     return [
         dict(name="-en time in 4N0 generations", samples=s20,
@@ -424,48 +408,27 @@ def cases(tmp):
              alts={"rate 2 x 4N0 m": two_pop(2 * m / (4 * N0), 4 * N0,
                                             "P1", "P0",
                                             growth_p1=-5 / (4 * N0))}),
-        dict(name="demes exponential epoch", samples=s20, demes=growth_file,
-             model=msprime.Demography.from_demes(demes.load(growth_file)),
-             alts={}),
-        dict(name="demes exponential epoch between constant epochs",
-             samples=s20, demes=middle_file,
-             model=msprime.Demography.from_demes(demes.load(middle_file)),
-             alts={}),
-        dict(name="demes extinct ancestor with its own size",
-             samples={"ANC": 0, "A": 10, "B": 10}, demes=extinct_file,
-             model=msprime.Demography.from_demes(demes.load(extinct_file)),
-             alts={}),
-        dict(name="demes deme with three ancestors",
-             samples={"ANC": 0, "A": 0, "B": 0, "C": 0, "D": 20},
-             demes=admix_file,
-             model=msprime.Demography.from_demes(demes.load(admix_file)),
-             alts={}),
-        dict(name="demes pulse with two sources",
-             samples={"ANC": 0, "A": 20}, demes=pulse_file,
-             model=msprime.Demography.from_demes(demes.load(pulse_file)),
-             alts={}),
-        dict(name="demes one-way migration direction",
-             samples={"A": 0, "B": 20}, demes=oneway_file,
-             model=msprime.Demography.from_demes(demes.load(oneway_file)),
-             alts={}),
-        dict(name="demes extinct deme that is empty at first",
-             samples={"X": 10, "MID": 0, "B": 10}, demes=empty_file,
-             model=msprime.Demography.from_demes(demes.load(empty_file)),
-             alts={}),
-        dict(name="demes pulses at the same time",
-             samples={"ANC": 0, "A": 20}, demes=sametime_file,
-             model=msprime.Demography.from_demes(demes.load(sametime_file)),
-             alts={}),
-        dict(name="demes pulse at the time of an admixture",
-             samples={"ANC": 0, "A": 0, "B": 0, "X": 0, "D": 20},
-             demes=pulse_admix_file,
-             model=msprime.Demography.from_demes(
-                 demes.load(pulse_admix_file)),
-             alts={}),
-        dict(name="demes splits, sizes, migration windows",
-             samples={"A": 10, "B": 5, "C": 5}, demes=example,
-             model=msprime.Demography.from_demes(demes.load(example)),
-             alts={}),
+        demes_case(tmp, "demes exponential epoch", s20, DEMES_GROWTH),
+        demes_case(tmp, "demes exponential epoch between constant epochs",
+                   s20, DEMES_GROWTH_MIDDLE),
+        demes_case(tmp, "demes extinct ancestor with its own size",
+                   {"A": 10, "B": 10}, DEMES_EXTINCT_ANCESTOR),
+        demes_case(tmp, "demes deme with three ancestors", {"D": 20},
+                   DEMES_THREE_WAY_ADMIXTURE),
+        demes_case(tmp, "demes pulse with two sources", {"A": 20},
+                   DEMES_TWO_SOURCE_PULSE),
+        demes_case(tmp, "demes one-way migration direction", {"B": 20},
+                   DEMES_ONE_WAY_MIGRATION),
+        demes_case(tmp, "demes extinct deme that is empty at first",
+                   {"X": 10, "B": 10}, DEMES_EMPTY_EXTINCT_DEME),
+        demes_case(tmp, "demes pulses at the same time", {"A": 20},
+                   DEMES_SAME_TIME_PULSES),
+        demes_case(tmp, "demes pulse at the time of an admixture", {"D": 20},
+                   DEMES_PULSE_AND_ADMIXTURE),
+        demes_case(tmp, "demes splits, sizes, migration windows",
+                   {"A": 10, "B": 5, "C": 5},
+                   path=os.path.join(REPO, "config_examples",
+                                     "demes_example.demes.yaml")),
     ]
 
 

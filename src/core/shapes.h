@@ -7,12 +7,18 @@
 double sizeAt(int popID, double t);
 double migAt(int srcPopID, int dstPopID, double t);
 
-/* Evaluate the integrated hazard for k lineages from t0 over duration T.
+/* Migration matrix entries are 4N0 m, and one unit of internal time is 2N0
+ * generations, so each lineage migrates at MIG_LINEAGE_WEIGHT * m per unit
+ * of internal time. Every sampler that draws migration uses this weight. */
+#define MIG_LINEAGE_WEIGHT 0.5
+
+/* Integrated hazard from t0 over duration T: coalescence among k lineages,
+ * or migration of the given number of lineages.
  * Used in tests to verify drawWaitingTime against numerical quadrature. */
 double integratedHazardSize(int popID, double t0, double T, int k);
 double integratedHazardMig(int srcPopID, int dstPopID, double t0, double T, int lineages);
 
-/* Draw a waiting time T such that integratedHazard(t0, T, k) == xi.
+/* Draw a waiting time T such that the matching integrated hazard == xi.
  * Returns -1.0 if xi exceeds the integrated hazard over [t0, infinity)
  * or if the linear shape would drive N(t) to zero before the draw resolves. */
 double drawWaitingTimeSize(int popID, double t0, double xi, int k);

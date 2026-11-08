@@ -64,37 +64,23 @@ static event makeEvent(double time, char type, int popID) {
     return e;
 }
 
-/* Tied size and growth events keep the order given, as in ms: the event
- * that comes last decides whether the population grows. */
-void test_sort_events_keeps_given_order_for_size_and_growth_ties(void) {
-    event e[4] = {
+/* sortEventArray orders by time and keeps the given order for ties, as in
+ * ms: for tied -eg and -en, the event given last decides whether the
+ * population grows. */
+void test_sort_events_is_stable(void) {
+    event e[6] = {
         makeEvent(0.5, 'g', 0),
-        makeEvent(0.5, 'n', 0),
-        makeEvent(0.2, 'n', 0),
-        makeEvent(0.2, 'l', 0),
+        makeEvent(0.5, 'n', 1),
+        makeEvent(0.2, 'n', 2),
+        makeEvent(0.2, 'l', 3),
+        makeEvent(1.0, 'p', 4),
+        makeEvent(0.5, 'm', 5),
     };
-    sortEventArray(e, 4);
-    TEST_ASSERT_EQUAL('n', e[0].type);
-    TEST_ASSERT_EQUAL('l', e[1].type);
-    TEST_ASSERT_EQUAL('g', e[2].type);
-    TEST_ASSERT_EQUAL('n', e[3].type);
-    TEST_ASSERT_FLOAT_WITHIN(1e-12, 0.2, e[0].time);
-    TEST_ASSERT_FLOAT_WITHIN(1e-12, 0.5, e[3].time);
-}
-
-/* Other tied events keep the order they were given in. */
-void test_sort_events_is_stable_for_other_ties(void) {
-    event e[4] = {
-        makeEvent(1.0, 'p', 1),
-        makeEvent(0.3, 'n', 0),
-        makeEvent(1.0, 'm', 2),
-        makeEvent(1.0, 'n', 3),
-    };
-    sortEventArray(e, 4);
-    TEST_ASSERT_EQUAL('n', e[0].type);
-    TEST_ASSERT_EQUAL(1, e[1].popID);
-    TEST_ASSERT_EQUAL(2, e[2].popID);
-    TEST_ASSERT_EQUAL(3, e[3].popID);
+    sortEventArray(e, 6);
+    int expected[6] = {2, 3, 0, 1, 5, 4};
+    for (int i = 0; i < 6; i++) {
+        TEST_ASSERT_EQUAL(expected[i], e[i].popID);
+    }
 }
 
 #ifndef TEST_RUNNER_MODE
@@ -103,8 +89,7 @@ int main(void) {
     
     RUN_TEST(test_event_initialization);
     RUN_TEST(test_event_set_properties);
-    RUN_TEST(test_sort_events_keeps_given_order_for_size_and_growth_ties);
-    RUN_TEST(test_sort_events_is_stable_for_other_ties);
+    RUN_TEST(test_sort_events_is_stable);
     
     return UNITY_END();
 }

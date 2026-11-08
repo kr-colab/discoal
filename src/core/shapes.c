@@ -100,10 +100,7 @@ double integratedHazardSize(int popID, double t0, double T, int k) {
  *
  *   H(T) = integral_{0}^{T} k * m(t0 + s)  ds
  *
- * Here k is MIG_LINEAGE_WEIGHT times the number of lineages: migration
- * matrix entries are 4N0 m and one unit of internal time is 2N0 generations,
- * so each lineage migrates at m / 2 per unit of internal time. The
- * constant-shape path in neutralPhaseGeneralPopNumber uses the same factor.
+ * Here k is MIG_LINEAGE_WEIGHT (shapes.h) times the number of lineages.
  *
  * Let m0 = m(t0).  Closed forms:
  *
@@ -120,8 +117,6 @@ double integratedHazardSize(int popID, double t0, double T, int k) {
  *                meaningless for an integrated hazard.  We clamp T to
  *                T_zero before evaluating.
  */
-#define MIG_LINEAGE_WEIGHT 0.5
-
 double integratedHazardMig(int srcPopID, int dstPopID, double t0, double T, int lineages) {
     Shape *s = &migShape[srcPopID][dstPopID];
     double m0 = migAt(srcPopID, dstPopID, t0);

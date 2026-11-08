@@ -1664,7 +1664,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 			gcRate[i] = my_gamma * popnSizes[i] * 0.5 ;
 
 			for(j=0;j<npops;j++) mRate[i]+=migAt(i, j, currentTime);
-			mRate[i] *= popnSizes[i] * 0.5;
+			mRate[i] *= popnSizes[i] * MIG_LINEAGE_WEIGHT;
 			totCRate += cRate[i];
 			totRRate += rRate[i];
 			totMRate += mRate[i];
@@ -1714,12 +1714,12 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 							while(eSum/totMRate < r2) eSum += mRate[++i];
 							//printf("outer totMRate: %f eSum: %f i:%d\n",totMRate,eSum,i);
 							//pick dest popn
-							eSum = migAt(i, 0, currentTime) * popnSizes[i] * 0.5;
+							eSum = migAt(i, 0, currentTime) * popnSizes[i] * MIG_LINEAGE_WEIGHT;
 							//printf("outer eSumNew:%f mRate[%d]:%f\n",eSum,i,mRate[i]);
 							r2 = ranf();
 							while(eSum/mRate[i] < r2){
 							//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
-								eSum += migAt(i, ++j, currentTime) * popnSizes[i] * 0.5;
+								eSum += migAt(i, ++j, currentTime) * popnSizes[i] * MIG_LINEAGE_WEIGHT;
 							//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
 
 							}
@@ -2595,7 +2595,7 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 			gcRate[i] = my_gamma * popnSizes[i] * 0.5 ;
 			
 			for(j=0;j<npops;j++) mRate[i]+=migMat[i][j];
-			mRate[i] *= popnSizes[i] * 0.5;
+			mRate[i] *= popnSizes[i] * MIG_LINEAGE_WEIGHT;
 			totCRate += cRate[i];
 			totRRate += rRate[i];
 			totMRate += mRate[i];
@@ -2644,12 +2644,12 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 						while(eSum/totMRate < r2) eSum += mRate[++i];
 						//printf("outer totMRate: %f eSum: %f i:%d\n",totMRate,eSum,i);
 						//pick dest popn
-						eSum = migMat[i][0]* popnSizes[i] * 0.5;
+						eSum = migMat[i][0]* popnSizes[i] * MIG_LINEAGE_WEIGHT;
 						//printf("outer eSumNew:%f mRate[%d]:%f\n",eSum,i,mRate[i]);
 						r2 = ranf();
 						while(eSum/mRate[i] < r2){
 						//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
-							eSum += migMat[i][++j] * popnSizes[i] * 0.5;
+							eSum += migMat[i][++j] * popnSizes[i] * MIG_LINEAGE_WEIGHT;
 						//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
 							
 						} 
