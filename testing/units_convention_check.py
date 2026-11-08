@@ -29,10 +29,14 @@ import os
 import subprocess
 import sys
 import tempfile
+import warnings
 
 import demes
 import msprime
 import numpy as np
+
+# The same-time pulse case is deliberate; demes warns about it.
+warnings.filterwarnings("ignore", message="Multiple pulses are defined")
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DISCOAL = os.path.join(REPO, "build", "discoal")
@@ -294,6 +298,51 @@ migrations:
 """
 
 
+# Two pulses at the same time. demes applies them in the order given,
+# forward in time, so backward in time C->B runs before B->A.
+DEMES_SAME_TIME_PULSES = """time_units: generations
+demes:
+  - name: ANC
+    epochs: [{start_size: 10000, end_time: 20000}]
+  - name: A
+    ancestors: [ANC]
+    epochs: [{start_size: 10000}]
+  - name: B
+    ancestors: [ANC]
+    epochs: [{start_size: 10000}]
+  - name: C
+    ancestors: [ANC]
+    epochs: [{start_size: 200000}]
+pulses:
+  - {sources: [B], dest: A, time: 1000, proportions: [0.8]}
+  - {sources: [C], dest: B, time: 1000, proportions: [0.8]}
+"""
+
+# A pulse into A at the time D forms from A and B. Backward in time the pulse
+# runs first, so lineages that just left D take no part in it.
+DEMES_PULSE_AND_ADMIXTURE = """time_units: generations
+demes:
+  - name: ANC
+    epochs: [{start_size: 10000, end_time: 20000}]
+  - name: A
+    ancestors: [ANC]
+    epochs: [{start_size: 10000}]
+  - name: B
+    ancestors: [ANC]
+    epochs: [{start_size: 10000}]
+  - name: X
+    ancestors: [ANC]
+    epochs: [{start_size: 100000}]
+  - name: D
+    ancestors: [A, B]
+    proportions: [0.5, 0.5]
+    start_time: 1000
+    epochs: [{start_size: 10000}]
+pulses:
+  - {sources: [X], dest: A, time: 1000, proportions: [0.9]}
+"""
+
+
 def cases(tmp):
     """Each case has: name, samples ({population: count}), either discoal
     `flags` or a `demes` file, the msprime `model` for the documented
@@ -333,6 +382,12 @@ def cases(tmp):
     empty_file = os.path.join(tmp, "empty_extinct_deme.demes.yaml")
     with open(empty_file, "w") as f:
         f.write(DEMES_EMPTY_EXTINCT_DEME)
+    sametime_file = os.path.join(tmp, "same_time_pulses.demes.yaml")
+    with open(sametime_file, "w") as f:
+        f.write(DEMES_SAME_TIME_PULSES)
+    pulse_admix_file = os.path.join(tmp, "pulse_and_admixture.demes.yaml")
+    with open(pulse_admix_file, "w") as f:
+        f.write(DEMES_PULSE_AND_ADMIXTURE)
     example = os.path.join(REPO, "config_examples", "demes_example.demes.yaml")
 
     return [
@@ -396,6 +451,16 @@ def cases(tmp):
         dict(name="demes extinct deme that is empty at first",
              samples={"X": 10, "MID": 0, "B": 10}, demes=empty_file,
              model=msprime.Demography.from_demes(demes.load(empty_file)),
+             alts={}),
+        dict(name="demes pulses at the same time",
+             samples={"ANC": 0, "A": 20}, demes=sametime_file,
+             model=msprime.Demography.from_demes(demes.load(sametime_file)),
+             alts={}),
+        dict(name="demes pulse at the time of an admixture",
+             samples={"ANC": 0, "A": 0, "B": 0, "X": 0, "D": 20},
+             demes=pulse_admix_file,
+             model=msprime.Demography.from_demes(
+                 demes.load(pulse_admix_file)),
              alts={}),
         dict(name="demes splits, sizes, migration windows",
              samples={"A": 10, "B": 5, "C": 5}, demes=example,

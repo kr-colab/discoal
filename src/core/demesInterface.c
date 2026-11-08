@@ -416,49 +416,9 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
                 (*events)[*eventNumber].popID2 = ancestorID;  // Source population
                 (*events)[*eventNumber].type = 'p';  // Population join (backwards in time)
                 (*eventNumber)++;
-            } else {
-                // Admixture from multiple ancestors
-                // Validate proportions sum to 1.0 (demes-c should enforce this, but be safe)
-                double propSum = 0.0;
-                for (int k = 0; k < deme->n_ancestors; k++) {
-                    propSum += deme->proportions[k];
-                }
-                if (fabs(propSum - 1.0) > 1e-9) {
-                    fprintf(stderr, "Error: Ancestry proportions for population '%s' sum to %g, not 1.0\n", 
-                            deme->name, propSum);
-                    return -1;
-                }
-                
-                // An 'a' event moves each lineage to one of two populations,
-                // so k ancestors take k-1 'a' events at the same time. Event
-                // k moves a lineage to ancestor k with probability
-                // proportions[k] / (share not yet assigned), else keeps it in
-                // this deme; a final 'p' moves the rest to the last ancestor.
-                // The event sort is stable, so the chain runs in this order.
-                double remaining = 1.0;
-                for (int k = 0; k < deme->n_ancestors; k++) {
-                    int ancestorID = findPopulationIndex(graph, (char*)deme->ancestors[k]->name);
-                    if (ancestorID < 0) {
-                        fprintf(stderr, "Error: Could not find ancestor population %s\n", 
-                                deme->ancestors[k]->name);
-                        return -1;
-                    }
-                    ensureDemesEventsCapacity(events, eventsCapacity, *eventNumber + 1);
-                    (*events)[*eventNumber].time = coalTime;
-                    (*events)[*eventNumber].popID = popID;
-                    if (k < deme->n_ancestors - 1) {
-                        (*events)[*eventNumber].popID2 = ancestorID;
-                        (*events)[*eventNumber].popID3 = popID;
-                        (*events)[*eventNumber].admixProp = deme->proportions[k] / remaining;
-                        (*events)[*eventNumber].type = 'a';
-                        remaining -= deme->proportions[k];
-                    } else {
-                        (*events)[*eventNumber].popID2 = ancestorID;
-                        (*events)[*eventNumber].type = 'p';
-                    }
-                    (*eventNumber)++;
-                }
             }
+            // Demes with several ancestors are admixed after the pulses; see
+            // the pass after "Process pulses".
         }
     }
     
@@ -658,6 +618,57 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
         }
     }
     
+    // Demes with several ancestors. msprime adds these admixtures after the
+    // pulses, so at a tied time a pulse runs first, backward in time, and
+    // lineages that just left the admixed deme take no part in it. Emitting
+    // them here keeps that order: the event sort is stable.
+    for (int i = 0; i < graph->n_demes; i++) {
+        struct demes_deme *deme = &graph->demes[i];
+        if (deme->n_ancestors < 2) continue;
+        int popID = i;
+        double coalTime = demesTimeToCoalTime(deme->start_time, graph->generation_time, N);
+
+        // Validate proportions sum to 1.0 (demes-c should enforce this, but be safe)
+        double propSum = 0.0;
+        for (int k = 0; k < deme->n_ancestors; k++) {
+            propSum += deme->proportions[k];
+        }
+        if (fabs(propSum - 1.0) > 1e-9) {
+            fprintf(stderr, "Error: Ancestry proportions for population '%s' sum to %g, not 1.0\n",
+                    deme->name, propSum);
+            return -1;
+        }
+
+        // An 'a' event moves each lineage to one of two populations, so k
+        // ancestors take k-1 'a' events at the same time. Event k moves a
+        // lineage to ancestor k with probability proportions[k] / (share not
+        // yet assigned), else keeps it in this deme; a final 'p' moves the
+        // rest to the last ancestor. The event sort is stable, so the chain
+        // runs in this order.
+        double remaining = 1.0;
+        for (int k = 0; k < deme->n_ancestors; k++) {
+            int ancestorID = findPopulationIndex(graph, (char*)deme->ancestors[k]->name);
+            if (ancestorID < 0) {
+                fprintf(stderr, "Error: Could not find ancestor population %s\n",
+                        deme->ancestors[k]->name);
+                return -1;
+            }
+            ensureDemesEventsCapacity(events, eventsCapacity, *eventNumber + 1);
+            (*events)[*eventNumber].time = coalTime;
+            (*events)[*eventNumber].popID = popID;
+            (*events)[*eventNumber].popID2 = ancestorID;
+            if (k < deme->n_ancestors - 1) {
+                (*events)[*eventNumber].popID3 = popID;
+                (*events)[*eventNumber].admixProp = deme->proportions[k] / remaining;
+                (*events)[*eventNumber].type = 'a';
+                remaining -= deme->proportions[k];
+            } else {
+                (*events)[*eventNumber].type = 'p';
+            }
+            (*eventNumber)++;
+        }
+    }
+
     // Events are not sorted here: getParameters sorts all events with a
     // stable sort, and the order of same-time events emitted above matters.
 
