@@ -458,6 +458,13 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
                     return -1;
                 }
                 
+                // An 'a' event moves each lineage to one of two populations,
+                // so k ancestors take k-1 'a' events at the same time. Event
+                // k moves a lineage to ancestor k with probability
+                // proportions[k] / (share not yet assigned), else keeps it in
+                // this deme; a final 'p' moves the rest to the last ancestor.
+                // The event sort is stable, so the chain runs in this order.
+                double remaining = 1.0;
                 for (int k = 0; k < deme->n_ancestors; k++) {
                     int ancestorID = findPopulationIndex(graph, (char*)deme->ancestors[k]->name);
                     if (ancestorID < 0) {
@@ -465,12 +472,19 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
                                 deme->ancestors[k]->name);
                         return -1;
                     }
-                    
+                    ensureDemesEventsCapacity(events, eventsCapacity, *eventNumber + 1);
                     (*events)[*eventNumber].time = coalTime;
-                    (*events)[*eventNumber].popID = popID;  // New population
-                    (*events)[*eventNumber].popID2 = ancestorID;  // Source population
-                    (*events)[*eventNumber].admixProp = deme->proportions[k];
-                    (*events)[*eventNumber].type = 'A';  // Admixture
+                    (*events)[*eventNumber].popID = popID;
+                    if (k < deme->n_ancestors - 1) {
+                        (*events)[*eventNumber].popID2 = ancestorID;
+                        (*events)[*eventNumber].popID3 = popID;
+                        (*events)[*eventNumber].admixProp = deme->proportions[k] / remaining;
+                        (*events)[*eventNumber].type = 'a';
+                        remaining -= deme->proportions[k];
+                    } else {
+                        (*events)[*eventNumber].popID2 = ancestorID;
+                        (*events)[*eventNumber].type = 'p';
+                    }
                     (*eventNumber)++;
                 }
             }

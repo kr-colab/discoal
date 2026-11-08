@@ -182,6 +182,39 @@ migrations:
 """
 
 
+# A deme formed from three ancestors of different sizes. The first
+# present-day deme (A) sets discoal's N_ref, so it has size N0.
+DEMES_THREE_WAY_ADMIXTURE = """time_units: generations
+demes:
+  - name: ANC
+    epochs:
+      - end_time: 20000
+        start_size: 10000
+  - name: A
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 10000
+  - name: B
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 1000
+  - name: C
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 50000
+  - name: D
+    ancestors: [A, B, C]
+    proportions: [0.2, 0.3, 0.5]
+    start_time: 100
+    epochs:
+      - end_time: 0
+        start_size: 10000
+"""
+
+
 def cases(tmp):
     """Each case has: name, samples ({population: count}), either discoal
     `flags` or a `demes` file, the msprime `model` for the documented
@@ -209,6 +242,9 @@ def cases(tmp):
     extinct_file = os.path.join(tmp, "extinct_ancestor.demes.yaml")
     with open(extinct_file, "w") as f:
         f.write(DEMES_EXTINCT_ANCESTOR)
+    admix_file = os.path.join(tmp, "three_way_admixture.demes.yaml")
+    with open(admix_file, "w") as f:
+        f.write(DEMES_THREE_WAY_ADMIXTURE)
     example = os.path.join(REPO, "config_examples", "demes_example.demes.yaml")
 
     return [
@@ -243,6 +279,11 @@ def cases(tmp):
         dict(name="demes extinct ancestor with its own size",
              samples={"ANC": 0, "A": 10, "B": 10}, demes=extinct_file,
              model=msprime.Demography.from_demes(demes.load(extinct_file)),
+             alts={}),
+        dict(name="demes deme with three ancestors",
+             samples={"ANC": 0, "A": 0, "B": 0, "C": 0, "D": 20},
+             demes=admix_file,
+             model=msprime.Demography.from_demes(demes.load(admix_file)),
              alts={}),
         dict(name="demes splits, sizes, migration windows",
              samples={"A": 10, "B": 5, "C": 5}, demes=example,
