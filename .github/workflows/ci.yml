@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master, tskit-integration ]
+    branches: [master, demes]
   pull_request:
-    branches: [master, tskit-integration ]
+    branches: [master, demes]
 
 jobs:
   unit-tests:
@@ -112,6 +112,39 @@ jobs:
       run: |
         echo "=== Running YAML parser regression suite ==="
         bash testing/yaml_parser_suite.sh
+
+    - name: Run YAML example suite
+      run: bash testing/yaml_validation_suite.sh
+
+    - name: Run preflight validation suite
+      run: bash testing/preflight_validation_suite.sh
+
+  units-convention:
+    runs-on: ubuntu-latest
+    name: Unit Conventions vs msprime
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential make
+        pip install msprime demes numpy
+
+    - name: Build discoal
+      run: make discoal
+
+    # Checks that times, growth rates, and migration rates follow the
+    # documented units, by comparison with msprime.
+    - name: Check unit conventions
+      run: python testing/units_convention_check.py
 
   memory-check:
     runs-on: ubuntu-latest
