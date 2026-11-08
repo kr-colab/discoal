@@ -89,7 +89,7 @@ def discoal_argv(case, reps, seed, tmp):
     if "demes" not in case:
         return ([str(n), str(reps), "1000", "-t", str(THETA)]
                 + case["flags"] + ["-d", str(seed), str(seed + 1)])
-    graph = demes.load(case["demes"])
+    graph = case["graph"]
     names = [d.name for d in graph.demes]
     sizes = [case["samples"].get(name, 0) for name in names]
     n_ref = next(d.epochs[-1].end_size for d in graph.demes
@@ -416,9 +416,10 @@ def demes_case(tmp, name, samples, text=None, path=None, ancient=()):
         path = os.path.join(tmp, re.sub(r"\W+", "_", name) + ".demes.yaml")
         with open(path, "w") as f:
             f.write(text)
-    return dict(name=name, samples=samples, demes=path, alts={},
+    graph = demes.load(path)
+    return dict(name=name, samples=samples, demes=path, graph=graph, alts={},
                 ancient=list(ancient),
-                model=msprime.Demography.from_demes(demes.load(path)))
+                model=msprime.Demography.from_demes(graph))
 
 
 def cases(tmp):

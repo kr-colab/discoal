@@ -99,6 +99,7 @@ event;
 #define USER_TO_INTERNAL_TIME 2.0
 static inline double userTimeToInternal(double t) { return t * USER_TO_INTERNAL_TIME; }
 static inline double userRateToInternal(double r) { return r / USER_TO_INTERNAL_TIME; }
+static inline double internalTimeToUser(double t) { return t / USER_TO_INTERNAL_TIME; }
 
 typedef enum {
     SHAPE_CONSTANT = 0,
@@ -223,8 +224,6 @@ double partialSweepFinalFreq;
 
 double deltaTMod;
 
-int ancSampleSize, ancPopID, ancSampleFlag;
-int ancSampleTime;
 
 int hidePartialSNP;
 

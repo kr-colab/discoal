@@ -146,10 +146,23 @@ rootedNode *pickNodePopnFast(int popn) {
 	return list->nodes[index];
 }
 
+/* Ancient samples are taken from the start of their population's
+ * samples, in event order (the events are sorted by time). Return the
+ * index of the 'A' event that takes sample i of population p, or -1 if
+ * the sample is taken at time 0. */
+static int ancientEventOfSample(int p, int i){
+	int k, first = 0;
+	for(k = 0; k < eventNumber; k++){
+		if(events[k].type != 'A' || events[k].popID != p) continue;
+		first += events[k].lineageNumber;
+		if(i < first) return k;
+	}
+	return -1;
+}
+
 void initialize(){
 	int i,j,p, count=0;
 	int leafID=0;
-	int tmpCount = 0;
 
 	/* Initialize the arrays */
 	totChunkNumber = 0;
@@ -159,13 +172,15 @@ void initialize(){
 	for(p=0;p<npops;p++){
 		popnSizes[p]=sampleSizes[p];
 		for( i = 0; i < sampleSizes[p]; i++){
-			nodes[count] = newRootedNode(0,p);
+			int ancientEvent = ancientEventOfSample(p, i);
+			double sampleTime = (ancientEvent < 0) ? 0.0 : events[ancientEvent].time;
+			nodes[count] = newRootedNode(sampleTime,p);
 			nodes[count]->nancSites = nSites;
 			nodes[count]->lLim=0;
 			nodes[count]->rLim=nSites-1;
 			
 			// Always track sample node ID in tskit (create node first)
-			tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
+			tsk_id_t tsk_id = tskit_add_node(sampleTime, p, 1);
 			set_tskit_node_id(nodes[count], tsk_id);
 			addSampleNodeId(tsk_id);
 			
@@ -175,9 +190,15 @@ void initialize(){
 			if(p>0)nodes[count]->sweepPopn = 0;
 			nodes[count]->id=leafID++;
 			nodes[count]->inActiveSet = 1;  // Sample nodes start in active set
-			
-			// Add to population list
-			addNodeToPopList(nodes[count], p);
+
+			if (ancientEvent < 0) {
+				addNodeToPopList(nodes[count], p);
+			} else {
+				/* Dormant until its 'A' event: a negative population
+				 * marks it, and addAncientSample() adds it to p then. */
+				nodes[count]->population = (p + 1) * -1;
+				popnSizes[p]--;
+			}
 			
 			count += 1;
 		}
@@ -192,28 +213,6 @@ void initialize(){
 	alleleNumber = sampleSize;
 	totNodeNumber = sampleSize;
 	freedNodeCount = 0;  // Initialize freed node counter
-	//ancient pop samples?
-	if(ancSampleFlag == 1){
-		//go through ancient sample events
-		for(i = 0; i < eventNumber; i++){
-			if (events[i].type == 'A'){
-				j=0;
-				while(nodes[j]->population != events[i].popID){
-					j++;
-				}
-				for(tmpCount=0;tmpCount<events[i].lineageNumber;tmpCount++){
-					// Remove from population list before changing population
-					removeNodeFromPopList(nodes[tmpCount+j]);
-					nodes[tmpCount+j]->population = (events[i].popID + 1) * -1;
-					tskit_set_node_time(get_tskit_node_id(nodes[tmpCount+j]),
-						events[i].time);
-					popnSizes[events[i].popID]--;
-				}
-			}
-		}
-
-	}
-
 	/* Restore initial sizes; 'n'/'g'/'l' events mutate currentSize per replicate. */
 	for (p = 0; p < MAXPOPS; p++) currentSize[p] = currentSizeConst[p];
 

@@ -44,6 +44,25 @@ static int check_nonneg_double(const char *arr, const char *field, int idx,
     return EXIT_SUCCESS;
 }
 
+/* A population no longer exists from the time a population_splits entry
+ * merges it (as `derived`) into another one. Reject an entry of `arr` that
+ * involves population `pop` at or after that time. */
+static int check_not_merged(const char *arr, int idx, int pop, double time,
+                            const struct demographic_events *dmo) {
+    for (int k = 0; k < dmo->num_population_splits; ++k) {
+        const struct population_split *sp = &dmo->population_splits[k];
+        if (pop == sp->derived && time >= sp->time) {
+            fprintf(stderr,
+                "Error parsing config: %s[%d] at time %g involves population "
+                "%d, which merges into population %d at time %g "
+                "(population_splits[%d])\n",
+                arr, idx, time, pop, sp->ancestral, sp->time, k);
+            return EXIT_FAILURE;
+        }
+    }
+    return EXIT_SUCCESS;
+}
+
 /* for string-valued options, use enums so that CYAML can automatically check
  * for invalid values */
 static const cyaml_strval_t output_types_strings[] = {
@@ -511,26 +530,15 @@ int parse_demography_block(struct demography_config *cfg)
                         i, as->sample_size);
                     return EXIT_FAILURE;
                 }
-                for (int k = 0; k < dmo->num_population_splits; ++k) {
-                    struct population_split *sp = &dmo->population_splits[k];
-                    if (as->population == sp->derived && as->time >= sp->time) {
-                        fprintf(stderr,
-                            "Error parsing config: ancient_samples[%d] at "
-                            "time %g is from population %d, which merges "
-                            "into population %d at time %g (population_splits"
-                            "[%d])\n",
-                            i, as->time, sp->derived, sp->ancestral,
-                            sp->time, k);
-                        return EXIT_FAILURE;
-                    }
+                if (check_not_merged("ancient_samples", i, as->population,
+                        as->time, dmo) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
                 }
                 ensureEventsCapacity();
                 events[eventNumber].type = 'A';
                 events[eventNumber].time = userTimeToInternal(as->time);
                 events[eventNumber].popID = as->population;
                 events[eventNumber].lineageNumber = as->sample_size;
-                ancSampleSize += as->sample_size;
-                ancSampleFlag = 1;
                 eventNumber++;
             }
             /* Migration rate changes, as -em time source destination rate:
@@ -559,20 +567,12 @@ int parse_demography_block(struct demography_config *cfg)
                         i, mrc->source);
                     return EXIT_FAILURE;
                 }
-                for (int k = 0; k < dmo->num_population_splits; ++k) {
-                    struct population_split *sp = &dmo->population_splits[k];
-                    if ((mrc->source == sp->derived ||
-                         mrc->destination == sp->derived) &&
-                        mrc->time >= sp->time) {
-                        fprintf(stderr,
-                            "Error parsing config: migration_rate_changes[%d] "
-                            "at time %g involves population %d, which merges "
-                            "into population %d at time %g (population_splits"
-                            "[%d]); a merged population has no migration\n",
-                            i, mrc->time, sp->derived, sp->ancestral,
-                            sp->time, k);
-                        return EXIT_FAILURE;
-                    }
+                /* The split already stops a merged population's migration. */
+                if (check_not_merged("migration_rate_changes", i, mrc->source,
+                        mrc->time, dmo) != EXIT_SUCCESS ||
+                    check_not_merged("migration_rate_changes", i,
+                        mrc->destination, mrc->time, dmo) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
                 }
                 ensureEventsCapacity();
                 events[eventNumber].type = 'm';

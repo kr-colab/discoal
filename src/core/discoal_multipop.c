@@ -812,8 +812,6 @@ void getParameters(int argc,const char **argv){
 	recurSweepMode = 0;
 	partialSweepMode = 0;
 	softSweepMode = 0;
-	ancSampleFlag = 0;
-	ancSampleSize = 0;
 	hidePartialSNP = 0;
 	tskitOutputMode = 0;
 	tskitOutputFilename[0] = '\0';
@@ -1349,9 +1347,7 @@ void getParameters(int argc,const char **argv){
 			events[eventNumber].lineageNumber = atoi(argv[++args]);
 			events[eventNumber].popID = atoi(argv[++args]);	 
 			events[eventNumber].time = userTimeToInternal(atof(argv[++args])); 
-			ancSampleSize += events[eventNumber].lineageNumber;
 			events[eventNumber].type = 'A'; //ancient sample
-			ancSampleFlag = 1;
 			eventNumber++;
 			break;
 			case 'T' :

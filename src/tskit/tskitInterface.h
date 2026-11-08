@@ -40,7 +40,6 @@ int tskit_initialize(double sequence_length);
 
 // Record a new node (called when creating nodes in discoal)
 tsk_id_t tskit_add_node(double time, int population, int is_sample);
-void tskit_set_node_time(tsk_id_t node_id, double time);
 
 // Record edges during coalescence (with buffering/squashing)
 int tskit_add_edges(tsk_id_t parent, tsk_id_t child, double left, double right);

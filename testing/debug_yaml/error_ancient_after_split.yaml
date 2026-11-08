@@ -1,6 +1,6 @@
 # An ancient sample from a population at or after the time it merges into
 # another one. Should error out with:
-#   "Error parsing config: ancient_samples[0] at time 2.5 is from population 1"
+#   "Error parsing config: ancient_samples[0] at time 2.5 involves population 1"
 
 simulation:
   sample_size: 10

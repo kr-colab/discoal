@@ -30,10 +30,15 @@ static int demeIndex(const struct demes_graph *graph, const struct demes_deme *d
     return (int)(deme - graph->demes);
 }
 
-// A deme exists at time 0 if its most recent epoch ends there. demes-c
-// gives every deme at least one epoch.
+// The time at which a deme's most recent epoch ends. demes-c gives every
+// deme at least one epoch.
+static double demeEndTime(const struct demes_deme *deme) {
+    return deme->epochs[deme->n_epochs - 1].end_time;
+}
+
+// A deme exists at time 0 if its most recent epoch ends there.
 static int demeIsPresent(const struct demes_deme *deme) {
-    return deme->epochs[deme->n_epochs - 1].end_time == 0.0;
+    return demeEndTime(deme) == 0.0;
 }
 
 // Append a zeroed event and return it, growing the array as needed.
@@ -160,14 +165,51 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
         return ret;
     }
     
+    // The reference N for all scaling is the present-day size of the first
+    // deme that exists at time 0.
+    double referenceN = N;  // default if no deme exists at time 0
+    for (int i = 0; i < graph->n_demes; i++) {
+        struct demes_deme *deme = &graph->demes[i];
+        if (demeIsPresent(deme)) {
+            referenceN = deme->epochs[deme->n_epochs - 1].end_size;
+            VERBOSE_LOG("Using population '%s' (index %d) as reference with N=%g\n",
+                    deme->name, i, referenceN);
+            break;
+        }
+    }
+
     // Ancient samples ('A' events, already in the event list) are part of
     // deme_sample_size; the rest of a deme's samples are taken at time 0.
+    // Each must come from a deme that exists at its sampling time: from the
+    // deme's end time (inclusive) back to its start time (exclusive; at the
+    // start time its lineages move to its ancestors). Times are compared in
+    // internal units; the small tolerance lets a sample at exactly a deme's
+    // end time pass despite rounding.
     int ancientCount[MAXPOPS] = {0};
+    double gt = graph->generation_time;
     for (int k = 0; k < *eventNumber; k++) {
         event *e = &(*events)[k];
-        if (e->type == 'A' && e->popID >= 0 && e->popID < MAXPOPS) {
-            ancientCount[e->popID] += e->lineageNumber;
+        if (e->type != 'A') continue;
+        if (e->popID < 0 || e->popID >= (int)graph->n_demes) {
+            fprintf(stderr, "Error: ancient sample from population %d, but the "
+                    "demes file has only %zu demes\n", e->popID, graph->n_demes);
+            demes_graph_free(graph);
+            return -1;
         }
+        struct demes_deme *deme = &graph->demes[e->popID];
+        double tEnd = demesTimeToCoalTime(demeEndTime(deme), gt, referenceN);
+        double tStart = demesTimeToCoalTime(deme->start_time, gt, referenceN);
+        double eps = 1e-9 * fmax(1.0, e->time);
+        if (e->time < tEnd - eps || e->time >= tStart - eps) {
+            fprintf(stderr, "Error: ancient sample at time %g (units of 4N "
+                    "generations, N = %g) is from deme '%s', which exists only "
+                    "from time %g back to time %g\n",
+                    internalTimeToUser(e->time), referenceN, deme->name,
+                    internalTimeToUser(tEnd), internalTimeToUser(tStart));
+            demes_graph_free(graph);
+            return -1;
+        }
+        ancientCount[e->popID] += e->lineageNumber;
     }
 
     // deme_sample_size is indexed by the order of demes in the file, extinct
@@ -186,56 +228,12 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
         if (!demeIsPresent(deme) && presentSamples > 0) {
             fprintf(stderr, "Error: deme_sample_size[%d] = %d, of which %d are "
                     "taken at time 0, is for deme '%s', which ends %g time units "
-                    "ago and does not exist at time 0. deme_sample_size follows the order of "
-                    "demes in the demes file, extinct demes included; give such "
-                    "demes 0, or take all their samples as ancient_samples.\n",
+                    "ago and does not exist at time 0. deme_sample_size follows "
+                    "the order of demes in the demes file, extinct demes "
+                    "included; give such demes 0, or take all their samples as "
+                    "ancient_samples.\n",
                     i, sampleSizes[i], presentSamples, deme->name,
-                    deme->epochs[deme->n_epochs - 1].end_time);
-            demes_graph_free(graph);
-            return -1;
-        }
-    }
-
-    // The reference N for all scaling is the present-day size of the first
-    // deme that exists at time 0.
-    double referenceN = N;  // default if no deme exists at time 0
-    for (int i = 0; i < graph->n_demes; i++) {
-        struct demes_deme *deme = &graph->demes[i];
-        if (demeIsPresent(deme)) {
-            referenceN = deme->epochs[deme->n_epochs - 1].end_size;
-            VERBOSE_LOG("Using population '%s' (index %d) as reference with N=%g\n",
-                    deme->name, i, referenceN);
-            break;
-        }
-    }
-    
-    // An ancient sample must come from a deme that exists at its sampling
-    // time: from the deme's end time (inclusive) back to its start time
-    // (exclusive; at the start time its lineages move to its ancestors).
-    // Times are compared in internal units; the small tolerance lets a
-    // sample at exactly a deme's end time pass despite rounding.
-    for (int k = 0; k < *eventNumber; k++) {
-        event *e = &(*events)[k];
-        if (e->type != 'A') continue;
-        if (e->popID < 0 || e->popID >= (int)graph->n_demes) {
-            fprintf(stderr, "Error: ancient sample from population %d, but the "
-                    "demes file has only %zu demes\n", e->popID, graph->n_demes);
-            demes_graph_free(graph);
-            return -1;
-        }
-        struct demes_deme *deme = &graph->demes[e->popID];
-        double gt = graph->generation_time;
-        double tEnd = demesTimeToCoalTime(
-            deme->epochs[deme->n_epochs - 1].end_time, gt, referenceN);
-        double tStart = demesTimeToCoalTime(deme->start_time, gt, referenceN);
-        double eps = 1e-9 * fmax(1.0, e->time);
-        if (e->time < tEnd - eps || e->time >= tStart - eps) {
-            fprintf(stderr, "Error: ancient sample at time %g (units of 4N "
-                    "generations, N = %g) is from deme '%s', which exists only "
-                    "from time %g back to time %g\n",
-                    e->time / USER_TO_INTERNAL_TIME, referenceN, deme->name,
-                    tEnd / USER_TO_INTERNAL_TIME,
-                    tStart / USER_TO_INTERNAL_TIME);
+                    demeEndTime(deme));
             demes_graph_free(graph);
             return -1;
         }

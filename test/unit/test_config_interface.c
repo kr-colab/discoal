@@ -57,7 +57,7 @@ extern int popnSizes[MAXPOPS];
 extern int npops;
 extern int migFlag;
 extern int EFFECTIVE_POPN_SIZE;
-extern int gcMean, ancSampleFlag;
+extern int gcMean;
 extern int recurSweepMode, partialSweepMode, softSweepMode;
 extern int tskitOutputMode, minimalTreeSeq, hidePartialSNP;
 extern double theta, rho;
@@ -77,6 +77,31 @@ extern int eventNumber, eventsCapacity;
 static char workdir_path[PATH_MAX];
 static char yaml_path[PATH_MAX];
 static char original_cwd[PATH_MAX];
+
+/* The simulation and genetics blocks that most single-block tests share:
+ * 10 samples, 1 replicate, 1000 sites, no mutation or recombination. */
+#define BASE_YAML \
+    "simulation:\n" \
+    "  sample_size: 10\n" \
+    "  num_replicates: 1\n" \
+    "  num_sites: 1000\n" \
+    "genetics:\n" \
+    "  mutation_rate: 0.0\n" \
+    "  recombination_rate: 0.0\n"
+
+static void clear_events(void) {
+    free(events);
+    events = NULL;
+    eventNumber = 0;
+    eventsCapacity = 0;
+}
+
+/* Clear the event list and the parser globals. setUp calls this; tests
+ * that apply several configurations in turn call it between them. */
+static void reset_all(void) {
+    clear_events();
+    reset_config_globals();
+}
 
 void setUp(void) {
     if (getcwd(original_cwd, sizeof(original_cwd)) == NULL) {
@@ -98,14 +123,7 @@ void setUp(void) {
     currentSize = (double *)calloc(MAXPOPS, sizeof(double));
     TEST_ASSERT_NOT_NULL_MESSAGE(currentSize, "setUp: currentSize calloc failed");
 
-    if (events != NULL) {
-        free(events);
-        events = NULL;
-    }
-    eventNumber = 0;
-    eventsCapacity = 0;
-
-    reset_config_globals();
+    reset_all();
 }
 
 void tearDown(void) {
@@ -119,12 +137,7 @@ void tearDown(void) {
         free(currentSize);
         currentSize = NULL;
     }
-    if (events != NULL) {
-        free(events);
-        events = NULL;
-    }
-    eventNumber = 0;
-    eventsCapacity = 0;
+    clear_events();
 }
 
 /*
@@ -135,16 +148,6 @@ void tearDown(void) {
  * freed inside apply_yaml_config (see the file-level comment), so
  * the caller checks the discoal globals to see what was set.
  */
-/* Clear the parser globals and the event list, for tests that apply
- * several configurations in turn. */
-static void reset_all(void) {
-    reset_config_globals();
-    free(events);
-    events = NULL;
-    eventNumber = 0;
-    eventsCapacity = 0;
-}
-
 static int apply_from_yaml_string(const char *yaml) {
     FILE *fp = fopen(yaml_path, "w");
     if (fp == NULL) {
@@ -1006,13 +1009,7 @@ void test_demography_population_split_rejects_nonpositive_time(void) {
  */
 void test_demography_migration_rate_change_event(void) {
     const char *yaml =
-        "simulation:\n"
-        "  sample_size: 10\n"
-        "  num_replicates: 1\n"
-        "  num_sites: 1000\n"
-        "genetics:\n"
-        "  mutation_rate: 0.0\n"
-        "  recombination_rate: 0.0\n"
+        BASE_YAML
         "demography:\n"
         "  deme_sample_size: [5, 5]\n"
         "  demographic_events:\n"
@@ -1034,13 +1031,7 @@ void test_demography_migration_rate_change_event(void) {
 /* A rate of zero is a valid change, but it is not migration. */
 void test_demography_migration_rate_change_to_zero(void) {
     const char *yaml =
-        "simulation:\n"
-        "  sample_size: 10\n"
-        "  num_replicates: 1\n"
-        "  num_sites: 1000\n"
-        "genetics:\n"
-        "  mutation_rate: 0.0\n"
-        "  recombination_rate: 0.0\n"
+        BASE_YAML
         "demography:\n"
         "  deme_sample_size: [5, 5]\n"
         "  demographic_events:\n"
@@ -1062,13 +1053,7 @@ void test_demography_migration_rate_change_to_zero(void) {
 /* Bad source, destination, time or rate values are rejected. */
 void test_demography_migration_rate_change_rejects_bad_values(void) {
     const char *fmt =
-        "simulation:\n"
-        "  sample_size: 10\n"
-        "  num_replicates: 1\n"
-        "  num_sites: 1000\n"
-        "genetics:\n"
-        "  mutation_rate: 0.0\n"
-        "  recombination_rate: 0.0\n"
+        BASE_YAML
         "demography:\n"
         "  deme_sample_size: [5, 5]\n"
         "  migration_matrix:\n"
@@ -1103,13 +1088,7 @@ void test_demography_migration_rate_change_rejects_bad_values(void) {
  */
 void test_demography_migration_rate_change_after_split_rejected(void) {
     const char *fmt =
-        "simulation:\n"
-        "  sample_size: 10\n"
-        "  num_replicates: 1\n"
-        "  num_sites: 1000\n"
-        "genetics:\n"
-        "  mutation_rate: 0.0\n"
-        "  recombination_rate: 0.0\n"
+        BASE_YAML
         "demography:\n"
         "  deme_sample_size: [5, 5]\n"
         "  migration_matrix:\n"
@@ -1141,13 +1120,7 @@ void test_demography_migration_rate_change_after_split_rejected(void) {
  */
 void test_demography_ancient_sample_event(void) {
     const char *yaml =
-        "simulation:\n"
-        "  sample_size: 10\n"
-        "  num_replicates: 1\n"
-        "  num_sites: 1000\n"
-        "genetics:\n"
-        "  mutation_rate: 0.0\n"
-        "  recombination_rate: 0.0\n"
+        BASE_YAML
         "demography:\n"
         "  deme_sample_size: [10]\n"
         "  demographic_events:\n"
@@ -1161,7 +1134,6 @@ void test_demography_ancient_sample_event(void) {
     TEST_ASSERT_EQUAL_DOUBLE(0.2, events[0].time);
     TEST_ASSERT_EQUAL_INT(0, events[0].popID);
     TEST_ASSERT_EQUAL_INT(5, events[0].lineageNumber);
-    TEST_ASSERT_EQUAL_INT(1, ancSampleFlag);
 }
 
 /*
@@ -1173,37 +1145,7 @@ void test_demography_ancient_sample_event(void) {
  */
 void test_demography_same_time_event_order(void) {
     const char *yaml =
-        "simulation:\n"
-        "  sample_size: 10\n"
-        "  num_replicates: 1\n"
-        "  num_sites: 1000\n"
-        "genetics:\n"
-        "  mutation_rate: 0.0\n"
-        "  recombination_rate: 0.0\n"
-        "demography:\n"
-        "  deme_sample_size: [5, 5]\n"
-        "  demographic_events:\n"
-        "    population_splits:\n"
-        "      - {time: 0.5, ancestral: 0, derived: 1}\n"
-        "    population_size_changes:\n"
-        "      - {time: 0.5, size: 2.0, population: 0}\n"
-        "    migration_rate_changes:\n"
-        "      - {time: 0.5, rate: 0.3, source: 0, destination: 1}\n"
-        "      - {time: 0.4, rate: 0.3, source: 1, destination: 0}\n"
-        "    ancient_samples:\n"
-        "      - {time: 0.5, population: 0, sample_size: 2}\n";
-    /* A change at the split time that involves the merged population is
-     * rejected, so this one must come before the split. */
-    TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
-
-    const char *yaml_ok =
-        "simulation:\n"
-        "  sample_size: 10\n"
-        "  num_replicates: 1\n"
-        "  num_sites: 1000\n"
-        "genetics:\n"
-        "  mutation_rate: 0.0\n"
-        "  recombination_rate: 0.0\n"
+        BASE_YAML
         "demography:\n"
         "  deme_sample_size: [5, 5]\n"
         "  demographic_events:\n"
@@ -1215,8 +1157,7 @@ void test_demography_same_time_event_order(void) {
         "      - {time: 0.4, rate: 0.3, source: 1, destination: 0}\n"
         "    ancient_samples:\n"
         "      - {time: 0.5, population: 0, sample_size: 2}\n";
-    reset_all();
-    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml_ok));
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
     sortEventArray(events, eventNumber);
     /* 0.4: migration change; 0.5: ancient sample, size change, split,
      * then two migration-stopping events. */
@@ -1231,13 +1172,7 @@ void test_demography_same_time_event_order(void) {
 /* Bad population, time or sample_size values are rejected. */
 void test_demography_ancient_sample_rejects_bad_values(void) {
     const char *fmt =
-        "simulation:\n"
-        "  sample_size: 10\n"
-        "  num_replicates: 1\n"
-        "  num_sites: 1000\n"
-        "genetics:\n"
-        "  mutation_rate: 0.0\n"
-        "  recombination_rate: 0.0\n"
+        BASE_YAML
         "demography:\n"
         "  deme_sample_size: [5, 5]\n"
         "  migration_matrix:\n"
@@ -1268,13 +1203,7 @@ void test_demography_ancient_sample_rejects_bad_values(void) {
  */
 void test_demography_ancient_sample_after_split_rejected(void) {
     const char *fmt =
-        "simulation:\n"
-        "  sample_size: 10\n"
-        "  num_replicates: 1\n"
-        "  num_sites: 1000\n"
-        "genetics:\n"
-        "  mutation_rate: 0.0\n"
-        "  recombination_rate: 0.0\n"
+        BASE_YAML
         "demography:\n"
         "  deme_sample_size: [5, 5]\n"
         "  demographic_events:\n"
@@ -1998,13 +1927,7 @@ void test_load_soft_partial_sweep(void) {
  */
 void test_load_output_section(void) {
     const char *yaml =
-        "simulation:\n"
-        "  sample_size: 10\n"
-        "  num_replicates: 1\n"
-        "  num_sites: 1000\n"
-        "genetics:\n"
-        "  mutation_rate: 0.0\n"
-        "  recombination_rate: 0.0\n"
+        BASE_YAML
         "output:\n"
         "  output_type: haplotype\n"
         "  hide_partial_snp: true\n";
@@ -2018,13 +1941,7 @@ void test_load_output_section(void) {
 /* output_type may be omitted: the output block then gives ms output. */
 void test_output_type_defaults_to_haplotype(void) {
     const char *yaml =
-        "simulation:\n"
-        "  sample_size: 10\n"
-        "  num_replicates: 1\n"
-        "  num_sites: 1000\n"
-        "genetics:\n"
-        "  mutation_rate: 0.0\n"
-        "  recombination_rate: 0.0\n"
+        BASE_YAML
         "output:\n"
         "  hide_partial_snp: true\n";
 
@@ -2037,13 +1954,7 @@ void test_output_type_defaults_to_haplotype(void) {
 /* snp_array never had an implementation; it is rejected. */
 void test_output_rejects_snp_array(void) {
     const char *yaml =
-        "simulation:\n"
-        "  sample_size: 10\n"
-        "  num_replicates: 1\n"
-        "  num_sites: 1000\n"
-        "genetics:\n"
-        "  mutation_rate: 0.0\n"
-        "  recombination_rate: 0.0\n"
+        BASE_YAML
         "output:\n"
         "  output_type: snp_array\n";
 
@@ -2053,13 +1964,7 @@ void test_output_rejects_snp_array(void) {
 /* finite_output never had an effect; it is no longer in the schema. */
 void test_output_rejects_finite_output(void) {
     const char *yaml =
-        "simulation:\n"
-        "  sample_size: 10\n"
-        "  num_replicates: 1\n"
-        "  num_sites: 1000\n"
-        "genetics:\n"
-        "  mutation_rate: 0.0\n"
-        "  recombination_rate: 0.0\n"
+        BASE_YAML
         "output:\n"
         "  finite_output: true\n";
 
