@@ -172,8 +172,9 @@ discoal 100 1000 50000 -D model.yaml -t 20 -r 15 -ws 0.01 -a 100 -x 0.5
 
 Give the number of samples per deme in `demography.deme_sample_size` of the
 `-Y` config. The list follows the order of demes in the demes file,
-**extinct demes included**. Give 0 for a deme that does not exist at time 0;
-discoal stops with an error if such a deme gets samples.
+**extinct demes included**. Give 0 for a deme that does not exist at time 0,
+or take all its samples as ancient samples (below); discoal stops with an
+error if such a deme gets samples at time 0.
 
 For a demes file with demes `ANC` (ancestral, extinct), `A` and `B`:
 
@@ -182,6 +183,31 @@ demography:
   deme_sample_size: [0, 50, 50]   # ANC, A, B
   demes_filename: "model.demes.yaml"
 ```
+
+### Ancient Samples
+
+The `demographic_events` block of the `-Y` config may give
+`ancient_samples` together with `demes_filename` (no other event lists).
+Each entry takes `sample_size` of a deme's `deme_sample_size` samples at
+`time` instead of at time 0. `population` is the deme's index in the demes
+file, and `time` is in units of 4 N_ref generations
+(`time = generations / (4 * N_ref)`, as in "Time Conversion"). The deme
+must exist at that time: from its end time (included) back to its start
+time (excluded).
+
+For the demes file above, if A's present size is 10000 (so N_ref = 10000)
+and A exists 2000 generations ago, this takes four of A's samples then:
+
+```yaml
+demography:
+  deme_sample_size: [0, 50, 50]   # ANC, A, B
+  demes_filename: "model.demes.yaml"
+  demographic_events:
+    ancient_samples:
+      - {time: 0.05, population: 1, sample_size: 4}
+```
+
+`config_examples/ancient_demes_example.yaml` samples an extinct ghost deme.
 
 ## Validation and Debugging
 

@@ -1,0 +1,22 @@
+# Demes fixture with an extinct deme, for ancient samples in the
+# configInterface unit tests. With N = 1000 (A, the first deme that exists
+# at time 0), X exists from 1000 to 4000 generations ago, that is from
+# 0.25 to 1.0 in units of 4N generations.
+
+time_units: generations
+
+demes:
+  - name: ANC
+    epochs:
+      - end_time: 4000
+        start_size: 1000
+  - name: A
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 1000
+  - name: X
+    ancestors: [ANC]
+    epochs:
+      - end_time: 1000
+        start_size: 500

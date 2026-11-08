@@ -1,0 +1,31 @@
+# Ghost-population model in demes format, for ancient_demes_example.yaml.
+#   - A (present-day) and X both split from ANC 8000 generations ago.
+#   - X went extinct 2000 generations ago; it is known only from ancient
+#     samples.
+#   - A and X exchange migrants while both exist.
+#
+# Discoal's demes importer sets the reference N to the first present-day
+# deme's size (A, 10000). In command-line units:
+#     cli_time = demes_generations / (4 * Ne_ref)
+#     cli_size = demes_size / Ne_ref
+#     cli_migration = demes_rate * 4 * Ne_ref
+
+time_units: generations
+demes:
+  - name: ANC
+    epochs:
+      - end_time: 8000
+        start_size: 10000
+  - name: A
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 10000
+  - name: X
+    ancestors: [ANC]
+    epochs:
+      - end_time: 2000
+        start_size: 5000
+migrations:
+  - demes: [A, X]
+    rate: 1e-4

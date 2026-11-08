@@ -160,9 +160,19 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
         return ret;
     }
     
+    // Ancient samples ('A' events, already in the event list) are part of
+    // deme_sample_size; the rest of a deme's samples are taken at time 0.
+    int ancientCount[MAXPOPS] = {0};
+    for (int k = 0; k < *eventNumber; k++) {
+        event *e = &(*events)[k];
+        if (e->type == 'A' && e->popID >= 0 && e->popID < MAXPOPS) {
+            ancientCount[e->popID] += e->lineageNumber;
+        }
+    }
+
     // deme_sample_size is indexed by the order of demes in the file, extinct
-    // demes included. Samples in a deme that does not exist at time 0 would
-    // all coalesce at once (its size is 0), so reject them.
+    // demes included. Samples taken at time 0 in a deme that does not exist
+    // then would all coalesce at once (its size is 0), so reject them.
     for (int i = 0; i < MAXPOPS; i++) {
         if (sampleSizes[i] <= 0) continue;
         if (i >= (int)graph->n_demes) {
@@ -172,12 +182,14 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
             return -1;
         }
         struct demes_deme *deme = &graph->demes[i];
-        if (!demeIsPresent(deme)) {
-            fprintf(stderr, "Error: deme_sample_size[%d] = %d puts samples in deme "
-                    "'%s', which ends %g time units ago and does not exist at "
-                    "time 0. deme_sample_size follows the order of demes in the "
-                    "demes file, extinct demes included; give such demes 0.\n",
-                    i, sampleSizes[i], deme->name,
+        int presentSamples = sampleSizes[i] - ancientCount[i];
+        if (!demeIsPresent(deme) && presentSamples > 0) {
+            fprintf(stderr, "Error: deme_sample_size[%d] = %d, of which %d are "
+                    "taken at time 0, is for deme '%s', which ends %g time units "
+                    "ago and does not exist at time 0. deme_sample_size follows the order of "
+                    "demes in the demes file, extinct demes included; give such "
+                    "demes 0, or take all their samples as ancient_samples.\n",
+                    i, sampleSizes[i], presentSamples, deme->name,
                     deme->epochs[deme->n_epochs - 1].end_time);
             demes_graph_free(graph);
             return -1;
@@ -197,6 +209,38 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
         }
     }
     
+    // An ancient sample must come from a deme that exists at its sampling
+    // time: from the deme's end time (inclusive) back to its start time
+    // (exclusive; at the start time its lineages move to its ancestors).
+    // Times are compared in internal units; the small tolerance lets a
+    // sample at exactly a deme's end time pass despite rounding.
+    for (int k = 0; k < *eventNumber; k++) {
+        event *e = &(*events)[k];
+        if (e->type != 'A') continue;
+        if (e->popID < 0 || e->popID >= (int)graph->n_demes) {
+            fprintf(stderr, "Error: ancient sample from population %d, but the "
+                    "demes file has only %zu demes\n", e->popID, graph->n_demes);
+            demes_graph_free(graph);
+            return -1;
+        }
+        struct demes_deme *deme = &graph->demes[e->popID];
+        double gt = graph->generation_time;
+        double tEnd = demesTimeToCoalTime(
+            deme->epochs[deme->n_epochs - 1].end_time, gt, referenceN);
+        double tStart = demesTimeToCoalTime(deme->start_time, gt, referenceN);
+        double eps = 1e-9 * fmax(1.0, e->time);
+        if (e->time < tEnd - eps || e->time >= tStart - eps) {
+            fprintf(stderr, "Error: ancient sample at time %g (units of 4N "
+                    "generations, N = %g) is from deme '%s', which exists only "
+                    "from time %g back to time %g\n",
+                    e->time / USER_TO_INTERNAL_TIME, referenceN, deme->name,
+                    tEnd / USER_TO_INTERNAL_TIME,
+                    tStart / USER_TO_INTERNAL_TIME);
+            demes_graph_free(graph);
+            return -1;
+        }
+    }
+
     // Convert the graph to discoal events using the reference N
     ret = convertDemesToEvents(graph, events, eventNumber, eventsCapacity, 
                               currentSize, npops, sampleSizes, referenceN);

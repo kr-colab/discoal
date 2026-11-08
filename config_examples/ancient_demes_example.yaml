@@ -1,0 +1,32 @@
+# Ancient samples with a demes model. deme_sample_size follows the order of
+# demes in the demes file, extinct demes included: ANC, A, X. With a demes
+# file, demographic_events may contain only ancient_samples.
+# Of A's 12 samples, 4 are taken 1000 generations ago (0.025 in units of
+# 4N generations, N = 10000). X is extinct at time 0, so all 8 of its
+# samples must be ancient; they are taken 3000 generations ago (0.075).
+# An ancient sample must come from a deme that exists at its sampling time.
+# The command line has no demes flag; the equivalent command line gives the
+# events the demes importer makes, in the order it makes them.
+# Equivalent to: discoal 20 2 10000 -t 1.0 -r 1.0 -p 3 0 12 8 -A 4 1 0.025 -A 8 2 0.075 -en 0.2 0 1.0 -en 0.05 2 0.5 -ed 0.2 1 0 -ed 0.2 2 0 -em 0.05 1 2 4 -em 0.05 2 1 4 -em 0.2 1 2 0 -em 0.2 2 1 0 -d 12345 10102
+
+simulation:
+  sample_size: 20
+  num_replicates: 2
+  num_sites: 10000
+  seed: [12345, 10102]
+
+genetics:
+  mutation_rate: 1.0
+  recombination_rate: 1.0
+
+demography:
+  deme_sample_size: [0, 12, 8]
+  demes_filename: "config_examples/ancient_demes_example.demes.yaml"
+  demographic_events:
+    ancient_samples:
+      - time: 0.025
+        population: 1
+        sample_size: 4
+      - time: 0.075
+        population: 2
+        sample_size: 8

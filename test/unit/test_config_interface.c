@@ -135,6 +135,16 @@ void tearDown(void) {
  * freed inside apply_yaml_config (see the file-level comment), so
  * the caller checks the discoal globals to see what was set.
  */
+/* Clear the parser globals and the event list, for tests that apply
+ * several configurations in turn. */
+static void reset_all(void) {
+    reset_config_globals();
+    free(events);
+    events = NULL;
+    eventNumber = 0;
+    eventsCapacity = 0;
+}
+
 static int apply_from_yaml_string(const char *yaml) {
     FILE *fp = fopen(yaml_path, "w");
     if (fp == NULL) {
@@ -1079,7 +1089,7 @@ void test_demography_migration_rate_change_rejects_bad_values(void) {
     };
     char yaml[2048];
     for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
-        reset_config_globals();
+        reset_all();
         snprintf(yaml, sizeof(yaml), fmt,
                  bad[i][0], bad[i][1], bad[i][2], bad[i][3]);
         TEST_ASSERT_NOT_EQUAL_MESSAGE(EXIT_SUCCESS,
@@ -1118,7 +1128,7 @@ void test_demography_migration_rate_change_after_split_rejected(void) {
     char yaml[2048];
     snprintf(yaml, sizeof(yaml), fmt, "1.0");
     TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
-    reset_config_globals();
+    reset_all();
     snprintf(yaml, sizeof(yaml), fmt, "0.9");
     TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
 }
@@ -1205,11 +1215,7 @@ void test_demography_same_time_event_order(void) {
         "      - {time: 0.4, rate: 0.3, source: 1, destination: 0}\n"
         "    ancient_samples:\n"
         "      - {time: 0.5, population: 0, sample_size: 2}\n";
-    reset_config_globals();
-    free(events);
-    events = NULL;
-    eventNumber = 0;
-    eventsCapacity = 0;
+    reset_all();
     TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml_ok));
     sortEventArray(events, eventNumber);
     /* 0.4: migration change; 0.5: ancient sample, size change, split,
@@ -1250,7 +1256,7 @@ void test_demography_ancient_sample_rejects_bad_values(void) {
     };
     char yaml[2048];
     for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
-        reset_config_globals();
+        reset_all();
         snprintf(yaml, sizeof(yaml), fmt, bad[i][0], bad[i][1], bad[i][2]);
         TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
     }
@@ -1283,7 +1289,7 @@ void test_demography_ancient_sample_after_split_rejected(void) {
     char yaml[2048];
     snprintf(yaml, sizeof(yaml), fmt, "1.0");
     TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
-    reset_config_globals();
+    reset_all();
     snprintf(yaml, sizeof(yaml), fmt, "0.9");
     TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
 }
@@ -1398,10 +1404,73 @@ void test_demography_migration_matrix_sets_mig_flag(void) {
 }
 
 /*
- * demographic_events and demes_filename are mutually exclusive: the
- * demes file owns event generation when present, so explicit events
- * would conflict.
+ * With demes_filename, demographic_events may hold only ancient_samples:
+ * the demes file gives the demography, so other explicit events would
+ * conflict with it.
  */
+static const char *ancient_with_demes_fmt =
+    "simulation:\n"
+    "  sample_size: 4\n"
+    "  num_replicates: 1\n"
+    "  num_sites: 1000\n"
+    "genetics:\n"
+    "  mutation_rate: 0.0\n"
+    "  recombination_rate: 0.0\n"
+    "demography:\n"
+    "  deme_sample_size: [0, 2, 2]\n"
+    "  demes_filename: \"extinct_deme.yaml\"\n"
+    "  demographic_events:\n"
+    "    ancient_samples:\n"
+    "      - time: %s\n"
+    "        population: 2\n"
+    "        sample_size: %s\n";
+
+/*
+ * Ancient samples may be combined with a demes file. Here all samples of
+ * the extinct deme X (index 2 in file order) are ancient, taken at 0.5
+ * (4N units), while X exists. The 'A' event keeps its population index
+ * and has the time in internal units; the demes events follow it.
+ */
+void test_demography_ancient_samples_with_demes_file(void) {
+    copy_fixture_to_workdir("extinct_deme.yaml");
+    char yaml[2048];
+    snprintf(yaml, sizeof(yaml), ancient_with_demes_fmt, "0.5", "2");
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    TEST_ASSERT_EQUAL_INT(3, npops);
+    TEST_ASSERT_TRUE(eventNumber > 1);
+    TEST_ASSERT_EQUAL_INT('A', events[0].type);
+    TEST_ASSERT_EQUAL_INT(2, events[0].popID);
+    TEST_ASSERT_EQUAL_INT(2, events[0].lineageNumber);
+    TEST_ASSERT_EQUAL_DOUBLE(1.0, events[0].time);
+}
+
+/*
+ * An ancient sample must come from a deme that exists at its sampling
+ * time (X: from 0.25 back to 1.0, the start excluded), and samples taken
+ * at time 0 may not be in a deme that is extinct then.
+ */
+void test_demography_ancient_samples_with_demes_file_rejected(void) {
+    copy_fixture_to_workdir("extinct_deme.yaml");
+    const char *bad[][2] = {
+        {"0.1", "2"},   /* X does not exist yet */
+        {"1.0", "2"},   /* X's start time: its lineages move to ANC */
+        {"1.5", "2"},   /* X no longer exists */
+        {"0.5", "1"},   /* one of X's samples would be taken at time 0 */
+    };
+    char yaml[2048];
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
+        reset_all();
+        snprintf(yaml, sizeof(yaml), ancient_with_demes_fmt,
+                 bad[i][0], bad[i][1]);
+        TEST_ASSERT_NOT_EQUAL_MESSAGE(EXIT_SUCCESS,
+            apply_from_yaml_string(yaml), bad[i][0]);
+    }
+    /* At X's end time the sample is accepted. */
+    reset_all();
+    snprintf(yaml, sizeof(yaml), ancient_with_demes_fmt, "0.25", "2");
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+}
+
 void test_demography_rejects_events_and_demes_filename_both_set(void) {
     /* parse_demography_block rejects the combination before it ever
      * tries to read the demes file, so loading the file is not
@@ -2340,6 +2409,8 @@ int main(void) {
     RUN_TEST(test_demography_migration_matrix_rejects_negative_rate);
     RUN_TEST(test_demography_migration_matrix_sets_mig_flag);
     RUN_TEST(test_demography_rejects_events_and_demes_filename_both_set);
+    RUN_TEST(test_demography_ancient_samples_with_demes_file);
+    RUN_TEST(test_demography_ancient_samples_with_demes_file_rejected);
     RUN_TEST(test_demography_rejects_migration_matrix_and_demes_filename_both_set);
 
     /* Selection block */

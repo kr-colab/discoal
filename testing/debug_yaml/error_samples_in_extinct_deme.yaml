@@ -1,7 +1,7 @@
 # deme_sample_size follows the order of demes in the demes file, extinct
 # demes included. Here index 0 is ANC, which ends 20000 generations ago, so
-# samples there are rejected with:
-#   "Error: deme_sample_size[0] = 10 puts samples in deme 'ANC'"
+# samples taken there at time 0 are rejected with:
+#   "Error: deme_sample_size[0] = 10, of which 10 are taken at time 0, is for deme 'ANC'"
 # The demes file path is relative to the repository root, where the suite runs.
 
 simulation:

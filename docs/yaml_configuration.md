@@ -155,9 +155,9 @@ Notes:
   migration), and within each list in file order. On the CLI, events
   at the same time take effect in command-line order, so an equivalent
   command line must list them in this order to give the same output.
-- `demes_filename` and explicit `demographic_events` /
-  `migration_matrix` are mutually exclusive — use one or the other.
-  So ancient samples cannot yet be combined with a demes file.
+- With `demes_filename`, `migration_matrix` must be omitted, and
+  `demographic_events` may contain only `ancient_samples`: the demes
+  file gives the demography. See "Combining with the demes format".
 
 
 ## selection
@@ -261,9 +261,24 @@ using the present-day size of the first present-day deme as the
 reference N. Demes migration rates (per-generation) are scaled to
 4Nm.
 
-When a demes file is in use, the `demographic_events` and
-`migration_matrix` blocks must be omitted — the parser rejects
-the combination rather than silently overriding either.
+When a demes file is in use, the `migration_matrix` block must be
+omitted, and `demographic_events` may contain only
+`ancient_samples` — the parser rejects other combinations rather
+than silently overriding either. For ancient samples with a demes
+model:
+
+- `population` is an index into `deme_sample_size`, which follows
+  the order of demes in the demes file, extinct demes included.
+- `time` is in units of 4 N_ref generations, where N_ref is the
+  present-day size of the first deme that exists at time 0:
+  `time = generations / (4 * N_ref)`.
+- The deme must exist at the sampling time: from its end time
+  (included) back to its start time (excluded). discoal stops with
+  an error otherwise.
+- A deme that is extinct at time 0 can have samples if all of them
+  are ancient.
+
+See `config_examples/ancient_demes_example.yaml`.
 
 Note that the demes importer's handling of multi-window migration
 is currently coarser than the demes spec strictly intends. If you

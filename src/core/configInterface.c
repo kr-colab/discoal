@@ -477,11 +477,19 @@ int parse_demography_block(struct demography_config *cfg)
         }
         /* parse demographic events; these will be sorted into time order later */
         if (cfg->demographic_events != NULL) {
-            if (cfg->demes_filename != NULL) {
-                fprintf(stderr, "Cannot use demographic_events if demes_filename is provided\n");
+            struct demographic_events *dmo = cfg->demographic_events;
+            /* A demes file gives the whole demography, so with one only
+             * ancient_samples may be set; the demes importer checks that
+             * each sample's deme exists at its sampling time. */
+            if (cfg->demes_filename != NULL &&
+                (dmo->num_population_size_changes > 0 ||
+                 dmo->num_population_splits > 0 ||
+                 dmo->num_migration_rate_changes > 0)) {
+                fprintf(stderr, "Error parsing config: with demes_filename, "
+                    "demographic_events may contain only ancient_samples; the "
+                    "demes file gives the demography\n");
                 return EXIT_FAILURE;
             }
-            struct demographic_events *dmo = cfg->demographic_events;
             /* Ancient samples, as -A sample_size population time: that many
              * of the population's deme_sample_size samples are taken at
              * `time` instead of at time 0. The count per population is

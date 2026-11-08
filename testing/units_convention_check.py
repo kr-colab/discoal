@@ -81,13 +81,25 @@ def run_discoal(argv, reps, timeout=300):
 def discoal_argv(case, reps, seed, tmp):
     """Command-line arguments for a case. A demes case runs through a -Y
     config that loads the demes file; deme_sample_size follows the order of
-    demes in the file, extinct demes included."""
+    demes in the file, extinct demes included. Ancient samples of a demes
+    case go in the config's ancient_samples, with times converted from
+    generations to units of 4 N_ref generations (N_ref: the present size of
+    the first deme that exists at time 0)."""
     n = sum(case["samples"].values())
     if "demes" not in case:
         return ([str(n), str(reps), "1000", "-t", str(THETA)]
                 + case["flags"] + ["-d", str(seed), str(seed + 1)])
-    sizes = [case["samples"].get(d.name, 0)
-             for d in demes.load(case["demes"]).demes]
+    graph = demes.load(case["demes"])
+    names = [d.name for d in graph.demes]
+    sizes = [case["samples"].get(name, 0) for name in names]
+    n_ref = next(d.epochs[-1].end_size for d in graph.demes
+                 if d.end_time == 0)
+    events = ""
+    if case.get("ancient"):
+        entries = ", ".join(
+            f"{{time: {t / (4 * n_ref)!r}, population: {names.index(p)}, "
+            f"sample_size: {k}}}" for p, k, t in case["ancient"])
+        events = f", demographic_events: {{ancient_samples: [{entries}]}}"
     cfg = os.path.join(tmp, "config.yaml")
     with open(cfg, "w") as f:
         f.write(f"simulation: {{sample_size: {n}, "
@@ -95,7 +107,7 @@ def discoal_argv(case, reps, seed, tmp):
                 f"seed: [{seed}, {seed + 1}]}}\n"
                 f"genetics: {{mutation_rate: {THETA}, recombination_rate: 0}}\n"
                 f"demography: {{deme_sample_size: {sizes}, "
-                f"demes_filename: \"{case['demes']}\"}}\n")
+                f"demes_filename: \"{case['demes']}\"{events}}}\n")
     return ["-Y", cfg]
 
 
@@ -371,14 +383,41 @@ pulses:
 """
 
 
-def demes_case(tmp, name, samples, text=None, path=None):
+# A present-day deme A and a ghost deme X that went extinct 2000
+# generations ago, both from ANC; they exchange migrants while both exist.
+# All of X's samples are ancient. N_ref is A's size.
+DEMES_EXTINCT_GHOST = """time_units: generations
+demes:
+  - name: ANC
+    epochs:
+      - end_time: 8000
+        start_size: 10000
+  - name: A
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 10000
+  - name: X
+    ancestors: [ANC]
+    epochs:
+      - end_time: 2000
+        start_size: 5000
+migrations:
+  - demes: [A, X]
+    rate: 1e-4
+"""
+
+
+def demes_case(tmp, name, samples, text=None, path=None, ancient=()):
     """A case that loads a demes model, given as YAML text or a file path,
-    and compares it with msprime's Demography.from_demes."""
+    and compares it with msprime's Demography.from_demes. `ancient` lists
+    (deme, count, time in generations), as in msprime_mean."""
     if path is None:
         path = os.path.join(tmp, re.sub(r"\W+", "_", name) + ".demes.yaml")
         with open(path, "w") as f:
             f.write(text)
     return dict(name=name, samples=samples, demes=path, alts={},
+                ancient=list(ancient),
                 model=msprime.Demography.from_demes(demes.load(path)))
 
 
@@ -481,6 +520,9 @@ def cases(tmp):
                    DEMES_PULSE_AND_ADMIXTURE),
         demes_case(tmp, "demes joined only by a pulse", {"A": 10, "B": 10},
                    DEMES_PULSE_ONLY),
+        demes_case(tmp, "demes ancient samples, one from an extinct deme",
+                   {"A": 12, "X": 8}, DEMES_EXTINCT_GHOST,
+                   ancient=[("X", 8, 3000), ("A", 4, 1000)]),
         demes_case(tmp, "demes splits, sizes, migration windows",
                    {"A": 10, "B": 5, "C": 5},
                    path=os.path.join(REPO, "config_examples",

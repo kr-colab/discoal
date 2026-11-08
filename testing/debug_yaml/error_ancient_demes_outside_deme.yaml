@@ -1,0 +1,21 @@
+# An ancient sample from a demes model's deme at a time when the deme does
+# not exist (X exists from 0.05 back to 0.2 in units of 4N generations).
+# Should error out with:
+#   "Error: ancient sample at time 0.3 (units of 4N generations, N = 10000) is from deme 'X'"
+
+simulation:
+  sample_size: 20
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 1.0
+  recombination_rate: 0.0
+demography:
+  deme_sample_size: [0, 12, 8]
+  demes_filename: "config_examples/ancient_demes_example.demes.yaml"
+  demographic_events:
+    ancient_samples:
+      - time: 0.3
+        population: 2
+        sample_size: 8
