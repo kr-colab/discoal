@@ -44,7 +44,7 @@ This builds `niceStats` from the msUtils library and creates a symlink in the pr
 | `yaml_validation_suite.sh` | YAML configuration file validation | 2 min |
 | `yaml_parser_suite.sh` | YAML parser regression suite (walks `testing/debug_yaml/`) | < 5 sec |
 | `units_convention_check.py` | Checks the units of times, growth rates, and migration rates against msprime (needs msprime and demes) | under 1 min |
-| `stdpopsim_parity.py` | Compares discoal and msprime branch-mode statistics on every stdpopsim demographic model, random generic stdpopsim models (`--generic`), and demes files (`--demes-dir`, e.g. the examples and test cases of the demes specification) (needs stdpopsim, msprime, demes, tskit, scipy) | about 15 min with 24 workers for the catalog and generic models |
+| `stdpopsim_parity.py` | Compares discoal and msprime branch-mode statistics on every stdpopsim demographic model, random generic stdpopsim models (`--generic`), and demes files (`--demes-dir`, e.g. the examples and test cases of the demes specification), with ancient samples at stdpopsim's default sampling times and, in "+ancient" variants of the generic models and demes files, from every deme at random times (needs stdpopsim, msprime, demes, tskit, scipy) | about 15 min with 24 workers for the catalog and generic models |
 
 ## Documentation
 
