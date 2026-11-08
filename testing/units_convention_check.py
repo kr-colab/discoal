@@ -18,12 +18,17 @@ Conventions under test (N0 is the reference size, theta = 4 N0 mu):
   - -M / -m / -em rates: 4N0 m; -m i j moves lineages from i to j
     backward in time (msprime's convention)
   - demes import: demes generations and per-generation rates
+  - -r rho: 4 N_ref r L over all L sites, r per generation whatever the
+    population size; compared on the number of distinct trees in tree
+    sequence output (N_ref is N0 on the command line, the present size of
+    the first deme for a demes file)
 
 Usage: python testing/units_convention_check.py [--reps N]
-Needs build/discoal, msprime and demes.
+Needs build/discoal, msprime, demes and tskit.
 """
 
 import argparse
+import glob
 import math
 import os
 import re
@@ -35,6 +40,7 @@ import warnings
 import demes
 import msprime
 import numpy as np
+import tskit
 
 # The same-time pulse case is deliberate; demes warns about it.
 warnings.filterwarnings("ignore", message="Multiple pulses are defined")
@@ -447,6 +453,78 @@ def cases(tmp):
     ]
 
 
+def discoal_tree_mean(argv, tmp):
+    """Run discoal with tree sequence output; return (mean, standard error)
+    of the number of distinct trees along the sequence."""
+    for f in glob.glob(os.path.join(tmp, "t_rep*.trees")):
+        os.remove(f)
+    subprocess.run([DISCOAL] + argv + ["-ts", os.path.join(tmp, "t.trees")],
+                   capture_output=True, check=True, timeout=600)
+    return mean_se([tskit.load(f).num_trees
+                    for f in glob.glob(os.path.join(tmp, "t_rep*.trees"))])
+
+
+def msprime_tree_mean(demography, pop, n, sites, r, reps, seed):
+    """Mean number of distinct trees under msprime on a discrete genome."""
+    return mean_se([ts.num_trees for ts in msprime.sim_ancestry(
+        samples=[msprime.SampleSet(n, population=pop, ploidy=1)],
+        demography=demography, ploidy=2, sequence_length=sites,
+        recombination_rate=r, num_replicates=reps, random_seed=seed)])
+
+
+def tree_cases(tmp, reps):
+    """Recombination cases, compared on the number of distinct trees. Each
+    case has discoal arguments, the msprime model and population, the
+    number of sites L, the per-generation rate r for the documented
+    convention (rho = 4 N_ref r L), rates that must be rejected, and its
+    number of replicates. Only the L versus L - 1 case needs `reps`; the
+    others reject their alternatives by a wide margin with fewer, and their
+    many trees are slow to write."""
+    rho, n = 10.0, 10
+    few = max(2, reps // 10)
+
+    def r(N, L):
+        return rho / (4 * N * L)
+
+    grown = msprime.Demography.isolated_model([N0])
+    grown.add_population_parameters_change(time=0.05 * 4 * N0,
+                                           initial_size=100 * N0,
+                                           population="pop_0")
+    # A small present size and a large past size, as in the BosTau models.
+    text = ("time_units: generations\ndemes:\n  - name: A\n    epochs:\n"
+            "      - {end_time: 2000, start_size: 90000}\n"
+            "      - {end_time: 0, start_size: 300}\n")
+    path = os.path.join(tmp, "small_present.demes.yaml")
+    with open(path, "w") as f:
+        f.write(text)
+    cfg = os.path.join(tmp, "small_present.yaml")
+    with open(cfg, "w") as f:
+        f.write(f"simulation: {{sample_size: {n}, num_replicates: {few}, "
+                f"num_sites: 1000, seed: [7, 8]}}\n"
+                f"genetics: {{mutation_rate: 0, recombination_rate: {rho}}}\n"
+                f"demography: {{deme_sample_size: [{n}], "
+                f"demes_filename: \"{path}\"}}\n")
+    return [
+        dict(name="-r rho is 4N0 r over all L sites (L = 10)", reps=reps,
+             argv=[str(n), str(reps), "10", "-t", "0", "-r", str(rho),
+                   "-d", "3", "4"],
+             model=msprime.Demography.isolated_model([N0]), pop="pop_0",
+             sites=10, r=r(N0, 10),
+             alts={"over L - 1 sites": rho / (4 * N0 * 9),
+                   "2 rho": 2 * r(N0, 10)}),
+        dict(name="-r with a past size 100 x N0: r stays per generation",
+             reps=few,
+             argv=[str(n), str(few), "1000", "-t", "0", "-r", str(rho),
+                   "-en", "0.05", "0", "100", "-d", "5", "6"],
+             model=grown, pop="pop_0", sites=1000, r=r(N0, 1000),
+             alts={"rho relative to the past size": r(100 * N0, 1000)}),
+        dict(name="demes: rho is relative to the present size of deme 0",
+             reps=few, argv=["-Y", cfg], model=msprime.Demography.from_demes(
+                 demes.loads(text)), pop="A", sites=1000, r=r(300, 1000),
+             alts={"rho relative to the past size": r(90000, 1000)}),
+    ]
+
+
 def report(name, d, ref, alts):
     zr = z(d, ref)
     ok = abs(zr) < Z_MATCH
@@ -473,6 +551,17 @@ def main():
             alts = {k: msprime_mean(mm, case["samples"], reps, seed + 1)
                     for k, mm in case["alts"].items()}
             all_ok &= report(case["name"], d, ref, alts)
+
+        n = 10
+        for i, case in enumerate(tree_cases(tmp, reps)):
+            seed = 2010 + 10 * i
+            d = discoal_tree_mean(case["argv"], tmp)
+            args = (case["model"], case["pop"], n, case["sites"])
+            ref = msprime_tree_mean(*args, case["r"], case["reps"], seed)
+            alts = {k: msprime_tree_mean(*args, rk, case["reps"], seed + 1)
+                    for k, rk in case["alts"].items()}
+            all_ok &= report(case["name"] + " (number of trees)", d, ref,
+                             alts)
 
     print("\nAll unit conventions hold." if all_ok
           else "\nOne or more unit conventions FAILED.")

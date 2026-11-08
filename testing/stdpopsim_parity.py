@@ -239,14 +239,14 @@ def reference_size(graph):
 
 
 def run_msprime(graph, names, n, reps, seed, rho, sites):
-    """msprime with the same samples. discoal's rho is 4 N_ref r over the
-    locus, with breakpoints between its `sites` sites; msprime gets the
-    per-generation rate on a discrete genome of the same length."""
+    """msprime with the same samples. discoal's rho is 4 N_ref r L over its
+    L = `sites` sites (units_convention_check.py pins this), so msprime gets
+    r = rho / (4 N_ref L) on a discrete genome of length L."""
     dem = msprime.Demography.from_demes(graph)
     samples = [msprime.SampleSet(n, population=name, ploidy=1, time=0)
                for name in names]
     pop_ids = [dem[name].id for name in names]
-    r = rho / (4 * reference_size(graph) * (sites - 1)) if rho > 0 else 0.0
+    r = rho / (4 * reference_size(graph) * sites) if rho > 0 else 0.0
     tss = msprime.sim_ancestry(samples=samples, demography=dem, ploidy=2,
                                sequence_length=sites, recombination_rate=r,
                                num_replicates=reps, random_seed=seed)
