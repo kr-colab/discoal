@@ -34,12 +34,19 @@ static int findPopulationIndex(struct demes_graph *graph, const char *name) {
     return -1;
 }
 
-// Convert demes time to coalescent time. demes_time is in the units the
-// graph specifies; for time_units="generations" generation_time is 1 (demes
-// validates this), and for time_units="years" generation_time is the years
-// per generation, so dividing yields generations either way.
+// Convert demes time to discoal internal time (units of 2N generations).
+// demes_time is in the units the graph specifies; for
+// time_units="generations" generation_time is 1 (demes validates this), and
+// for time_units="years" generation_time is the years per generation, so
+// dividing yields generations either way.
 static double demesTimeToCoalTime(double demes_time, double generation_time, double N) {
     return demes_time / generation_time / (2.0 * N);
+}
+
+// Convert a per-generation rate to a rate per unit of internal time
+// (2N generations), the unit of Shape.rate_param.
+static double demesRateToInternal(double rate_per_gen, double N) {
+    return rate_per_gen * 2.0 * N;
 }
 
 // Convert demes size to coalescent size (relative to ancestral N)
@@ -340,9 +347,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
             
             // Handle exponential growth within epoch.
             // Emit a 'g' event at the more-recent (smaller-internal-time) boundary
-            // of the epoch with the forward-time per-generation growth rate
-            // converted to discoal's internal alpha (4N-scaled).  See -eg CLI
-            // parsing for the convention.
+            // of the epoch with the forward-time growth rate.
             if (epoch->size_function == DEMES_SIZE_FUNCTION_EXPONENTIAL &&
                 epoch->start_size != epoch->end_size) {
                 /* Forward-time per-generation rate.  start_time is the older
@@ -354,9 +359,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
                 double dt_gens = (startTime - endTime) / graph->generation_time;
                 double alpha_per_gen = log(epoch->end_size / epoch->start_size)
                                        / dt_gens;
-                /* Convert to discoal internal alpha (4N-scaled): inverse of
-                 * alpha_per_gen = alpha_internal / (2N). */
-                double alpha_internal = alpha_per_gen * 2.0 * N;
+                double alpha_internal = demesRateToInternal(alpha_per_gen, N);
                 double t_internal = demesTimeToCoalTime(epoch->end_time,
                                                         graph->generation_time, N);
 
@@ -385,7 +388,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
                 double dt_gens = (startTime - endTime) / graph->generation_time;
                 double gamma_per_gen = (epoch->end_size - epoch->start_size)
                                        / dt_gens;
-                double gamma_internal = gamma_per_gen * 2.0 * N;
+                double gamma_internal = demesRateToInternal(gamma_per_gen, N);
                 double t_internal = demesTimeToCoalTime(epoch->end_time,
                                                         graph->generation_time, N);
 

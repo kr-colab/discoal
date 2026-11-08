@@ -92,6 +92,14 @@ event;
 /* Shape state for time-varying demographic parameters                         */
 /******************************************************************************/
 
+/* Command-line and YAML times are in units of 4N0 generations, as in ms.
+ * Internal time is in units of 2N0 generations. A rate per unit of time
+ * (-eg alpha, -el gamma) converts by the inverse factor, so the product
+ * rate * time is the same in both scales. */
+#define USER_TO_INTERNAL_TIME 2.0
+static inline double userTimeToInternal(double t) { return t * USER_TO_INTERNAL_TIME; }
+static inline double userRateToInternal(double r) { return r / USER_TO_INTERNAL_TIME; }
+
 typedef enum {
     SHAPE_CONSTANT = 0,
     SHAPE_EXPONENTIAL = 1,
@@ -101,7 +109,10 @@ typedef enum {
 typedef struct {
     ShapeType type;
     double anchor_value;   /* size or rate at anchor_time */
-    double rate_param;     /* alpha for EXP, gamma for LIN, unused for CONST */
+    double rate_param;     /* alpha for EXP, gamma for LIN, unused for CONST.
+                            * Forward-time rate of change per unit of internal
+                            * time (2N0 generations); LIN is in the value's own
+                            * units (relative size, or 4Nm for migration). */
     double anchor_time;    /* time at which anchor_value applies */
 } Shape;
 

@@ -1,19 +1,20 @@
-# 3-deme demographic model expressed in demes format. Mirrors the
-# topology of the sibling demographic_example.yaml:
+# 3-deme demographic model expressed in demes format. Same topology as
+# the sibling demographic_example.yaml, at half the time depths:
 #   - Ancestor A (present-day pop 0) with a bottleneck releasing at 10000 gens.
 #   - B (present-day pop 1) splits from A at 40000 gens, larger ancestral size.
 #   - C (present-day pop 2) splits from A at 60000 gens.
 #   - Symmetric migration between coexisting demes at 4Nm = 0.1.
 #
 # Discoal's demes importer sets the reference N to the first present-day
-# deme's size and scales everything to its internal units:
-#     discoal_time = demes_generations / (2 * Ne_ref)
-#     discoal_size = demes_size / Ne_ref
-#     discoal_migration = demes_rate * 4 * Ne_ref
-# With Ne_ref = 10000 the split at 40000 gens becomes discoal time 2.0, and
-# 60000 gens becomes 3.0; the bottleneck at 10000 gens becomes 0.5; the
-# ancestral-size change at 20000 gens becomes 1.0; migration rate 2.5e-6
-# becomes 4Nm = 0.1 — matching the numbers in demographic_example.yaml.
+# deme's size. In command-line units:
+#     cli_time = demes_generations / (4 * Ne_ref)
+#     cli_size = demes_size / Ne_ref
+#     cli_migration = demes_rate * 4 * Ne_ref
+# With Ne_ref = 10000 the bottleneck at 10000 gens becomes -en 0.25, the
+# ancestral-size change at 20000 gens becomes -en 0.5, the split at
+# 40000 gens becomes -ed 1.0, the split at 60000 gens becomes -ed 1.5,
+# and migration rate 2.5e-6 becomes 4Nm = 0.1. See demes_example.yaml for
+# the full equivalent command line.
 
 time_units: generations
 

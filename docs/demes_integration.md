@@ -23,7 +23,6 @@ events:
 - Multiple populations with specified sizes
 - Population size changes (instantaneous)
 - Exponential growth epochs (translated to discoal `-eg` events)
-- Linear growth epochs (translated to discoal `-el` events)
 - Population splits and mergers
 - Symmetric and asymmetric migration, including multi-window
   piecewise-constant migration matrices
@@ -43,17 +42,20 @@ Discoal uses different time and rate units than the demes specification. The int
 ### Time Conversion
 - Demes: time in the units the graph specifies (`time_units: generations`
   or `time_units: years`).
-- Discoal: internal coalescent time.
-- Conversion: `discoal_time = demes_time / generation_time / (2 * N_ref)`
+- Discoal command line: time in units of 4N generations (as in ms).
+
+```
+cli_time = demes_time / generation_time / (4 * N_ref)
+```
 
 Where `N_ref` is the size of the first present-day deme in the demes file.
-For `time_units: generations`, the demes spec requires `generation_time = 1`,
-so the formula reduces to `demes_time / (2 * N_ref)`. For `time_units: years`,
-`generation_time` is the years-per-generation conversion factor, and the
-formula correctly lands in coalescent units regardless. (This matches the
-discoal CLI convention that command-line times in units of `2N` are
-internally stored as `4N` units; the importer halves the `4N` factor to
-land in the same internal scale.)
+For `time_units: generations`, the demes spec requires `generation_time = 1`.
+For `time_units: years`, `generation_time` is the number of years per
+generation. (Internally discoal uses units of 2N generations, so the importer
+stores twice `cli_time`.)
+
+Example: with `N_ref = 10000`, a split 40000 generations ago is
+`-ed 1.0 ...` on the command line.
 
 ### Population Size Conversion
 - Demes: absolute population size
@@ -189,7 +191,7 @@ Loaded 2 populations and 5 events from demes file 'model.yaml'
 ### Common Issues
 
 1. **Infinite coalescent times**: Ensure all populations are connected through migration or common ancestors
-2. **Time conversion confusion**: Remember that discoal command line times are in units of 2N, but internal times are 4N
+2. **Time conversion confusion**: discoal command-line times are in units of 4N generations. Internal times, and node times in tree sequence output, are in units of 2N generations
 3. **Sample size mismatch**: Ensure `-p` sample sizes match the number of present-day demes
 
 ### Validation Script
@@ -211,11 +213,11 @@ testing/demes_validation_suite.sh
 ## Converting Existing Models
 
 ### From msprime
-Demes files written for msprime work directly with discoal (if they don't use growth epochs).
+Demes files written for msprime work directly with discoal, with two exceptions: linear size epochs (the demes-c parser rejects them) and selfing or cloning rates (not supported).
 
 ### From discoal command line
 To convert a discoal command line to demes:
-1. Convert times: `demes_time = discoal_cmd_time * 2N`
+1. Convert times: `demes_time = discoal_cmd_time * 4N`
 2. Convert sizes: `demes_size = discoal_relative_size * N`
 3. Convert migration rates: `demes_rate = discoal_rate / (4N)`
 
@@ -233,22 +235,21 @@ time_units: generations
 demes:
   - name: pop0
     epochs:
-      - start_time: .inf
-        end_time: 2000      # 0.1 * 2 * 10000
-        size_function: constant
-        size: 10000
-      - start_time: 2000
-        end_time: 0
-        size_function: constant
-        size: 20000         # 2.0 * 10000
+      - end_time: 4000      # 0.1 * 4 * 10000
+        start_size: 20000   # 2.0 * 10000
+      - end_time: 0
+        start_size: 10000
   - name: pop1
+    ancestors: [pop0]       # merges into pop0
+    start_time: 2000        # 0.05 * 4 * 10000
     epochs:
-      - start_time: .inf
-        end_time: 1000      # 0.05 * 2 * 10000
-        size_function: constant
-        size: 10000
-        ancestors: [pop0]   # Merge into pop0
+      - end_time: 0
+        start_size: 10000
 ```
+
+With the same seed, this demes file (loaded through a `-Y` config with
+`demography.demes_filename`) gives output identical to the command line
+above.
 
 ## Further Resources
 

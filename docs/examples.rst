@@ -50,13 +50,12 @@ Demographic Models
 
 .. code-block:: bash
 
-   # Approximate exponential growth with multiple size changes
+   # Growth at rate 115 per 4N0 generations over the last 0.016 x 4N0
+   # generations. Going back, the size falls to exp(-115 * 0.016) = 0.16,
+   # then stays constant.
    ./discoal 20 100 50000 -t 40 -r 40 \
-     -en 0.001 0 0.9 \
-     -en 0.002 0 0.8 \
-     -en 0.004 0 0.65 \
-     -en 0.008 0 0.4 \
-     -en 0.016 0 0.16
+     -eg 0 0 115 \
+     -eg 0.016 0 0
 
 Selection Examples
 ------------------
