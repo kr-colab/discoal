@@ -482,6 +482,14 @@ int main(int argc, const char * argv[]){
 		if(alleleNumber > 1){
 			currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, MAXTIME, currentSize);
 		}
+		/* Never write a genealogy without a common ancestor at every site. */
+		if (activeSites > 0) {
+			fprintf(stderr, "Error: replicate %d reached time %g (in units of 2N "
+			        "generations) with %d sites that have no common ancestor; the "
+			        "lineages cannot coalesce under this model.\n",
+			        i + 1, currentTime, activeSites);
+			exit(1);
+		}
 		
 		// Sort and simplify the tree sequence after ancestry simulation is complete
 		// This removes all non-ancestral nodes and edges before mutation placement
