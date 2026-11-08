@@ -1,0 +1,17 @@
+# deme_sample_size follows the order of demes in the demes file, extinct
+# demes included. Here index 0 is ANC, which ends 20000 generations ago, so
+# samples there are rejected with:
+#   "Error: deme_sample_size[0] = 10 puts samples in deme 'ANC'"
+# The demes file path is relative to the repository root, where the suite runs.
+
+simulation:
+  sample_size: 20
+  num_replicates: 1
+  num_sites: 1000
+  seed: [42, 4242]
+genetics:
+  mutation_rate: 1.0
+  recombination_rate: 0.0
+demography:
+  deme_sample_size: [10, 10]
+  demes_filename: "testing/debug_yaml/extinct_ancestor.demes.yml"

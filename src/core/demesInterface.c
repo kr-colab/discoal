@@ -120,6 +120,30 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
         return ret;
     }
     
+    // deme_sample_size is indexed by the order of demes in the file, extinct
+    // demes included. Samples in a deme that does not exist at time 0 would
+    // all coalesce at once (its size is 0), so reject them.
+    for (int i = 0; i < MAXPOPS; i++) {
+        if (sampleSizes[i] <= 0) continue;
+        if (i >= (int)graph->n_demes) {
+            fprintf(stderr, "Error: deme_sample_size[%d] = %d, but the demes file "
+                    "has only %zu demes\n", i, sampleSizes[i], graph->n_demes);
+            demes_graph_free(graph);
+            return -1;
+        }
+        struct demes_deme *deme = &graph->demes[i];
+        double end = deme->epochs[deme->n_epochs - 1].end_time;
+        if (end > 0.0) {
+            fprintf(stderr, "Error: deme_sample_size[%d] = %d puts samples in deme "
+                    "'%s', which ends %g time units ago and does not exist at "
+                    "time 0. deme_sample_size follows the order of demes in the "
+                    "demes file, extinct demes included; give such demes 0.\n",
+                    i, sampleSizes[i], deme->name, end);
+            demes_graph_free(graph);
+            return -1;
+        }
+    }
+
     // First, find the present-day size of the first PRESENT-DAY population
     // This will be used as the reference N for all scaling
     double referenceN = N;  // default if we can't find a present-day population
