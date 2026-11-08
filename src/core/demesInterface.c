@@ -54,15 +54,6 @@ static double demesSizeToCoalSize(double demes_size, double N) {
     return demes_size / N;
 }
 
-// Compare events by time for sorting (descending order - most recent first)
-static int compareEventsByTime(const void *a, const void *b) {
-    const struct event *ea = (const struct event *)a;
-    const struct event *eb = (const struct event *)b;
-    if (ea->time < eb->time) return 1;
-    if (ea->time > eb->time) return -1;
-    return 0;
-}
-
 // Compare doubles ascending (used for migration boundary deduplication)
 static int compareDoublesAscending(const void *a, const void *b) {
     double da = *(const double *)a;
@@ -632,9 +623,12 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
         free(windows);
     }
     
-    // Process pulses (admixture events)
+    // Process pulses (admixture events). demes applies pulses with the same
+    // time in the order given, forward in time, so a backward-time simulation
+    // must apply them in reverse order (msprime does the same). Emitting them
+    // in reverse is enough: the event sort is stable.
     VERBOSE_LOG("\nPulses: %zu\n", graph->n_pulses);
-    for (int i = 0; i < graph->n_pulses; i++) {
+    for (int i = graph->n_pulses - 1; i >= 0; i--) {
         struct demes_pulse *pulse = &graph->pulses[i];
         int destID = findPopulationIndex(graph, (char*)pulse->dest->name);
         
@@ -657,6 +651,10 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
         VERBOSE_LOG("Pulse %d at time %g into %s (pop%d)\n", 
                 i, pulse->time, pulse->dest->name, destID);
         
+        // Each 'a' event moves a lineage from dest to source j with
+        // probability proportions[j] / (share not yet assigned), else keeps
+        // it in dest (popID3 = dest).
+        double remaining = 1.0;
         for (int j = 0; j < pulse->n_sources; j++) {
             int sourceID = findPopulationIndex(graph, (char*)pulse->sources[j]->name);
             if (sourceID < 0) {
@@ -668,18 +666,21 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
             VERBOSE_LOG("  Source: %s (pop%d), proportion: %g\n", 
                     pulse->sources[j]->name, sourceID, pulse->proportions[j]);
             
+            ensureDemesEventsCapacity(events, eventsCapacity, *eventNumber + 1);
             (*events)[*eventNumber].time = demesTimeToCoalTime(pulse->time, graph->generation_time, N);
             (*events)[*eventNumber].popID = destID;
             (*events)[*eventNumber].popID2 = sourceID;
-            (*events)[*eventNumber].admixProp = pulse->proportions[j];
-            (*events)[*eventNumber].type = 'a';  // Pulse (lowercase for single generation)
+            (*events)[*eventNumber].popID3 = destID;
+            (*events)[*eventNumber].admixProp = pulse->proportions[j] / remaining;
+            (*events)[*eventNumber].type = 'a';
             (*eventNumber)++;
+            remaining -= pulse->proportions[j];
         }
     }
     
-    // Sort events by time (most recent first)
-    qsort(&(*events)[1], *eventNumber - 1, sizeof(struct event), compareEventsByTime);
-    
+    // Events are not sorted here: getParameters sorts all events with a
+    // stable sort, and the order of same-time events emitted above matters.
+
     // Set initial population sizes
     VERBOSE_LOG("\nPresent-day population sizes:\n");
     for (int i = 0; i < graph->n_demes; i++) {

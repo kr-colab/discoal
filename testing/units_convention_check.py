@@ -215,6 +215,36 @@ demes:
 """
 
 
+# A pulse from two sources into A. Lineages not moved must stay in A.
+DEMES_TWO_SOURCE_PULSE = """time_units: generations
+demes:
+  - name: ANC
+    epochs:
+      - end_time: 20000
+        start_size: 10000
+  - name: A
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 10000
+  - name: B
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 1000
+  - name: C
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 50000
+pulses:
+  - sources: [B, C]
+    dest: A
+    time: 500
+    proportions: [0.2, 0.3]
+"""
+
+
 def cases(tmp):
     """Each case has: name, samples ({population: count}), either discoal
     `flags` or a `demes` file, the msprime `model` for the documented
@@ -245,6 +275,9 @@ def cases(tmp):
     admix_file = os.path.join(tmp, "three_way_admixture.demes.yaml")
     with open(admix_file, "w") as f:
         f.write(DEMES_THREE_WAY_ADMIXTURE)
+    pulse_file = os.path.join(tmp, "two_source_pulse.demes.yaml")
+    with open(pulse_file, "w") as f:
+        f.write(DEMES_TWO_SOURCE_PULSE)
     example = os.path.join(REPO, "config_examples", "demes_example.demes.yaml")
 
     return [
@@ -284,6 +317,10 @@ def cases(tmp):
              samples={"ANC": 0, "A": 0, "B": 0, "C": 0, "D": 20},
              demes=admix_file,
              model=msprime.Demography.from_demes(demes.load(admix_file)),
+             alts={}),
+        dict(name="demes pulse with two sources",
+             samples={"ANC": 0, "A": 20}, demes=pulse_file,
+             model=msprime.Demography.from_demes(demes.load(pulse_file)),
              alts={}),
         dict(name="demes splits, sizes, migration windows",
              samples={"A": 10, "B": 5, "C": 5}, demes=example,
