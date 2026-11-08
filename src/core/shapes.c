@@ -100,6 +100,11 @@ double integratedHazardSize(int popID, double t0, double T, int k) {
  *
  *   H(T) = integral_{0}^{T} k * m(t0 + s)  ds
  *
+ * Here k is MIG_LINEAGE_WEIGHT times the number of lineages: migration
+ * matrix entries are 4N0 m and one unit of internal time is 2N0 generations,
+ * so each lineage migrates at m / 2 per unit of internal time. The
+ * constant-shape path in neutralPhaseGeneralPopNumber uses the same factor.
+ *
  * Let m0 = m(t0).  Closed forms:
  *
  *   CONSTANT:    H(T) = k * m0 * T
@@ -115,10 +120,13 @@ double integratedHazardSize(int popID, double t0, double T, int k) {
  *                meaningless for an integrated hazard.  We clamp T to
  *                T_zero before evaluating.
  */
-double integratedHazardMig(int srcPopID, int dstPopID, double t0, double T, int k) {
+#define MIG_LINEAGE_WEIGHT 0.5
+
+double integratedHazardMig(int srcPopID, int dstPopID, double t0, double T, int lineages) {
     Shape *s = &migShape[srcPopID][dstPopID];
     double m0 = migAt(srcPopID, dstPopID, t0);
-    if (k <= 0 || m0 == 0.0) return 0.0;
+    if (lineages <= 0 || m0 == 0.0) return 0.0;
+    double k = MIG_LINEAGE_WEIGHT * lineages;
     switch (s->type) {
         case SHAPE_CONSTANT:
             return k * m0 * T;
@@ -187,7 +195,8 @@ double drawWaitingTimeSize(int popID, double t0, double xi, int k) {
 
 /* Inversion of integratedHazardMig: solve H(T) = xi for T.  Returns -1.0
  * when xi exceeds the integrated hazard over [0, infinity) for the given
- * shape (i.e. no event ever, given the rate trajectory).
+ * shape (i.e. no event ever, given the rate trajectory). k is the weighted
+ * lineage count, as in integratedHazardMig.
  *
  *   CONSTANT:    T = xi / (k*m0)
  *   EXPONENTIAL: xi = k*m0*(1 - exp(-b*T))/b
@@ -200,8 +209,9 @@ double drawWaitingTimeSize(int popID, double t0, double xi, int k) {
  *                exceeds the plateau hazard accumulated by the time the
  *                rate hits zero.
  */
-double drawWaitingTimeMig(int srcPopID, int dstPopID, double t0, double xi, int k) {
-    if (k <= 0) return -1.0;
+double drawWaitingTimeMig(int srcPopID, int dstPopID, double t0, double xi, int lineages) {
+    if (lineages <= 0) return -1.0;
+    double k = MIG_LINEAGE_WEIGHT * lineages;
     Shape *s = &migShape[srcPopID][dstPopID];
     double m0 = migAt(srcPopID, dstPopID, t0);
     if (m0 <= 0.0) return -1.0;

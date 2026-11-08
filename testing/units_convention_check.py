@@ -115,13 +115,15 @@ def linear_pop(t1_gens, gamma_rel_per_gen, final_rel, steps=400):
     return one_pop(changes)
 
 
-def two_pop(rate, merge_gens, source, dest):
+def two_pop(rate, merge_gens, source, dest, growth_p1=0.0):
     """Pops P0 and P1; lineages move from source to dest (backward in time)
     only; both merge into ANC at merge_gens. All samples come from P0, so
-    the direction of migration changes the model."""
+    the direction of migration changes the model. growth_p1 is P1's growth
+    rate per generation."""
     d = msprime.Demography()
     for name in ("P0", "P1", "ANC"):
-        d.add_population(name=name, initial_size=N0)
+        d.add_population(name=name, initial_size=N0,
+                         growth_rate=growth_p1 if name == "P1" else 0.0)
     d.set_migration_rate(source=source, dest=dest, rate=rate)
     d.add_population_split(time=merge_gens, derived=["P0", "P1"],
                            ancestral="ANC")
@@ -324,6 +326,18 @@ def cases(tmp):
              alts={"rate 2N0 m": two_pop(m / (2 * N0), 4 * N0, "P0", "P1"),
                    "lineages move j -> i":
                        two_pop(m / (4 * N0), 4 * N0, "P1", "P0")}),
+        # Growth makes the sampler use the time-varying (NHPP) path, which
+        # draws migration times separately from the constant-rate path. With
+        # alpha < 0 the past was larger, so migration out of P1 matters.
+        dict(name="-m with -eg: migration rate while sizes change",
+             samples={"P1": 20},
+             flags=["-p", "2", "0", "20", "-m", "1", "0", str(m),
+                    "-eg", "0", "1", "-5", "-ed", "1.0", "1", "0"],
+             model=two_pop(m / (4 * N0), 4 * N0, "P1", "P0",
+                           growth_p1=-5 / (4 * N0)),
+             alts={"rate 2 x 4N0 m": two_pop(2 * m / (4 * N0), 4 * N0,
+                                            "P1", "P0",
+                                            growth_p1=-5 / (4 * N0))}),
         dict(name="demes exponential epoch", samples=s20, demes=growth_file,
              model=msprime.Demography.from_demes(demes.load(growth_file)),
              alts={}),
