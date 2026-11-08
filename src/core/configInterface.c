@@ -499,10 +499,7 @@ int parse_demography_block(struct demography_config *cfg)
                     "implemented (no handler in the main event loop)\n");
                 return EXIT_FAILURE;
             }
-            /* Times in YAML follow the same convention as the command line:
-             * the user supplies them in 2N units and the parser scales by 2 to
-             * convert to discoal's internal 4N units. Keep this in sync with
-             * `-en`, `-ed`, and `-ws` time scaling in getParameters(). */
+            /* YAML times use the command-line units; see userTimeToInternal. */
             for (int i = 0; i < dmo->num_population_size_changes; ++i) {
                 struct population_size_change *psc = &dmo->population_size_changes[i];
                 if (check_pop_index("population_size_changes", "population",
@@ -515,7 +512,7 @@ int parse_demography_block(struct demography_config *cfg)
                 }
                 ensureEventsCapacity();
                 events[eventNumber].type = 'n';
-                events[eventNumber].time = psc->time * 2.0;
+                events[eventNumber].time = userTimeToInternal(psc->time);
                 events[eventNumber].popID = psc->population;
                 events[eventNumber].popnSize = psc->size;
                 eventNumber++;
@@ -543,7 +540,7 @@ int parse_demography_block(struct demography_config *cfg)
                 }
                 ensureEventsCapacity();
                 events[eventNumber].type = 'p';
-                events[eventNumber].time = split->time * 2.0;
+                events[eventNumber].time = userTimeToInternal(split->time);
                 events[eventNumber].popID = split->derived;
                 events[eventNumber].popID2 = split->ancestral;
                 eventNumber++;
@@ -654,8 +651,7 @@ int parse_selection_block(struct selection_config *cfg)
         }
         sweepSite = cfg->sweep_position;
         if (cfg->fixation_time_ago > 0) {
-            /* User supplies tau in 2N units (matching `-ws`); scale to 4N. */
-            tau = cfg->fixation_time_ago * 2.0;
+            tau = userTimeToInternal(cfg->fixation_time_ago);
         }
         if (cfg->initial_frequency < 0 || cfg->initial_frequency >= 1.0) {
             fprintf(stderr,

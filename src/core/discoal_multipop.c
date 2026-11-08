@@ -1044,7 +1044,7 @@ void getParameters(int argc,const char **argv){
 				switch(argv[args][2]){
 					case 'n':
 					ensureEventsCapacity();
-					events[eventNumber].time = atof(argv[++args]) * 2.0;
+					events[eventNumber].time = userTimeToInternal(atof(argv[++args]));
 					events[eventNumber].popID = atoi(argv[++args]);
 					events[eventNumber].popnSize = atof(argv[++args]);
 					events[eventNumber].type = 'n'; //size change
@@ -1054,7 +1054,7 @@ void getParameters(int argc,const char **argv){
 					case 'j' :  // -ej is equivalent to -ed (for ms compatibility)
 					tDiv =  atof(argv[++args]);
 						ensureEventsCapacity();
-					events[eventNumber].time = tDiv * 2.0;
+					events[eventNumber].time = userTimeToInternal(tDiv);
 					events[eventNumber].popID = atoi(argv[++args]);
 					events[eventNumber].popID2 = atoi(argv[++args]);
 					events[eventNumber].type = 'p'; //pop split
@@ -1062,7 +1062,7 @@ void getParameters(int argc,const char **argv){
 					break;
 					case 'a' :
 						ensureEventsCapacity();
-					events[eventNumber].time = atof(argv[++args]) * 2.0;
+					events[eventNumber].time = userTimeToInternal(atof(argv[++args]));
 					events[eventNumber].popID = atoi(argv[++args]);
 					events[eventNumber].popID2 = atoi(argv[++args]);
 					events[eventNumber].popID3 = atoi(argv[++args]);
@@ -1070,20 +1070,23 @@ void getParameters(int argc,const char **argv){
 					events[eventNumber].type = 'a'; //admix split
 					eventNumber++;
 					break;
+					/* -eg/-eG alpha and -el/-eL gamma are rates per 4N0
+					 * generations, as in ms; userRateToInternal converts them
+					 * like the times. */
 					case 'g':
 						/* -eg time popID alpha */
 						ensureEventsCapacity();
-						events[eventNumber].time = atof(argv[++args]) * 2.0;
+						events[eventNumber].time = userTimeToInternal(atof(argv[++args]));
 						events[eventNumber].popID = atoi(argv[++args]);
-						events[eventNumber].popnSize = atof(argv[++args]);  /* alpha stored in popnSize field */
+						events[eventNumber].popnSize = userRateToInternal(atof(argv[++args]));  /* alpha stored in popnSize field */
 						events[eventNumber].type = 'g';
 						eventNumber++;
 						break;
 					case 'G':
 						/* -eG time alpha -- applies to all populations */
 						{
-							double t = atof(argv[++args]) * 2.0;
-							double alpha_val = atof(argv[++args]);
+							double t = userTimeToInternal(atof(argv[++args]));
+							double alpha_val = userRateToInternal(atof(argv[++args]));
 							for (int p = 0; p < npops; p++) {
 								ensureEventsCapacity();
 								events[eventNumber].time = t;
@@ -1095,19 +1098,19 @@ void getParameters(int argc,const char **argv){
 						}
 						break;
 					case 'l':
-						/* -el time popID gamma — linear-growth event */
+						/* -el time popID gamma: gamma is in relative size (size / N0) */
 						ensureEventsCapacity();
-						events[eventNumber].time = atof(argv[++args]) * 2.0;
+						events[eventNumber].time = userTimeToInternal(atof(argv[++args]));
 						events[eventNumber].popID = atoi(argv[++args]);
-						events[eventNumber].popnSize = atof(argv[++args]);  /* gamma stored in popnSize field */
+						events[eventNumber].popnSize = userRateToInternal(atof(argv[++args]));  /* gamma stored in popnSize field */
 						events[eventNumber].type = 'l';
 						eventNumber++;
 						break;
 					case 'L':
 						/* -eL time gamma — applies to all populations */
 						{
-							double t = atof(argv[++args]) * 2.0;
-							double gamma_val = atof(argv[++args]);
+							double t = userTimeToInternal(atof(argv[++args]));
+							double gamma_val = userRateToInternal(atof(argv[++args]));
 							for (int p = 0; p < npops; p++) {
 								ensureEventsCapacity();
 								events[eventNumber].time = t;
@@ -1122,7 +1125,7 @@ void getParameters(int argc,const char **argv){
 						/* -em time srcPop dstPop rate — change migration rate at this time */
 						{
 							ensureEventsCapacity();
-							events[eventNumber].time = atof(argv[++args]) * 2.0;
+							events[eventNumber].time = userTimeToInternal(atof(argv[++args]));
 							events[eventNumber].popID2 = atoi(argv[++args]);  /* source pop */
 							events[eventNumber].popID = atoi(argv[++args]);   /* destination pop */
 							events[eventNumber].popnSize = atof(argv[++args]); /* new rate stored in popnSize field */
@@ -1133,7 +1136,7 @@ void getParameters(int argc,const char **argv){
 					case 'M':
 						/* -eM time rate — set all off-diagonal pairs to the given rate at this time */
 						{
-							double t = atof(argv[++args]) * 2.0;
+							double t = userTimeToInternal(atof(argv[++args]));
 							double rate_val = atof(argv[++args]);
 							for (int src = 0; src < npops; src++) {
 								for (int dst = 0; dst < npops; dst++) {
@@ -1163,7 +1166,7 @@ void getParameters(int argc,const char **argv){
 					sweepMode = 'N';
 					break;
 					}
-				tau = atof(argv[++args]) * 2.0;
+				tau = userTimeToInternal(atof(argv[++args]));
 					ensureEventsCapacity();
 				events[eventNumber].time = tau;
 				events[eventNumber].type = 's'; //sweep event
@@ -1182,7 +1185,7 @@ void getParameters(int argc,const char **argv){
                                 	break;
 				}
 				sweepSite = -1.0;
-				tau = atof(argv[++args]) * 2.0;
+				tau = userTimeToInternal(atof(argv[++args]));
 				leftRho = atof(argv[++args]) * 2.0;
 				leftRhoFlag=1;
 					ensureEventsCapacity();
@@ -1235,8 +1238,8 @@ void getParameters(int argc,const char **argv){
 					}
                                 	else{
 					  priorTau = 1;
-					  pTauLow=atof(argv[++args]) * 2.0;
-					  pTauUp=atof(argv[++args]) * 2.0;
+					  pTauLow=userTimeToInternal(atof(argv[++args]));
+					  pTauUp=userTimeToInternal(atof(argv[++args]));
 					}
 				break;
 				case 'x':
@@ -1253,8 +1256,8 @@ void getParameters(int argc,const char **argv){
 				switch(argv[args][3]){
 					case '1':
 					priorE1 = 1;
-					pE1TLow=atof(argv[++args])*2.0;
-					pE1THigh=atof(argv[++args])*2.0;
+					pE1TLow=userTimeToInternal(atof(argv[++args]));
+					pE1THigh=userTimeToInternal(atof(argv[++args]));
 					pE1SLow=atof(argv[++args]);
 					pE1SHigh=atof(argv[++args]);
 						ensureEventsCapacity();
@@ -1263,8 +1266,8 @@ void getParameters(int argc,const char **argv){
 					break;
 					case '2':
 					priorE2 = 1;
-					pE2TLow=atof(argv[++args])*2.0;
-					pE2THigh=atof(argv[++args])*2.0;
+					pE2TLow=userTimeToInternal(atof(argv[++args]));
+					pE2THigh=userTimeToInternal(atof(argv[++args]));
 					pE2SLow=atof(argv[++args]);
 					pE2SHigh=atof(argv[++args]);
 						ensureEventsCapacity();
@@ -1317,7 +1320,7 @@ void getParameters(int argc,const char **argv){
 				ensureEventsCapacity();
 			events[eventNumber].lineageNumber = atoi(argv[++args]);
 			events[eventNumber].popID = atoi(argv[++args]);	 
-			events[eventNumber].time = atof(argv[++args]) * 2.0; 
+			events[eventNumber].time = userTimeToInternal(atof(argv[++args])); 
 			ancSampleSize += events[eventNumber].lineageNumber;
 			events[eventNumber].type = 'A'; //ancient sample
 			ancSampleFlag = 1;
@@ -1403,9 +1406,9 @@ void usage(){
 	fprintf(stderr,"\t -p npops sampleSize1 sampleSize2 etc.\n");
 	fprintf(stderr,"\t -D demesFile.yaml (load demographic model from demes format file)\n");
 	fprintf(stderr,"\t -en time popnID size (changes size of popnID)\n");
-	fprintf(stderr,"\t -eg time popnID alpha (sets popnID to exponential growth at forward-time per-generation rate alpha; positive alpha = past was smaller)\n");
+	fprintf(stderr,"\t -eg time popnID alpha (sets popnID to exponential growth at rate alpha per 4N0 generations, as in ms; positive alpha = past was smaller)\n");
 	fprintf(stderr,"\t -eG time alpha (-eg applied to all populations)\n");
-	fprintf(stderr,"\t -el time popnID gamma (sets popnID to linear-in-time size profile with forward-time slope gamma)\n");
+	fprintf(stderr,"\t -el time popnID gamma (sets popnID to linear growth; gamma is the change in relative size per 4N0 generations; positive gamma = past was smaller)\n");
 	fprintf(stderr,"\t -eL time gamma (-el applied to all populations)\n");
 	fprintf(stderr,"\t -ed time popnID1 popnID2 (joins popnID1 into popnID2; -ej is an alias)\n");
 	fprintf(stderr,"\t -ea time daughterPopnID founderPopnID1 founderPopnID2 admixProp (admixture-- back in time daughterPopnID into two founders)\n");

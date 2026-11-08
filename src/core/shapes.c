@@ -16,9 +16,10 @@ static void unknownShape(const char *fn, int type) {
 /* sizeAt / migAt -- evaluate a shape (size or migration rate) at absolute
  * time t. sizeAt indexes popShape[popID]; migAt indexes migShape[src][dst].
  *
- * Sign convention: rate_param is the per-generation
- * FORWARD-time rate of change. The coalescent simulator runs backward in
- * time, so positive rate_param means the past held a smaller value.
+ * t is internal time, in units of 2N generations; see Shape in discoal.h
+ * for the units of rate_param. rate_param is a FORWARD-time rate. The
+ * coalescent simulator runs backward in time, so positive rate_param means
+ * the past held a smaller value.
  *   SHAPE_CONSTANT:    value(t) = anchor_value (rate_param unused)
  *   SHAPE_EXPONENTIAL: value(t) = anchor_value * exp(-rate_param * (t - anchor_time))
  *   SHAPE_LINEAR:      value(t) = anchor_value - rate_param * (t - anchor_time)
@@ -55,8 +56,7 @@ double migAt(int srcPopID, int dstPopID, double t) {
  *
  *   H(T) = integral_{0}^{T} (k choose 2) / N(t0 + s)  ds
  *
- * Closed forms below.  Let N0 = N(t0); recall the sign convention that
- * rate_param is the FORWARD-time per-generation rate of change, so going
+ * Closed forms below.  Let N0 = N(t0); with the sign convention above, going
  * backward in time N(t0+s) = N0 * exp(-a*s) (exponential) or
  * N(t0+s) = N0 - g*s (linear).
  *

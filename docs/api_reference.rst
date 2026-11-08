@@ -53,6 +53,36 @@ Demographic Options
    * popID: Population ID (0-indexed)
    * size: New size relative to N₀
 
+.. option:: -eg time popID alpha
+
+   Exponential growth, as in ms. From ``time`` back into the past, the size
+   is N(t) = N(time) exp(-alpha (t - time)).
+
+   * time: When growth starts, looking backward (4N₀ generations)
+   * popID: Population ID (0-indexed)
+   * alpha: Growth rate per 4N₀ generations. Positive alpha means the
+     population grew forward in time, so the past was smaller. The
+     msprime ``growth_rate`` is alpha / (4N₀).
+
+.. option:: -eG time alpha
+
+   Same as ``-eg`` for every population.
+
+.. option:: -el time popID gamma
+
+   Linear growth. From ``time`` back into the past, the size is
+   N(t) = N(time) - gamma (t - time), relative to N₀.
+
+   * time: When growth starts, looking backward (4N₀ generations)
+   * popID: Population ID (0-indexed)
+   * gamma: Change in relative size (size / N₀) per 4N₀ generations.
+     Positive gamma means the past was smaller. discoal stops with an
+     error if the size reaches zero before the next event.
+
+.. option:: -eL time gamma
+
+   Same as ``-el`` for every population.
+
 .. option:: -ed time pop1 pop2
 
    Population split (forward in time):
@@ -60,6 +90,10 @@ Demographic Options
    * time: When populations merge (backward)
    * pop1: Source population
    * pop2: Destination population
+
+   ``-ej`` is an alias. The merge sets migration between pop1 and pop2 to
+   zero. It does not change migration between pop1 and other populations;
+   use ``-em`` for that.
 
 .. option:: -ea time admixPop pop1 pop2 prop
 
@@ -76,7 +110,17 @@ Demographic Options
 
 .. option:: -m pop1 pop2 migRate
 
-   Set specific migration rate from pop1 to pop2
+   Set specific migration rate from pop1 to pop2 (4N₀m). Backward in time,
+   lineages move from pop1 to pop2 at this rate, as in ms and msprime.
+
+.. option:: -em time pop1 pop2 migRate
+
+   From ``time`` back into the past, set the migration rate from pop1 to
+   pop2 (4N₀m, same direction as ``-m``).
+
+.. option:: -eM time migRate
+
+   From ``time`` back into the past, set all migration rates (4N₀m).
 
 .. option:: -A numSamples popID time
 

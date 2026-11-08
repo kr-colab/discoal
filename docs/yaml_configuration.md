@@ -189,23 +189,29 @@ Notes:
 
 ## Units
 
-discoal's YAML and CLI both expose **2N units of time**, scaled
-internally by a factor of 2 to land in 4N coalescent units. This
-is the same convention used by the positional CLI flags.
+Times in the YAML file are in **units of 4N generations**, where N
+is the reference population size. This is the same convention as
+the command line and as ms.
 
 For a user thinking in generations, the conversion is
 
 ```
-yaml_time = generations / (2 * N_reference)
+yaml_time = generations / (4 * N_reference)
 ```
 
 So 40,000 generations with `N_reference = 10,000` gives
-`yaml_time = 2.0`. This is the same value you would write on the
-command line as `-en 2.0 ...`.
+`yaml_time = 1.0`. This is the same value you would write on the
+command line as `-en 1.0 ...`.
 
 This convention applies to every time field in the schema:
 `population_size_changes.time`, `population_splits.time`,
 `fixation_time_ago`, etc.
+
+A demes file does not use this convention: its times are in
+generations or years, and discoal converts them itself (see
+"Combining with the demes format"). For all units, including the
+2N time scale of tree sequence output, see the units table in
+`docs/basic_usage.rst`.
 
 Other unit conventions:
 
