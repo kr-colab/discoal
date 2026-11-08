@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master, tskit-integration ]
+    branches: [master, demes]
   pull_request:
-    branches: [master, tskit-integration ]
+    branches: [master, demes]
 
 jobs:
   unit-tests:
@@ -113,6 +113,39 @@ jobs:
         echo "=== Running YAML parser regression suite ==="
         bash testing/yaml_parser_suite.sh
 
+    - name: Run YAML example suite
+      run: bash testing/yaml_validation_suite.sh
+
+    - name: Run preflight validation suite
+      run: bash testing/preflight_validation_suite.sh
+
+  units-convention:
+    runs-on: ubuntu-latest
+    name: Unit Conventions vs msprime
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential make
+        pip install msprime demes numpy
+
+    - name: Build discoal
+      run: make discoal
+
+    # Checks that times, growth rates, and migration rates follow the
+    # documented units, by comparison with msprime.
+    - name: Check unit conventions
+      run: python testing/units_convention_check.py
+
   memory-check:
     runs-on: ubuntu-latest
     name: Memory Leak Check
@@ -140,20 +173,20 @@ jobs:
         # Use lower optimization for better debugging
         sed -i 's/-O3/-O0 -g/g' Makefile
         sed -i 's/-O2/-O0 -g/g' Makefile
+        # -march=native can emit AVX-512 instructions on the runner, which
+        # valgrind cannot decode (it stops the program with SIGILL).
+        sed -i 's/ -march=native//g' Makefile
         make discoal
     
     - name: Check for memory leaks in basic run
       run: |
         echo "=== Checking memory leaks in basic coalescent ==="
-        valgrind --leak-check=full --error-exitcode=1 \
-          ./build/discoal 10 1 100 -t 10 2>&1 | tee valgrind.log
-        ! grep -q "definitely lost" valgrind.log || exit 1
-        echo "✓ No memory leaks in basic run"
+        # Memory errors and definite leaks make valgrind exit 1.
+        valgrind --leak-check=full --errors-for-leak-kinds=definite --error-exitcode=1 \
+          ./build/discoal 10 1 100 -t 10 > /dev/null
     
     - name: Check for memory leaks with recombination
       run: |
         echo "=== Checking memory leaks with recombination ==="
-        valgrind --leak-check=full --error-exitcode=1 \
-          ./build/discoal 10 1 100 -t 10 -r 10 2>&1 | tee valgrind_recomb.log
-        ! grep -q "definitely lost" valgrind_recomb.log || exit 1
-        echo "✓ No memory leaks with recombination"
+        valgrind --leak-check=full --errors-for-leak-kinds=definite --error-exitcode=1 \
+          ./build/discoal 10 1 100 -t 10 -r 10 > /dev/null
