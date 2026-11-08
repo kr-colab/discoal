@@ -245,6 +245,25 @@ pulses:
 """
 
 
+# One-way migration from A into B, forward in time. Backward in time,
+# lineages sampled in B move to A.
+DEMES_ONE_WAY_MIGRATION = """time_units: generations
+demes:
+  - name: A
+    epochs:
+      - end_time: 0
+        start_size: 10000
+  - name: B
+    ancestors: [A]
+    start_time: 20000
+    epochs:
+      - end_time: 0
+        start_size: 2000
+migrations:
+  - {source: A, dest: B, rate: 1.0e-4}
+"""
+
+
 def cases(tmp):
     """Each case has: name, samples ({population: count}), either discoal
     `flags` or a `demes` file, the msprime `model` for the documented
@@ -278,6 +297,9 @@ def cases(tmp):
     pulse_file = os.path.join(tmp, "two_source_pulse.demes.yaml")
     with open(pulse_file, "w") as f:
         f.write(DEMES_TWO_SOURCE_PULSE)
+    oneway_file = os.path.join(tmp, "one_way_migration.demes.yaml")
+    with open(oneway_file, "w") as f:
+        f.write(DEMES_ONE_WAY_MIGRATION)
     example = os.path.join(REPO, "config_examples", "demes_example.demes.yaml")
 
     return [
@@ -321,6 +343,10 @@ def cases(tmp):
         dict(name="demes pulse with two sources",
              samples={"ANC": 0, "A": 20}, demes=pulse_file,
              model=msprime.Demography.from_demes(demes.load(pulse_file)),
+             alts={}),
+        dict(name="demes one-way migration direction",
+             samples={"A": 0, "B": 20}, demes=oneway_file,
+             model=msprime.Demography.from_demes(demes.load(oneway_file)),
              alts={}),
         dict(name="demes splits, sizes, migration windows",
              samples={"A": 10, "B": 5, "C": 5}, demes=example,

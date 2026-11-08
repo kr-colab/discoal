@@ -67,6 +67,9 @@ static int compareDoublesAscending(const void *a, const void *b) {
 // Times are in discoal internal coalescent units. Demes spec says
 // start_time > end_time (start_time is older, end_time is more recent),
 // so after conversion t_start > t_end as well.
+// src and dst are backward-time directions, as in discoal's migMat[src][dst]:
+// lineages in src move to dst. A demes migration from source to dest
+// (forward in time) is therefore src = dest, dst = source.
 struct mig_window {
     int src, dst;
     double t_start;  // older boundary, larger internal time
@@ -530,8 +533,8 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
             VERBOSE_LOG("  Time interval (gens): %g to %g\n", mig->start_time, mig->end_time);
             VERBOSE_LOG("  Internal interval:    %g to %g\n", t_start, t_end);
             VERBOSE_LOG("  Demes rate: %g per gen, scaled (4Nm): %g\n", mig->rate, rate);
-            windows[n_windows].src     = sourceID;
-            windows[n_windows].dst     = destID;
+            windows[n_windows].src     = destID;
+            windows[n_windows].dst     = sourceID;
             windows[n_windows].t_start = t_start;
             windows[n_windows].t_end   = t_end;
             windows[n_windows].rate    = rate;
