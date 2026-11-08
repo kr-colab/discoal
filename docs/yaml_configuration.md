@@ -113,7 +113,12 @@ Notes:
   must be `>= 0`.
 - A `population_split` is interpreted backward in time: at the
   given time the `derived` population merges into the `ancestral`
-  one. Equivalent to `-ed time derived ancestral` on the CLI.
+  one, and all migration into and out of the `derived` population
+  stops. This is `-ed time derived ancestral` on the CLI plus
+  `-em time i derived 0` and `-em time derived i 0` for every other
+  population `i`. (A CLI `-ed` alone, as in ms, keeps migration into
+  the merged population, so with constant migration, lineages can be
+  stranded there; discoal then stops with an error.)
   `time` must be `> 0` and the two population indices must differ.
 - For `population_size_changes`, `time` must be `>= 0` and `size`
   must be `> 0` (extinction at zero is not modeled).
@@ -280,7 +285,8 @@ validation suite, is
 ```
 discoal 20 2 10000 -t 0.1 -r 0.1 -p 3 10 5 5 -M 0.1 \
         -en 0.5 0 0.1 -en 1.0 1 2.0 \
-        -ed 2.0 1 0   -ed 3.0 2 0 \
+        -ed 2.0 1 0 -em 2.0 0 1 0 -em 2.0 1 0 0 -em 2.0 2 1 0 -em 2.0 1 2 0 \
+        -ed 3.0 2 0 -em 3.0 0 2 0 -em 3.0 2 0 0 -em 3.0 1 2 0 -em 3.0 2 1 0 \
         -d 12345 10102
 ```
 

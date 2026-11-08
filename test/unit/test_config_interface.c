@@ -574,9 +574,11 @@ void test_load_population_size_change_event(void) {
 
 /*
  * A population_split event is recorded with type 'p', popID =
- * derived, popID2 = ancestral, and time scaled by 2.0.  tDiv is set
- * to the unscaled split time; parse_demography_block uses it as a
- * flag for downstream code to switch on the merger model.
+ * derived, popID2 = ancestral, and time scaled by 2.0, followed by
+ * 'm' events at the same time that set migration into and out of the
+ * derived population to zero. tDiv is set to the unscaled split time;
+ * parse_demography_block uses it as a flag for downstream code to
+ * switch on the merger model.
  */
 void test_load_population_split_event(void) {
     const char *yaml =
@@ -597,12 +599,22 @@ void test_load_population_split_event(void) {
 
     int rc = apply_from_yaml_string(yaml);
     TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, rc);
-    TEST_ASSERT_EQUAL_INT(1, eventNumber);
+    TEST_ASSERT_EQUAL_INT(3, eventNumber);
     TEST_ASSERT_EQUAL_INT('p', events[0].type);
     TEST_ASSERT_EQUAL_DOUBLE(0.4, events[0].time);  /* 0.2 * 2.0 */
     TEST_ASSERT_EQUAL_INT(1, events[0].popID);
     TEST_ASSERT_EQUAL_INT(0, events[0].popID2);
     TEST_ASSERT_EQUAL_DOUBLE(0.2, tDiv);
+    /* 0 -> 1 and 1 -> 0 (lineages move popID2 -> popID) set to zero. */
+    for (int k = 1; k < 3; k++) {
+        TEST_ASSERT_EQUAL_INT('m', events[k].type);
+        TEST_ASSERT_EQUAL_DOUBLE(0.4, events[k].time);
+        TEST_ASSERT_EQUAL_DOUBLE(0.0, events[k].popnSize);
+    }
+    TEST_ASSERT_EQUAL_INT(0, events[1].popID2);
+    TEST_ASSERT_EQUAL_INT(1, events[1].popID);
+    TEST_ASSERT_EQUAL_INT(1, events[2].popID2);
+    TEST_ASSERT_EQUAL_INT(0, events[2].popID);
 }
 
 /*
@@ -635,11 +647,12 @@ void test_demography_demes_filename_loads_events(void) {
      * is the regression covered by kr-colab/discoal#75. */
     TEST_ASSERT_EQUAL_INT(2, sampleSizes[0]);
     TEST_ASSERT_EQUAL_INT(2, sampleSizes[1]);
-    /* The demes importer emits at least one event for the migration
-     * band between A and B; the test does not check the exact count
-     * so it does not become coupled to demes-c implementation
-     * details. */
-    TEST_ASSERT_GREATER_THAN_INT(0, eventNumber);
+    /* The migration between A and B lasts for all time, so the importer
+     * writes it into the starting migration matrix (4 N m = 4 * 1000 *
+     * 1e-5 in each direction) and needs no event for it. */
+    extern double migMatConst[MAXPOPS][MAXPOPS];
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.04, migMatConst[0][1]);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.04, migMatConst[1][0]);
 }
 
 /*

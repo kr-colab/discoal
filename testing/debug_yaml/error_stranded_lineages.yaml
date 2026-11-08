@@ -1,0 +1,16 @@
+# Lineages in A and B can never meet after the migration window ends, so
+# discoal must stop and not print genealogies without a common ancestor:
+#   "no population can be reached from all of them by migration"
+# The demes file path is relative to the repository root, where the suite runs.
+
+simulation:
+  sample_size: 4
+  num_replicates: 1
+  num_sites: 1000
+  seed: [42, 4242]
+genetics:
+  mutation_rate: 1.0
+  recombination_rate: 1.0
+demography:
+  deme_sample_size: [2, 2]
+  demes_filename: "testing/debug_yaml/stranded_lineages.demes.yml"

@@ -206,9 +206,9 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
         return ret;
     }
     
-    // Validate that populations can coalesce
-    // For multi-population models, we need either migration or population mergers
-    // Count only present-day populations (those that exist at time 0)
+    // Validate that populations can coalesce: with several present-day
+    // demes, some migration, ancestry or pulse must connect them. This is a
+    // coarse check; msprime reports the remaining cases at run time.
     int presentDayPops = 0;
     for (int i = 0; i < graph->n_demes; i++) {
         if (demeIsPresent(&graph->demes[i])) presentDayPops++;
@@ -240,11 +240,13 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
         }
         VERBOSE_LOG("Present-day populations have ancestors: %s\n", hasCommonAncestor ? "yes" : "no");
         
-        // If there's no migration and no apparent mergers, issue an error
-        if (!hasMigration && !hasCommonAncestor) {
-            fprintf(stderr, "\nError: The demographic model has %d present-day populations but no migration or merger events.\n", presentDayPops);
+        int hasPulses = graph->n_pulses > 0;
+        VERBOSE_LOG("Has pulses: %s\n", hasPulses ? "yes" : "no");
+
+        if (!hasMigration && !hasCommonAncestor && !hasPulses) {
+            fprintf(stderr, "\nError: The demographic model has %d present-day populations but no migration, merger or pulse events.\n", presentDayPops);
             fprintf(stderr, "This would result in infinite coalescent time as populations cannot coalesce.\n");
-            fprintf(stderr, "Please add migration between populations or ensure populations merge.\n");
+            fprintf(stderr, "Please add migration or pulses between populations or ensure populations merge.\n");
             demes_graph_free(graph);
             return -1;
         }
@@ -262,10 +264,13 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
         migFlag = 1;  // Enable migration flag if there are migrations
     }
     
-    // If there are population splits/merges, set tDiv to a non-666 value
+    // initialize() rejects a model with several populations unless tDiv is
+    // set (not 666) or migration is on. Splits, admixtures and pulses all
+    // connect demes, so any of them sets tDiv.
+    if (graph->n_pulses > 0) tDiv = 1.0;
     for (int i = 0; i < graph->n_demes; i++) {
         if (graph->demes[i].n_ancestors > 0) {
-            tDiv = 1.0;  // Set to non-666 value to indicate splits exist
+            tDiv = 1.0;
             break;
         }
     }
@@ -432,9 +437,13 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
             return -1;
         }
         int n_bounds = 0;
+        // A window that starts at time infinity (start_time: .inf) needs no
+        // event there; an event at infinite time would never be reached.
         for (int w = 0; w < n_windows; w++) {
-            if (windows[w].t_start > 0.0) boundaries[n_bounds++] = windows[w].t_start;
-            if (windows[w].t_end   > 0.0) boundaries[n_bounds++] = windows[w].t_end;
+            if (windows[w].t_start > 0.0 && isfinite(windows[w].t_start))
+                boundaries[n_bounds++] = windows[w].t_start;
+            if (windows[w].t_end > 0.0 && isfinite(windows[w].t_end))
+                boundaries[n_bounds++] = windows[w].t_end;
         }
         qsort(boundaries, n_bounds, sizeof(double), compareDoublesAscending);
         int n_unique = 0;

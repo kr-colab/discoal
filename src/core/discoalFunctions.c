@@ -1632,6 +1632,60 @@ static inline double pairCoalRate(int k, double size){
 	return (k < 2) ? 0.0 : k * (k - 1) * 0.5 / size;
 }
 
+/* Migration reachability in the final interval, after the last event:
+ * migReach[i][j] is 1 if a lineage in population i can reach population j
+ * through migration with positive rate. No event changes the model after
+ * the last one, so it is computed once when the final interval starts. (A
+ * linear migration shape that reaches zero is still counted as positive.) */
+static unsigned char migReach[MAXPOPS][MAXPOPS];
+
+static void computeMigReach(double t){
+	int i, j, k;
+	for (i = 0; i < npops; i++)
+		for (j = 0; j < npops; j++)
+			migReach[i][j] = (i == j) || migAt(i, j, t) > 0.0;
+	for (k = 0; k < npops; k++)
+		for (i = 0; i < npops; i++)
+			if (migReach[i][k])
+				for (j = 0; j < npops; j++)
+					if (migReach[k][j]) migReach[i][j] = 1;
+}
+
+/* 1 if population i holds a lineage with ancestral material (a site that
+ * has no common ancestor yet). Other lineages may stay apart forever. */
+static int holdsAncestralMaterial(int i){
+	for (int k = 0; k < popLists[i].count; k++)
+		if (popLists[i].nodes[k]->nancSites > 0) return 1;
+	return 0;
+}
+
+/* In the final interval, lineages in different populations can coalesce
+ * only if some population can be reached from every population that holds
+ * lineages with ancestral material. If none can, they never coalesce: the
+ * run would never end. Exit with an error, as msprime does ("infinite
+ * waiting time"). */
+static void requireLineagesCanMeet(double t){
+	int c, i;
+	int holds[MAXPOPS];
+	for (i = 0; i < npops; i++) holds[i] = holdsAncestralMaterial(i);
+	for (c = 0; c < npops; c++) {
+		for (i = 0; i < npops; i++)
+			if (holds[i] && !migReach[i][c]) break;
+		if (i == npops) return;
+	}
+	/* t is internal time (2N generations); report it in the 4N units of the
+	 * command line. */
+	fprintf(stderr, "Error: after the last demographic event (at time %g in "
+	        "units of 4N generations), lineages with ancestral material remain "
+	        "in populations", t / USER_TO_INTERNAL_TIME);
+	for (i = 0; i < npops; i++)
+		if (holds[i]) fprintf(stderr, " %d", i);
+	fprintf(stderr, ", and no population can be reached from all of them by "
+	        "migration, so they can never coalesce. Check the migration, merge "
+	        "and pulse events of the model.\n");
+	exit(1);
+}
+
 /*neutralPhaseGeneralPopNumber--coalescent, recombination, gc events until
 specified time. returns endTime. can handle multiple popns*/
 double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *sizeRatio){
@@ -1643,6 +1697,14 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 
 	if(startTime == endTime){
 		return(endTime);
+	}
+	/* The last interval (no later event) is the one with no end. Only sites
+	 * without a common ancestor matter: lineages that carry no ancestral
+	 * material may stay apart forever. */
+	int finalInterval = (isinf(endTime) && npops > 1 && activeSites > 0);
+	if (finalInterval) {
+		computeMigReach(startTime);
+		requireLineagesCanMeet(startTime);
 	}
 	cTime = 0.0;
 	cTime += startTime;
@@ -1724,6 +1786,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 
 							}
 							migrateAtTime(cTime,i,j);
+							if (finalInterval) requireLineagesCanMeet(cTime);
 						}
 
 						else{
@@ -1767,7 +1830,8 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 			                               &winnerKind, &winnerArg);
 			cTime += waitTime;
 
-			if (cTime >= endTime){
+			/* winnerKind < 0: no event can ever occur from here. */
+			if (winnerKind < 0 || cTime >= endTime){
 				return(endTime);
 			}
 
@@ -1795,6 +1859,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 				int src = winnerArg / MAXPOPS;
 				int dst = winnerArg % MAXPOPS;
 				migrateAtTime(cTime, src, dst);
+				if (finalInterval) requireLineagesCanMeet(cTime);
 			}
 			else if (winnerKind == 3) {
 				/* coalescence: population already chosen by per-pop NHPP draw */

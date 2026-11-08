@@ -1,0 +1,12 @@
+# Demes file for error_stranded_lineages.yaml. Two demes that never merge;
+# their only connection is migration in the last 10 generations, at a rate
+# far too low for a lineage to move. The .yml extension keeps
+# yaml_parser_suite.sh from running it as a discoal config.
+time_units: generations
+demes:
+  - name: A
+    epochs: [{start_size: 10000}]
+  - name: B
+    epochs: [{start_size: 10000}]
+migrations:
+  - {demes: [A, B], rate: 1.0e-9, start_time: 10, end_time: 0}

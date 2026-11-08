@@ -18,12 +18,17 @@ Conventions under test (N0 is the reference size, theta = 4 N0 mu):
   - -M / -m / -em rates: 4N0 m; -m i j moves lineages from i to j
     backward in time (msprime's convention)
   - demes import: demes generations and per-generation rates
+  - -r rho: 4 N_ref r L over all L sites, r per generation whatever the
+    population size; compared on the number of distinct trees in tree
+    sequence output (N_ref is N0 on the command line, the present size of
+    the first deme for a demes file)
 
 Usage: python testing/units_convention_check.py [--reps N]
-Needs build/discoal, msprime and demes.
+Needs build/discoal, msprime, demes and tskit.
 """
 
 import argparse
+import glob
 import math
 import os
 import re
@@ -35,6 +40,7 @@ import warnings
 import demes
 import msprime
 import numpy as np
+import tskit
 
 # The same-time pulse case is deliberate; demes warns about it.
 warnings.filterwarnings("ignore", message="Multiple pulses are defined")
@@ -345,6 +351,19 @@ pulses:
 """
 
 
+# Two root demes joined only by a pulse that moves all lineages of B into A
+# (backward in time): no split and no migration connects them.
+DEMES_PULSE_ONLY = """time_units: generations
+demes:
+  - name: A
+    epochs: [{start_size: 10000}]
+  - name: B
+    epochs: [{start_size: 2000}]
+pulses:
+  - {sources: [A], dest: B, time: 1000, proportions: [1.0]}
+"""
+
+
 def demes_case(tmp, name, samples, text=None, path=None):
     """A case that loads a demes model, given as YAML text or a file path,
     and compares it with msprime's Demography.from_demes."""
@@ -425,10 +444,95 @@ def cases(tmp):
                    DEMES_SAME_TIME_PULSES),
         demes_case(tmp, "demes pulse at the time of an admixture", {"D": 20},
                    DEMES_PULSE_AND_ADMIXTURE),
+        demes_case(tmp, "demes joined only by a pulse", {"A": 10, "B": 10},
+                   DEMES_PULSE_ONLY),
         demes_case(tmp, "demes splits, sizes, migration windows",
                    {"A": 10, "B": 5, "C": 5},
                    path=os.path.join(REPO, "config_examples",
                                      "demes_example.demes.yaml")),
+    ]
+
+
+def discoal_tree_mean(argv, tmp):
+    """Run discoal with tree sequence output; return (mean, standard error)
+    of the number of distinct trees along the sequence."""
+    for f in glob.glob(os.path.join(tmp, "t_rep*.trees")):
+        os.remove(f)
+    subprocess.run([DISCOAL] + argv + ["-ts", os.path.join(tmp, "t.trees")],
+                   capture_output=True, check=True, timeout=600)
+    return mean_se([tskit.load(f).num_trees
+                    for f in glob.glob(os.path.join(tmp, "t_rep*.trees"))])
+
+
+def msprime_tree_mean(demography, samples, sites, r, reps, seed):
+    """Mean number of distinct trees under msprime on a discrete genome;
+    samples is {population: haploid sample count}."""
+    return mean_se([ts.num_trees for ts in msprime.sim_ancestry(
+        samples=[msprime.SampleSet(k, population=p, ploidy=1)
+                 for p, k in samples.items()],
+        demography=demography, ploidy=2, sequence_length=sites,
+        recombination_rate=r, num_replicates=reps, random_seed=seed)])
+
+
+def tree_cases(tmp, reps):
+    """Recombination cases, compared on the number of distinct trees. Each
+    case has discoal arguments, the msprime model and population, the
+    number of sites L, the per-generation rate r for the documented
+    convention (rho = 4 N_ref r L), rates that must be rejected, and its
+    number of replicates. Only the L versus L - 1 case needs `reps`; the
+    others reject their alternatives by a wide margin with fewer, and their
+    many trees are slow to write."""
+    rho, n = 10.0, 10
+    few = max(2, reps // 10)
+
+    def r(N, L):
+        return rho / (4 * N * L)
+
+    grown = msprime.Demography.isolated_model([N0])
+    grown.add_population_parameters_change(time=0.05 * 4 * N0,
+                                           initial_size=100 * N0,
+                                           population="pop_0")
+    # Two present-day demes of different sizes, and a much larger past size:
+    # rho must be relative to the present size of the first deme (A, 300),
+    # not to B (3000) or to A's past size (90000). B merges into A at 1000
+    # generations, so lineages coalesce in A long before the large epoch.
+    text = ("time_units: generations\ndemes:\n"
+            "  - name: A\n    epochs:\n"
+            "      - {end_time: 50000, start_size: 90000}\n"
+            "      - {end_time: 0, start_size: 300}\n"
+            "  - name: B\n    ancestors: [A]\n    start_time: 1000\n"
+            "    epochs: [{start_size: 3000}]\n")
+    path = os.path.join(tmp, "two_present_demes.demes.yaml")
+    with open(path, "w") as f:
+        f.write(text)
+    half = max(2, reps // 2)
+    cfg = os.path.join(tmp, "two_present_demes.yaml")
+    with open(cfg, "w") as f:
+        f.write(f"simulation: {{sample_size: {n}, num_replicates: {half}, "
+                f"num_sites: 1000, seed: [7, 8]}}\n"
+                f"genetics: {{mutation_rate: 0, recombination_rate: {rho}}}\n"
+                f"demography: {{deme_sample_size: [{n // 2}, {n // 2}], "
+                f"demes_filename: \"{path}\"}}\n")
+    return [
+        dict(name="-r rho is 4N0 r over all L sites (L = 10)", reps=reps,
+             argv=[str(n), str(reps), "10", "-t", "0", "-r", str(rho),
+                   "-d", "3", "4"],
+             model=msprime.Demography.isolated_model([N0]),
+             samples={"pop_0": n}, sites=10, r=r(N0, 10),
+             alts={"over L - 1 sites": rho / (4 * N0 * 9),
+                   "2 rho": 2 * r(N0, 10)}),
+        dict(name="-r with a past size 100 x N0: r stays per generation",
+             reps=few,
+             argv=[str(n), str(few), "1000", "-t", "0", "-r", str(rho),
+                   "-en", "0.05", "0", "100", "-d", "5", "6"],
+             model=grown, samples={"pop_0": n}, sites=1000, r=r(N0, 1000),
+             alts={"rho relative to the past size": r(100 * N0, 1000)}),
+        dict(name="demes: rho is relative to the present size of the first deme",
+             reps=half, argv=["-Y", cfg], model=msprime.Demography.from_demes(
+                 demes.loads(text)), samples={"A": n // 2, "B": n // 2},
+             sites=1000, r=r(300, 1000),
+             alts={"rho relative to deme B (3000)": r(3000, 1000),
+                   "rho relative to A's past size (90000)": r(90000, 1000)}),
     ]
 
 
@@ -458,6 +562,16 @@ def main():
             alts = {k: msprime_mean(mm, case["samples"], reps, seed + 1)
                     for k, mm in case["alts"].items()}
             all_ok &= report(case["name"], d, ref, alts)
+
+        for i, case in enumerate(tree_cases(tmp, reps)):
+            seed = 2010 + 10 * i
+            d = discoal_tree_mean(case["argv"], tmp)
+            args = (case["model"], case["samples"], case["sites"])
+            ref = msprime_tree_mean(*args, case["r"], case["reps"], seed)
+            alts = {k: msprime_tree_mean(*args, rk, case["reps"], seed + 1)
+                    for k, rk in case["alts"].items()}
+            all_ok &= report(case["name"] + " (number of trees)", d, ref,
+                             alts)
 
     print("\nAll unit conventions hold." if all_ok
           else "\nOne or more unit conventions FAILED.")
