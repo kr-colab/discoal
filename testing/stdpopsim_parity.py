@@ -17,10 +17,11 @@ For each model:
   1. Write it as a demes file.
   2. Simulate `reps` genealogies with discoal (through a -Y config that
      loads the demes file, with tree sequence output) and with msprime
-     (Demography.from_demes), with no recombination.
-  3. Compute branch-mode statistics on each tree: diversity, segregating
-     sites (total branch length) and Tajima's D over all samples, and
-     diversity within each sampled deme.
+     (Demography.from_demes), with recombination if --rho > 0.
+  3. Compute branch-mode statistics on each tree sequence: diversity,
+     segregating sites (total branch length) and Tajima's D over all
+     samples, diversity within each sampled deme, and, with recombination,
+     the number of distinct trees along the sequence.
   4. Compare the two distributions of each statistic with a two-sample KS
      test, Bonferroni-corrected over all tests in the run.
 
@@ -47,7 +48,8 @@ specification test cases use sizes of 0.1 to 1); see rescale().
 Usage:
     python testing/stdpopsim_parity.py [--reps 1000] [--samples 10]
         [--workers 24] [--generic 20] [--seed 1] [--demes-dir DIR ...]
-        [--models LABEL,...] [--timeout 600] [--tsv out.tsv]
+        [--rho 0] [--sites 1000] [--models LABEL,...] [--timeout 600]
+        [--tsv out.tsv]
 
 Needs build/discoal, stdpopsim, msprime, demes, tskit and scipy.
 Exit code 0 if no test rejects and no model errors, 1 otherwise.
@@ -179,6 +181,9 @@ def collect(tree_seqs, pop_ids, names, time_scale):
                 ts.segregating_sites(allset, mode="branch") * time_scale,
             "tajimas_d": ts.Tajimas_D(allset, mode="branch"),
         }
+        if ts.num_trees > 1:
+            # Distinct trees along the sequence: tracks the recombination rate.
+            vals["num_trees"] = ts.num_trees
         if len(sets) > 1:
             for name, s in zip(names, sets):
                 vals[f"diversity[{name}]"] = (
@@ -188,18 +193,19 @@ def collect(tree_seqs, pop_ids, names, time_scale):
     return {k: np.array(v) for k, v in out.items()}
 
 
-def run_discoal(demes_path, graph, names, n, reps, seed, tmp, timeout):
+def run_discoal(demes_path, graph, names, n, reps, seed, tmp, timeout,
+                rho, sites):
     """Run discoal; return ({stat: array}, N_ref)."""
     index = {d.name: i for i, d in enumerate(graph.demes)}
     sizes = [n if d.name in names else 0 for d in graph.demes]
     cfg = os.path.join(tmp, "config.yaml")
     with open(cfg, "w") as f:
         f.write(f"simulation: {{sample_size: {sum(sizes)}, "
-                f"num_replicates: {reps}, num_sites: 1000, "
+                f"num_replicates: {reps}, num_sites: {sites}, "
                 f"seed: [{seed}, {seed + 1}]}}\n"
                 # Branch-mode statistics need no mutations; with tall trees a
                 # positive rate can exceed discoal's mutation limit.
-                "genetics: {mutation_rate: 0, recombination_rate: 0}\n"
+                f"genetics: {{mutation_rate: 0, recombination_rate: {rho}}}\n"
                 f"demography: {{deme_sample_size: {sizes}, "
                 f"demes_filename: \"{demes_path}\"}}\n")
     prefix = os.path.join(tmp, "d.trees")
@@ -227,12 +233,22 @@ def run_discoal(demes_path, graph, names, n, reps, seed, tmp, timeout):
     return res, n_ref
 
 
-def run_msprime(graph, names, n, reps, seed):
+def reference_size(graph):
+    """discoal's N_ref: the present-day size of the first deme at time 0."""
+    return next(d.epochs[-1].end_size for d in graph.demes if d.end_time == 0)
+
+
+def run_msprime(graph, names, n, reps, seed, rho, sites):
+    """msprime with the same samples. discoal's rho is 4 N_ref r over the
+    locus, with breakpoints between its `sites` sites; msprime gets the
+    per-generation rate on a discrete genome of the same length."""
     dem = msprime.Demography.from_demes(graph)
     samples = [msprime.SampleSet(n, population=name, ploidy=1, time=0)
                for name in names]
     pop_ids = [dem[name].id for name in names]
+    r = rho / (4 * reference_size(graph) * (sites - 1)) if rho > 0 else 0.0
     tss = msprime.sim_ancestry(samples=samples, demography=dem, ploidy=2,
+                               sequence_length=sites, recombination_rate=r,
                                num_replicates=reps, random_seed=seed)
     return collect(tss, pop_ids, names, 1.0)
 
@@ -240,7 +256,7 @@ def run_msprime(graph, names, n, reps, seed):
 def audit_model(job):
     """Run one model. Returns a dict with rows of test results, an error, or
     a reason to skip it."""
-    kind, label, payload, reps, n, seed, timeout = job
+    kind, label, payload, reps, n, seed, timeout, rho, sites = job
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -256,7 +272,7 @@ def audit_model(job):
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                m = run_msprime(graph, names, n, reps, seed)
+                m = run_msprime(graph, names, n, reps, seed, rho, sites)
         except Exception as e:
             return dict(model=label,
                         skipped=f"msprime cannot simulate it: {e}"[:200])
@@ -264,7 +280,10 @@ def audit_model(job):
             path = os.path.join(tmp, "model.demes.yaml")
             demes.dump(graph, path)
             d, n_ref = run_discoal(path, graph, names, n, reps, seed, tmp,
-                                   timeout)
+                                   timeout, rho, sites)
+        if not np.isclose(n_ref, reference_size(graph)):
+            raise RuntimeError(f"discoal N_ref {n_ref} differs from "
+                               f"{reference_size(graph)}")
         rows = []
         for stat in d:
             ks = stats.ks_2samp(d[stat], m[stat])
@@ -296,6 +315,11 @@ def main():
     ap.add_argument("--models", default="",
                     help="comma-separated model labels (as printed) to run; "
                          "default all")
+    ap.add_argument("--rho", type=float, default=0.0,
+                    help="recombination: 4 N_ref r over the whole locus")
+    ap.add_argument("--sites", type=int, default=1000,
+                    help="number of sites (discoal) and sequence length "
+                         "(msprime)")
     ap.add_argument("--timeout", type=int, default=600,
                     help="seconds allowed for each discoal run")
     ap.add_argument("--tsv", help="write per-test results to this file")
@@ -313,7 +337,7 @@ def main():
             specs.append(("file", os.path.relpath(path, root), path))
     wanted = set(filter(None, args.models.split(",")))
     jobs = [(kind, label, payload, args.reps, args.samples, 1000 + 10 * i,
-             args.timeout)
+             args.timeout, args.rho, args.sites)
             for i, (kind, label, payload) in enumerate(specs)
             if not wanted or label in wanted]
     with concurrent.futures.ProcessPoolExecutor(args.workers) as pool:
