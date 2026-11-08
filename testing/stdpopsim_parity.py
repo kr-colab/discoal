@@ -290,6 +290,12 @@ def audit_model(job):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 r, discoal_rho = recombination(graph, rho, sites)
+                if r > 0:
+                    # A model that can strand lineages makes msprime report
+                    # "infinite waiting time" without recombination; with
+                    # recombination the stranded lineages keep recombining
+                    # and msprime never stops. Find these models first.
+                    run_msprime(graph, names, n, reps, seed, 0.0, sites)
                 m = run_msprime(graph, names, n, reps, seed, r, sites)
         except Exception as e:
             return dict(model=label,
