@@ -104,8 +104,6 @@ int main(int argc, const char * argv[]){
 	double probAccept;
 	
 	getParameters(argc,argv);
-  fprintf(stderr, "DEBUG\t%d\t%f\t%f\t%f\t%ld\t%ld\t%d\n", migFlag, tDiv, theta, rho, seed1, seed2, EFFECTIVE_POPN_SIZE);
-  fprintf(stderr, "DEBUG\t%d\n", nSites);
 	/* Snapshot for per-replicate restore in initialize(); see currentSizeConst. */
 	for (i = 0; i < MAXPOPS; i++) currentSizeConst[i] = currentSize[i];
 	double N = EFFECTIVE_POPN_SIZE; // effective population size
@@ -831,6 +829,12 @@ void getParameters(int argc,const char **argv){
 	// positional parser would feed "-Y" or another flag into atoi() (when -Y
 	// comes before the positional slots) or overwrite the per-pop state YAML
 	// just installed (when positional slots come first).
+	// -v must be known before the YAML file (and any demes file it names)
+	// is loaded, because loading prints its diagnostics then.
+	for (i = 1; i < argc; i++) {
+		if (strcmp(argv[i], "-v") == 0) verboseFlag = 1;
+	}
+
 	int yaml_arg_idx = -1;
 	for (i = 1; i < argc; i++) {
 		if (argv[i][0] == '-' && argv[i][1] == 'Y') {
@@ -869,7 +873,7 @@ void getParameters(int argc,const char **argv){
 			exit(1);
 		}
 
-		fprintf(stderr, "Loaded configuration from YAML file '%s'\n", configFile);
+		VERBOSE_LOG("Loaded configuration from YAML file '%s'\n", configFile);
 		yaml_config_loaded = 1;
 	}
 
@@ -1313,6 +1317,9 @@ void getParameters(int argc,const char **argv){
                 exit(1);
             }
 			break;
+			case 'v' :
+			// verboseFlag is set before argument parsing; see above.
+			break;
 			case 'h' :
 			hidePartialSNP = 1;
 			break;
@@ -1446,6 +1453,7 @@ void usage(){
 	fprintf(stderr,"\t -R rhhRate (recurrent hitch hiking mode at the locus; rhh is rate per 2N individuals / generation)\n");
 	fprintf(stderr,"\t -L rhhRate (recurrent hitch hiking mode to the side of locus; leftRho is ~Unif(0,4Ns); rhh is rate per 2N individuals / generation)\n");
 	fprintf(stderr,"\t -h (hide selected SNP in partial sweep mode)\n");
+	fprintf(stderr,"\t -v (verbose: print progress and demes conversion details to stderr)\n");
 	fprintf(stderr,"\t -ts filename (tree sequence output mode - saves to tskit file)\n");
 	fprintf(stderr,"\t -F (full ARG mode - record all edges including recombination; use with -ts)\n");
 	fprintf(stderr,"\t -d seed1 seed2 (set random number generator seeds)\n");
