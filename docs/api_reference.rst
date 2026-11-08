@@ -265,6 +265,12 @@ Advanced Options
 
    Hide selected SNP from output
 
+.. option:: -v
+
+   Verbose. Print progress and demes conversion details to stderr. Without
+   ``-v``, discoal writes to stderr only for errors and warnings. Works with
+   ``-Y``.
+
 Output Format
 -------------
 

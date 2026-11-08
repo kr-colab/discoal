@@ -599,7 +599,7 @@ int parse_demography_block(struct demography_config *cfg)
                     cfg->demes_filename);
                 return EXIT_FAILURE;
             }
-            fprintf(stderr, 
+            VERBOSE_LOG(
                 "Loaded %d populations and %d events from demes file '%s' "
                 "(via YAML config)\n", npops, eventNumber - 1, 
                 cfg->demes_filename);

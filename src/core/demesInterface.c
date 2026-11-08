@@ -143,7 +143,7 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
                 } else {
                     referenceN = last_epoch->start_size;
                 }
-                fprintf(stderr, "Using population '%s' (index %d) as reference with N=%g\n", 
+                VERBOSE_LOG("Using population '%s' (index %d) as reference with N=%g\n", 
                         deme->name, i, referenceN);
                 break;  // Use the first present-day population
             }
@@ -175,7 +175,7 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
     }
     
     if (presentDayPops > 1) {
-        fprintf(stderr, "\nValidating population connectivity (%d present-day populations)...\n", presentDayPops);
+        VERBOSE_LOG("\nValidating population connectivity (%d present-day populations)...\n", presentDayPops);
         // Check if there's any migration
         int hasMigration = 0;
         for (int i = 0; i < graph->n_migrations; i++) {
@@ -184,7 +184,7 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
                 break;
             }
         }
-        fprintf(stderr, "Has migration: %s\n", hasMigration ? "yes" : "no");
+        VERBOSE_LOG("Has migration: %s\n", hasMigration ? "yes" : "no");
         
         // Check if all populations eventually merge
         // We need to check if all present-day populations trace back to a common ancestor
@@ -201,7 +201,7 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
                 }
             }
         }
-        fprintf(stderr, "Present-day populations have ancestors: %s\n", hasCommonAncestor ? "yes" : "no");
+        VERBOSE_LOG("Present-day populations have ancestors: %s\n", hasCommonAncestor ? "yes" : "no");
         
         // If there's no migration and no apparent mergers, issue an error
         if (!hasMigration && !hasCommonAncestor) {
@@ -216,7 +216,7 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
         // This is a more thorough check
         if (!hasMigration && hasCommonAncestor) {
             // Just provide information, not a warning, since merged populations can coalesce
-            fprintf(stderr, "\nNote: Populations will coalesce through common ancestors.\n");
+            VERBOSE_LOG("\nNote: Populations will coalesce through common ancestors.\n");
         }
     }
     
@@ -252,10 +252,10 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
     }
     
     // Debug output for conversion parameters
-    fprintf(stderr, "\n=== DEMES TO DISCOAL CONVERSION DEBUG ===\n");
-    fprintf(stderr, "Reference N (present-day pop0 size): %g\n", N);
-    fprintf(stderr, "Number of populations: %d\n", *npops);
-    fprintf(stderr, "Generation time: %g\n", graph->generation_time);
+    VERBOSE_LOG("\n=== DEMES TO DISCOAL CONVERSION DEBUG ===\n");
+    VERBOSE_LOG("Reference N (present-day pop0 size): %g\n", N);
+    VERBOSE_LOG("Number of populations: %d\n", *npops);
+    VERBOSE_LOG("Generation time: %g\n", graph->generation_time);
     
     // Initialize population sizes and collect all events
     int totalEvents = *eventNumber;  // Start from existing events
@@ -287,15 +287,15 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
         struct demes_deme *deme = &graph->demes[i];
         int popID = i;
         
-        fprintf(stderr, "\nPopulation %d: '%s'\n", popID, deme->name);
-        fprintf(stderr, "  Start time: %g generations\n", deme->start_time);
-        fprintf(stderr, "  Number of epochs: %zu\n", deme->n_epochs);
+        VERBOSE_LOG("\nPopulation %d: '%s'\n", popID, deme->name);
+        VERBOSE_LOG("  Start time: %g generations\n", deme->start_time);
+        VERBOSE_LOG("  Number of epochs: %zu\n", deme->n_epochs);
         if (deme->n_ancestors > 0) {
-            fprintf(stderr, "  Ancestors: ");
+            VERBOSE_LOG("  Ancestors: ");
             for (size_t j = 0; j < deme->n_ancestors; j++) {
-                fprintf(stderr, "'%s' ", deme->ancestors[j]->name);
+                VERBOSE_LOG("'%s' ", deme->ancestors[j]->name);
             }
-            fprintf(stderr, "\n");
+            VERBOSE_LOG("\n");
         }
         
         // Process epochs (population size changes)
@@ -333,10 +333,10 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
                                  ? prev_epoch->end_size : prev_epoch->start_size;
                 double coalSize = demesSizeToCoalSize(prevSize, N);
                 
-                fprintf(stderr, "  Epoch %d->%d transition at time %g:\n", j-1, j, startTime);
-                fprintf(stderr, "    Previous epoch size: %g -> Discoal relative size: %g\n", prevSize, coalSize);
-                fprintf(stderr, "    Demes time: %g -> Discoal coalescent time: %g\n", startTime, coalTime);
-                fprintf(stderr, "    Creating size change event: time=%g, pop=%d, size=%g\n", coalTime, popID, coalSize);
+                VERBOSE_LOG("  Epoch %d->%d transition at time %g:\n", j-1, j, startTime);
+                VERBOSE_LOG("    Previous epoch size: %g -> Discoal relative size: %g\n", prevSize, coalSize);
+                VERBOSE_LOG("    Demes time: %g -> Discoal coalescent time: %g\n", startTime, coalTime);
+                VERBOSE_LOG("    Creating size change event: time=%g, pop=%d, size=%g\n", coalTime, popID, coalSize);
                 
                 (*events)[*eventNumber].time = coalTime;
                 (*events)[*eventNumber].popID = popID;
@@ -370,7 +370,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
                 (*events)[*eventNumber].type = 'g';
                 (*eventNumber)++;
 
-                fprintf(stderr, "  Epoch %d exponential: pop %d, %g -> %g, alpha=%g per gen (alpha_internal=%g) at t_internal=%g\n",
+                VERBOSE_LOG("  Epoch %d exponential: pop %d, %g -> %g, alpha=%g per gen (alpha_internal=%g) at t_internal=%g\n",
                         j, popID, epoch->start_size, epoch->end_size,
                         alpha_per_gen, alpha_internal, t_internal);
             }
@@ -399,7 +399,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
                 (*events)[*eventNumber].type = 'l';
                 (*eventNumber)++;
 
-                fprintf(stderr, "  Epoch %d linear: pop %d, %g -> %g, gamma=%g per gen (gamma_internal=%g) at t_internal=%g\n",
+                VERBOSE_LOG("  Epoch %d linear: pop %d, %g -> %g, gamma=%g per gen (gamma_internal=%g) at t_internal=%g\n",
                         j, popID, epoch->start_size, epoch->end_size,
                         gamma_per_gen, gamma_internal, t_internal);
             }
@@ -418,7 +418,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
                     return -1;
                 }
                 
-                fprintf(stderr, "Creating split event: time=%g, new pop=%d joins ancestor pop=%d\n",
+                VERBOSE_LOG("Creating split event: time=%g, new pop=%d joins ancestor pop=%d\n",
                         coalTime, popID, ancestorID);
                 (*events)[*eventNumber].time = coalTime;
                 (*events)[*eventNumber].popID = popID;  // New population
@@ -479,7 +479,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
     //      boundary (i.e., for time slightly older than the boundary, going
     //      further into the past). If that differs from the rate just-before
     //      the boundary, emit one 'm' event setting the post-boundary rate.
-    fprintf(stderr, "\nMigrations: %zu\n", graph->n_migrations);
+    VERBOSE_LOG("\nMigrations: %zu\n", graph->n_migrations);
     if (graph->n_migrations > 0) {
         struct mig_window *windows = (struct mig_window *)malloc(
             graph->n_migrations * sizeof(struct mig_window));
@@ -500,11 +500,11 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
             double t_start = demesTimeToCoalTime(mig->start_time, graph->generation_time, N);
             double t_end   = demesTimeToCoalTime(mig->end_time,   graph->generation_time, N);
             double rate    = 4.0 * N * mig->rate;
-            fprintf(stderr, "Migration %d: %s (pop%d) -> %s (pop%d)\n",
+            VERBOSE_LOG("Migration %d: %s (pop%d) -> %s (pop%d)\n",
                     i, mig->source->name, sourceID, mig->dest->name, destID);
-            fprintf(stderr, "  Time interval (gens): %g to %g\n", mig->start_time, mig->end_time);
-            fprintf(stderr, "  Internal interval:    %g to %g\n", t_start, t_end);
-            fprintf(stderr, "  Demes rate: %g per gen, scaled (4Nm): %g\n", mig->rate, rate);
+            VERBOSE_LOG("  Time interval (gens): %g to %g\n", mig->start_time, mig->end_time);
+            VERBOSE_LOG("  Internal interval:    %g to %g\n", t_start, t_end);
+            VERBOSE_LOG("  Demes rate: %g per gen, scaled (4Nm): %g\n", mig->rate, rate);
             windows[n_windows].src     = sourceID;
             windows[n_windows].dst     = destID;
             windows[n_windows].t_start = t_start;
@@ -520,7 +520,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
         for (int w = 0; w < n_windows; w++) {
             if (windows[w].t_end == 0.0) {
                 migMatConst[windows[w].src][windows[w].dst] += windows[w].rate;
-                fprintf(stderr, "  Active at t=0: pop%d -> pop%d = %g (added to migMatConst)\n",
+                VERBOSE_LOG("  Active at t=0: pop%d -> pop%d = %g (added to migMatConst)\n",
                         windows[w].src, windows[w].dst, windows[w].rate);
             }
         }
@@ -587,7 +587,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
                         (*events)[*eventNumber].popnSize = rate_after;
                         (*events)[*eventNumber].type     = 'm';
                         (*eventNumber)++;
-                        fprintf(stderr, "  Boundary t=%g: pop%d -> pop%d rate %g -> %g ('m' event emitted)\n",
+                        VERBOSE_LOG("  Boundary t=%g: pop%d -> pop%d rate %g -> %g ('m' event emitted)\n",
                                 t, src, dst, rate_before, rate_after);
                     }
                 }
@@ -599,7 +599,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
     }
     
     // Process pulses (admixture events)
-    fprintf(stderr, "\nPulses: %zu\n", graph->n_pulses);
+    VERBOSE_LOG("\nPulses: %zu\n", graph->n_pulses);
     for (int i = 0; i < graph->n_pulses; i++) {
         struct demes_pulse *pulse = &graph->pulses[i];
         int destID = findPopulationIndex(graph, (char*)pulse->dest->name);
@@ -620,7 +620,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
             return -1;
         }
         
-        fprintf(stderr, "Pulse %d at time %g into %s (pop%d)\n", 
+        VERBOSE_LOG("Pulse %d at time %g into %s (pop%d)\n", 
                 i, pulse->time, pulse->dest->name, destID);
         
         for (int j = 0; j < pulse->n_sources; j++) {
@@ -631,7 +631,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
                 return -1;
             }
             
-            fprintf(stderr, "  Source: %s (pop%d), proportion: %g\n", 
+            VERBOSE_LOG("  Source: %s (pop%d), proportion: %g\n", 
                     pulse->sources[j]->name, sourceID, pulse->proportions[j]);
             
             (*events)[*eventNumber].time = demesTimeToCoalTime(pulse->time, graph->generation_time, N);
@@ -647,7 +647,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
     qsort(&(*events)[1], *eventNumber - 1, sizeof(struct event), compareEventsByTime);
     
     // Set initial population sizes
-    fprintf(stderr, "\nPresent-day population sizes:\n");
+    VERBOSE_LOG("\nPresent-day population sizes:\n");
     for (int i = 0; i < graph->n_demes; i++) {
         struct demes_deme *deme = &graph->demes[i];
         if (deme->n_epochs > 0) {
@@ -655,7 +655,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
             struct demes_epoch *last_epoch = &deme->epochs[deme->n_epochs-1];
             if (last_epoch->end_time != 0.0) {
                 // This population doesn't exist at present day
-                fprintf(stderr, "  Pop %d (%s): not present at time 0 (ends at %g)\n", 
+                VERBOSE_LOG("  Pop %d (%s): not present at time 0 (ends at %g)\n", 
                         i, deme->name, last_epoch->end_time);
                 currentSize[i] = 0.0;  // Will be handled by events
                 continue;
@@ -665,23 +665,23 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
             double presentSize = (last_epoch->size_function == DEMES_SIZE_FUNCTION_EXPONENTIAL) 
                                 ? last_epoch->end_size : last_epoch->start_size;
             currentSize[i] = demesSizeToCoalSize(presentSize, N);
-            fprintf(stderr, "  Pop %d (%s): %g (relative to N=%g: %g)\n", 
+            VERBOSE_LOG("  Pop %d (%s): %g (relative to N=%g: %g)\n", 
                     i, deme->name, presentSize, N, currentSize[i]);
         } else {
             currentSize[i] = 1.0;  // Default
-            fprintf(stderr, "  Pop %d (%s): default size 1.0\n", i, deme->name);
+            VERBOSE_LOG("  Pop %d (%s): default size 1.0\n", i, deme->name);
         }
     }
     
-    fprintf(stderr, "\nTotal events created: %d\n", *eventNumber - 1);
+    VERBOSE_LOG("\nTotal events created: %d\n", *eventNumber - 1);
     
     // Debug: Show what currentSize array contains
-    fprintf(stderr, "\nDISCOAL currentSize array after conversion:\n");
+    VERBOSE_LOG("\nDISCOAL currentSize array after conversion:\n");
     for (int i = 0; i < *npops; i++) {
-        fprintf(stderr, "  currentSize[%d] = %f\n", i, currentSize[i]);
+        VERBOSE_LOG("  currentSize[%d] = %f\n", i, currentSize[i]);
     }
     
-    fprintf(stderr, "=== END DEMES CONVERSION DEBUG ===\n\n");
+    VERBOSE_LOG("=== END DEMES CONVERSION DEBUG ===\n\n");
     
     return 0;
 }

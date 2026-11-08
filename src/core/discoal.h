@@ -192,6 +192,11 @@ double recurSweepRate;
 
 int EFFECTIVE_POPN_SIZE;
 
+/* Set by -v. Progress and diagnostic messages go to stderr only when it is
+ * set, so a normal run writes nothing to stderr unless there is a problem. */
+int verboseFlag;
+#define VERBOSE_LOG(...) do { if (verboseFlag) fprintf(stderr, __VA_ARGS__); } while (0)
+
 // Trajectory support
 #define TRAJSTEPSTART 500000000
 #define TRAJ_GROWTH_FACTOR 2

@@ -77,6 +77,7 @@ parameters:
 	 -R rhhRate (recurrent hitch hiking mode at the locus; rhh is rate per 2N individuals / generation)
 	 -L rhhRate (recurrent hitch hiking mode to the side of locus; leftRho is ~Unif(0,4Ns); rhh is rate per 2N individuals / generation)
 	 -h (hide selected SNP in partial sweep mode)
+	 -v (verbose: print progress and demes conversion details to stderr)
 	 -T (tree output mode)
 	 -d seed1 seed2 (set random number generator seeds)
 ```
