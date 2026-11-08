@@ -64,20 +64,20 @@ static event makeEvent(double time, char type, int popID) {
     return e;
 }
 
-/* A growth event anchors at the size in force when it runs, so at a tied
- * time it must come after a size change, whatever order it was given in. */
-void test_sort_events_puts_growth_after_size_change_at_same_time(void) {
+/* Tied size and growth events keep the order given, as in ms: the event
+ * that comes last decides whether the population grows. */
+void test_sort_events_keeps_given_order_for_size_and_growth_ties(void) {
     event e[4] = {
         makeEvent(0.5, 'g', 0),
         makeEvent(0.5, 'n', 0),
-        makeEvent(0.2, 'l', 0),
         makeEvent(0.2, 'n', 0),
+        makeEvent(0.2, 'l', 0),
     };
     sortEventArray(e, 4);
     TEST_ASSERT_EQUAL('n', e[0].type);
     TEST_ASSERT_EQUAL('l', e[1].type);
-    TEST_ASSERT_EQUAL('n', e[2].type);
-    TEST_ASSERT_EQUAL('g', e[3].type);
+    TEST_ASSERT_EQUAL('g', e[2].type);
+    TEST_ASSERT_EQUAL('n', e[3].type);
     TEST_ASSERT_FLOAT_WITHIN(1e-12, 0.2, e[0].time);
     TEST_ASSERT_FLOAT_WITHIN(1e-12, 0.5, e[3].time);
 }
@@ -103,7 +103,7 @@ int main(void) {
     
     RUN_TEST(test_event_initialization);
     RUN_TEST(test_event_set_properties);
-    RUN_TEST(test_sort_events_puts_growth_after_size_change_at_same_time);
+    RUN_TEST(test_sort_events_keeps_given_order_for_size_and_growth_ties);
     RUN_TEST(test_sort_events_is_stable_for_other_ties);
     
     return UNITY_END();

@@ -3586,27 +3586,17 @@ void printAllActiveNodes(){
 }
 
 /********** event stuff */
-/* Events at the same time keep the order they were given in, except that
- * growth-rate changes ('g', 'l') come after all other events. A growth event
- * anchors at the size in force when it runs, so a size change at the same
- * time (for example an 'n' at the boundary of a demes exponential epoch)
- * must be applied first. */
-static int eventTieRank(char type){
-	return (type == 'g' || type == 'l') ? 1 : 0;
-}
-
-static int eventPrecedes(const struct event *a, const struct event *b){
-	if (a->time != b->time) return a->time < b->time;
-	return eventTieRank(a->type) < eventTieRank(b->type);
-}
-
-/* Stable insertion sort. qsort is not stable, so it gave tied events an
- * arbitrary order; event lists are short enough that O(n^2) is cheap. */
+/* Stable insertion sort by time. Events at the same time keep the order
+ * they were given in, as in ms: for example "-eg t ... -en t ..." ends with
+ * no growth, because -en resets growth. qsort does not promise a stable
+ * order (newer glibc and other C libraries reorder ties), and the demes
+ * importer relies on its emission order for tied events. Event lists are
+ * short enough that O(n^2) is cheap. */
 void sortEventArray(struct event *eArray, int eNumber){
 	for (int i = 1; i < eNumber; i++) {
 		struct event key = eArray[i];
 		int j = i - 1;
-		while (j >= 0 && eventPrecedes(&key, &eArray[j])) {
+		while (j >= 0 && key.time < eArray[j].time) {
 			eArray[j + 1] = eArray[j];
 			j--;
 		}

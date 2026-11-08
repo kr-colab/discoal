@@ -64,9 +64,9 @@ Demographic Options
      population grew forward in time, so the past was smaller. The
      msprime ``growth_rate`` is alpha / (4N₀).
 
-   If ``-en`` and ``-eg`` (or ``-el``) give the same time, the size change is
-   applied first and growth starts from that size, whatever their order on
-   the command line.
+   Events at the same time are applied in command-line order, as in ms.
+   ``-en`` stops growth, so ``-eg t ... -en t ...`` ends with no growth,
+   and ``-en t ... -eg t ...`` grows from the new size.
 
 .. option:: -eG time alpha
 

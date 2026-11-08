@@ -317,28 +317,25 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
             double startTime = (j == 0) ? deme->start_time : deme->epochs[j-1].end_time;
             double endTime = epoch->end_time;
             
-            // For constant size epochs, we need an event at the start of each epoch
-            // (except the first epoch which extends to infinity in the past)
-            if (j > 0) {
-                double coalTime = demesTimeToCoalTime(startTime, graph->generation_time, N);
-                // Use the size from the PREVIOUS epoch since we're transitioning FROM that size
-                struct demes_epoch *prev_epoch = &deme->epochs[j-1];
-                double prevSize = (prev_epoch->size_function == DEMES_SIZE_FUNCTION_EXPONENTIAL) 
-                                 ? prev_epoch->end_size : prev_epoch->start_size;
-                double coalSize = demesSizeToCoalSize(prevSize, N);
-                
-                VERBOSE_LOG("  Epoch %d->%d transition at time %g:\n", j-1, j, startTime);
-                VERBOSE_LOG("    Previous epoch size: %g -> Discoal relative size: %g\n", prevSize, coalSize);
-                VERBOSE_LOG("    Demes time: %g -> Discoal coalescent time: %g\n", startTime, coalTime);
-                VERBOSE_LOG("    Creating size change event: time=%g, pop=%d, size=%g\n", coalTime, popID, coalSize);
-                
+            // Going backward in time, the size jumps to this epoch's end size
+            // where the epoch ends (its more recent boundary). The present-day
+            // epoch (end_time 0) takes its size from currentSize instead. The
+            // growth event for this epoch, at the same time, is emitted after
+            // this one: the event sort is stable, and a growth event anchors
+            // at the size in force when it runs.
+            if (endTime > 0.0) {
+                double coalTime = demesTimeToCoalTime(endTime, graph->generation_time, N);
+                double coalSize = demesSizeToCoalSize(epoch->end_size, N);
+                VERBOSE_LOG("  Epoch %d ends at time %g: size %g (relative %g) at discoal time %g\n",
+                            j, endTime, epoch->end_size, coalSize, coalTime);
+                ensureDemesEventsCapacity(events, eventsCapacity, *eventNumber + 1);
                 (*events)[*eventNumber].time = coalTime;
                 (*events)[*eventNumber].popID = popID;
                 (*events)[*eventNumber].popnSize = coalSize;
-                (*events)[*eventNumber].type = 'n';  // Size change
+                (*events)[*eventNumber].type = 'n';
                 (*eventNumber)++;
             }
-            
+
             // Handle exponential growth within epoch.
             // Emit a 'g' event at the more-recent (smaller-internal-time) boundary
             // of the epoch with the forward-time growth rate.
@@ -399,26 +396,6 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
             }
         }
         
-        // A deme that ends before the present needs its size set at the end
-        // of its last epoch, where its descendants merge into it. Epoch
-        // transitions above set sizes only between epochs, and present-day
-        // sizes are set only for demes alive at time 0.
-        struct demes_epoch *last = &deme->epochs[deme->n_epochs - 1];
-        if (last->end_time > 0.0) {
-            double lastSize = (last->size_function == DEMES_SIZE_FUNCTION_EXPONENTIAL)
-                              ? last->end_size : last->start_size;
-            double coalTime = demesTimeToCoalTime(last->end_time,
-                                                  graph->generation_time, N);
-            ensureDemesEventsCapacity(events, eventsCapacity, *eventNumber + 1);
-            (*events)[*eventNumber].time = coalTime;
-            (*events)[*eventNumber].popID = popID;
-            (*events)[*eventNumber].popnSize = demesSizeToCoalSize(lastSize, N);
-            (*events)[*eventNumber].type = 'n';
-            (*eventNumber)++;
-            VERBOSE_LOG("  Ends at time %g: size %g set at discoal time %g\n",
-                        last->end_time, lastSize, coalTime);
-        }
-
         // Handle population splits/merges
         if (deme->n_ancestors > 0) {
             double coalTime = demesTimeToCoalTime(deme->start_time, graph->generation_time, N);
