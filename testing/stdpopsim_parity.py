@@ -38,6 +38,12 @@ with the reason, if it uses features that discoal does not support
 (selfing, cloning, size functions other than constant and exponential), has
 no deme at time 0, or if msprime cannot simulate it.
 
+A model with a deme size below 100 is first scaled up: sizes and times are
+multiplied by c and migration rates divided by c, which leaves the
+coalescent unchanged. discoal's output does not depend on this scaling, but
+msprime's does at sizes of about one individual (several demes
+specification test cases use sizes of 0.1 to 1); see rescale().
+
 Usage:
     python testing/stdpopsim_parity.py [--reps 1000] [--samples 10]
         [--workers 24] [--generic 20] [--seed 1] [--demes-dir DIR ...]
@@ -84,6 +90,36 @@ def unsupported(graph):
     if not present_demes(graph):
         return "no deme exists at time 0"
     return None
+
+
+MIN_SIZE = 100
+
+
+def rescale(graph):
+    """Return (graph, c): if some deme size is below MIN_SIZE, the graph with
+    sizes and times multiplied by c and migration rates divided by c, so the
+    smallest size is MIN_SIZE. The coalescent does not change under this
+    scaling, and discoal's output does not depend on it, but msprime's does
+    for sizes of about one individual or less."""
+    sizes = [x for d in graph.demes for e in d.epochs
+             for x in (e.start_size, e.end_size)]
+    c = MIN_SIZE / min(sizes)
+    if c <= 1:
+        return graph, 1.0
+    g = graph.asdict()
+    for d in g["demes"]:
+        d["start_time"] = d["start_time"] * c
+        for e in d["epochs"]:
+            e["end_time"] *= c
+            e["start_size"] *= c
+            e["end_size"] *= c
+    for m in g.get("migrations", []):
+        m["start_time"] = m["start_time"] * c
+        m["end_time"] *= c
+        m["rate"] /= c
+    for pulse in g.get("pulses", []):
+        pulse["time"] *= c
+    return demes.Builder.fromdict(g).resolve(), c
 
 
 def build_graph(kind, payload):
@@ -212,6 +248,7 @@ def audit_model(job):
         reason = unsupported(graph)
         if reason:
             return dict(model=label, skipped=reason)
+        graph, scale = rescale(graph)
         names = present_demes(graph)
         # msprime first: a graph it cannot simulate is skipped, not an error.
         try:
@@ -233,7 +270,8 @@ def audit_model(job):
                              discoal_mean=d[stat].mean(),
                              msprime_mean=m[stat].mean(),
                              ks_d=ks.statistic, p=ks.pvalue))
-        return dict(model=label, n_ref=n_ref, demes=names, rows=rows)
+        return dict(model=label, n_ref=n_ref, demes=names, rows=rows,
+                    scale=scale)
     except subprocess.TimeoutExpired:
         return dict(model=label, error=f"discoal did not finish in {timeout} s")
     except Exception as e:  # report and keep going with other models
