@@ -170,14 +170,18 @@ discoal 100 1000 50000 -D model.yaml -t 20 -r 15 -ws 0.01 -a 100 -x 0.5
 
 ## Sample Size Specification
 
-When using multi-population demes models, specify sample sizes after the `-p` flag:
+Give the number of samples per deme in `demography.deme_sample_size` of the
+`-Y` config. The list follows the order of demes in the demes file,
+**extinct demes included**. Give 0 for a deme that does not exist at time 0;
+discoal stops with an error if such a deme gets samples.
 
-```bash
-# 50 samples from pop0, 50 from pop1
-discoal 100 1000 50000 -D two_pop_model.yaml -p 2 50 50 -t 20
+For a demes file with demes `ANC` (ancestral, extinct), `A` and `B`:
+
+```yaml
+demography:
+  deme_sample_size: [0, 50, 50]   # ANC, A, B
+  demes_filename: "model.demes.yaml"
 ```
-
-The population order matches the order of present-day demes in the file.
 
 ## Validation and Debugging
 

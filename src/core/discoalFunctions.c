@@ -1623,6 +1623,15 @@ static double drawNHPPWaitingTime(double *cRate, double *rRate, double *gcRate,
     return T_min;
 }
 
+/* Coalescence rate for k lineages in a population of relative size `size`:
+ * k choose 2 over size. With fewer than two lineages the rate is 0 even when
+ * the size is 0, as it is for an ancestral deme before its lineages arrive;
+ * the plain formula would give 0/0 = NaN, and a NaN event time never reaches
+ * the end of the interval, so the event loop would never finish. */
+static inline double pairCoalRate(int k, double size){
+	return (k < 2) ? 0.0 : k * (k - 1) * 0.5 / size;
+}
+
 /*neutralPhaseGeneralPopNumber--coalescent, recombination, gc events until
 specified time. returns endTime. can handle multiple popns*/
 double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *sizeRatio){
@@ -1650,12 +1659,12 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 		}
 		//printf("currPopSize[0]: %d currPopSize[1]: %d alleleNumber: %d totNodeNumber: %d activeSites: %d cTime: %f\n",popnSizes[0],popnSizes[1],alleleNumber,totNodeNumber, activeSites, cTime);
 		for(i=0;i<npops;i++){
-			cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 / sizeAt(i, currentTime);
+			cRate[i] = pairCoalRate(popnSizes[i], sizeAt(i, currentTime));
 			rRate[i] = rho * popnSizes[i] * 0.5;// * ((float)activeSites/nSites);
 			gcRate[i] = my_gamma * popnSizes[i] * 0.5 ;
 
 			for(j=0;j<npops;j++) mRate[i]+=migAt(i, j, currentTime);
-			mRate[i] *= popnSizes[i] * 0.5;
+			mRate[i] *= popnSizes[i] * MIG_LINEAGE_WEIGHT;
 			totCRate += cRate[i];
 			totRRate += rRate[i];
 			totMRate += mRate[i];
@@ -1705,12 +1714,12 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 							while(eSum/totMRate < r2) eSum += mRate[++i];
 							//printf("outer totMRate: %f eSum: %f i:%d\n",totMRate,eSum,i);
 							//pick dest popn
-							eSum = migAt(i, 0, currentTime) * popnSizes[i] * 0.5;
+							eSum = migAt(i, 0, currentTime) * popnSizes[i] * MIG_LINEAGE_WEIGHT;
 							//printf("outer eSumNew:%f mRate[%d]:%f\n",eSum,i,mRate[i]);
 							r2 = ranf();
 							while(eSum/mRate[i] < r2){
 							//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
-								eSum += migAt(i, ++j, currentTime) * popnSizes[i] * 0.5;
+								eSum += migAt(i, ++j, currentTime) * popnSizes[i] * MIG_LINEAGE_WEIGHT;
 							//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
 
 							}
@@ -2166,7 +2175,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 
 			//printf("currPopSize[0]: %d currPopSize[1]: %d\n",popnSizes[0],popnSizes[1]);
 			for(i=1;i<npops;i++){
-				cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 * tIncOrig / sizeAt(i, cTime + ttau);
+				cRate[i] = pairCoalRate(popnSizes[i], sizeAt(i, cTime + ttau)) * tIncOrig;
 				rRate[i] = rho * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
 				gcRate[i] = my_gamma * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
 				totCRate += cRate[i];
@@ -2410,7 +2419,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 
 			//printf("currPopSize[0]: %d currPopSize[1]: %d\n",popnSizes[0],popnSizes[1]);
 			for(i=1;i<npops;i++){
-				cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 * tIncOrig / sizeAt(i, cTime + ttau);
+				cRate[i] = pairCoalRate(popnSizes[i], sizeAt(i, cTime + ttau)) * tIncOrig;
 				rRate[i] = rho * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
 				gcRate[i] = my_gamma * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
 				totCRate += cRate[i];
@@ -2581,12 +2590,12 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 		}
 	//	printf("currPopSize[0]: %d currPopSize[1]: %d alleleNumber: %d totNodeNumber: %d activeSites: %d cTime: %f\n",popnSizes[0],popnSizes[1],alleleNumber,totNodeNumber, activeSites, cTime);
 		for(i=0;i<npops;i++){
-			cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 / sizeRatio[i];
+			cRate[i] = pairCoalRate(popnSizes[i], sizeRatio[i]);
 			rRate[i] = rho * popnSizes[i] * 0.5;// * ((float)activeSites/nSites);
 			gcRate[i] = my_gamma * popnSizes[i] * 0.5 ;
 			
 			for(j=0;j<npops;j++) mRate[i]+=migMat[i][j];
-			mRate[i] *= popnSizes[i] * 0.5;
+			mRate[i] *= popnSizes[i] * MIG_LINEAGE_WEIGHT;
 			totCRate += cRate[i];
 			totRRate += rRate[i];
 			totMRate += mRate[i];
@@ -2635,12 +2644,12 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 						while(eSum/totMRate < r2) eSum += mRate[++i];
 						//printf("outer totMRate: %f eSum: %f i:%d\n",totMRate,eSum,i);
 						//pick dest popn
-						eSum = migMat[i][0]* popnSizes[i] * 0.5;
+						eSum = migMat[i][0]* popnSizes[i] * MIG_LINEAGE_WEIGHT;
 						//printf("outer eSumNew:%f mRate[%d]:%f\n",eSum,i,mRate[i]);
 						r2 = ranf();
 						while(eSum/mRate[i] < r2){
 						//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
-							eSum += migMat[i][++j] * popnSizes[i] * 0.5;
+							eSum += migMat[i][++j] * popnSizes[i] * MIG_LINEAGE_WEIGHT;
 						//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
 							
 						} 
@@ -3577,19 +3586,22 @@ void printAllActiveNodes(){
 }
 
 /********** event stuff */
-int compare_events(const void *a,const void *b){
-	struct event *pa = (struct event *) a;
-	struct event *pb = (struct event *) b;
-	if ((pa->time - pb->time) > 0 ){
-		return 1;
-	}
-	else{
-		return - 1;
-	}
-}
-
+/* Stable insertion sort by time. Events at the same time keep the order
+ * they were given in, as in ms: for example "-eg t ... -en t ..." ends with
+ * no growth, because -en resets growth. qsort does not promise a stable
+ * order (newer glibc and other C libraries reorder ties), and the demes
+ * importer relies on its emission order for tied events. Event lists are
+ * short enough that O(n^2) is cheap. */
 void sortEventArray(struct event *eArray, int eNumber){
-	qsort(eArray, eNumber, sizeof(eArray[0]), compare_events);
+	for (int i = 1; i < eNumber; i++) {
+		struct event key = eArray[i];
+		int j = i - 1;
+		while (j >= 0 && key.time < eArray[j].time) {
+			eArray[j + 1] = eArray[j];
+			j--;
+		}
+		eArray[j + 1] = key;
+	}
 }
 
 //////// MISC

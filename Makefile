@@ -280,9 +280,12 @@ test_node: $(TEST_DIR)/test_node.c $(SRC_CORE)/discoal.h $(TEST_DIR)/test_global
 		$(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/activeSegment.c $(SRC_CORE)/shapes.c $(SRC_TSKIT)/tskitInterface.c \
 		$(TSKIT_SOURCES) -I$(UNITY_DIR) -lm -fcommon
 
-test_event: $(TEST_DIR)/test_event.c $(SRC_CORE)/discoal.h
+test_event: $(TEST_DIR)/test_event.c $(SRC_CORE)/discoal.h $(SRC_CORE)/discoalFunctions.c $(TEST_DIR)/test_globals.c
 	@mkdir -p build
-	$(CC) $(TEST_CFLAGS) -o build/test_event $(TEST_DIR)/test_event.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
+	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o build/test_event $(TEST_DIR)/test_event.c $(TEST_DIR)/test_globals.c \
+		$(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c \
+		$(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/activeSegment.c $(SRC_CORE)/shapes.c \
+		$(SRC_TSKIT)/tskitInterface.c $(TSKIT_SOURCES) $(UNITY_SOURCES) -I$(UNITY_DIR) -lm -fcommon
 
 test_shapes: $(TEST_DIR)/test_shapes.c $(SRC_CORE)/shapes.c $(SRC_CORE)/shapes.h $(SRC_CORE)/discoal.h $(TEST_DIR)/test_globals.c
 	@mkdir -p build

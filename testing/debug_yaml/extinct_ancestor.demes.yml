@@ -1,0 +1,18 @@
+# Demes file for error_samples_in_extinct_deme.yaml. The .yml extension keeps
+# yaml_parser_suite.sh from running it as a discoal config.
+time_units: generations
+demes:
+  - name: ANC
+    epochs:
+      - end_time: 20000
+        start_size: 5000
+  - name: A
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 10000
+  - name: B
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 10000

@@ -26,13 +26,18 @@ Needs build/discoal, msprime and demes.
 import argparse
 import math
 import os
+import re
 import subprocess
 import sys
 import tempfile
+import warnings
 
 import demes
 import msprime
 import numpy as np
+
+# The same-time pulse case is deliberate; demes warns about it.
+warnings.filterwarnings("ignore", message="Multiple pulses are defined")
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DISCOAL = os.path.join(REPO, "build", "discoal")
@@ -53,10 +58,13 @@ def z(a, b):
     return (a[0] - b[0]) / math.hypot(a[1], b[1])
 
 
-def run_discoal(argv, reps):
+def run_discoal(argv, reps, timeout=300):
     """Run discoal and return (mean segsites, standard error)."""
-    out = subprocess.run([DISCOAL] + argv, capture_output=True, text=True,
-                         check=True).stdout
+    try:
+        out = subprocess.run([DISCOAL] + argv, capture_output=True,
+                             text=True, check=True, timeout=timeout).stdout
+    except subprocess.TimeoutExpired:
+        sys.exit(f"discoal did not finish in {timeout} s: {argv}")
     s = [int(l.split()[1]) for l in out.splitlines()
          if l.startswith("segsites:")]
     if len(s) != reps:
@@ -66,14 +74,17 @@ def run_discoal(argv, reps):
 
 def discoal_argv(case, reps, seed, tmp):
     """Command-line arguments for a case. A demes case runs through a -Y
-    config that loads the demes file."""
-    sizes = list(case["samples"].values())
+    config that loads the demes file; deme_sample_size follows the order of
+    demes in the file, extinct demes included."""
+    n = sum(case["samples"].values())
     if "demes" not in case:
-        return ([str(sum(sizes)), str(reps), "1000", "-t", str(THETA)]
+        return ([str(n), str(reps), "1000", "-t", str(THETA)]
                 + case["flags"] + ["-d", str(seed), str(seed + 1)])
+    sizes = [case["samples"].get(d.name, 0)
+             for d in demes.load(case["demes"]).demes]
     cfg = os.path.join(tmp, "config.yaml")
     with open(cfg, "w") as f:
-        f.write(f"simulation: {{sample_size: {sum(sizes)}, "
+        f.write(f"simulation: {{sample_size: {n}, "
                 f"num_replicates: {reps}, num_sites: 1000, "
                 f"seed: [{seed}, {seed + 1}]}}\n"
                 f"genetics: {{mutation_rate: {THETA}, recombination_rate: 0}}\n"
@@ -113,13 +124,15 @@ def linear_pop(t1_gens, gamma_rel_per_gen, final_rel, steps=400):
     return one_pop(changes)
 
 
-def two_pop(rate, merge_gens, source, dest):
+def two_pop(rate, merge_gens, source, dest, growth_p1=0.0):
     """Pops P0 and P1; lineages move from source to dest (backward in time)
     only; both merge into ANC at merge_gens. All samples come from P0, so
-    the direction of migration changes the model."""
+    the direction of migration changes the model. growth_p1 is P1's growth
+    rate per generation."""
     d = msprime.Demography()
     for name in ("P0", "P1", "ANC"):
-        d.add_population(name=name, initial_size=N0)
+        d.add_population(name=name, initial_size=N0,
+                         growth_rate=growth_p1 if name == "P1" else 0.0)
     d.set_migration_rate(source=source, dest=dest, rate=rate)
     d.add_population_split(time=merge_gens, derived=["P0", "P1"],
                            ancestral="ANC")
@@ -139,6 +152,210 @@ demes:
 """
 
 
+# A growth epoch between two constant epochs: at 1000 generations the importer
+# emits a size change and a growth change at the same time.
+DEMES_GROWTH_MIDDLE = """time_units: generations
+demes:
+  - name: A
+    epochs:
+      - end_time: 20000
+        start_size: 1000
+      - end_time: 1000
+        start_size: 1000
+        end_size: 10000
+        size_function: exponential
+      - end_time: 0
+        start_size: 10000
+"""
+
+
+# Two present-day demes that merge into an extinct ancestor of a different
+# size. The ancestor's size must be set where its last epoch ends.
+DEMES_EXTINCT_ANCESTOR = """time_units: generations
+demes:
+  - name: ANC
+    epochs:
+      - end_time: 20000
+        start_size: 2000
+  - name: A
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 10000
+  - name: B
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 10000
+migrations:
+  - demes: [A, B]
+    rate: 1.0e-5
+"""
+
+
+# A deme formed from three ancestors of different sizes. The first
+# present-day deme (A) sets discoal's N_ref, so it has size N0.
+DEMES_THREE_WAY_ADMIXTURE = """time_units: generations
+demes:
+  - name: ANC
+    epochs:
+      - end_time: 20000
+        start_size: 10000
+  - name: A
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 10000
+  - name: B
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 1000
+  - name: C
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 50000
+  - name: D
+    ancestors: [A, B, C]
+    proportions: [0.2, 0.3, 0.5]
+    start_time: 100
+    epochs:
+      - end_time: 0
+        start_size: 10000
+"""
+
+
+# A pulse from two sources into A. Lineages not moved must stay in A.
+DEMES_TWO_SOURCE_PULSE = """time_units: generations
+demes:
+  - name: ANC
+    epochs:
+      - end_time: 20000
+        start_size: 10000
+  - name: A
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 10000
+  - name: B
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 1000
+  - name: C
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 50000
+pulses:
+  - sources: [B, C]
+    dest: A
+    time: 500
+    proportions: [0.2, 0.3]
+"""
+
+
+# One-way migration from A into B, forward in time. Backward in time,
+# lineages sampled in B move to A.
+DEMES_ONE_WAY_MIGRATION = """time_units: generations
+demes:
+  - name: A
+    epochs:
+      - end_time: 0
+        start_size: 10000
+  - name: B
+    ancestors: [A]
+    start_time: 20000
+    epochs:
+      - end_time: 0
+        start_size: 2000
+migrations:
+  - {source: A, dest: B, rate: 1.0e-4}
+"""
+
+
+# An extinct deme (MID) that is not population 0 and has no lineages until
+# B merges into it at 10000 generations. Before then its size is unset (0).
+DEMES_EMPTY_EXTINCT_DEME = """time_units: generations
+demes:
+  - name: X
+    epochs:
+      - end_time: 0
+        start_size: 10000
+  - name: MID
+    ancestors: [X]
+    start_time: 30000
+    epochs:
+      - end_time: 10000
+        start_size: 3000
+  - name: B
+    ancestors: [MID]
+    start_time: 10000
+    epochs:
+      - end_time: 0
+        start_size: 5000
+migrations:
+  - {demes: [X, B], rate: 1.0e-5}
+"""
+
+
+# Two pulses at the same time. demes applies them in the order given,
+# forward in time, so backward in time C->B runs before B->A.
+DEMES_SAME_TIME_PULSES = """time_units: generations
+demes:
+  - name: ANC
+    epochs: [{start_size: 10000, end_time: 20000}]
+  - name: A
+    ancestors: [ANC]
+    epochs: [{start_size: 10000}]
+  - name: B
+    ancestors: [ANC]
+    epochs: [{start_size: 10000}]
+  - name: C
+    ancestors: [ANC]
+    epochs: [{start_size: 200000}]
+pulses:
+  - {sources: [B], dest: A, time: 1000, proportions: [0.8]}
+  - {sources: [C], dest: B, time: 1000, proportions: [0.8]}
+"""
+
+# A pulse into A at the time D forms from A and B. Backward in time the pulse
+# runs first, so lineages that just left D take no part in it.
+DEMES_PULSE_AND_ADMIXTURE = """time_units: generations
+demes:
+  - name: ANC
+    epochs: [{start_size: 10000, end_time: 20000}]
+  - name: A
+    ancestors: [ANC]
+    epochs: [{start_size: 10000}]
+  - name: B
+    ancestors: [ANC]
+    epochs: [{start_size: 10000}]
+  - name: X
+    ancestors: [ANC]
+    epochs: [{start_size: 100000}]
+  - name: D
+    ancestors: [A, B]
+    proportions: [0.5, 0.5]
+    start_time: 1000
+    epochs: [{start_size: 10000}]
+pulses:
+  - {sources: [X], dest: A, time: 1000, proportions: [0.9]}
+"""
+
+
+def demes_case(tmp, name, samples, text=None, path=None):
+    """A case that loads a demes model, given as YAML text or a file path,
+    and compares it with msprime's Demography.from_demes."""
+    if path is None:
+        path = os.path.join(tmp, re.sub(r"\W+", "_", name) + ".demes.yaml")
+        with open(path, "w") as f:
+            f.write(text)
+    return dict(name=name, samples=samples, demes=path, alts={},
+                model=msprime.Demography.from_demes(demes.load(path)))
+
+
 def cases(tmp):
     """Each case has: name, samples ({population: count}), either discoal
     `flags` or a `demes` file, the msprime `model` for the documented
@@ -156,11 +373,6 @@ def cases(tmp):
 
     def linear(k):
         return linear_pop(0.5 * 4 * N0, gamma / (k * N0), 1 - gamma * 0.5)
-
-    growth_file = os.path.join(tmp, "growth.demes.yaml")
-    with open(growth_file, "w") as f:
-        f.write(DEMES_GROWTH)
-    example = os.path.join(REPO, "config_examples", "demes_example.demes.yaml")
 
     return [
         dict(name="-en time in 4N0 generations", samples=s20,
@@ -184,13 +396,39 @@ def cases(tmp):
              alts={"rate 2N0 m": two_pop(m / (2 * N0), 4 * N0, "P0", "P1"),
                    "lineages move j -> i":
                        two_pop(m / (4 * N0), 4 * N0, "P1", "P0")}),
-        dict(name="demes exponential epoch", samples=s20, demes=growth_file,
-             model=msprime.Demography.from_demes(demes.load(growth_file)),
-             alts={}),
-        dict(name="demes splits, sizes, migration windows",
-             samples={"A": 10, "B": 5, "C": 5}, demes=example,
-             model=msprime.Demography.from_demes(demes.load(example)),
-             alts={}),
+        # Growth makes the sampler use the time-varying (NHPP) path, which
+        # draws migration times separately from the constant-rate path. With
+        # alpha < 0 the past was larger, so migration out of P1 matters.
+        dict(name="-m with -eg: migration rate while sizes change",
+             samples={"P1": 20},
+             flags=["-p", "2", "0", "20", "-m", "1", "0", str(m),
+                    "-eg", "0", "1", "-5", "-ed", "1.0", "1", "0"],
+             model=two_pop(m / (4 * N0), 4 * N0, "P1", "P0",
+                           growth_p1=-5 / (4 * N0)),
+             alts={"rate 2 x 4N0 m": two_pop(2 * m / (4 * N0), 4 * N0,
+                                            "P1", "P0",
+                                            growth_p1=-5 / (4 * N0))}),
+        demes_case(tmp, "demes exponential epoch", s20, DEMES_GROWTH),
+        demes_case(tmp, "demes exponential epoch between constant epochs",
+                   s20, DEMES_GROWTH_MIDDLE),
+        demes_case(tmp, "demes extinct ancestor with its own size",
+                   {"A": 10, "B": 10}, DEMES_EXTINCT_ANCESTOR),
+        demes_case(tmp, "demes deme with three ancestors", {"D": 20},
+                   DEMES_THREE_WAY_ADMIXTURE),
+        demes_case(tmp, "demes pulse with two sources", {"A": 20},
+                   DEMES_TWO_SOURCE_PULSE),
+        demes_case(tmp, "demes one-way migration direction", {"B": 20},
+                   DEMES_ONE_WAY_MIGRATION),
+        demes_case(tmp, "demes extinct deme that is empty at first",
+                   {"X": 10, "B": 10}, DEMES_EMPTY_EXTINCT_DEME),
+        demes_case(tmp, "demes pulses at the same time", {"A": 20},
+                   DEMES_SAME_TIME_PULSES),
+        demes_case(tmp, "demes pulse at the time of an admixture", {"D": 20},
+                   DEMES_PULSE_AND_ADMIXTURE),
+        demes_case(tmp, "demes splits, sizes, migration windows",
+                   {"A": 10, "B": 5, "C": 5},
+                   path=os.path.join(REPO, "config_examples",
+                                     "demes_example.demes.yaml")),
     ]
 
 

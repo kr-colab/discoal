@@ -297,8 +297,8 @@ void test_integratedHazardSize_linear_quadrature_match(void) {
 void test_integratedHazardMig_constant(void) {
     migShape[0][1].type = SHAPE_CONSTANT;
     migShape[0][1].anchor_value = 0.5;
-    /* k=3, T=4: H = 3*0.5*4 = 6 */
-    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 6.0, integratedHazardMig(0, 1, 0.0, 4.0, 3));
+    /* 3 lineages, each at m/2 per unit time, T=4: H = 0.5*3*0.5*4 = 3 */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 3.0, integratedHazardMig(0, 1, 0.0, 4.0, 3));
 }
 
 void test_integratedHazardMig_exponential(void) {
@@ -306,35 +306,35 @@ void test_integratedHazardMig_exponential(void) {
     migShape[0][1].anchor_value = 1.0;
     migShape[0][1].rate_param = 0.5;
     migShape[0][1].anchor_time = 0.0;
-    /* k=2, T=4: m(s) = exp(-0.5 s), H = 2 * (1 - exp(-2))/0.5 */
-    double expected = 2.0 * (1.0 - exp(-2.0)) / 0.5;
+    /* 2 lineages, T=4: m(s) = exp(-0.5 s), H = 0.5*2 * (1 - exp(-2))/0.5 */
+    double expected = 0.5 * 2.0 * (1.0 - exp(-2.0)) / 0.5;
     TEST_ASSERT_DOUBLE_WITHIN(1e-10, expected, integratedHazardMig(0, 1, 0.0, 4.0, 2));
 }
 
 void test_integratedHazardMig_linear(void) {
     /* delta = -0.05 (forward decline => backward growth):
-     * m(s) = 0.1 - (-0.05)*s = 0.1 + 0.05 s, k=2, T=4
-     * H = 2*(0.1*4 - (-0.05)*16/2) = 2*(0.4 + 0.4) = 1.6 */
+     * m(s) = 0.1 - (-0.05)*s = 0.1 + 0.05 s, 2 lineages, T=4
+     * H = 0.5*2*(0.1*4 - (-0.05)*16/2) = 0.4 + 0.4 = 0.8 */
     migShape[0][1].type = SHAPE_LINEAR;
     migShape[0][1].anchor_value = 0.1;
     migShape[0][1].rate_param = -0.05;
     migShape[0][1].anchor_time = 0.0;
-    TEST_ASSERT_DOUBLE_WITHIN(1e-10, 1.6, integratedHazardMig(0, 1, 0.0, 4.0, 2));
+    TEST_ASSERT_DOUBLE_WITHIN(1e-10, 0.8, integratedHazardMig(0, 1, 0.0, 4.0, 2));
 }
 
 void test_integratedHazardMig_linear_clamps_past_zero_crossing(void) {
     /* m(s) = 0.5 - 0.1*s hits zero at s = 5.  Past the zero crossing the
      * physical migration rate is clamped at zero, so the integrated hazard
-     * plateaus at H(5) = k*m0^2/(2*d) = 2*0.25/0.2 = 2.5. */
+     * plateaus at H(5) = k*m0^2/(2*d) with k = 0.5*2 = 1: 0.25/0.2 = 1.25. */
     migShape[0][1].type = SHAPE_LINEAR;
     migShape[0][1].anchor_value = 0.5;
     migShape[0][1].rate_param = 0.1;
     migShape[0][1].anchor_time = 0.0;
     /* Plateau hazard at the zero crossing. */
-    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 2.5, integratedHazardMig(0, 1, 0.0, 5.0, 2));
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 1.25, integratedHazardMig(0, 1, 0.0, 5.0, 2));
     /* Past the zero crossing the value is held; without the clamp the
      * polynomial would peak at s=5 and decrease toward zero at s=10. */
-    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 2.5, integratedHazardMig(0, 1, 0.0, 100.0, 2));
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 1.25, integratedHazardMig(0, 1, 0.0, 100.0, 2));
 }
 
 void test_integratedHazardMig_quadrature_match(void) {
@@ -350,7 +350,7 @@ void test_integratedHazardMig_quadrature_match(void) {
     double sum = 0.0;
     for (int i = 0; i < N; i++) {
         double s_mid = (i + 0.5) * dt;
-        sum += k * migAt(0, 1, t0 + s_mid) * dt;
+        sum += 0.5 * k * migAt(0, 1, t0 + s_mid) * dt;
     }
     double closed = integratedHazardMig(0, 1, t0, T, k);
     TEST_ASSERT_DOUBLE_WITHIN(1e-6, sum, closed);
@@ -415,8 +415,8 @@ void test_drawWaitingTimeSize_linear_zero_crossing(void) {
 void test_drawWaitingTimeMig_constant_inverts(void) {
     migShape[0][1].type = SHAPE_CONSTANT;
     migShape[0][1].anchor_value = 0.5;
-    /* xi=2, k=4: T = 2/(4*0.5) = 1 */
-    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 1.0, drawWaitingTimeMig(0, 1, 0.0, 2.0, 4));
+    /* xi=2, 4 lineages each at m/2: T = 2/(0.5*4*0.5) = 2 */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-12, 2.0, drawWaitingTimeMig(0, 1, 0.0, 2.0, 4));
 }
 
 void test_drawWaitingTimeMig_exponential_round_trip(void) {
@@ -432,13 +432,14 @@ void test_drawWaitingTimeMig_exponential_round_trip(void) {
 }
 
 void test_drawWaitingTimeMig_exponential_unreachable_xi(void) {
-    /* m(s) = 0.5 exp(-0.3 s). Total integrated hazard over [0,inf) for k=3:
-     * 3 * 0.5 / 0.3 = 5. Any xi >= 5 should be unreachable. */
+    /* m(s) = 0.5 exp(-0.3 s). Total integrated hazard over [0,inf) for 3
+     * lineages: 0.5*3 * 0.5 / 0.3 = 2.5. Any xi >= 2.5 should be unreachable. */
     migShape[0][1].type = SHAPE_EXPONENTIAL;
     migShape[0][1].anchor_value = 0.5;
     migShape[0][1].rate_param = 0.3;
     migShape[0][1].anchor_time = 0.0;
-    TEST_ASSERT_TRUE(drawWaitingTimeMig(0, 1, 0.0, 5.5, 3) < 0.0);
+    TEST_ASSERT_TRUE(drawWaitingTimeMig(0, 1, 0.0, 2.6, 3) < 0.0);
+    TEST_ASSERT_TRUE(drawWaitingTimeMig(0, 1, 0.0, 2.4, 3) > 0.0);
     TEST_ASSERT_TRUE(drawWaitingTimeMig(0, 1, 0.0, 100.0, 3) < 0.0);
 }
 
@@ -552,11 +553,14 @@ static double ks_statistic_mig(int src, int dst, int k, int n) {
     }
     if (valid < n / 2) { free(T); return 1.0; }  /* too many unreachable; fail */
     qsort(T, valid, sizeof(double), compare_doubles);
+    /* Only finite draws are kept, so compare with the CDF conditional on a
+     * finite waiting time: divide by the probability 1 - exp(-H(infinity)). */
+    double p_finite = 1.0 - exp(-integratedHazardMig(src, dst, 0.0, 1e12, k));
     double max_d = 0.0;
     for (int i = 0; i < valid; i++) {
         double F_emp = (double)(i + 1) / valid;
-        double F_theory = 1.0 - exp(-integratedHazardMig(src, dst, 0.0, T[i], k));
-        /* Note: F_theory here is conditional-on-finite, which matches valid sample */
+        double F_theory = (1.0 - exp(-integratedHazardMig(src, dst, 0.0, T[i], k)))
+                          / p_finite;
         double d = fabs(F_emp - F_theory);
         if (d > max_d) max_d = d;
     }
@@ -575,7 +579,7 @@ void test_drawWaitingTimeMig_distribution_exponential(void) {
     migShape[0][1].anchor_value = 1.0;
     migShape[0][1].rate_param = 0.5;
     migShape[0][1].anchor_time = 0.0;
-    /* H(infty) = k*m0/beta = 4*1/0.5 = 8. Most xi will resolve. */
+    /* H(infty) = 0.5*4*m0/beta = 2*1/0.5 = 4. Most xi will resolve. */
     TEST_ASSERT_TRUE(ks_statistic_mig(0, 1, 4, 10000) < 0.05);
 }
 

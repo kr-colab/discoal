@@ -1,5 +1,6 @@
 #include "unity.h"
 #include "discoal.h"
+#include "discoalFunctions.h"
 #include <string.h>
 
 // Test fixtures
@@ -54,12 +55,41 @@ void test_event_set_properties(void) {
     TEST_ASSERT_FLOAT_WITHIN(0.0001, 0.42, testEvent.admixProp);
 }
 
+static event makeEvent(double time, char type, int popID) {
+    event e;
+    memset(&e, 0, sizeof(e));
+    e.time = time;
+    e.type = type;
+    e.popID = popID;
+    return e;
+}
+
+/* sortEventArray orders by time and keeps the given order for ties, as in
+ * ms: for tied -eg and -en, the event given last decides whether the
+ * population grows. */
+void test_sort_events_is_stable(void) {
+    event e[6] = {
+        makeEvent(0.5, 'g', 0),
+        makeEvent(0.5, 'n', 1),
+        makeEvent(0.2, 'n', 2),
+        makeEvent(0.2, 'l', 3),
+        makeEvent(1.0, 'p', 4),
+        makeEvent(0.5, 'm', 5),
+    };
+    sortEventArray(e, 6);
+    int expected[6] = {2, 3, 0, 1, 5, 4};
+    for (int i = 0; i < 6; i++) {
+        TEST_ASSERT_EQUAL(expected[i], e[i].popID);
+    }
+}
+
 #ifndef TEST_RUNNER_MODE
 int main(void) {
     UNITY_BEGIN();
     
     RUN_TEST(test_event_initialization);
     RUN_TEST(test_event_set_properties);
+    RUN_TEST(test_sort_events_is_stable);
     
     return UNITY_END();
 }
