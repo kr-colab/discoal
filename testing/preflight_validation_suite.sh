@@ -103,6 +103,22 @@ run_pass_case "em_zero_turns_migration_off" \
 run_pass_case "em_after_pop_merge_skipped" \
     5 1 100 -t 5 -p 2 5 0 -m 0 1 0.5 -ed 0.05 1 0 -em 0.1 0 1 0.5
 
+# Coalescence that takes longer than the old time cap of 100000 units (2N):
+# discoal used to stop there and write the replicate unfinished.
+run_pass_case "coalescence_after_old_time_cap" \
+    2 3 100 -t 0.00001 -en 0.01 0 1e6
+
+# An event later than the old time cap; the stranded-lineage check must not
+# treat the interval before it as the last one.
+run_pass_case "event_after_old_time_cap" \
+    4 2 100 -t 0.00001 -p 2 2 2 -ed 60000 1 0
+
+# After migration stops, one population holds only a lineage without
+# ancestral material; that must not count as stranded. (Other seeds of this
+# model do strand lineages and stop with an error.)
+run_pass_case "lineage_without_ancestral_material_is_not_stranded" \
+    2 1 2 -t 1 -r 20 -p 2 2 0 -m 0 1 2 -m 1 0 2 -em 1.0 0 1 0 -em 1.0 1 0 0 -d 66 73
+
 # ----- Cases that should fail with a documented error -----
 echo
 echo -e "${YELLOW}-- Failure cases (must exit non-zero with expected message) --${NC}"

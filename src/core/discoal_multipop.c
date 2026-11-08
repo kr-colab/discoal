@@ -47,9 +47,9 @@ void usage();
 void cleanup_and_exit(int sig);
 void initializeTrajectoryVariables(double N);
 
-// Signal handler for cleanup
-void cleanup_and_exit(int sig) {
-	// Clean up trajectory storage if it exists
+// Remove the sweep trajectory file, if any. Registered with atexit, so
+// every exit path (error exits included) removes it.
+static void removeTrajectoryFile(void) {
 	if (trajectoryFd != -1) {
 		if (currentTrajectory && currentTrajectory != MAP_FAILED) {
 			munmap(currentTrajectory, trajectoryFileSize);
@@ -58,7 +58,14 @@ void cleanup_and_exit(int sig) {
 		if (trajectoryFilename[0] != '\0') {
 			unlink(trajectoryFilename);
 		}
+		trajectoryFd = -1;
+		trajectoryFilename[0] = '\0';
 	}
+}
+
+// Signal handler for cleanup
+void cleanup_and_exit(int sig) {
+	removeTrajectoryFile();
 	exit(sig);
 }
 
@@ -104,6 +111,7 @@ int main(int argc, const char * argv[]){
 	double probAccept;
 	
 	getParameters(argc,argv);
+	atexit(removeTrajectoryFile);
 	/* Snapshot for per-replicate restore in initialize(); see currentSizeConst. */
 	for (i = 0; i < MAXPOPS; i++) currentSizeConst[i] = currentSize[i];
 	double N = EFFECTIVE_POPN_SIZE; // effective population size
@@ -219,7 +227,8 @@ int main(int argc, const char * argv[]){
 		for(j=0;j<eventNumber && alleleNumber > 1;j++){
 			currentEventNumber=j; //need this annoying global for trajectory generation
 			if(j == eventNumber - 1){
-				nextTime = MAXTIME;
+				/* No event follows, so the last interval has no end. */
+				nextTime = INFINITY;
 				}
 			else{
 				nextTime = events[j+1].time;
@@ -480,14 +489,16 @@ int main(int argc, const char * argv[]){
 		}
 		//finish up the coalescing action!
 		if(alleleNumber > 1){
-			currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, MAXTIME, currentSize);
+			currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, INFINITY, currentSize);
 		}
-		/* Never write a genealogy without a common ancestor at every site. */
+		/* Never write a genealogy without a common ancestor at every site.
+		 * The last interval has no end, so this happens only if no event can
+		 * occur: for example a population that grows without limit going
+		 * back in time, so that its lineages may never coalesce. */
 		if (activeSites > 0) {
-			fprintf(stderr, "Error: replicate %d reached time %g (in units of 2N "
-			        "generations) with %d sites that have no common ancestor; the "
-			        "lineages cannot coalesce under this model.\n",
-			        i + 1, currentTime, activeSites);
+			fprintf(stderr, "Error: in replicate %d, %d sites have no common "
+			        "ancestor and no further event can occur; the lineages "
+			        "cannot coalesce under this model.\n", i + 1, activeSites);
 			exit(1);
 		}
 		
