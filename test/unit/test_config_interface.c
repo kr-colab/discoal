@@ -987,14 +987,14 @@ void test_demography_population_split_rejects_nonpositive_time(void) {
 }
 
 /*
- * migration_rate_changes are parsed by libcyaml but rejected by
- * parse_demography_block, because the main event loop in
- * discoalFunctions.c does not yet implement the handler. This test
- * exists so the rejection is exercised; if someone later wires up
- * the handler, this test will start failing as a reminder to
- * remove the explicit error path.
+ * A migration_rate_changes entry becomes one 'm' event, as
+ * -em time source destination rate: popID2 is the source, popID the
+ * destination, popnSize the new rate (4 N0 m), and the time is in
+ * internal units (2 N0 generations, twice the YAML value). A positive
+ * rate counts as migration for initialize()'s check on models with
+ * more than one population.
  */
-void test_demography_rejects_migration_rate_changes_not_implemented(void) {
+void test_demography_migration_rate_change_event(void) {
     const char *yaml =
         "simulation:\n"
         "  sample_size: 10\n"
@@ -1008,10 +1008,119 @@ void test_demography_rejects_migration_rate_changes_not_implemented(void) {
         "  demographic_events:\n"
         "    migration_rate_changes:\n"
         "      - time: 0.1\n"
-        "        rate: 1.0\n"
+        "        rate: 1.5\n"
         "        source: 0\n"
         "        destination: 1\n";
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    TEST_ASSERT_EQUAL_INT(1, eventNumber);
+    TEST_ASSERT_EQUAL_INT('m', events[0].type);
+    TEST_ASSERT_EQUAL_DOUBLE(0.2, events[0].time);
+    TEST_ASSERT_EQUAL_INT(0, events[0].popID2);
+    TEST_ASSERT_EQUAL_INT(1, events[0].popID);
+    TEST_ASSERT_EQUAL_DOUBLE(1.5, events[0].popnSize);
+    TEST_ASSERT_EQUAL_INT(1, migFlag);
+}
+
+/* A rate of zero is a valid change, but it is not migration. */
+void test_demography_migration_rate_change_to_zero(void) {
+    const char *yaml =
+        "simulation:\n"
+        "  sample_size: 10\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "demography:\n"
+        "  deme_sample_size: [5, 5]\n"
+        "  demographic_events:\n"
+        "    migration_rate_changes:\n"
+        "      - time: 0.1\n"
+        "        rate: 0.0\n"
+        "        source: 1\n"
+        "        destination: 0\n"
+        "    population_splits:\n"
+        "      - time: 1.0\n"
+        "        ancestral: 0\n"
+        "        derived: 1\n";
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    TEST_ASSERT_EQUAL_INT('m', events[0].type);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, events[0].popnSize);
+    TEST_ASSERT_EQUAL_INT(0, migFlag);
+}
+
+/* Bad source, destination, time or rate values are rejected. */
+void test_demography_migration_rate_change_rejects_bad_values(void) {
+    const char *fmt =
+        "simulation:\n"
+        "  sample_size: 10\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "demography:\n"
+        "  deme_sample_size: [5, 5]\n"
+        "  migration_matrix:\n"
+        "    - row: [0.0, 0.1]\n"
+        "    - row: [0.1, 0.0]\n"
+        "  demographic_events:\n"
+        "    migration_rate_changes:\n"
+        "      - time: %s\n"
+        "        rate: %s\n"
+        "        source: %s\n"
+        "        destination: %s\n";
+    const char *bad[][4] = {
+        {"0.1", "1.0", "2", "0"},    /* source out of range */
+        {"0.1", "1.0", "0", "-1"},   /* destination out of range */
+        {"0.1", "1.0", "1", "1"},    /* source equals destination */
+        {"-0.1", "1.0", "0", "1"},   /* negative time */
+        {"0.1", "-1.0", "0", "1"},   /* negative rate */
+    };
+    char yaml[2048];
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
+        reset_config_globals();
+        snprintf(yaml, sizeof(yaml), fmt,
+                 bad[i][0], bad[i][1], bad[i][2], bad[i][3]);
+        TEST_ASSERT_NOT_EQUAL_MESSAGE(EXIT_SUCCESS,
+            apply_from_yaml_string(yaml), bad[i][2]);
+    }
+}
+
+/*
+ * A change that involves a population at or after the time it merges
+ * away is rejected; one before the merge is accepted.
+ */
+void test_demography_migration_rate_change_after_split_rejected(void) {
+    const char *fmt =
+        "simulation:\n"
+        "  sample_size: 10\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "demography:\n"
+        "  deme_sample_size: [5, 5]\n"
+        "  migration_matrix:\n"
+        "    - row: [0.0, 0.1]\n"
+        "    - row: [0.1, 0.0]\n"
+        "  demographic_events:\n"
+        "    migration_rate_changes:\n"
+        "      - time: %s\n"
+        "        rate: 0.5\n"
+        "        source: 1\n"
+        "        destination: 0\n"
+        "    population_splits:\n"
+        "      - time: 1.0\n"
+        "        ancestral: 0\n"
+        "        derived: 1\n";
+    char yaml[2048];
+    snprintf(yaml, sizeof(yaml), fmt, "1.0");
     TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    reset_config_globals();
+    snprintf(yaml, sizeof(yaml), fmt, "0.9");
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
 }
 
 /*
@@ -2075,7 +2184,10 @@ int main(void) {
     RUN_TEST(test_demography_population_split_rejects_same_derived_ancestral);
     RUN_TEST(test_demography_population_split_rejects_bad_pop_index);
     RUN_TEST(test_demography_population_split_rejects_nonpositive_time);
-    RUN_TEST(test_demography_rejects_migration_rate_changes_not_implemented);
+    RUN_TEST(test_demography_migration_rate_change_event);
+    RUN_TEST(test_demography_migration_rate_change_to_zero);
+    RUN_TEST(test_demography_migration_rate_change_rejects_bad_values);
+    RUN_TEST(test_demography_migration_rate_change_after_split_rejected);
     RUN_TEST(test_demography_rejects_ancient_samples_not_implemented);
     RUN_TEST(test_demography_migration_matrix_requires_square);
     RUN_TEST(test_demography_migration_matrix_requires_square_rows);

@@ -1152,6 +1152,9 @@ void getParameters(int argc,const char **argv){
 							events[eventNumber].popID = atoi(argv[++args]);   /* destination pop */
 							events[eventNumber].popnSize = atof(argv[++args]); /* new rate stored in popnSize field */
 							events[eventNumber].type = 'm';  /* lowercase 'm' for time-varying migration event */
+							/* Migration that starts later still counts as
+							 * migration for initialize()'s check. */
+							if (events[eventNumber].popnSize > 0) migFlag = 1;
 							eventNumber++;
 						}
 						break;

@@ -488,14 +488,57 @@ int parse_demography_block(struct demography_config *cfg)
                 fprintf(stderr, "Ancient sample events not yet implemented\n");
                 return EXIT_FAILURE;
             }
-            /* Time-varying migration rate changes are not implemented in the
-             * main event loop yet (see discoalFunctions.c); reject rather than
-             * silently dropping them. */
-            if (dmo->num_migration_rate_changes > 0) {
-                fprintf(stderr,
-                    "Error parsing config: migration_rate_changes are not yet "
-                    "implemented (no handler in the main event loop)\n");
-                return EXIT_FAILURE;
+            /* Migration rate changes, as -em time source destination rate:
+             * from `time` back into the past, lineages in `source` move to
+             * `destination` at `rate` (4 N0 m). A change that involves a
+             * population at or after the time it merges away (a
+             * population_splits entry with it as `derived`) is rejected: the
+             * population no longer exists then, and the split already stops
+             * its migration. */
+            for (int i = 0; i < dmo->num_migration_rate_changes; ++i) {
+                struct migration_rate_change *mrc = &dmo->migration_rate_changes[i];
+                if (check_pop_index("migration_rate_changes", "source",
+                        i, mrc->source, cfg->num_demes) != EXIT_SUCCESS ||
+                    check_pop_index("migration_rate_changes", "destination",
+                        i, mrc->destination, cfg->num_demes) != EXIT_SUCCESS ||
+                    check_nonneg_double("migration_rate_changes", "time",
+                        i, mrc->time) != EXIT_SUCCESS ||
+                    check_nonneg_double("migration_rate_changes", "rate",
+                        i, mrc->rate) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
+                if (mrc->source == mrc->destination) {
+                    fprintf(stderr,
+                        "Error parsing config: migration_rate_changes[%d] "
+                        "source and destination (%d) must differ\n",
+                        i, mrc->source);
+                    return EXIT_FAILURE;
+                }
+                for (int k = 0; k < dmo->num_population_splits; ++k) {
+                    struct population_split *sp = &dmo->population_splits[k];
+                    if ((mrc->source == sp->derived ||
+                         mrc->destination == sp->derived) &&
+                        mrc->time >= sp->time) {
+                        fprintf(stderr,
+                            "Error parsing config: migration_rate_changes[%d] "
+                            "at time %g involves population %d, which merges "
+                            "into population %d at time %g (population_splits"
+                            "[%d]); a merged population has no migration\n",
+                            i, mrc->time, sp->derived, sp->ancestral,
+                            sp->time, k);
+                        return EXIT_FAILURE;
+                    }
+                }
+                ensureEventsCapacity();
+                events[eventNumber].type = 'm';
+                events[eventNumber].time = userTimeToInternal(mrc->time);
+                events[eventNumber].popID2 = mrc->source;
+                events[eventNumber].popID = mrc->destination;
+                events[eventNumber].popnSize = mrc->rate;
+                eventNumber++;
+                /* Migration that starts later still counts as migration for
+                 * initialize()'s check on multi-population models. */
+                if (mrc->rate > 0) migFlag = 1;
             }
             /* YAML times use the command-line units; see userTimeToInternal. */
             for (int i = 0; i < dmo->num_population_size_changes; ++i) {

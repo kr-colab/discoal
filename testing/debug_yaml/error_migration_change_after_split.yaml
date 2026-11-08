@@ -1,0 +1,28 @@
+# A migration rate change for a population at or after the time it merges
+# into another one. The merged population no longer exists, and the split
+# already stops its migration. Should error out with:
+#   "Error parsing config: migration_rate_changes[0] at time 2.5 involves population 1"
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [5, 5]
+  effective_population_size: 1.0
+  demographic_events:
+    migration_rate_changes:
+      - time: 2.5
+        rate: 0.1
+        source: 0
+        destination: 1
+    population_splits:
+      - time: 2.0
+        ancestral: 0
+        derived: 1
+output:
+  output_type: "haplotype"

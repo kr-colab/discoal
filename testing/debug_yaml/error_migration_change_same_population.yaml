@@ -1,6 +1,5 @@
-# PR #48: migration_rate_changes are not implemented in the main event loop.
-# Should error out with:
-#   "Error parsing config: migration_rate_changes are not yet implemented ..."
+# A migration rate change from a population to itself. Should error out with:
+#   "Error parsing config: migration_rate_changes[0] source and destination (1) must differ"
 
 simulation:
   sample_size: 10
@@ -13,11 +12,14 @@ genetics:
 demography:
   deme_sample_size: [5, 5]
   effective_population_size: 1.0
+  migration_matrix:
+    - row: [0.0, 0.1]
+    - row: [0.1, 0.0]
   demographic_events:
     migration_rate_changes:
       - time: 0.5
         rate: 0.1
-        source: 0
+        source: 1
         destination: 1
 output:
   output_type: "haplotype"

@@ -92,6 +92,8 @@ demography:
     population_size_changes:
       - { time: 0.5, size: 0.1, population: 0 }
       - { time: 1.0, size: 2.0, population: 1 }
+    migration_rate_changes:
+      - { time: 0.2, rate: 0.5, source: 1, destination: 2 }
     population_splits:
       - { time: 2.0, derived: 1, ancestral: 0 }
       - { time: 3.0, derived: 2, ancestral: 0 }
@@ -122,13 +124,21 @@ Notes:
   `time` must be `> 0` and the two population indices must differ.
 - For `population_size_changes`, `time` must be `>= 0` and `size`
   must be `> 0` (extinction at zero is not modeled).
+- A `migration_rate_change` sets the rate (4Nm) at which lineages in
+  `source` move to `destination` backward in time, from `time` into
+  the past, until a later change. This is
+  `-em time source destination rate` on the CLI. `time` and `rate`
+  must be `>= 0`, and `source` and `destination` must differ. A
+  change that involves a population at or after the time it merges
+  into another one (a `population_split` with it as `derived`) is
+  rejected: the split already stops its migration.
+- A rate change to zero can leave lineages in populations that never
+  exchange migrants again and never merge. discoal then stops with an
+  error that names the stranded populations. To avoid this, keep a
+  connecting migration rate, or add a `population_split` that merges
+  the populations.
 - `demes_filename` and explicit `demographic_events` /
   `migration_matrix` are mutually exclusive — use one or the other.
-
-Time-varying migration *is* supported: use the CLI primitives
-`-em time popID1 popID2 rate` (single pair) or
-`-eM time rate` (all off-diagonal pairs), or load a demes file
-with multi-window migration via `-D` / `demes_filename`.
 
 The `demographic_events` block also accepts the field name
 `ancient_samples`, which is part of the schema but is **not yet
@@ -207,7 +217,7 @@ command line as `-en 1.0 ...`.
 
 This convention applies to every time field in the schema:
 `population_size_changes.time`, `population_splits.time`,
-`fixation_time_ago`, etc.
+`migration_rate_changes.time`, `fixation_time_ago`, etc.
 
 A demes file does not use this convention: its times are in
 generations or years, and discoal converts them itself (see
@@ -221,7 +231,8 @@ Other unit conventions:
   matrix entries are relative ratios, not absolute counts. A size
   of `0.1` means "this population has 10% of the reference N at
   that time".
-- **Migration rates** (`migration_matrix` rows) are 4Nm.
+- **Migration rates** (`migration_matrix` rows and
+  `migration_rate_changes.rate`) are 4Nm.
 - **Selection coefficient** is 2Ns, matching `-a`.
 
 ## Combining with the demes format
@@ -294,9 +305,8 @@ The YAML interface does not currently expose:
 - prior distributions (`-Pt`, `-Pa`, `-Pu`, `-Px`, etc.);
 - linked-locus sweeps (`-ls`, `-ld`, `-ln`);
 - conditional simulation (`-C`);
-- ancient samples and time-varying migration rates (the schema
-  accepts these field names but the parser rejects them at
-  runtime — see the demography section).
+- ancient samples (the schema accepts the field name but the parser
+  rejects it at runtime — see the demography section).
 
 Use the positional command-line interface for these. The CLI
 reference is in `docs/basic_usage.rst`,
