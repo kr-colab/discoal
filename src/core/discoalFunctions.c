@@ -1623,6 +1623,15 @@ static double drawNHPPWaitingTime(double *cRate, double *rRate, double *gcRate,
     return T_min;
 }
 
+/* Coalescence rate for k lineages in a population of relative size `size`:
+ * k choose 2 over size. With fewer than two lineages the rate is 0 even when
+ * the size is 0, as it is for an ancestral deme before its lineages arrive;
+ * the plain formula would give 0/0 = NaN, and a NaN event time never reaches
+ * the end of the interval, so the event loop would never finish. */
+static inline double pairCoalRate(int k, double size){
+	return (k < 2) ? 0.0 : k * (k - 1) * 0.5 / size;
+}
+
 /*neutralPhaseGeneralPopNumber--coalescent, recombination, gc events until
 specified time. returns endTime. can handle multiple popns*/
 double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *sizeRatio){
@@ -1650,7 +1659,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 		}
 		//printf("currPopSize[0]: %d currPopSize[1]: %d alleleNumber: %d totNodeNumber: %d activeSites: %d cTime: %f\n",popnSizes[0],popnSizes[1],alleleNumber,totNodeNumber, activeSites, cTime);
 		for(i=0;i<npops;i++){
-			cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 / sizeAt(i, currentTime);
+			cRate[i] = pairCoalRate(popnSizes[i], sizeAt(i, currentTime));
 			rRate[i] = rho * popnSizes[i] * 0.5;// * ((float)activeSites/nSites);
 			gcRate[i] = my_gamma * popnSizes[i] * 0.5 ;
 
@@ -2166,7 +2175,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 
 			//printf("currPopSize[0]: %d currPopSize[1]: %d\n",popnSizes[0],popnSizes[1]);
 			for(i=1;i<npops;i++){
-				cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 * tIncOrig / sizeAt(i, cTime + ttau);
+				cRate[i] = pairCoalRate(popnSizes[i], sizeAt(i, cTime + ttau)) * tIncOrig;
 				rRate[i] = rho * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
 				gcRate[i] = my_gamma * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
 				totCRate += cRate[i];
@@ -2410,7 +2419,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 
 			//printf("currPopSize[0]: %d currPopSize[1]: %d\n",popnSizes[0],popnSizes[1]);
 			for(i=1;i<npops;i++){
-				cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 * tIncOrig / sizeAt(i, cTime + ttau);
+				cRate[i] = pairCoalRate(popnSizes[i], sizeAt(i, cTime + ttau)) * tIncOrig;
 				rRate[i] = rho * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
 				gcRate[i] = my_gamma * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
 				totCRate += cRate[i];
@@ -2581,7 +2590,7 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 		}
 	//	printf("currPopSize[0]: %d currPopSize[1]: %d alleleNumber: %d totNodeNumber: %d activeSites: %d cTime: %f\n",popnSizes[0],popnSizes[1],alleleNumber,totNodeNumber, activeSites, cTime);
 		for(i=0;i<npops;i++){
-			cRate[i] = popnSizes[i] * (popnSizes[i] - 1) * 0.5 / sizeRatio[i];
+			cRate[i] = pairCoalRate(popnSizes[i], sizeRatio[i]);
 			rRate[i] = rho * popnSizes[i] * 0.5;// * ((float)activeSites/nSites);
 			gcRate[i] = my_gamma * popnSizes[i] * 0.5 ;
 			

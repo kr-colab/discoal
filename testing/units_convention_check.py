@@ -53,10 +53,13 @@ def z(a, b):
     return (a[0] - b[0]) / math.hypot(a[1], b[1])
 
 
-def run_discoal(argv, reps):
+def run_discoal(argv, reps, timeout=300):
     """Run discoal and return (mean segsites, standard error)."""
-    out = subprocess.run([DISCOAL] + argv, capture_output=True, text=True,
-                         check=True).stdout
+    try:
+        out = subprocess.run([DISCOAL] + argv, capture_output=True,
+                             text=True, check=True, timeout=timeout).stdout
+    except subprocess.TimeoutExpired:
+        sys.exit(f"discoal did not finish in {timeout} s: {argv}")
     s = [int(l.split()[1]) for l in out.splitlines()
          if l.startswith("segsites:")]
     if len(s) != reps:
@@ -266,6 +269,31 @@ migrations:
 """
 
 
+# An extinct deme (MID) that is not population 0 and has no lineages until
+# B merges into it at 10000 generations. Before then its size is unset (0).
+DEMES_EMPTY_EXTINCT_DEME = """time_units: generations
+demes:
+  - name: X
+    epochs:
+      - end_time: 0
+        start_size: 10000
+  - name: MID
+    ancestors: [X]
+    start_time: 30000
+    epochs:
+      - end_time: 10000
+        start_size: 3000
+  - name: B
+    ancestors: [MID]
+    start_time: 10000
+    epochs:
+      - end_time: 0
+        start_size: 5000
+migrations:
+  - {demes: [X, B], rate: 1.0e-5}
+"""
+
+
 def cases(tmp):
     """Each case has: name, samples ({population: count}), either discoal
     `flags` or a `demes` file, the msprime `model` for the documented
@@ -302,6 +330,9 @@ def cases(tmp):
     oneway_file = os.path.join(tmp, "one_way_migration.demes.yaml")
     with open(oneway_file, "w") as f:
         f.write(DEMES_ONE_WAY_MIGRATION)
+    empty_file = os.path.join(tmp, "empty_extinct_deme.demes.yaml")
+    with open(empty_file, "w") as f:
+        f.write(DEMES_EMPTY_EXTINCT_DEME)
     example = os.path.join(REPO, "config_examples", "demes_example.demes.yaml")
 
     return [
@@ -361,6 +392,10 @@ def cases(tmp):
         dict(name="demes one-way migration direction",
              samples={"A": 0, "B": 20}, demes=oneway_file,
              model=msprime.Demography.from_demes(demes.load(oneway_file)),
+             alts={}),
+        dict(name="demes extinct deme that is empty at first",
+             samples={"X": 10, "MID": 0, "B": 10}, demes=empty_file,
+             model=msprime.Demography.from_demes(demes.load(empty_file)),
              alts={}),
         dict(name="demes splits, sizes, migration windows",
              samples={"A": 10, "B": 5, "C": 5}, demes=example,
