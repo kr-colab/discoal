@@ -1,9 +1,20 @@
 #!/usr/bin/env python3
-"""Compare discoal and msprime on every demographic model in stdpopsim.
+"""Compare discoal and msprime on demes models.
 
-For each (species, model) in the stdpopsim catalog:
+Models come from three sources:
 
-  1. Export the model to a demes file.
+  - every demographic model in the stdpopsim catalog;
+  - random instances of stdpopsim's generic models PiecewiseConstantSize
+    and IsolationWithMigration (--generic N of each, drawn with --seed);
+  - every *.yaml demes file under each --demes-dir, for example the
+    examples and test cases of the demes specification:
+        git clone https://github.com/popsim-consortium/demes-spec
+        python testing/stdpopsim_parity.py \\
+            --demes-dir demes-spec/examples --demes-dir demes-spec/test-cases/valid
+
+For each model:
+
+  1. Write it as a demes file.
   2. Simulate `reps` genealogies with discoal (through a -Y config that
      loads the demes file, with tree sequence output) and with msprime
      (Demography.from_demes), with no recombination.
@@ -19,21 +30,26 @@ present-day deme; they are converted to generations before the statistics
 are computed. A time-unit or size-scaling error therefore shows up as a
 shift in diversity and segregating sites, not only in Tajima's D.
 
-Samples: `--samples` haploid genomes from each deme that exists at time 0
-and that stdpopsim samples at time 0. discoal's deme_sample_size is indexed
-by the order of demes in the graph, extinct demes included, so demes that
-are not sampled get 0.
+Samples: `--samples` haploid genomes from every deme that exists at time 0,
+whatever stdpopsim's default sampling time; both simulators get the same
+samples. discoal's deme_sample_size is indexed by the order of demes in the
+graph, extinct demes included, so other demes get 0. A model is skipped,
+with the reason, if it uses features that discoal does not support
+(selfing, cloning, size functions other than constant and exponential), has
+no deme at time 0, or if msprime cannot simulate it.
 
 Usage:
     python testing/stdpopsim_parity.py [--reps 1000] [--samples 10]
-        [--workers 24] [--models HomSap/OutOfAfrica_3G09,...] [--tsv out.tsv]
+        [--workers 24] [--generic 20] [--seed 1] [--demes-dir DIR ...]
+        [--models LABEL,...] [--timeout 600] [--tsv out.tsv]
 
 Needs build/discoal, stdpopsim, msprime, demes, tskit and scipy.
-Exit code 0 if no test rejects, 1 otherwise.
+Exit code 0 if no test rejects and no model errors, 1 otherwise.
 """
 
 import argparse
 import concurrent.futures
+import glob
 import os
 import re
 import subprocess
@@ -53,13 +69,61 @@ DISCOAL = os.path.join(REPO, "build", "discoal")
 ALPHA = 0.01
 
 
-def sampled_demes(model, graph):
-    """Names of demes to sample: present at time 0 and sampled at time 0 by
-    stdpopsim."""
-    sampling_time = {p.name: p.default_sampling_time
-                     for p in model.populations}
-    return [d.name for d in graph.demes
-            if d.end_time == 0 and sampling_time.get(d.name) in (None, 0)]
+def present_demes(graph):
+    """Names of the demes that exist at time 0, in graph order."""
+    return [d.name for d in graph.demes if d.end_time == 0]
+
+
+def unsupported(graph):
+    """Why discoal cannot run this graph, or None."""
+    epochs = [e for d in graph.demes for e in d.epochs]
+    if any(e.size_function not in ("constant", "exponential") for e in epochs):
+        return "size function other than constant or exponential"
+    if any(e.selfing_rate > 0 or e.cloning_rate > 0 for e in epochs):
+        return "selfing or cloning"
+    if not present_demes(graph):
+        return "no deme exists at time 0"
+    return None
+
+
+def build_graph(kind, payload):
+    """The demes graph for one job."""
+    if kind == "catalog":
+        species, model_id = payload
+        model = stdpopsim.get_species(species).get_demographic_model(model_id)
+        return model.model.to_demes()
+    if kind == "pcs":
+        return stdpopsim.PiecewiseConstantSize(
+            payload["N0"], *payload["changes"]).model.to_demes()
+    if kind == "im":
+        return stdpopsim.IsolationWithMigration(**payload).model.to_demes()
+    return demes.load(payload)
+
+
+def random_generic(rng, n):
+    """n random PiecewiseConstantSize and n IsolationWithMigration models:
+    sizes log-uniform in [1e2, 1e5], times log-uniform in [50, 2e5]
+    generations, migration rates 0 (one time in three) or log-uniform in
+    [1e-6, 1e-3] per generation."""
+    def size():
+        return float(10 ** rng.uniform(2, 5))
+
+    def time():
+        return float(10 ** rng.uniform(np.log10(50), np.log10(2e5)))
+
+    def mig():
+        return 0.0 if rng.random() < 1 / 3 else float(10 ** rng.uniform(-6, -3))
+
+    jobs = []
+    for i in range(n):
+        times = sorted(time() for _ in range(rng.integers(1, 5)))
+        jobs.append(("pcs", f"generic/PiecewiseConstantSize_{i}",
+                     dict(N0=size(), changes=[(t, size()) for t in times])))
+    for i in range(n):
+        jobs.append(("im", f"generic/IsolationWithMigration_{i}",
+                     dict(NA=size(), N1=size(), N2=size(), T=time(),
+                          M12=mig(), M21=mig())))
+    return jobs
 
 
 def per_deme_sets(ts, pop_ids):
@@ -97,7 +161,9 @@ def run_discoal(demes_path, graph, names, n, reps, seed, tmp, timeout):
         f.write(f"simulation: {{sample_size: {sum(sizes)}, "
                 f"num_replicates: {reps}, num_sites: 1000, "
                 f"seed: [{seed}, {seed + 1}]}}\n"
-                "genetics: {mutation_rate: 1.0, recombination_rate: 0}\n"
+                # Branch-mode statistics need no mutations; with tall trees a
+                # positive rate can exceed discoal's mutation limit.
+                "genetics: {mutation_rate: 0, recombination_rate: 0}\n"
                 f"demography: {{deme_sample_size: {sizes}, "
                 f"demes_filename: \"{demes_path}\"}}\n")
     prefix = os.path.join(tmp, "d.trees")
@@ -136,25 +202,30 @@ def run_msprime(graph, names, n, reps, seed):
 
 
 def audit_model(job):
-    """Run one model. Returns a dict with rows of test results or an error."""
-    species, model_id, reps, n, seed, timeout = job
-    label = f"{species}/{model_id}"
+    """Run one model. Returns a dict with rows of test results, an error, or
+    a reason to skip it."""
+    kind, label, payload, reps, n, seed, timeout = job
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            model = stdpopsim.get_species(species).get_demographic_model(
-                model_id)
-            graph = model.model.to_demes()
-        names = sampled_demes(model, graph)
-        if not names:
-            return dict(model=label, skipped="no deme is sampled at time 0 "
-                        "(discoal YAML has no ancient samples)")
+            graph = build_graph(kind, payload)
+        reason = unsupported(graph)
+        if reason:
+            return dict(model=label, skipped=reason)
+        names = present_demes(graph)
+        # msprime first: a graph it cannot simulate is skipped, not an error.
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                m = run_msprime(graph, names, n, reps, seed)
+        except Exception as e:
+            return dict(model=label,
+                        skipped=f"msprime cannot simulate it: {e}"[:200])
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "model.demes.yaml")
             demes.dump(graph, path)
             d, n_ref = run_discoal(path, graph, names, n, reps, seed, tmp,
                                    timeout)
-        m = run_msprime(graph, names, n, reps, seed)
         rows = []
         for stat in d:
             ks = stats.ks_2samp(d[stat], m[stat])
@@ -175,8 +246,16 @@ def main():
     ap.add_argument("--samples", type=int, default=10,
                     help="haploid samples per sampled deme")
     ap.add_argument("--workers", type=int, default=24)
+    ap.add_argument("--generic", type=int, default=20,
+                    help="random instances of each generic stdpopsim model")
+    ap.add_argument("--seed", type=int, default=1,
+                    help="seed for the random generic models")
+    ap.add_argument("--demes-dir", action="append", default=[],
+                    help="audit every *.yaml demes file under this directory "
+                         "(may be given more than once)")
     ap.add_argument("--models", default="",
-                    help="comma-separated Species/Model ids; default all")
+                    help="comma-separated model labels (as printed) to run; "
+                         "default all")
     ap.add_argument("--timeout", type=int, default=600,
                     help="seconds allowed for each discoal run")
     ap.add_argument("--tsv", help="write per-test results to this file")
@@ -184,13 +263,19 @@ def main():
     if args.reps < 2:
         sys.exit("--reps must be at least 2")
 
-    jobs = []
+    specs = [("catalog", f"{sp.id}/{mdl.id}", (sp.id, mdl.id))
+             for sp in stdpopsim.all_species() for mdl in sp.demographic_models]
+    specs += random_generic(np.random.default_rng(args.seed), args.generic)
+    for d in args.demes_dir:
+        root = os.path.dirname(os.path.abspath(d))
+        for path in sorted(glob.glob(os.path.join(d, "**", "*.yaml"),
+                                     recursive=True)):
+            specs.append(("file", os.path.relpath(path, root), path))
     wanted = set(filter(None, args.models.split(",")))
-    for sp in stdpopsim.all_species():
-        for mdl in sp.demographic_models:
-            if not wanted or f"{sp.id}/{mdl.id}" in wanted:
-                jobs.append((sp.id, mdl.id, args.reps, args.samples,
-                             1000 + 10 * len(jobs), args.timeout))
+    jobs = [(kind, label, payload, args.reps, args.samples, 1000 + 10 * i,
+             args.timeout)
+            for i, (kind, label, payload) in enumerate(specs)
+            if not wanted or label in wanted]
     with concurrent.futures.ProcessPoolExecutor(args.workers) as pool:
         results = list(pool.map(audit_model, jobs))
 
