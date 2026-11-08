@@ -1154,6 +1154,74 @@ void test_demography_ancient_sample_event(void) {
     TEST_ASSERT_EQUAL_INT(1, ancSampleFlag);
 }
 
+/*
+ * Events at the same time keep the order in which the parser emits them
+ * (the event sort is stable): ancient samples, migration rate changes,
+ * size changes, then each split with its migration-stopping events. The
+ * YAML guide documents this order, and equivalent command lines rely
+ * on it.
+ */
+void test_demography_same_time_event_order(void) {
+    const char *yaml =
+        "simulation:\n"
+        "  sample_size: 10\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "demography:\n"
+        "  deme_sample_size: [5, 5]\n"
+        "  demographic_events:\n"
+        "    population_splits:\n"
+        "      - {time: 0.5, ancestral: 0, derived: 1}\n"
+        "    population_size_changes:\n"
+        "      - {time: 0.5, size: 2.0, population: 0}\n"
+        "    migration_rate_changes:\n"
+        "      - {time: 0.5, rate: 0.3, source: 0, destination: 1}\n"
+        "      - {time: 0.4, rate: 0.3, source: 1, destination: 0}\n"
+        "    ancient_samples:\n"
+        "      - {time: 0.5, population: 0, sample_size: 2}\n";
+    /* A change at the split time that involves the merged population is
+     * rejected, so this one must come before the split. */
+    TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+
+    const char *yaml_ok =
+        "simulation:\n"
+        "  sample_size: 10\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "demography:\n"
+        "  deme_sample_size: [5, 5]\n"
+        "  demographic_events:\n"
+        "    population_splits:\n"
+        "      - {time: 0.5, ancestral: 0, derived: 1}\n"
+        "    population_size_changes:\n"
+        "      - {time: 0.5, size: 2.0, population: 0}\n"
+        "    migration_rate_changes:\n"
+        "      - {time: 0.4, rate: 0.3, source: 1, destination: 0}\n"
+        "    ancient_samples:\n"
+        "      - {time: 0.5, population: 0, sample_size: 2}\n";
+    reset_config_globals();
+    free(events);
+    events = NULL;
+    eventNumber = 0;
+    eventsCapacity = 0;
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml_ok));
+    sortEventArray(events, eventNumber);
+    /* 0.4: migration change; 0.5: ancient sample, size change, split,
+     * then two migration-stopping events. */
+    const char expected[] = {'m', 'A', 'n', 'p', 'm', 'm'};
+    TEST_ASSERT_EQUAL_INT(6, eventNumber);
+    for (int i = 0; i < 6; ++i) {
+        TEST_ASSERT_EQUAL_INT_MESSAGE(expected[i], events[i].type,
+                                      "event type out of order");
+    }
+}
+
 /* Bad population, time or sample_size values are rejected. */
 void test_demography_ancient_sample_rejects_bad_values(void) {
     const char *fmt =
@@ -2263,6 +2331,7 @@ int main(void) {
     RUN_TEST(test_demography_migration_rate_change_rejects_bad_values);
     RUN_TEST(test_demography_migration_rate_change_after_split_rejected);
     RUN_TEST(test_demography_ancient_sample_event);
+    RUN_TEST(test_demography_same_time_event_order);
     RUN_TEST(test_demography_ancient_sample_rejects_bad_values);
     RUN_TEST(test_demography_ancient_sample_after_split_rejected);
     RUN_TEST(test_demography_migration_matrix_requires_square);

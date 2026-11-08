@@ -148,8 +148,16 @@ Notes:
   outnumber its samples. `time` must be `>= 0` and `sample_size`
   `>= 1`. A sample from a population at or after the time it merges
   into another one is rejected.
+- Events at the same time take effect in this order:
+  `ancient_samples`, `migration_rate_changes`,
+  `population_size_changes`, `population_splits` (each split followed
+  by the migration changes that stop the merged population's
+  migration), and within each list in file order. On the CLI, events
+  at the same time take effect in command-line order, so an equivalent
+  command line must list them in this order to give the same output.
 - `demes_filename` and explicit `demographic_events` /
   `migration_matrix` are mutually exclusive — use one or the other.
+  So ancient samples cannot yet be combined with a demes file.
 
 
 ## selection

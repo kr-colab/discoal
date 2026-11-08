@@ -22,22 +22,29 @@ demography:
     - row: [1.0e-1, 0.0, 1.0e-1]
     - row: [1.0e-1, 1.0e-1, 0.0]
   demographic_events:
+    # times in units of 4N0 generations, sizes relative to N0
     population_size_changes:
-      - time: 1000
-        size: 2000
+      - time: 0.5
+        size: 2.0
         population: 0
-      - time: 1500
-        size: 100
+      - time: 0.75
+        size: 0.1
         population: 1
+    # rates are 4N0 m; lineages move from source to destination
     migration_rate_changes:
-      - time: 1000
-        rate: 1.0e-6
+      - time: 0.5
+        rate: 0.5
         source: 0
         destination: 1
-      - time: 2500
-        rate: 1.0e-6
+      - time: 1.25
+        rate: 0.0
         source: 0
         destination: 2
+    # part of the population's deme_sample_size
+    ancient_samples:
+      - time: 0.1
+        population: 1
+        sample_size: 2
     population_splits:
       - time: 2.0
         ancestral: 0
