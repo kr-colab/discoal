@@ -139,6 +139,23 @@ demes:
 """
 
 
+# A growth epoch between two constant epochs: at 1000 generations the importer
+# emits a size change and a growth change at the same time.
+DEMES_GROWTH_MIDDLE = """time_units: generations
+demes:
+  - name: A
+    epochs:
+      - end_time: 20000
+        start_size: 1000
+      - end_time: 1000
+        start_size: 1000
+        end_size: 10000
+        size_function: exponential
+      - end_time: 0
+        start_size: 10000
+"""
+
+
 def cases(tmp):
     """Each case has: name, samples ({population: count}), either discoal
     `flags` or a `demes` file, the msprime `model` for the documented
@@ -160,6 +177,9 @@ def cases(tmp):
     growth_file = os.path.join(tmp, "growth.demes.yaml")
     with open(growth_file, "w") as f:
         f.write(DEMES_GROWTH)
+    middle_file = os.path.join(tmp, "growth_middle.demes.yaml")
+    with open(middle_file, "w") as f:
+        f.write(DEMES_GROWTH_MIDDLE)
     example = os.path.join(REPO, "config_examples", "demes_example.demes.yaml")
 
     return [
@@ -186,6 +206,10 @@ def cases(tmp):
                        two_pop(m / (4 * N0), 4 * N0, "P1", "P0")}),
         dict(name="demes exponential epoch", samples=s20, demes=growth_file,
              model=msprime.Demography.from_demes(demes.load(growth_file)),
+             alts={}),
+        dict(name="demes exponential epoch between constant epochs",
+             samples=s20, demes=middle_file,
+             model=msprime.Demography.from_demes(demes.load(middle_file)),
              alts={}),
         dict(name="demes splits, sizes, migration windows",
              samples={"A": 10, "B": 5, "C": 5}, demes=example,

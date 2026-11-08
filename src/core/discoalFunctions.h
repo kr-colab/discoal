@@ -115,7 +115,6 @@ int nodePopnSize(int popn);
 int nodePopnSweepSize(int popn, int sp);
 rootedNode *pickNodePopnSweep(int popn,int sp);
 
-int compare_events(const void *a,const void *b);
 void sortEventArray(struct event *eArray, int eNumber);
 
 int findRootAtSite(float site);

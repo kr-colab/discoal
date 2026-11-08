@@ -3577,19 +3577,32 @@ void printAllActiveNodes(){
 }
 
 /********** event stuff */
-int compare_events(const void *a,const void *b){
-	struct event *pa = (struct event *) a;
-	struct event *pb = (struct event *) b;
-	if ((pa->time - pb->time) > 0 ){
-		return 1;
-	}
-	else{
-		return - 1;
-	}
+/* Events at the same time keep the order they were given in, except that
+ * growth-rate changes ('g', 'l') come after all other events. A growth event
+ * anchors at the size in force when it runs, so a size change at the same
+ * time (for example an 'n' at the boundary of a demes exponential epoch)
+ * must be applied first. */
+static int eventTieRank(char type){
+	return (type == 'g' || type == 'l') ? 1 : 0;
 }
 
+static int eventPrecedes(const struct event *a, const struct event *b){
+	if (a->time != b->time) return a->time < b->time;
+	return eventTieRank(a->type) < eventTieRank(b->type);
+}
+
+/* Stable insertion sort. qsort is not stable, so it gave tied events an
+ * arbitrary order; event lists are short enough that O(n^2) is cheap. */
 void sortEventArray(struct event *eArray, int eNumber){
-	qsort(eArray, eNumber, sizeof(eArray[0]), compare_events);
+	for (int i = 1; i < eNumber; i++) {
+		struct event key = eArray[i];
+		int j = i - 1;
+		while (j >= 0 && eventPrecedes(&key, &eArray[j])) {
+			eArray[j + 1] = eArray[j];
+			j--;
+		}
+		eArray[j + 1] = key;
+	}
 }
 
 //////// MISC
