@@ -464,10 +464,12 @@ def discoal_tree_mean(argv, tmp):
                     for f in glob.glob(os.path.join(tmp, "t_rep*.trees"))])
 
 
-def msprime_tree_mean(demography, pop, n, sites, r, reps, seed):
-    """Mean number of distinct trees under msprime on a discrete genome."""
+def msprime_tree_mean(demography, samples, sites, r, reps, seed):
+    """Mean number of distinct trees under msprime on a discrete genome;
+    samples is {population: haploid sample count}."""
     return mean_se([ts.num_trees for ts in msprime.sim_ancestry(
-        samples=[msprime.SampleSet(n, population=pop, ploidy=1)],
+        samples=[msprime.SampleSet(k, population=p, ploidy=1)
+                 for p, k in samples.items()],
         demography=demography, ploidy=2, sequence_length=sites,
         recombination_rate=r, num_replicates=reps, random_seed=seed)])
 
@@ -490,38 +492,47 @@ def tree_cases(tmp, reps):
     grown.add_population_parameters_change(time=0.05 * 4 * N0,
                                            initial_size=100 * N0,
                                            population="pop_0")
-    # A small present size and a large past size, as in the BosTau models.
-    text = ("time_units: generations\ndemes:\n  - name: A\n    epochs:\n"
-            "      - {end_time: 2000, start_size: 90000}\n"
-            "      - {end_time: 0, start_size: 300}\n")
-    path = os.path.join(tmp, "small_present.demes.yaml")
+    # Two present-day demes of different sizes, and a much larger past size:
+    # rho must be relative to the present size of the first deme (A, 300),
+    # not to B (3000) or to A's past size (90000). B merges into A at 1000
+    # generations, so lineages coalesce in A long before the large epoch.
+    text = ("time_units: generations\ndemes:\n"
+            "  - name: A\n    epochs:\n"
+            "      - {end_time: 50000, start_size: 90000}\n"
+            "      - {end_time: 0, start_size: 300}\n"
+            "  - name: B\n    ancestors: [A]\n    start_time: 1000\n"
+            "    epochs: [{start_size: 3000}]\n")
+    path = os.path.join(tmp, "two_present_demes.demes.yaml")
     with open(path, "w") as f:
         f.write(text)
-    cfg = os.path.join(tmp, "small_present.yaml")
+    half = max(2, reps // 2)
+    cfg = os.path.join(tmp, "two_present_demes.yaml")
     with open(cfg, "w") as f:
-        f.write(f"simulation: {{sample_size: {n}, num_replicates: {few}, "
+        f.write(f"simulation: {{sample_size: {n}, num_replicates: {half}, "
                 f"num_sites: 1000, seed: [7, 8]}}\n"
                 f"genetics: {{mutation_rate: 0, recombination_rate: {rho}}}\n"
-                f"demography: {{deme_sample_size: [{n}], "
+                f"demography: {{deme_sample_size: [{n // 2}, {n // 2}], "
                 f"demes_filename: \"{path}\"}}\n")
     return [
         dict(name="-r rho is 4N0 r over all L sites (L = 10)", reps=reps,
              argv=[str(n), str(reps), "10", "-t", "0", "-r", str(rho),
                    "-d", "3", "4"],
-             model=msprime.Demography.isolated_model([N0]), pop="pop_0",
-             sites=10, r=r(N0, 10),
+             model=msprime.Demography.isolated_model([N0]),
+             samples={"pop_0": n}, sites=10, r=r(N0, 10),
              alts={"over L - 1 sites": rho / (4 * N0 * 9),
                    "2 rho": 2 * r(N0, 10)}),
         dict(name="-r with a past size 100 x N0: r stays per generation",
              reps=few,
              argv=[str(n), str(few), "1000", "-t", "0", "-r", str(rho),
                    "-en", "0.05", "0", "100", "-d", "5", "6"],
-             model=grown, pop="pop_0", sites=1000, r=r(N0, 1000),
+             model=grown, samples={"pop_0": n}, sites=1000, r=r(N0, 1000),
              alts={"rho relative to the past size": r(100 * N0, 1000)}),
-        dict(name="demes: rho is relative to the present size of deme 0",
-             reps=few, argv=["-Y", cfg], model=msprime.Demography.from_demes(
-                 demes.loads(text)), pop="A", sites=1000, r=r(300, 1000),
-             alts={"rho relative to the past size": r(90000, 1000)}),
+        dict(name="demes: rho is relative to the present size of the first deme",
+             reps=half, argv=["-Y", cfg], model=msprime.Demography.from_demes(
+                 demes.loads(text)), samples={"A": n // 2, "B": n // 2},
+             sites=1000, r=r(300, 1000),
+             alts={"rho relative to deme B (3000)": r(3000, 1000),
+                   "rho relative to A's past size (90000)": r(90000, 1000)}),
     ]
 
 
@@ -552,11 +563,10 @@ def main():
                     for k, mm in case["alts"].items()}
             all_ok &= report(case["name"], d, ref, alts)
 
-        n = 10
         for i, case in enumerate(tree_cases(tmp, reps)):
             seed = 2010 + 10 * i
             d = discoal_tree_mean(case["argv"], tmp)
-            args = (case["model"], case["pop"], n, case["sites"])
+            args = (case["model"], case["samples"], case["sites"])
             ref = msprime_tree_mean(*args, case["r"], case["reps"], seed)
             alts = {k: msprime_tree_mean(*args, rk, case["reps"], seed + 1)
                     for k, rk in case["alts"].items()}

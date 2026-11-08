@@ -285,9 +285,10 @@ def run_msprime(graph, names, n, reps, seed, r, sites):
 
 
 # demes specification test cases with near-zero migration between demes:
-# the trees are extremely tall, and with recombination each replicate takes
-# many minutes in both simulators. Without recombination they run quickly
-# (and pass), so they are skipped only when --rho > 0.
+# the trees are extremely tall, and with recombination neither simulator
+# finishes 2 replicates in 2 minutes (valid/migration_05.yaml, --rho 100
+# --sites 10000). Without recombination they take under a second each and
+# pass, so they are skipped only when --rho > 0.
 SLOW_WITH_RECOMBINATION = {
     "valid/basic_resolution_04.yaml", "valid/basic_resolution_05.yaml",
     "valid/migration_05.yaml", "valid/migration_06.yaml",
