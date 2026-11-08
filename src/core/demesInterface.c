@@ -405,6 +405,26 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
             }
         }
         
+        // A deme that ends before the present needs its size set at the end
+        // of its last epoch, where its descendants merge into it. Epoch
+        // transitions above set sizes only between epochs, and present-day
+        // sizes are set only for demes alive at time 0.
+        struct demes_epoch *last = &deme->epochs[deme->n_epochs - 1];
+        if (last->end_time > 0.0) {
+            double lastSize = (last->size_function == DEMES_SIZE_FUNCTION_EXPONENTIAL)
+                              ? last->end_size : last->start_size;
+            double coalTime = demesTimeToCoalTime(last->end_time,
+                                                  graph->generation_time, N);
+            ensureDemesEventsCapacity(events, eventsCapacity, *eventNumber + 1);
+            (*events)[*eventNumber].time = coalTime;
+            (*events)[*eventNumber].popID = popID;
+            (*events)[*eventNumber].popnSize = demesSizeToCoalSize(lastSize, N);
+            (*events)[*eventNumber].type = 'n';
+            (*eventNumber)++;
+            VERBOSE_LOG("  Ends at time %g: size %g set at discoal time %g\n",
+                        last->end_time, lastSize, coalTime);
+        }
+
         // Handle population splits/merges
         if (deme->n_ancestors > 0) {
             double coalTime = demesTimeToCoalTime(deme->start_time, graph->generation_time, N);

@@ -84,8 +84,10 @@ def discoal_argv(case, reps, seed, tmp):
 
 def msprime_mean(demography, samples, reps, seed):
     """Expected segsites under msprime: mean branch length times MU."""
+    # Zero entries keep discoal's deme_sample_size in graph order (extinct
+    # demes included); msprime needs only the sampled demes.
     sets = [msprime.SampleSet(k, population=p, ploidy=1)
-            for p, k in samples.items()]
+            for p, k in samples.items() if k > 0]
     return mean_se([ts.segregating_sites(mode="branch") * MU
                     for ts in msprime.sim_ancestry(
                         samples=sets, demography=demography, ploidy=2,
@@ -156,6 +158,30 @@ demes:
 """
 
 
+# Two present-day demes that merge into an extinct ancestor of a different
+# size. The ancestor's size must be set where its last epoch ends.
+DEMES_EXTINCT_ANCESTOR = """time_units: generations
+demes:
+  - name: ANC
+    epochs:
+      - end_time: 20000
+        start_size: 2000
+  - name: A
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 10000
+  - name: B
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 10000
+migrations:
+  - demes: [A, B]
+    rate: 1.0e-5
+"""
+
+
 def cases(tmp):
     """Each case has: name, samples ({population: count}), either discoal
     `flags` or a `demes` file, the msprime `model` for the documented
@@ -180,6 +206,9 @@ def cases(tmp):
     middle_file = os.path.join(tmp, "growth_middle.demes.yaml")
     with open(middle_file, "w") as f:
         f.write(DEMES_GROWTH_MIDDLE)
+    extinct_file = os.path.join(tmp, "extinct_ancestor.demes.yaml")
+    with open(extinct_file, "w") as f:
+        f.write(DEMES_EXTINCT_ANCESTOR)
     example = os.path.join(REPO, "config_examples", "demes_example.demes.yaml")
 
     return [
@@ -210,6 +239,10 @@ def cases(tmp):
         dict(name="demes exponential epoch between constant epochs",
              samples=s20, demes=middle_file,
              model=msprime.Demography.from_demes(demes.load(middle_file)),
+             alts={}),
+        dict(name="demes extinct ancestor with its own size",
+             samples={"ANC": 0, "A": 10, "B": 10}, demes=extinct_file,
+             model=msprime.Demography.from_demes(demes.load(extinct_file)),
              alts={}),
         dict(name="demes splits, sizes, migration windows",
              samples={"A": 10, "B": 5, "C": 5}, demes=example,
