@@ -19,6 +19,8 @@ set -u
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 DISCOAL=${DISCOAL:-$REPO_ROOT/build/discoal}
+# A case that runs longer than this fails, so a hang cannot stall CI.
+CASE_TIMEOUT=${CASE_TIMEOUT:-60}
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -33,9 +35,10 @@ FAIL_NAMES=()
 run_pass_case() {
     local name=$1; shift
     local out rc
-    out=$("$DISCOAL" "$@" 2>&1)
+    out=$(timeout "$CASE_TIMEOUT" "$DISCOAL" "$@" 2>&1)
     rc=$?
     if [ "$rc" -ne 0 ]; then
+        [ "$rc" -eq 124 ] && rc="124, timed out after ${CASE_TIMEOUT} s"
         echo -e "${RED}FAIL${NC} $name (expected exit 0, got $rc)"
         echo "  last stderr line: $(printf '%s\n' "$out" | tail -1)"
         FAIL_NAMES+=("$name"); FAIL=$((FAIL + 1)); return
@@ -51,7 +54,7 @@ run_pass_case() {
 run_fail_case() {
     local name=$1 expect=$2; shift 2
     local out rc
-    out=$("$DISCOAL" "$@" 2>&1)
+    out=$(timeout "$CASE_TIMEOUT" "$DISCOAL" "$@" 2>&1)
     rc=$?
     if [ "$rc" -eq 0 ]; then
         echo -e "${RED}FAIL${NC} $name (expected non-zero exit, got 0)"
@@ -233,6 +236,12 @@ run_pass_case "eg_during_partial_sweep" \
 
 run_pass_case "eg_during_sweep_default_N" \
     20 20 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0 0 2 -d 3 4
+
+# Exponential growth over a long time: after the sweep one lineage is left
+# in each population, and while they wait to migrate the size underflows to
+# 0. Coalescence must then still happen (at once).
+run_pass_case "eG_size_underflow_two_populations" \
+    20 5 10000 -N 10000 -t 1 -r 10 -p 2 10 10 -m 0 1 1 -m 1 0 1 -ws 0.01 -a 500 -eG 0 200 -d 3 6
 
 echo
 echo -e "${BLUE}=== Summary ===${NC}"

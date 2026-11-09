@@ -158,34 +158,48 @@ double integratedHazardMig(int srcPopID, int dstPopID, double t0, double T, int 
  *                (where N -> 0); cap T just shy of T_cross to avoid
  *                returning a value that the caller would interpret as a
  *                physical event past the trajectory's crash time.
+ *
+ * The result is at least the smallest step that moves t0 forward. With
+ * exponential growth over a long time the size underflows to 0 (or so
+ * near 0 that T rounds to 0), and coalescence is then immediate; a step
+ * of exactly 0 would give a coalescence the same time as the event before
+ * it, and the caller treats a time <= 0 as "no event".
  */
 double drawWaitingTimeSize(int popID, double t0, double xi, int k) {
     if (k < 2) return -1.0;
     Shape *s = &popShape[popID];
     double pairs = (double)k * (k - 1) / 2.0;
     double N0 = sizeAt(popID, t0);
-    if (N0 <= 0.0) return -1.0;
+    const double minStep = nextafter(t0, INFINITY) - t0;
+    double T;
+    if (N0 <= 0.0) return minStep;
     switch (s->type) {
         case SHAPE_CONSTANT:
-            return xi * N0 / pairs;
+            T = xi * N0 / pairs;
+            break;
         case SHAPE_EXPONENTIAL: {
             double a = s->rate_param;
-            if (a == 0.0) return xi * N0 / pairs;
-            return log1p(N0 * a * xi / pairs) / a;
+            T = (a == 0.0) ? xi * N0 / pairs : log1p(N0 * a * xi / pairs) / a;
+            break;
         }
         case SHAPE_LINEAR: {
             double g = s->rate_param;
-            if (g == 0.0) return xi * N0 / pairs;
-            double T = (N0 / g) * (1.0 - exp(-g * xi / pairs));
+            if (g == 0.0) {
+                T = xi * N0 / pairs;
+                break;
+            }
+            T = (N0 / g) * (1.0 - exp(-g * xi / pairs));
             if (g > 0.0) {
                 double T_cross = N0 / g;
                 if (T >= T_cross) T = nextafter(T_cross, 0.0);
             }
-            return T;
+            break;
         }
+        default:
+            unknownShape("drawWaitingTimeSize", s->type);
+            return -1.0;
     }
-    unknownShape("drawWaitingTimeSize", s->type);
-    return -1.0;
+    return (T < minStep) ? minStep : T;
 }
 
 /* Inversion of integratedHazardMig: solve H(T) = xi for T.  Returns -1.0
