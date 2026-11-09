@@ -2442,12 +2442,12 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 								}
 								else{
 									sum += pLeftRecb;
-									if ( r < sum / totRate){
+									if ( r < sum / sweepPopTotRate){
 									        recombineToLeftPopnSweep(0, 0, x);
 									}
 									else{
 										sum += pLeftRecB;
-										if ( r < sum / totRate){
+										if ( r < sum / sweepPopTotRate){
 										recombineToLeftPopnSweep(0, 1, x);
 										}
 										else{
