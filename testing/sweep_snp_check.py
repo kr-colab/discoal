@@ -31,6 +31,10 @@ DISCOAL = os.path.join(REPO, "build", "discoal")
 N_SAMPLES = 20
 SITES = 10000
 Z_MAX = 4.0
+# Population size during sweeps (-N). The sweep phase takes time in
+# proportion to it; the checks do not depend on it, and 1e4 keeps the
+# script at seconds rather than minutes (the default is 1e6).
+N_SWEEP = 10000
 
 
 def run(args):
@@ -74,7 +78,7 @@ def main():
     x = 0.3
     for c in (0.5, 0.2):
         out = run([N_SAMPLES, reps, SITES, "-t", 0.0001, "-r", 20, "-ws", 0,
-                   "-a", 500, "-x", x, "-c", c, "-d", 11, 12])
+                   "-a", 500, "-N", N_SWEEP, "-x", x, "-c", c, "-d", 11, 12])
         found = [derived_count_at(r, x) for r in replicates(out)]
         # No site means that no sampled lineage carries the allele.
         counts = np.array([0 if k is None else k for k in found])
@@ -88,13 +92,13 @@ def main():
                f"carried site at x={x}")
 
     out = run([N_SAMPLES, 500, SITES, "-t", 0.0001, "-r", 20, "-ws", 0,
-               "-a", 500, "-x", x, "-c", 0.5, "-h", "-d", 11, 12])
+               "-a", 500, "-N", N_SWEEP, "-x", x, "-c", 0.5, "-h", "-d", 11, 12])
     hidden = sum(derived_count_at(r, x) is not None for r in replicates(out))
     report(hidden == 0, f"-h hides the selected site ({hidden} replicates "
                         "show it)")
 
     out = run([N_SAMPLES, 2000, SITES, "-t", 0.0001, "-r", 20, "-R", 4,
-               "-a", 500, "-c", 0.5, "-d", 11, 12])
+               "-a", 500, "-N", N_SWEEP, "-c", 0.5, "-d", 11, 12])
     nsites = np.array([len(r[0]) for r in replicates(out)])
     report(nsites.mean() > 2.0 and nsites.max() > 3,
            f"recurrent partial sweeps: {nsites.mean():.2f} selected sites "
@@ -103,7 +107,7 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         prefix = os.path.join(tmp, "p.trees")
         run([N_SAMPLES, 1, SITES, "-t", 0.0001, "-r", 20, "-ws", 0,
-             "-a", 500, "-x", x, "-c", 0.5, "-d", 5, 6, "-ts", prefix])
+             "-a", 500, "-N", N_SWEEP, "-x", x, "-c", 0.5, "-d", 5, 6, "-ts", prefix])
         ts = tskit.load(prefix)
         positions = [s.position for s in ts.sites()]
         report(x * SITES in positions,
