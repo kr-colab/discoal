@@ -2170,9 +2170,13 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			popShape[events[i].popID].anchor_value = events[i].popnSize;
 			popShape[events[i].popID].rate_param = 0.0;
 			popShape[events[i].popID].anchor_time = events[i].time;
-			currentSizeRatio = events[i].popnSize;  /* legacy cache for inner loop */
-			N = floor(N_0 * events[i].popnSize);
-			if(currentSizeRatio > Nmax) Nmax = currentSizeRatio;
+			/* Only population 0 sweeps: the size of another population
+			 * must not set the trajectory's N, its end or its acceptance. */
+			if(events[i].popID == 0){
+				currentSizeRatio = events[i].popnSize;  /* legacy cache for inner loop */
+				N = floor(N_0 * events[i].popnSize);
+				if(currentSizeRatio > Nmax) Nmax = currentSizeRatio;
+			}
 		}
 		if(events[i].type == 'g'){
 			popShape[events[i].popID].type = SHAPE_EXPONENTIAL;
@@ -2183,7 +2187,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			 * event time. A future refinement could compute the maximum
 			 * over the interval analytically. */
 			double sr_now = sizeAt(events[i].popID, events[i].time);
-			if(sr_now > Nmax) Nmax = sr_now;
+			if(events[i].popID == 0 && sr_now > Nmax) Nmax = sr_now;
 		}
 		if(events[i].type == 'l'){
 			popShape[events[i].popID].type = SHAPE_LINEAR;
@@ -2191,7 +2195,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			popShape[events[i].popID].rate_param = events[i].popnSize;
 			popShape[events[i].popID].anchor_time = events[i].time;
 			double sr_now = sizeAt(events[i].popID, events[i].time);
-			if(sr_now > Nmax) Nmax = sr_now;
+			if(events[i].popID == 0 && sr_now > Nmax) Nmax = sr_now;
 		}
 		if(minF < 1.0/(2.*N)) minF = 1.0/(2.*N);
 		tInc = 1.0 / (deltaTMod * N);
