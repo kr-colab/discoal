@@ -41,6 +41,7 @@
 #include "unity.h"
 #include "configInterface.h"
 #include "discoal.h"
+#include "discoalFunctions.h"
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
