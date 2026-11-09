@@ -53,12 +53,13 @@ def replicates(out):
 
 
 def derived_count_at(rep, x):
-    """Samples carrying the derived allele at position x (0 if no site)."""
+    """Samples carrying the derived allele at position x, or None if the
+    replicate has no site there."""
     positions, rows = rep
     for k, p in enumerate(positions):
         if abs(p - x) < 1e-6:
             return sum(row[k] == "1" for row in rows)
-    return 0
+    return None
 
 
 def main():
@@ -74,21 +75,21 @@ def main():
     for c in (0.5, 0.2):
         out = run([N_SAMPLES, reps, SITES, "-t", 0.0001, "-r", 20, "-ws", 0,
                    "-a", 500, "-x", x, "-c", c, "-d", 11, 12])
-        reps_out = replicates(out)
-        counts = np.array([derived_count_at(r, x) for r in reps_out])
-        at_x = sum(any(abs(p - x) < 1e-6 for p in r[0]) for r in reps_out)
+        found = [derived_count_at(r, x) for r in replicates(out)]
+        # No site means that no sampled lineage carries the allele.
+        counts = np.array([0 if k is None else k for k in found])
         mean, var = N_SAMPLES * c, N_SAMPLES * c * (1 - c)
         z = (counts.mean() - mean) / np.sqrt(var / len(counts))
         ratio = counts.var() / var
         report(abs(z) < Z_MAX and 0.85 < ratio < 1.15
-               and at_x == np.count_nonzero(counts),
+               and all(k is None or k > 0 for k in found),
                f"-c {c}: derived count mean {counts.mean():.2f} (expected "
                f"{mean:.1f}, z={z:+.1f}), variance ratio {ratio:.3f}; every "
                f"carried site at x={x}")
 
     out = run([N_SAMPLES, 500, SITES, "-t", 0.0001, "-r", 20, "-ws", 0,
                "-a", 500, "-x", x, "-c", 0.5, "-h", "-d", 11, 12])
-    hidden = sum(derived_count_at(r, x) > 0 for r in replicates(out))
+    hidden = sum(derived_count_at(r, x) is not None for r in replicates(out))
     report(hidden == 0, f"-h hides the selected site ({hidden} replicates "
                         "show it)")
 
@@ -97,8 +98,7 @@ def main():
     nsites = np.array([len(r[0]) for r in replicates(out)])
     report(nsites.mean() > 2.0 and nsites.max() > 3,
            f"recurrent partial sweeps: {nsites.mean():.2f} selected sites "
-           f"per replicate on average (at most one before), "
-           f"maximum {nsites.max()}")
+           f"per replicate on average, maximum {nsites.max()}")
 
     with tempfile.TemporaryDirectory() as tmp:
         prefix = os.path.join(tmp, "p.trees")

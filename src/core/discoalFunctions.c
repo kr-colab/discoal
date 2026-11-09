@@ -1877,19 +1877,6 @@ static double trajectoryEnd(int fromStandingVariation, double N){
 	return fromStandingVariation ? 0.0 : 1.0/(2.*N);
 }
 
-/* The tskit node that holds a lineage's ancestral material: the lineage's
- * own node, or, for a recombination parent without one (minimal tree
- * sequence mode), the first recorded node down its single child. */
-static tsk_id_t recordedNodeOf(rootedNode *node){
-	while (node != NULL) {
-		tsk_id_t id = get_tskit_node_id(node);
-		if (id != TSK_NULL)
-			return id;
-		node = node->leftChild;
-	}
-	return TSK_NULL;
-}
-
 /* A partial sweep starts (going back in time) with its lineages in
  * population 0 split into the two sweep classes. The selected allele is
  * then at partialSweepFinalFreq, carried by the beneficial class. Add a
@@ -1898,7 +1885,7 @@ static tsk_id_t recordedNodeOf(rootedNode *node){
  * lineages at the site carry the allele. Each sweep, recurrent ones
  * included, gets its own site. -h (hidePartialSNP) leaves it out, as does
  * a selected site outside the locus. */
-void recordPartialSweepSite(double site){
+static void recordPartialSweepSite(double site){
 	int i;
 	tsk_id_t site_id = TSK_NULL;
 	if (hidePartialSNP || site < 0.0)
@@ -1907,9 +1894,12 @@ void recordPartialSweepSite(double site){
 		if(nodes[i]->population != 0 || nodes[i]->sweepPopn != 1 ||
 		   !isAncestralHere(nodes[i], site))
 			continue;
-		tsk_id_t node_id = recordedNodeOf(nodes[i]);
-		if (node_id == TSK_NULL)
+		/* The lineage's recorded node; in minimal mode a recombination
+		 * parent has none, and its single child holds the material. */
+		rootedNode *recorded;
+		if (findTrueDescendants(nodes[i], &recorded, 1) == 0)
 			continue;
+		tsk_id_t node_id = get_tskit_node_id(recorded);
 		if (site_id == TSK_NULL) {
 			site_id = tskit_add_site(site * nSites, "0");
 			if (site_id < 0) {
@@ -1922,6 +1912,25 @@ void recordPartialSweepSite(double site){
 			exit(1);
 		}
 	}
+}
+
+/* Start a sweep (going back in time): put the lineages of population 0
+ * into the sweep classes (sweepPopn 1 is the beneficial class). In a
+ * partial sweep each lineage is in the beneficial class with probability
+ * partialSweepFinalFreq, and the selected site is recorded; otherwise
+ * every lineage is. */
+static void startSweep(double sweepSite){
+	int i;
+	for(i=0;i<alleleNumber;i++){
+		if(nodes[i]->population!=0)
+			continue;
+		if(partialSweepMode == 1)
+			nodes[i]->sweepPopn = (ranf() > partialSweepFinalFreq) ? 0 : 1;
+		else
+			nodes[i]->sweepPopn = 1;
+	}
+	if(partialSweepMode == 1)
+		recordPartialSweepSite(sweepSite);
 }
 
 /* Draw a sweep trajectory by rejection sampling: propose trajectories
@@ -2141,27 +2150,9 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	if(minF < 1.0/(2.*N))
 		minF = 1.0/(2.*N);
 
-	//if new sweep then reset sweepPopnIDs; only popn 0 sweeps, sweepPopn==1 is the beneficial class
 	if(!*stillSweeping){
-		for(i=0;i<alleleNumber;i++){
-			if(nodes[i]->population==0){
-				if(partialSweepMode == 1){
-					//for partial sweeps choose randomly acccording to final sweep freq
-					if(ranf()>partialSweepFinalFreq){
-						nodes[i]->sweepPopn = 0;						
-					}
-					else{
-						nodes[i]->sweepPopn = 1;
-					}
-				}
-				else{
-			 		nodes[i]->sweepPopn=1;
-				}
-			}
-		}
-		if(partialSweepMode == 1)
-			recordPartialSweepSite(sweepSite);
-	*stillSweeping = 1;
+		startSweep(sweepSite);
+		*stillSweeping = 1;
 	}
 	
 	//assume that sweep always happens in popn 0!!!
@@ -2677,14 +2668,12 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 			r = ranf();
 			if (r < popnFreq)rParent->sweepPopn = sp;
 			else rParent->sweepPopn = (sp == 0) ? 1:0;
-
 		}
 		else{ //rParent has sweep site, lParent is then random
 			rParent->sweepPopn = sp;
 			r = ranf();
 			if (r < popnFreq) lParent->sweepPopn = sp;
 			else lParent->sweepPopn = (sp == 0) ? 1:0;
-
 		}
 		//	printf("lParentsp:%d rParentsp:%d\n",lParent->sweepPopn,rParent->sweepPopn);
 			//add in the nodes

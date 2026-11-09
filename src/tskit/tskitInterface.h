@@ -72,7 +72,6 @@ void set_tskit_node_id_at_index(int index, tsk_id_t tsk_id);
 // Place mutations using edge-based algorithm (similar to msprime's design)
 int tskit_place_mutations_edge_based(double theta);
 
-// Record sweep mutations for nodes that carry them
 
 // Store command line for provenance (called from main)
 void tskit_store_command_line(int argc, const char **argv);
