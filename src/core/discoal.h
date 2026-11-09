@@ -65,7 +65,6 @@ typedef struct rootedNode
 	unsigned char parentsRecorded;  // Bit flags: left parent (bit 0), right parent (bit 1)
 	unsigned char isFullyRecorded;  // 1 when all genealogical info is in tskit
 	unsigned char inActiveSet;      // 1 if still in nodes[0..alleleNumber-1]
-	unsigned char carriesSweepMutation;  // 1 if this node carries the beneficial mutation
 	
 	// Population list tracking for O(1) node selection
 	int popListIndex;        // Index in population's node array (-1 if not in list)

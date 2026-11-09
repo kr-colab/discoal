@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""Check the selected SNP of partial sweeps (-c) in discoal's output.
+
+At a partial sweep that ends at the present (-ws 0 ... -c c), each sampled
+lineage is in the beneficial class with probability c, so the number of
+samples that carry the selected allele is Binomial(n, c), and the selected
+site is at the sweep position given by -x. The checks:
+
+  1. the selected site is at -x, and its derived count has the binomial
+     mean and variance (two final frequencies);
+  2. -h hides the selected site;
+  3. recurrent partial sweeps (-R ... -c) leave one site per sweep, so a
+     replicate can hold more than one (with a tiny theta, every site is a
+     selected site);
+  4. in tree sequence output (-ts) the site is at -x times the number of
+     sites.
+
+Needs build/discoal, numpy and tskit. Exit code 0 if every check passes.
+"""
+
+import os
+import subprocess
+import sys
+import tempfile
+
+import numpy as np
+import tskit
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DISCOAL = os.path.join(REPO, "build", "discoal")
+N_SAMPLES = 20
+SITES = 10000
+Z_MAX = 4.0
+
+
+def run(args):
+    return subprocess.run([DISCOAL] + [str(a) for a in args],
+                          capture_output=True, text=True, check=True).stdout
+
+
+def replicates(out):
+    """(positions, haplotype rows) for each replicate of ms output."""
+    reps = []
+    for block in out.split("//")[1:]:
+        lines = block.strip().splitlines()
+        nseg = int(lines[0].split()[1])
+        if nseg == 0:
+            reps.append(([], []))
+            continue
+        positions = [float(x) for x in lines[1].split()[1:]]
+        reps.append((positions, lines[2:2 + N_SAMPLES]))
+    return reps
+
+
+def derived_count_at(rep, x):
+    """Samples carrying the derived allele at position x (0 if no site)."""
+    positions, rows = rep
+    for k, p in enumerate(positions):
+        if abs(p - x) < 1e-6:
+            return sum(row[k] == "1" for row in rows)
+    return 0
+
+
+def main():
+    ok = True
+
+    def report(passed, text):
+        nonlocal ok
+        ok &= passed
+        print(f"{'PASS' if passed else 'FAIL'}  {text}", flush=True)
+
+    reps = 4000
+    x = 0.3
+    for c in (0.5, 0.2):
+        out = run([N_SAMPLES, reps, SITES, "-t", 0.0001, "-r", 20, "-ws", 0,
+                   "-a", 500, "-x", x, "-c", c, "-d", 11, 12])
+        reps_out = replicates(out)
+        counts = np.array([derived_count_at(r, x) for r in reps_out])
+        at_x = sum(any(abs(p - x) < 1e-6 for p in r[0]) for r in reps_out)
+        mean, var = N_SAMPLES * c, N_SAMPLES * c * (1 - c)
+        z = (counts.mean() - mean) / np.sqrt(var / len(counts))
+        ratio = counts.var() / var
+        report(abs(z) < Z_MAX and 0.85 < ratio < 1.15
+               and at_x == np.count_nonzero(counts),
+               f"-c {c}: derived count mean {counts.mean():.2f} (expected "
+               f"{mean:.1f}, z={z:+.1f}), variance ratio {ratio:.3f}; every "
+               f"carried site at x={x}")
+
+    out = run([N_SAMPLES, 500, SITES, "-t", 0.0001, "-r", 20, "-ws", 0,
+               "-a", 500, "-x", x, "-c", 0.5, "-h", "-d", 11, 12])
+    hidden = sum(derived_count_at(r, x) > 0 for r in replicates(out))
+    report(hidden == 0, f"-h hides the selected site ({hidden} replicates "
+                        "show it)")
+
+    out = run([N_SAMPLES, 2000, SITES, "-t", 0.0001, "-r", 20, "-R", 4,
+               "-a", 500, "-c", 0.5, "-d", 11, 12])
+    nsites = np.array([len(r[0]) for r in replicates(out)])
+    report(nsites.mean() > 2.0 and nsites.max() > 3,
+           f"recurrent partial sweeps: {nsites.mean():.2f} selected sites "
+           f"per replicate on average (at most one before), "
+           f"maximum {nsites.max()}")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        prefix = os.path.join(tmp, "p.trees")
+        run([N_SAMPLES, 1, SITES, "-t", 0.0001, "-r", 20, "-ws", 0,
+             "-a", 500, "-x", x, "-c", 0.5, "-d", 5, 6, "-ts", prefix])
+        ts = tskit.load(prefix)
+        positions = [s.position for s in ts.sites()]
+        report(x * SITES in positions,
+               f"-ts: selected site at {x * SITES:g} (sites at "
+               f"{positions[:5]})")
+
+    print("\nAll checks pass." if ok else "\nOne or more checks FAILED.")
+    sys.exit(0 if ok else 1)
+
+
+if __name__ == "__main__":
+    main()

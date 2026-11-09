@@ -44,13 +44,11 @@ void test_nodeStateTracking(void) {
     node->parentsRecorded = 0;
     node->isFullyRecorded = 0;
     node->inActiveSet = 1;
-    node->carriesSweepMutation = 0;
     
     // Test state tracking
     TEST_ASSERT_EQUAL(0, node->parentsRecorded);
     TEST_ASSERT_EQUAL(0, node->isFullyRecorded);
     TEST_ASSERT_EQUAL(1, node->inActiveSet);
-    TEST_ASSERT_EQUAL(0, node->carriesSweepMutation);
     
     free(node);
 }

@@ -539,7 +539,7 @@ int main(int argc, const char * argv[]){
 			}
 
 			/* Active discoal nodes cache the pre-simplify tskit ID on each
-			 * rootedNode. Downstream code (notably tskit_record_sweep_mutations)
+			 * rootedNode. Downstream code
 			 * reads node->tskit_node_id and hands it to the mutation table,
 			 * which now only has the simplified node rows -- the stale ID
 			 * dereferences an out-of-bounds row and the later sort fails with
@@ -561,15 +561,8 @@ int main(int argc, const char * argv[]){
 		
 		//assign root
 	//	root = nodes[0];
-		//add Mutations
-		// First record any sweep mutations
-		if (sweepMode != 'n' && sweepSite >= 0.0) {
-			if (tskit_record_sweep_mutations(sweepSite) < 0) {
-				fprintf(stderr, "Error: Failed to record sweep mutations in tskit\n");
-				exit(1);
-			}
-		}
-		
+		/* The selected site of a partial sweep was recorded when the sweep
+		 * started (recordPartialSweepSite). */
 		// Place mutations using tskit edge-based algorithm
 		extern double theta;
 		if (tskit_place_mutations_edge_based(theta) < 0) {

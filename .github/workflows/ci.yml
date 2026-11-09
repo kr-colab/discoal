@@ -146,6 +146,11 @@ jobs:
     - name: Check unit conventions
       run: python testing/units_convention_check.py
 
+    # Checks the selected SNP of partial sweeps: its position, the
+    # binomial count of its carriers, -h, and one site per recurrent sweep.
+    - name: Check partial sweep SNP
+      run: python testing/sweep_snp_check.py
+
   memory-check:
     runs-on: ubuntu-latest
     name: Memory Leak Check
