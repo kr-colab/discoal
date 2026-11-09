@@ -803,6 +803,7 @@ void getParameters(int argc,const char **argv){
 	tDiv=666;
         gammaCoRatioMode = 0;
 	priorTheta=priorRho=priorAlpha=priorTau=priorX=priorF0=priorUA=priorC=0;
+	numPriorSizeChanges = 0;
 
 	eventFlag = 1;
 	outputStyle = 'h';
@@ -1279,27 +1280,17 @@ void getParameters(int argc,const char **argv){
 				  pF0Up=atof(argv[++args]);
 				break;
 				case 'e':
-				switch(argv[args][3]){
-					case '1':
-					priorE1 = 1;
-					pE1TLow=userTimeToInternal(atof(argv[++args]));
-					pE1THigh=userTimeToInternal(atof(argv[++args]));
-					pE1SLow=atof(argv[++args]);
-					pE1SHigh=atof(argv[++args]);
-						ensureEventsCapacity();
-					events[eventNumber].type = 'n';
-					eventNumber++;
-					break;
-					case '2':
-					priorE2 = 1;
-					pE2TLow=userTimeToInternal(atof(argv[++args]));
-					pE2THigh=userTimeToInternal(atof(argv[++args]));
-					pE2SLow=atof(argv[++args]);
-					pE2SHigh=atof(argv[++args]);
-						ensureEventsCapacity();
-					events[eventNumber].type = 'n';
-					eventNumber++;
-					break;
+				/* -Pe1 / -Pe2 lowTime highTime lowSize highSize: a size
+				 * change of population 0 with uniform priors on time and
+				 * size. Both work the same way; the digit only names them. */
+				if (argv[args][3] == '1' || argv[args][3] == '2') {
+					double tLow = userTimeToInternal(atof(argv[++args]));
+					double tHigh = userTimeToInternal(atof(argv[++args]));
+					double sLow = atof(argv[++args]);
+					double sHigh = atof(argv[++args]);
+					if (addPriorSizeChange(argv[args - 4], tLow, tHigh,
+					                       sLow, sHigh, 0) != 0)
+						exit(1);
 				}
 				break;
 			}

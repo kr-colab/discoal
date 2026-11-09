@@ -146,6 +146,90 @@ rootedNode *pickNodePopnFast(int popn) {
 	return list->nodes[index];
 }
 
+/* Append a population size change with uniform priors on its time (in
+ * internal units) and its size (relative to N0). Its 'n' event holds the
+ * lower bounds until drawPriors() draws the values for a replicate, so the
+ * preflight check of the size trajectories sees the lower bounds. `what`
+ * names the source in error messages. Returns 0, or -1 after printing an
+ * error. */
+int addPriorSizeChange(const char *what, double timeLow, double timeHigh,
+                       double sizeLow, double sizeHigh, int popID){
+	if (numPriorSizeChanges >= MAX_PRIOR_SIZE_CHANGES) {
+		fprintf(stderr, "Error: %s: at most %d population size changes "
+			"with priors\n", what, MAX_PRIOR_SIZE_CHANGES);
+		return -1;
+	}
+	if (!(timeLow >= 0 && timeLow <= timeHigh && sizeLow > 0 &&
+	      sizeLow <= sizeHigh)) {
+		fprintf(stderr, "Error: %s: the bounds must satisfy "
+			"0 <= time low <= time high and 0 < size low <= size high "
+			"(got time %g to %g, size %g to %g)\n", what,
+			internalTimeToUser(timeLow), internalTimeToUser(timeHigh),
+			sizeLow, sizeHigh);
+		return -1;
+	}
+	int slot = numPriorSizeChanges++;
+	priorSizeChanges[slot] = (struct priorSizeChange){timeLow, timeHigh,
+		sizeLow, sizeHigh};
+	ensureEventsCapacity();
+	events[eventNumber].type = 'n';
+	events[eventNumber].time = timeLow;
+	events[eventNumber].popnSize = sizeLow;
+	events[eventNumber].popID = popID;
+	events[eventNumber].priorSlot = slot + 1;
+	eventNumber++;
+	return 0;
+}
+
+/* Draw this replicate's values for every parameter that has a prior, then
+ * sort the events, whose times may have changed. Prior size changes are
+ * drawn in the order they were given, not in event order, so the random
+ * stream does not depend on how the previous replicate sorted the events. */
+void drawPriors(){
+	int i, k;
+	if(priorUA==1)
+		uA = genunf(pUALow,pUAUp);
+	if(priorTheta==1)
+		theta = genunf(pThetaLow,pThetaUp);
+	if(priorC==1)
+		partialSweepFinalFreq = genunf(pCLow,pCUp);
+	if(priorRho==1){
+		rho = genunf(pRhoLow,pRhoUp);
+	}
+	else if(priorRho==2){
+		/* Exponential with mean pRhoMean, capped (not truncated) at pRhoUp. */
+		rho = genexp(pRhoMean);
+		if (rho > pRhoUp)
+			rho = pRhoUp;
+	}
+	if(gammaCoRatioMode==1)
+		my_gamma = rho*gammaCoRatio;
+	if(priorAlpha==1)
+		alpha = genunf(pAlphaLow,pAlphaUp);
+	if(priorX==1)
+		sweepSite = genunf(pXLow,pXUp);
+	if(priorF0==1)
+		f0 = genunf(pF0Low,pF0Up);
+	if(priorTau==1){
+		tau = genunf(pTauLow,pTauUp);
+		for(i=0;i<eventNumber;i++){
+			if(events[i].type=='s')
+				events[i].time=tau;
+		}
+	}
+	for(k = 0; k < numPriorSizeChanges; k++){
+		double t = genunf(priorSizeChanges[k].timeLow, priorSizeChanges[k].timeHigh);
+		double size = genunf(priorSizeChanges[k].sizeLow, priorSizeChanges[k].sizeHigh);
+		for(i = 0; i < eventNumber; i++){
+			if(events[i].priorSlot == k + 1){
+				events[i].time = t;
+				events[i].popnSize = size;
+			}
+		}
+	}
+	sortEventArray(events,eventNumber);
+}
+
 /* Ancient samples are taken from the start of their population's
  * samples, in event order (the events are sorted by time). Return the
  * index of the 'A' event that takes sample i of population p, or -1 if
@@ -239,46 +323,7 @@ void initialize(){
 		eventFlag = 0;
 	}
 	
-	//priors on parameters?
-        if(priorUA==1)
-          uA = genunf(pUALow,pUAUp);
-	if(priorTheta==1)
-	  theta = genunf(pThetaLow,pThetaUp);
-	if(priorC==1)
-	  partialSweepFinalFreq = genunf(pCLow,pCUp);
-	if(priorRho==1){
-          rho = genunf(pRhoLow,pRhoUp);
-        }
-        else if(priorRho==2){
-	  rho = genexp(pRhoMean);
-          if (rho > pRhoUp)
-              rho = pRhoUp;
-        }
-        if(gammaCoRatioMode==1)
-            my_gamma = rho*gammaCoRatio;
-	if(priorAlpha==1)
-	  alpha = genunf(pAlphaLow,pAlphaUp);
-	if(priorX==1)
-	  sweepSite = genunf(pXLow,pXUp);
-	if(priorF0==1)
-	  f0 = genunf(pF0Low,pF0Up);
-	if(priorTau==1){
-	  tau = genunf(pTauLow,pTauUp);
-	  for(i=0;i<eventNumber;i++){
-	    if(events[i].type=='s')
-	      events[i].time=tau;
-	  }
-	}
-	if(priorE1==1){
-		events[1].time = genunf(pE1TLow,pE1THigh);
-		events[1].popnSize = genunf(pE1SLow,pE1SHigh);
-	}
-	if(priorE2==1){
-		events[2].time = genunf(pE2TLow,pE2THigh);
-		events[2].popnSize = genunf(pE2SLow,pE2SHigh);
-	}
-	sortEventArray(events,eventNumber);
-	
+	drawPriors();
 }
 
 void initializeTwoSite(){
@@ -333,42 +378,7 @@ void initializeTwoSite(){
 		eventFlag = 0;
 	}
 	
-	//priors on parameters?
-        if(priorUA==1)
-          uA = genunf(pUALow,pUAUp);
-	if(priorTheta==1)
-	  theta = genunf(pThetaLow,pThetaUp);
-	if(priorRho==1)
-          rho = genunf(pRhoLow,pRhoUp);
-        else if(priorRho==2){
-	  rho = genexp(pRhoMean);
-	  if (rho > pRhoUp)
-	    rho = pRhoUp;
-	}
-        if(gammaCoRatioMode==1)
-            my_gamma = rho*gammaCoRatio;
-	if(priorAlpha==1)
-	  alpha = genunf(pAlphaLow,pAlphaUp);
-	if(priorX==1)
-	  sweepSite = genunf(pXLow,pXUp);
-	if(priorF0==1)
-	  f0 = genunf(pF0Low,pF0Up);
-	if(priorTau==1){
-	  tau = genunf(pTauLow,pTauUp);
-	  for(i=0;i<eventNumber;i++){
-	    if(events[i].type=='s')
-	      events[i].time=tau;
-	  }
-	}
-	if(priorE1==1){
-		events[1].time = genunf(pE1TLow,pE1THigh);
-		events[1].popnSize = genunf(pE1SLow,pE1SHigh);
-	}
-	if(priorE2==1){
-		events[2].time = genunf(pE2TLow,pE2THigh);
-		events[2].popnSize = genunf(pE2SLow,pE2SHigh);
-	}
-	sortEventArray(events,eventNumber);
+	drawPriors();
 }
 
 

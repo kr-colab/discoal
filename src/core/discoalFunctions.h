@@ -116,6 +116,9 @@ int nodePopnSweepSize(int popn, int sp);
 rootedNode *pickNodePopnSweep(int popn,int sp);
 
 void sortEventArray(struct event *eArray, int eNumber);
+int addPriorSizeChange(const char *what, double timeLow, double timeHigh,
+                       double sizeLow, double sizeHigh, int popID);
+void drawPriors();
 
 int findRootAtSite(float site);
 int hasMaterialHere(rootedNode *aNode, float site);

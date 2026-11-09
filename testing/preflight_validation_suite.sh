@@ -124,6 +124,11 @@ run_pass_case "lineage_without_ancestral_material_is_not_stranded" \
 run_pass_case "eM_alone_counts_as_migration" \
     4 1 100 -t 2 -p 2 2 2 -eM 0.1 1 -d 1 2
 
+# Size changes with priors (#96): the events hold the lower bounds until
+# the draw, so the check on sizes passes.
+run_pass_case "Pe1_and_Pe2_run" \
+    20 5 10000 -t 10 -Pe1 0.1 0.2 0.1 1.0 -Pe2 0.3 0.4 0.5 2.0
+
 # ----- Cases that should fail with a documented error -----
 echo
 echo -e "${YELLOW}-- Failure cases (must exit non-zero with expected message) --${NC}"
@@ -151,6 +156,10 @@ run_fail_case "M_initial_negative" \
 run_fail_case "em_negative_rate" \
     "rate must be non-negative" \
     5 1 100 -t 5 -p 2 5 0 -m 0 1 0.5 -em 0.1 0 1 -0.2
+
+run_fail_case "Pe1_zero_size_bound" \
+    "0 < size low <= size high" \
+    20 5 10000 -t 10 -Pe1 0.1 0.2 0 1.0
 
 run_fail_case "A_negative_time" \
     "the time must be >= 0" \

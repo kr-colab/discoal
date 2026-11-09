@@ -24,12 +24,16 @@ int eventsCapacity = 0;
 
 // Stub implementation of ensureEventsCapacity for testing
 void ensureEventsCapacity() {
+    /* New events start zeroed, as in discoal's ensureEventsCapacity;
+     * fields such as priorSlot rely on it. */
     if (events == NULL) {
         eventsCapacity = 100;
-        events = (event *)malloc(eventsCapacity * sizeof(event));
+        events = (event *)calloc(eventsCapacity, sizeof(event));
     } else if (eventNumber >= eventsCapacity - 1) {
+        int old = eventsCapacity;
         eventsCapacity *= 2;
         events = (event *)realloc(events, eventsCapacity * sizeof(event));
+        memset(&events[old], 0, (eventsCapacity - old) * sizeof(event));
     }
 }
 

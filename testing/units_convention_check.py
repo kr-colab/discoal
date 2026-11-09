@@ -114,7 +114,9 @@ def discoal_argv(case, reps, seed, tmp):
 def msprime_mean(demography, samples, reps, seed, ancient=()):
     """Expected segsites under msprime: mean branch length times MU.
     `ancient` lists (population, count, time in generations); as with
-    discoal's -A, these samples are part of the counts in `samples`."""
+    discoal's -A, these samples are part of the counts in `samples`.
+    `demography` may also be a function of a numpy Generator that returns a
+    Demography; it is then called once per replicate (a model with priors)."""
     present = dict(samples)
     for p, k, _ in ancient:
         present[p] -= k
@@ -122,6 +124,12 @@ def msprime_mean(demography, samples, reps, seed, ancient=()):
             for p, k in present.items() if k > 0]
     sets += [msprime.SampleSet(k, population=p, time=t, ploidy=1)
              for p, k, t in ancient]
+    if callable(demography):
+        rng = np.random.default_rng(seed)
+        return mean_se([msprime.sim_ancestry(
+            samples=sets, demography=demography(rng), ploidy=2,
+            random_seed=int(rng.integers(1, 2**31))).segregating_sites(
+                mode="branch") * MU for _ in range(reps)])
     return mean_se([ts.segregating_sites(mode="branch") * MU
                     for ts in msprime.sim_ancestry(
                         samples=sets, demography=demography, ploidy=2,
@@ -440,6 +448,14 @@ def cases(tmp):
     def linear(k):
         return linear_pop(0.5 * 4 * N0, gamma / (k * N0), 1 - gamma * 0.5)
 
+    def prior_en(k):
+        """-Pe1 0.2 0.6 0.1 1.0: time uniform in [0.2, 0.6] (k N0
+        generations per unit) and size uniform in [0.1, 1.0] N0, drawn
+        for each replicate."""
+        return lambda rng: one_pop([(rng.uniform(0.2, 0.6) * k * N0,
+                                     {"initial_size":
+                                      rng.uniform(0.1, 1.0) * N0})])
+
     def ancient(k, sets):
         """-A sample sets (population, count, time) with times in k N0."""
         return [(pop, n, t * k * N0) for pop, n, t in sets]
@@ -489,6 +505,18 @@ def cases(tmp):
              alts={"rate 2 x 4N0 m": two_pop(2 * m / (4 * N0), 4 * N0,
                                             "P1", "P0",
                                             growth_p1=-5 / (4 * N0))}),
+        dict(name="-Pe1: size change with priors on time and size",
+             samples=s20, flags=["-Pe1", "0.2", "0.6", "0.1", "1.0"],
+             model=prior_en(4), alts={"2N0 generations": prior_en(2)}),
+        # The size change with a prior must not replace another event (it
+        # used to write to events[1], which here is the -en event).
+        dict(name="-Pe1 with a fixed -en at an earlier time",
+             samples=s20,
+             flags=["-en", "0.1", "0", "3.0", "-Pe1", "0.5", "0.5", "0.2", "0.2"],
+             model=one_pop([(0.1 * 4 * N0, {"initial_size": 3 * N0}),
+                            (0.5 * 4 * N0, {"initial_size": 0.2 * N0})]),
+             alts={"-en replaced":
+                   one_pop([(0.5 * 4 * N0, {"initial_size": 0.2 * N0})])}),
         dict(name="-A time in 4N0 generations, two ancient sets",
              samples=s20,
              flags=["-A", "3", "0", "0.25", "-A", "2", "0", "1.0"],
