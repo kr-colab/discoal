@@ -1419,6 +1419,16 @@ void getParameters(int argc,const char **argv){
 		printf("Error with event specification: currently recurrent soft sweeps are not implemented. this will be a future addition\n");
 		exit(666);
 	}
+	/* A partial sweep that ends below one copy of the allele has no
+	 * trajectory: the sweep ends when the frequency is 1/(2N). */
+	const double oneCopy = 1.0 / (2.0 * EFFECTIVE_POPN_SIZE);
+	if(partialSweepMode && trajFileRows == 0 &&
+	   (priorC ? pCLow : partialSweepFinalFreq) <= oneCopy){
+		fprintf(stderr, "Error: the final frequency of a partial sweep (-c, -Pc, "
+			"or YAML final_frequency) must be above 1/(2N) = %g, one copy of the "
+			"allele (N from -N)\n", oneCopy);
+		exit(1);
+	}
 	/* -S: the file gives the sweep's time, its frequencies, and so the
 	 * strength of selection, so options that set these are rejected. A
 	 * first frequency below 1 makes the sweep partial, as -c does: each

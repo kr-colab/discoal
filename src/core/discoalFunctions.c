@@ -1849,6 +1849,12 @@ void mmapAcceptedTrajectory(const char *filename, long int numSteps) {
 	
 	// Calculate file size
 	trajectoryFileSize = numSteps * sizeof(float);
+	/* A trajectory with no steps (the sweep ends at once) has nothing to
+	 * read, and mmap cannot map zero bytes. */
+	if (numSteps == 0) {
+		currentTrajectory = NULL;
+		return;
+	}
 	
 	// Memory map the file
 	currentTrajectory = (float *)mmap(NULL, trajectoryFileSize, PROT_READ, 

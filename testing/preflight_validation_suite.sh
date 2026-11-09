@@ -181,6 +181,33 @@ run_fail_case "A_negative_time" \
     "the time must be >= 0" \
     4 2 100 -t 2 -A 1 0 -0.1
 
+# A partial sweep must end above one copy of the allele, 1/(2N) with
+# N = 10^6 by default.
+run_fail_case "c_below_one_copy" \
+    "must be above 1/(2N)" \
+    20 2 1000 -t 5 -r 5 -ws 0 -a 500 -c 0.0000001
+
+run_fail_case "Pc_low_below_one_copy" \
+    "must be above 1/(2N)" \
+    20 2 1000 -t 5 -r 5 -ws 0 -a 500 -Pc 0.0000001 0.1
+
+# Above one copy at N0, but below it at the sweep, after a size change to
+# 0.01: the trajectory has no steps, and the sweep ends at once.
+run_pass_case "c_below_one_copy_after_size_change" \
+    20 5 10000 -t 1 -r 10 -ws 0.01 -a 500 -c 0.00001 -en 0 0 0.01 -d 1 2
+
+run_pass_case "R_c_below_one_copy_after_size_change" \
+    20 20 10000 -t 1 -r 10 -R 2 -a 500 -c 0.00001 -en 0 0 0.01 -d 1 2
+
+# Sweeps outside the locus with two populations: left-recombination
+# events must be chosen among the sweep events only, or a draw can take a
+# lineage from an empty beneficial class.
+run_pass_case "ls_two_populations" \
+    20 10 10000 -t 1 -r 10 -p 2 10 10 -ed 5 1 0 -ls 0.005 100 -a 500 -N 10000 -d 1 2
+
+run_pass_case "L_two_populations" \
+    20 10 10000 -t 10 -p 2 10 10 -m 0 1 2 -ed 0.3 1 0 -L 1 -a 500 -d 20 1020
+
 echo
 echo -e "${BLUE}=== Summary ===${NC}"
 echo "Pass: $PASS"
