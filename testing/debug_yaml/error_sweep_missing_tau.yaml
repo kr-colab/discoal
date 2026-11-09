@@ -1,6 +1,6 @@
-# PR #48 (#39): selection block without fixation_time_ago or recurrent_sweep_rate.
-# Should error out with:
-#   "Error parsing config: selection block requires fixation_time_ago > 0 ..."
+# A selection block without fixation_time_ago (or a prior on it) or
+# recurrent_sweep_rate. Should error out with:
+#   "Error parsing config: selection block requires fixation_time_ago (or a prior on it) unless recurrent_sweep_rate is set"
 
 simulation:
   sample_size: 20

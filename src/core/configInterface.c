@@ -236,10 +236,12 @@ static const cyaml_schema_field_t selection_fields_schema[] = {
         sweep_modes_strings, CYAML_ARRAY_LEN(sweep_modes_strings)),
     CYAML_FIELD_FLOAT("selection_coefficient", CYAML_FLAG_DEFAULT,
         struct selection_config, selection_coefficient),
-    CYAML_FIELD_FLOAT("sweep_position", CYAML_FLAG_DEFAULT,
-        struct selection_config, sweep_position),
     /* optional arguments */
-    CYAML_FIELD_FLOAT("fixation_time_ago", CYAML_FLAG_OPTIONAL,
+    CYAML_FIELD_FLOAT_PTR("sweep_position",
+        CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        struct selection_config, sweep_position),
+    CYAML_FIELD_FLOAT_PTR("fixation_time_ago",
+        CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
         struct selection_config, fixation_time_ago),
     CYAML_FIELD_FLOAT("initial_frequency", CYAML_FLAG_OPTIONAL,
         struct selection_config, initial_frequency),
@@ -249,6 +251,12 @@ static const cyaml_schema_field_t selection_fields_schema[] = {
         struct selection_config, beneficial_mutation_rate),
     CYAML_FIELD_FLOAT("recurrent_sweep_rate", CYAML_FLAG_OPTIONAL,
         struct selection_config, recurrent_sweep_rate),
+    CYAML_FIELD_FLOAT("left_rho", CYAML_FLAG_OPTIONAL,
+        struct selection_config, left_rho),
+    CYAML_FIELD_BOOL("recurrent_sweeps_left_of_locus", CYAML_FLAG_OPTIONAL,
+        struct selection_config, recurrent_sweeps_left_of_locus),
+    CYAML_FIELD_FLOAT("sweep_time_step", CYAML_FLAG_OPTIONAL,
+        struct selection_config, sweep_time_step),
     CYAML_FIELD_END
 };
 
@@ -711,15 +719,18 @@ int parse_demography_block(struct demography_config *cfg)
     return EXIT_SUCCESS;
 }
 
-int parse_selection_block(struct selection_config *cfg) 
+int parse_selection_block(struct selection_config *cfg)
 {
-    extern double alpha, sweepSite, tau, f0, uA;
+    extern double alpha, sweepSite, tau, f0, uA, leftRho, deltaTMod;
     extern double partialSweepFinalFreq, recurSweepRate;
-    extern int recurSweepMode, partialSweepMode, softSweepMode;
+    extern int recurSweepMode, partialSweepMode, softSweepMode, leftRhoFlag;
+    extern int priorTau;
     extern char sweepMode;
     extern int eventNumber, eventsCapacity;
     extern struct event *events;
     if (cfg != NULL) {
+        int recurrent = cfg->recurrent_sweep_rate > 0;
+        int linked = cfg->left_rho > 0;
         switch (cfg->sweep_mode) {
             case SWEEP_STOCHASTIC:
                 sweepMode = 's';
@@ -732,7 +743,7 @@ int parse_selection_block(struct selection_config *cfg)
                 break;
             default:
                 break;
-        } /* FIXME: need to add recurrent sweep modes */
+        }
         if (cfg->selection_coefficient < 0) {
             fprintf(stderr,
                 "Error parsing config: selection_coefficient (%g) "
@@ -746,15 +757,23 @@ int parse_selection_block(struct selection_config *cfg)
             return EXIT_FAILURE;
         }
         alpha = cfg->selection_coefficient;
-        if (cfg->sweep_position < 0.0 || cfg->sweep_position > 1.0) {
-            fprintf(stderr,
-                "Error parsing config: sweep_position (%g) must be in [0, 1]\n",
-                cfg->sweep_position);
-            return EXIT_FAILURE;
+        if (cfg->sweep_position != NULL) {
+            if (*cfg->sweep_position < 0.0 || *cfg->sweep_position > 1.0) {
+                fprintf(stderr,
+                    "Error parsing config: sweep_position (%g) must be in "
+                    "[0, 1]\n", *cfg->sweep_position);
+                return EXIT_FAILURE;
+            }
+            sweepSite = *cfg->sweep_position;
         }
-        sweepSite = cfg->sweep_position;
-        if (cfg->fixation_time_ago > 0) {
-            tau = userTimeToInternal(cfg->fixation_time_ago);
+        if (cfg->fixation_time_ago != NULL) {
+            if (*cfg->fixation_time_ago < 0) {
+                fprintf(stderr,
+                    "Error parsing config: fixation_time_ago (%g) must be "
+                    ">= 0\n", *cfg->fixation_time_ago);
+                return EXIT_FAILURE;
+            }
+            tau = userTimeToInternal(*cfg->fixation_time_ago);
         }
         if (cfg->initial_frequency < 0 || cfg->initial_frequency >= 1.0) {
             fprintf(stderr,
@@ -799,35 +818,88 @@ int parse_selection_block(struct selection_config *cfg)
                 "must be >= 0\n", cfg->recurrent_sweep_rate);
             return EXIT_FAILURE;
         }
-        if (cfg->recurrent_sweep_rate > 0) {
-            recurSweepRate = cfg->recurrent_sweep_rate;
-            recurSweepMode = 1;
-        }
-
-        if (cfg->fixation_time_ago > 0 && cfg->recurrent_sweep_rate > 0) {
+        if (cfg->left_rho < 0) {
             fprintf(stderr,
-                "Error parsing config: fixation_time_ago and "
-                "recurrent_sweep_rate cannot both be set\n");
+                "Error parsing config: left_rho (%g) must be >= 0\n",
+                cfg->left_rho);
+            return EXIT_FAILURE;
+        }
+        if (cfg->sweep_time_step < 0) {
+            fprintf(stderr,
+                "Error parsing config: sweep_time_step (%g) must be > 0\n",
+                cfg->sweep_time_step);
+            return EXIT_FAILURE;
+        }
+        if (cfg->sweep_time_step > 0) {
+            deltaTMod = cfg->sweep_time_step;
+        }
+        /* A sweep outside the locus has no position inside it: -ls, -ld,
+         * -ln and -L set the sweep site to -1. */
+        if ((linked || cfg->recurrent_sweeps_left_of_locus) &&
+            cfg->sweep_position != NULL) {
+            fprintf(stderr,
+                "Error parsing config: sweep_position cannot be set with "
+                "left_rho or recurrent_sweeps_left_of_locus; the sweep is "
+                "outside the locus\n");
+            return EXIT_FAILURE;
+        }
+        if (cfg->recurrent_sweeps_left_of_locus && !recurrent) {
+            fprintf(stderr,
+                "Error parsing config: recurrent_sweeps_left_of_locus needs "
+                "recurrent_sweep_rate > 0\n");
             return EXIT_FAILURE;
         }
 
-        /* Single sweep (matching `-ws`/`-wd`/`-wn`) requires fixation_time_ago
-         * and emits an `'s'` event at tau. Recurrent sweeps (matching `-R`)
-         * are driven by recurSweepMode + recurSweepRate alone and do not
-         * produce an event. */
-        if (cfg->recurrent_sweep_rate <= 0) {
-            if (cfg->fixation_time_ago <= 0) {
+        if (recurrent) {
+            /* -R and -L: recurrent sweeps, which are always stochastic. */
+            if (cfg->fixation_time_ago != NULL || priorTau) {
                 fprintf(stderr,
-                    "Error parsing config: selection block requires "
-                    "fixation_time_ago > 0 unless recurrent_sweep_rate "
-                    "is set\n");
+                    "Error parsing config: fixation_time_ago (or a prior on "
+                    "it) and recurrent_sweep_rate cannot both be set\n");
                 return EXIT_FAILURE;
             }
-            ensureEventsCapacity();
-            events[eventNumber].time = tau;
-            events[eventNumber].type = 's';
-            eventNumber++;
+            if (linked) {
+                fprintf(stderr,
+                    "Error parsing config: left_rho is for a single sweep; "
+                    "with recurrent_sweep_rate use "
+                    "recurrent_sweeps_left_of_locus\n");
+                return EXIT_FAILURE;
+            }
+            if (cfg->sweep_mode != SWEEP_STOCHASTIC) {
+                fprintf(stderr,
+                    "Error parsing config: recurrent sweeps are stochastic; "
+                    "set sweep_mode to 'stochastic' with "
+                    "recurrent_sweep_rate\n");
+                return EXIT_FAILURE;
+            }
+            recurSweepRate = cfg->recurrent_sweep_rate;
+            recurSweepMode = 1;
+            if (cfg->recurrent_sweeps_left_of_locus) {
+                sweepSite = -1.0;
+            }
+            return EXIT_SUCCESS;
         }
+
+        /* A single sweep (-ws/-wd/-wn, or -ls/-ld/-ln with left_rho) is an
+         * 's' event at tau. With a prior on fixation_time_ago, the event's
+         * time is drawn for each replicate; until then it is the lower
+         * bound, set by the priors block. */
+        if (cfg->fixation_time_ago == NULL && !priorTau) {
+            fprintf(stderr,
+                "Error parsing config: selection block requires "
+                "fixation_time_ago (or a prior on it) unless "
+                "recurrent_sweep_rate is set\n");
+            return EXIT_FAILURE;
+        }
+        if (linked) {
+            sweepSite = -1.0;
+            leftRho = cfg->left_rho * 2.0;  /* stored as -ls stores it */
+            leftRhoFlag = 1;
+        }
+        ensureEventsCapacity();
+        events[eventNumber].time = tau;
+        events[eventNumber].type = 's';
+        eventNumber++;
     }
     return EXIT_SUCCESS;
 }

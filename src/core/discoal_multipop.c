@@ -1464,7 +1464,7 @@ void usage(){
 	fprintf(stderr,"\t -a alpha (=2Ns)\n");
 	fprintf(stderr,"\t -x sweepSite (0-1)\n");
 	fprintf(stderr,"\t -c partialSweepFinalFrequency (partial sweeps)\n");	
-	fprintf(stderr,"\t -i dt (sweep time increment scalar; default 400 -> 1/400N)\n");
+	fprintf(stderr,"\t -i dt (sweep time increment scalar; default 40 -> 1/40N)\n");
 	
 	fprintf(stderr,"\t -M migRate (sets all rates to migRate)\n");
 	fprintf(stderr,"\t -m popnID1 popnID2 migRate (sets migRate from popnID1 to popnID2)\n");

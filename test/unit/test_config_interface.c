@@ -68,6 +68,8 @@ extern double partialSweepFinalFreq, recurSweepRate;
 extern double tDiv;
 extern double migMatConst[MAXPOPS][MAXPOPS];
 extern char sweepMode;
+extern double leftRho, deltaTMod;
+extern int leftRhoFlag;
 extern char tskitOutputFilename[1024];
 extern long seed1, seed2;
 extern double *currentSize;
@@ -1745,6 +1747,94 @@ void test_selection_requires_fixation_time_ago_when_not_recurrent(void) {
     TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
 }
 
+/* A selection block made of BASE_YAML and the given selection fields. */
+static int apply_selection(const char *fields) {
+    char yaml[2048];
+    snprintf(yaml, sizeof(yaml), "%sselection:\n%s", BASE_YAML, fields);
+    return apply_from_yaml_string(yaml);
+}
+
+/* fixation_time_ago may be 0, as -ws 0: a sweep that ends at the present. */
+void test_selection_fixation_time_ago_zero(void) {
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_selection(
+        "  sweep_mode: stochastic\n"
+        "  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0\n"));
+    TEST_ASSERT_EQUAL_INT(1, eventNumber);
+    TEST_ASSERT_EQUAL_INT('s', events[0].type);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, events[0].time);
+}
+
+/*
+ * left_rho is -ls/-ld/-ln: the sweep site is outside the locus
+ * (sweepSite -1), and leftRho is stored as -ls stores it (twice the
+ * value).
+ */
+void test_selection_left_rho(void) {
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_selection(
+        "  sweep_mode: deterministic\n"
+        "  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0.01\n"
+        "  left_rho: 20\n"));
+    TEST_ASSERT_EQUAL_INT('d', sweepMode);
+    TEST_ASSERT_EQUAL_DOUBLE(-1.0, sweepSite);
+    TEST_ASSERT_EQUAL_DOUBLE(40.0, leftRho);
+    TEST_ASSERT_EQUAL_INT(1, leftRhoFlag);
+    TEST_ASSERT_EQUAL_INT('s', events[0].type);
+}
+
+/* recurrent_sweeps_left_of_locus with recurrent_sweep_rate is -L. */
+void test_selection_recurrent_sweeps_left_of_locus(void) {
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_selection(
+        "  sweep_mode: stochastic\n"
+        "  selection_coefficient: 100\n"
+        "  recurrent_sweep_rate: 0.5\n"
+        "  recurrent_sweeps_left_of_locus: true\n"));
+    TEST_ASSERT_EQUAL_INT(1, recurSweepMode);
+    TEST_ASSERT_EQUAL_DOUBLE(-1.0, sweepSite);
+    TEST_ASSERT_EQUAL_INT(0, eventNumber);
+}
+
+/* sweep_time_step is -i. */
+void test_selection_sweep_time_step(void) {
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_selection(
+        "  sweep_mode: stochastic\n"
+        "  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0.01\n"
+        "  sweep_time_step: 200\n"));
+    TEST_ASSERT_EQUAL_DOUBLE(200.0, deltaTMod);
+}
+
+/* Combinations that have no command-line meaning are rejected. */
+void test_selection_rejects_bad_combinations(void) {
+    const char *bad[] = {
+        /* a sweep outside the locus has no position inside it */
+        "  sweep_mode: stochastic\n  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0.01\n  left_rho: 20\n  sweep_position: 0.5\n",
+        /* left_of_locus needs recurrent sweeps */
+        "  sweep_mode: stochastic\n  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0.01\n  recurrent_sweeps_left_of_locus: true\n",
+        /* recurrent sweeps are stochastic, as -R and -L */
+        "  sweep_mode: deterministic\n  selection_coefficient: 100\n"
+        "  recurrent_sweep_rate: 0.5\n",
+        /* left_rho is for a single sweep */
+        "  sweep_mode: stochastic\n  selection_coefficient: 100\n"
+        "  recurrent_sweep_rate: 0.5\n  left_rho: 20\n",
+        /* negative values */
+        "  sweep_mode: stochastic\n  selection_coefficient: 100\n"
+        "  fixation_time_ago: -0.1\n",
+        "  sweep_mode: stochastic\n  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0.01\n  left_rho: -1\n",
+        "  sweep_mode: stochastic\n  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0.01\n  sweep_time_step: -1\n",
+    };
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
+        reset_all();
+        TEST_ASSERT_NOT_EQUAL_MESSAGE(EXIT_SUCCESS, apply_selection(bad[i]),
+                                      bad[i]);
+    }
+}
+
 /*
  * A non-recurrent selection block emits exactly one event of type
  * 's' at tau (= fixation_time_ago * 2.0).
@@ -2333,6 +2423,11 @@ int main(void) {
     RUN_TEST(test_selection_rejects_negative_recurrent_sweep_rate);
     RUN_TEST(test_selection_rejects_fixation_and_recurrent_both_set);
     RUN_TEST(test_selection_requires_fixation_time_ago_when_not_recurrent);
+    RUN_TEST(test_selection_fixation_time_ago_zero);
+    RUN_TEST(test_selection_left_rho);
+    RUN_TEST(test_selection_recurrent_sweeps_left_of_locus);
+    RUN_TEST(test_selection_sweep_time_step);
+    RUN_TEST(test_selection_rejects_bad_combinations);
     RUN_TEST(test_selection_emits_sweep_event_at_tau);
     RUN_TEST(test_selection_recurrent_sets_flags_without_event);
     RUN_TEST(test_load_partial_sweep);

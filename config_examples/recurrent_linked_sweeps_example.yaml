@@ -1,0 +1,21 @@
+# Recurrent stochastic sweeps to the left of the simulated locus, at rate
+# 1 per 2N individuals per generation. Each sweep's distance from the
+# locus (4Nr) is drawn uniformly from (0, 4Ns). Recurrent sweeps are
+# always stochastic.
+# Equivalent to: discoal 20 2 10000 -t 10 -r 10 -L 1 -a 500 -d 12345 10102
+
+simulation:
+  sample_size: 20
+  num_replicates: 2
+  num_sites: 10000
+  seed: [12345, 10102]
+
+genetics:
+  mutation_rate: 10.0
+  recombination_rate: 10.0
+
+selection:
+  sweep_mode: stochastic
+  selection_coefficient: 500
+  recurrent_sweep_rate: 1.0
+  recurrent_sweeps_left_of_locus: true

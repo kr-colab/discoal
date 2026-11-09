@@ -1,0 +1,23 @@
+# A stochastic sweep outside the simulated locus: the selected site is at
+# genetic distance left_rho = 4Nr = 20 to the left of the locus, and the
+# sweep ended 0.01 time units (4N generations) ago. sweep_time_step sets the
+# time step of the sweep trajectory (1/(sweep_time_step N); the default is
+# 40). With left_rho there is no sweep_position.
+# Equivalent to: discoal 20 2 10000 -t 10 -r 10 -ls 0.01 20 -a 1000 -i 100 -d 12345 10102
+
+simulation:
+  sample_size: 20
+  num_replicates: 2
+  num_sites: 10000
+  seed: [12345, 10102]
+
+genetics:
+  mutation_rate: 10.0
+  recombination_rate: 10.0
+
+selection:
+  sweep_mode: stochastic
+  selection_coefficient: 1000
+  fixation_time_ago: 0.01
+  left_rho: 20
+  sweep_time_step: 100

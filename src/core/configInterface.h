@@ -119,13 +119,16 @@ struct output_config {
 };
 struct selection_config {
     enum sweep_modes sweep_mode;
-    double selection_coefficient; 
-    double sweep_position;        
-    double fixation_time_ago; 
-    double initial_frequency;        /* optional, triggers soft sweep */
-    double final_frequency;          /* optional, triggers partial sweep  */
-    double beneficial_mutation_rate; /* optional TODO does this trigger recurrent sweeps */
-    double recurrent_sweep_rate;     /* optional TODO or does this trigger recurrent sweeps */
+    double selection_coefficient;    /* -a */
+    double *sweep_position;          /* optional, -x; NULL if absent (0.5) */
+    double *fixation_time_ago;       /* optional, -ws/-wd/-wn tau; NULL if absent */
+    double initial_frequency;        /* optional, -f; triggers soft sweep */
+    double final_frequency;          /* optional, -c; triggers partial sweep */
+    double beneficial_mutation_rate; /* optional, -uA */
+    double recurrent_sweep_rate;     /* optional, -R (or -L, below) */
+    double left_rho;                 /* optional, -ls/-ld/-ln leftRho */
+    bool recurrent_sweeps_left_of_locus; /* optional, with recurrent_sweep_rate: -L */
+    double sweep_time_step;          /* optional, -i */
 };
 
 
