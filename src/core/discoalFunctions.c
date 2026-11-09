@@ -2338,6 +2338,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	 * even when fewer than two present-day lineages are left in it, or none
 	 * in the beneficial class: they must see the sweep when they join. */
 	const int ancientToCome = dormantLineagesIn(0);
+	int trajectoryDone = 0;
 	while( x > xEnd && (cTime+ttau) < endTime && (popnSizes[0] > 1 || ancientToCome > 0)){ 
 		//rejection algorithm of Braverman et al. 1995
 		eventRand = ranf();
@@ -2346,11 +2347,14 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 		while(eventProb > eventRand && x > xEnd && (cTime+ttau) < endTime ){
 			ttau += tIncOrig;
 
+			/* The trajectory ended: the sweep ends at its last step. The
+			 * trajectory's own end test follows N through size changes
+			 * (-en, -eg), so it can end above the fixed xEnd of this loop. */
 			if (currentTrajectoryStep >= totalTrajectorySteps) {
-			fprintf(stderr, "Error: trajectory step %ld exceeds total steps %ld\n", 
-					currentTrajectoryStep, totalTrajectorySteps);
-			exit(1);
-		}
+				ttau -= tIncOrig;
+				trajectoryDone = 1;
+				break;
+			}
 		x = currentTrajectory[currentTrajectoryStep++];
 		/* The origin of an allele from standing variation: no rates at
 		 * frequency 0. (A sweep from a new mutation ends above 0.) */
@@ -2402,8 +2406,9 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 			*finalFreq = x;
 			return(cTime+ttau);
 		}
-		/* The trajectory reached the allele's origin with no event. */
-		if (x <= 0.0) break;
+		/* The trajectory reached the allele's origin, or its end, with no
+		 * event. */
+		if (x <= 0.0 || trajectoryDone) break;
 
 		//Decide which event took place
 		//first was it in population 0 (sweep) or not

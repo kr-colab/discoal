@@ -229,7 +229,7 @@ Validation: `selection_coefficient` is required, except with
 zero when `sweep_mode: "neutral"`. `sweep_position` is a fraction
 in `[0, 1]`. `initial_frequency` and `final_frequency`, when set,
 must be in `[0, 1)`; when both are set,
-`initial_frequency < final_frequency`. `final_frequency` (and the low
+`initial_frequency < final_frequency`. `final_frequency` (or the high
 bound of a prior on it) must be above 1/(2N), one copy of the allele,
 with N the `effective_population_size`. `beneficial_mutation_rate`,
 `recurrent_sweep_rate`, `left_rho` and `fixation_time_ago` must be

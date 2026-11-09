@@ -1420,13 +1420,15 @@ void getParameters(int argc,const char **argv){
 		exit(666);
 	}
 	/* A partial sweep that ends below one copy of the allele has no
-	 * trajectory: the sweep ends when the frequency is 1/(2N). */
+	 * trajectory: the sweep ends when the frequency is 1/(2N). A prior
+	 * needs only its high bound above that; a draw below one copy gives a
+	 * sweep that ends at once. */
 	const double oneCopy = 1.0 / (2.0 * EFFECTIVE_POPN_SIZE);
 	if(partialSweepMode && trajFileRows == 0 &&
-	   (priorC ? pCLow : partialSweepFinalFreq) <= oneCopy){
-		fprintf(stderr, "Error: the final frequency of a partial sweep (-c, -Pc, "
-			"or YAML final_frequency) must be above 1/(2N) = %g, one copy of the "
-			"allele (N from -N)\n", oneCopy);
+	   (priorC ? pCUp : partialSweepFinalFreq) <= oneCopy){
+		fprintf(stderr, "Error: the final frequency of a partial sweep (-c, YAML "
+			"final_frequency, or the high bound of a prior on it) must be above "
+			"1/(2N) = %g, one copy of the allele (N from -N)\n", oneCopy);
 		exit(1);
 	}
 	/* -S: the file gives the sweep's time, its frequencies, and so the

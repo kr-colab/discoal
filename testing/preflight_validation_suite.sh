@@ -187,9 +187,14 @@ run_fail_case "c_below_one_copy" \
     "must be above 1/(2N)" \
     20 2 1000 -t 5 -r 5 -ws 0 -a 500 -c 0.0000001
 
-run_fail_case "Pc_low_below_one_copy" \
+run_fail_case "Pc_high_below_one_copy" \
     "must be above 1/(2N)" \
-    20 2 1000 -t 5 -r 5 -ws 0 -a 500 -Pc 0.0000001 0.1
+    20 2 1000 -t 5 -r 5 -ws 0 -a 500 -Pc 0.00000001 0.0000001
+
+# A prior with a low bound below one copy is allowed: a draw below one
+# copy gives a sweep that ends at once.
+run_pass_case "Pc_low_bound_zero" \
+    20 20 1000 -t 5 -r 5 -ws 0 -a 500 -Pc 0 0.000001 -d 1 2
 
 # Above one copy at N0, but below it at the sweep, after a size change to
 # 0.01: the trajectory has no steps, and the sweep ends at once.
@@ -207,6 +212,27 @@ run_pass_case "ls_two_populations" \
 
 run_pass_case "L_two_populations" \
     20 10 10000 -t 10 -p 2 10 10 -m 0 1 2 -ed 0.3 1 0 -L 1 -a 500 -d 20 1020
+
+# A size change in population 1 must not set the sweep trajectory's N:
+# here it would end the trajectory at once while population 0 is still
+# sweeping.
+run_pass_case "en_other_population_during_sweep" \
+    20 5 10000 -N 10000 -t 1 -r 10 -p 2 10 10 -m 0 1 1 -m 1 0 1 -ws 0.01 -a 500 -c 0.3 -en 0.01 1 0.00015 -d 1 2
+
+run_pass_case "en_other_population_recurrent_sweeps" \
+    20 5 10000 -N 10000 -t 1 -r 10 -p 2 10 10 -m 0 1 1 -m 1 0 1 -R 50 -a 500 -c 0.3 -en 0.001 1 0.00015 -d 1 2
+
+# With growth (-eg) the trajectory's end follows N, so it can end before
+# the sampler's fixed end frequency; the sweep then ends with the
+# trajectory.
+run_pass_case "eg_during_sweep" \
+    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0 0 200 -d 1 2
+
+run_pass_case "eg_during_partial_sweep" \
+    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -c 0.001 -eg 0 0 200 -d 1 2
+
+run_pass_case "eg_during_sweep_default_N" \
+    20 20 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0 0 2 -d 3 4
 
 echo
 echo -e "${BLUE}=== Summary ===${NC}"

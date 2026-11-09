@@ -188,9 +188,9 @@ Selection Options
 .. option:: -c frequency
 
    Final frequency for partial sweep. It must be above 1/(2N), one copy
-   of the allele (N from ``-N``). If a size change makes the population
-   so small that the frequency is at or below one copy when the sweep
-   starts, the sweep ends at once.
+   of the allele (N from ``-N``); with ``-Pc``, the high bound must be. A
+   frequency at or below one copy when the sweep starts (a draw from
+   ``-Pc``, or after a size change) gives a sweep that ends at once.
 
 .. option:: -S file
 
