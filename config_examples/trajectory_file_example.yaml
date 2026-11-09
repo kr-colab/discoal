@@ -1,0 +1,24 @@
+# A sweep with its trajectory read from a file, as -S. The file gives the
+# times (4N0 generations before the present) and frequencies of the
+# selected allele; here it starts at 0.6, so the sweep is partial and the
+# selected SNP is in the output.
+# Equivalent to: discoal 20 2 10000 -t 10 -r 10 -N 10000 -S config_examples/trajectory_example.traj -x 0.3 -d 12345 10102
+
+simulation:
+  sample_size: 20
+  num_replicates: 2
+  num_sites: 10000
+  seed: [12345, 10102]
+
+genetics:
+  mutation_rate: 10.0
+  recombination_rate: 10.0
+
+demography:
+  deme_sample_size: [20]
+  effective_population_size: 10000
+
+selection:
+  sweep_mode: "trajectory_file"
+  trajectory_file: "config_examples/trajectory_example.traj"
+  sweep_position: 0.3

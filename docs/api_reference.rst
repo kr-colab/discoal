@@ -189,6 +189,21 @@ Selection Options
 
    Final frequency for partial sweep
 
+.. option:: -S file
+
+   Sweep with its trajectory read from a file instead of simulated. Each
+   line holds a time before the present (in units of 4N₀ generations) and
+   the frequency of the selected allele, separated by white space; blank
+   lines and lines that start with ``#`` are skipped. Times must increase
+   down the file, every frequency but the last must be in (0, 1], and the
+   last must be 0, the allele's origin, which ends the sweep. The sweep
+   starts (going back in time) at the first time. discoal interpolates the
+   frequency linearly at each of its sweep time steps (``-N``, ``-i``). If
+   the first frequency is below 1, the sweep is partial, as with ``-c``.
+   ``-S`` cannot be combined with ``-ws``, ``-wd``, ``-wn``, ``-ls``,
+   ``-ld``, ``-ln``, ``-R``, ``-L``, ``-a``, ``-f``, ``-c``, ``-Pa``,
+   ``-Pu``, ``-Pf`` or ``-Pc``.
+
 .. option:: -ls tau leftRho
 
    Stochastic sweep to the left of the locus. The selected site is at
@@ -284,10 +299,6 @@ Advanced Options
 .. option:: -T
 
    Output genealogical trees in Newick format
-
-.. option:: -C leftBound rightBound
-
-   Condition on recombination in specified region
 
 .. option:: -U time
 

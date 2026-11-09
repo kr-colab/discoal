@@ -182,8 +182,9 @@ Notes:
 
 ```yaml
 selection:
-  sweep_mode: "stochastic"            # one of "stochastic" / "deterministic" / "neutral"
-  selection_coefficient: 10.0         # alpha = 2Ns (-a)
+  sweep_mode: "stochastic"            # one of "stochastic" / "deterministic" / "neutral" / "trajectory_file"
+  selection_coefficient: 10.0         # alpha = 2Ns (-a); not with "trajectory_file"
+  trajectory_file: "traj.txt"         # with sweep_mode "trajectory_file" only (-S)
   sweep_position: 0.5                 # optional, in [0, 1] (-x; default 0.5)
   fixation_time_ago: 1.0              # single sweep: tau, >= 0 (-ws/-wd/-wn)
   initial_frequency: 1.0e-1           # optional, soft sweep from standing variation (-f)
@@ -212,8 +213,18 @@ present, as `-ws 0`. For recurrent hitchhiking, set
   random positions inside the locus (`-R rate`).
 - Recurrent sweeps are always stochastic, as with `-R` and `-L`, so
   `recurrent_sweep_rate` needs `sweep_mode: "stochastic"`.
+- `sweep_mode: "trajectory_file"` with `trajectory_file` is `-S`: the
+  sweep follows the trajectory in the file (times in 4N0 generations
+  before the present, and frequencies, ending at 0; see `-S` in
+  `docs/api_reference.rst`). A first frequency below 1 makes the sweep
+  partial. The file gives the sweep's time and strength, so
+  `selection_coefficient`, `fixation_time_ago`, `initial_frequency`,
+  `final_frequency`, `left_rho`, the recurrent sweep fields, and priors
+  on these are rejected. A relative path is relative to the directory
+  that discoal runs in.
 
-Validation: `selection_coefficient` must be `>= 0`, and exactly
+Validation: `selection_coefficient` is required, except with
+`sweep_mode: "trajectory_file"`. It must be `>= 0`, and exactly
 zero when `sweep_mode: "neutral"`. `sweep_position` is a fraction
 in `[0, 1]`. `initial_frequency` and `final_frequency`, when set,
 must be in `[0, 1)`; when both are set,
@@ -413,19 +424,6 @@ discoal 20 2 10000 -t 0.1 -r 0.1 -p 3 10 5 5 -M 0.1 \
         -ed 3.0 2 0 -em 3.0 0 2 0 -em 3.0 2 0 0 -em 3.0 1 2 0 -em 3.0 2 1 0 \
         -d 12345 10102
 ```
-
-## Limitations
-
-The YAML interface does not currently expose:
-
-- conditional simulation (`-C`);
-- a fixed number of segregating sites (`-s`);
-- a sweep trajectory read from a file (`-S`).
-
-Use the positional command-line interface for these. The CLI
-reference is in `docs/basic_usage.rst`,
-`docs/population_structure.rst`, `docs/selection.rst`, and
-`docs/advanced_features.rst`.
 
 ## Validation
 

@@ -151,6 +151,11 @@ jobs:
     - name: Check partial sweep SNP
       run: python testing/sweep_snp_check.py
 
+    # Checks -S: a file with -wd's trajectory gives -wd's genealogies, and
+    # a file that starts below 1 gives a partial sweep.
+    - name: Check sweep trajectory files
+      run: python testing/trajectory_file_check.py
+
   memory-check:
     runs-on: ubuntu-latest
     name: Memory Leak Check

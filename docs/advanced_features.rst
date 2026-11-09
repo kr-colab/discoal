@@ -73,17 +73,48 @@ Population size changes can have priors:
    # Prior on second size change
    ./discoal 20 100 10000 -t 20 -Pe1 0.01 0.5 0.1 10 -Pe2 0.5 2.0 0.5 5.0
 
-Conditional Simulations
------------------------
+Fixed Segregating Sites and Conditional Simulation
+--------------------------------------------------
 
-Simulate conditional on observing recombination in a specific region:
+discoal does not have ms's ``-s`` (a fixed number of segregating sites),
+and it no longer has ``-C`` (keep only replicates with recombination in
+a region). Both are simple to do with tskit on tree sequence output
+(``-ts``): for example, place a set number of mutations on the
+genealogy, or keep only the replicates whose trees change in a region.
+
+Sweep Trajectory From a File
+----------------------------
+
+With ``-S file``, the sweep follows a trajectory from a file instead of
+one that discoal simulates, for example a trajectory from a forward
+simulation or an estimate from data:
+
+.. code-block:: text
+
+   # time (4N0 generations before the present)  frequency
+   0       0.6
+   0.0005  0.476
+   0.001   0.354
+   ...
+   0.015   0
 
 .. code-block:: bash
 
-   # Condition on recombination between sites 400-600
-   ./discoal 20 100 1000 -t 10 -r 20 -C 400 600
+   ./discoal 20 100 10000 -t 10 -r 10 -N 10000 -S trajectory.txt -x 0.3
 
-The simulator will retry until this condition is met.
+The sweep starts (going back in time) at the first time, here the
+present. The last frequency must be 0: going back in time, the allele
+reaches its origin there, and the sweep ends. Between the rows, discoal
+interpolates the frequency linearly at each of its sweep time steps, of
+``1/(i N)`` in units of 2N₀ generations (``-i``, default 40, and ``-N``).
+If the first frequency is below 1, as here, the sweep is partial, as
+with ``-c``: each sampled lineage carries the allele with that
+probability, and the selected SNP is in the output. The file gives the
+sweep's time and strength, so ``-S`` cannot be combined with the sweep
+options that set them (``-ws``, ``-wd``, ``-wn``, ``-ls``, ``-ld``,
+``-ln``, ``-R``, ``-L``, ``-a``, ``-f``, ``-c``, and their priors).
+``-x``, ``-Px``, ``-uA``, ``-h`` and ancient samples work as
+with a simulated trajectory.
 
 Tree Output Mode
 ----------------

@@ -152,9 +152,9 @@ int sample_node_capacity;
 // int activeMaterial[MAXSITES];  // DEPRECATED - replaced by segment structure
 ActiveMaterial activeMaterialSegments;  // New segment-based structure
 
-int sampleSize, sampleNumber, breakNumber, segSites,alleleNumber, \
+int sampleSize, sampleNumber, breakNumber, alleleNumber, \
 	totNodeNumber, totChunkNumber, npops, eventFlag, nSites, activeSites,\
-	mask, outputStyle, effectiveSampleSize, runMode, gcMean,\
+	mask, outputStyle, effectiveSampleSize, gcMean,\
 	*breakPoints, breakPointsCapacity, sampleSizes[MAXPOPS];
 
 double  leftRho, rho, theta, tDiv, alpha, sweepSite, tau, my_gamma, \
@@ -183,6 +183,12 @@ double uA;
 
 double gammaCoRatio, gammaCoRatioMode;
 int priorTheta, priorRho, priorAlpha, priorTau, priorX, priorF0, priorUA, priorC;
+/* -S file: the sweep's trajectory read from a file, as points of time
+ * before the present (internal units, increasing) and frequency of the
+ * selected allele; trajFileRows is 0 without -S. */
+struct trajPoint { double time, freq; };
+int trajFileRows;
+struct trajPoint *trajFilePoints;
 double gammaCoRatioMode, gammaCoRatio;
 double pThetaUp, pThetaLow,pRhoMean,pRhoUp,pRhoLow,pAlphaUp,pAlphaLow,pTauUp,pTauLow,pXUp,pXLow,pF0Up,pF0Low,pUALow,pUAUp,pCUp,pCLow;
 /* Population size changes with uniform priors on time (internal units)

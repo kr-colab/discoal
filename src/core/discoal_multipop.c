@@ -36,7 +36,6 @@
 
 int locusNumber;
 int leftRhoFlag=0;
-const char *fileName;
 double *currentSize;
 long seed1, seed2;
 double nextTime, currentFreq;
@@ -776,6 +775,7 @@ void getParameters(int argc,const char **argv){
 	migFlag = 0;
 	deltaTMod = 40;
 	recurSweepMode = 0;
+	trajFileRows = 0;
 	partialSweepMode = 0;
 	softSweepMode = 0;
 	hidePartialSNP = 0;
@@ -922,12 +922,15 @@ void getParameters(int argc,const char **argv){
 			fprintf(stderr, "Note: Full tree sequence mode enabled (recording all edges including recombination)\n");
 			break;
 			case 'S' :
-			runMode = 'S';
-			fileName = getNextArg(argc, argv, &args, "-S");
+			if (setSweepTrajectoryFile(getNextArg(argc, argv, &args, "-S")) != 0)
+				exit(1);
 			break;
 			case 's' :
-			segSites = parseIntArg(argc, argv, &args, "-s");
-			break;
+			/* ms's -s is not supported; reject it, not ignore it. */
+			fprintf(stderr, "Error: -s (a fixed number of segregating sites) "
+				"is not supported; place mutations with tskit on tree "
+				"sequence output (-ts) instead\n");
+			exit(1);
 			case 't' :
 			if (argv[args][2] == 's') {  // -ts flag for tree sequence
 				tskitOutputMode = 1;
@@ -1366,10 +1369,12 @@ void getParameters(int argc,const char **argv){
 	//make sure events are kosher
 	selCheck = 0;
 	nChangeCheck=0;
+	int sweepEvents = 0;
 	for(i=0;i<eventNumber;i++){
 		//printf("event %d: type is %c\n", i, events[i].type);
 	 		if(events[i].type == 's'){
 				selCheck = 1;
+				sweepEvents++;
 	 		}
 			if(events[i].type == 'n'){
 				nChangeCheck += 1;
@@ -1414,6 +1419,27 @@ void getParameters(int argc,const char **argv){
 		printf("Error with event specification: currently recurrent soft sweeps are not implemented. this will be a future addition\n");
 		exit(666);
 	}
+	/* -S: the file gives the sweep's time, its frequencies, and so the
+	 * strength of selection, so options that set these are rejected. A
+	 * first frequency below 1 makes the sweep partial, as -c does: each
+	 * lineage carries the allele with that probability, and its carriers
+	 * carry the selected SNP. */
+	if(trajFileRows > 0){
+		if(sweepEvents > 1 || recurSweepMode || leftRhoFlag || softSweepMode ||
+		   partialSweepMode || alpha != 0.0 || priorAlpha || priorTau ||
+		   priorF0 || priorC){
+			fprintf(stderr, "Error: a trajectory file (-S, or YAML sweep_mode "
+				"'trajectory_file') gives the sweep's time and frequencies; it "
+				"cannot be combined with -ws, -wd, -wn, -ls, -ld, -ln, -R, -L, "
+				"-a, -f, -c, -Pa, -Pu, -Pf or -Pc\n");
+			exit(1);
+		}
+		if(trajFilePoints[0].freq < 1.0){
+			partialSweepMode = 1;
+			partialSweepFinalFreq = trajFilePoints[0].freq;
+		}
+		buildSweepTrajectoryFromFile();
+	}
 	
 }
 		
@@ -1457,6 +1483,7 @@ void usage(){
 	fprintf(stderr,"\t -x sweepSite (0-1)\n");
 	fprintf(stderr,"\t -c partialSweepFinalFrequency (partial sweeps)\n");	
 	fprintf(stderr,"\t -i dt (sweep time increment scalar; default 40 -> 1/40N)\n");
+	fprintf(stderr,"\t -S file (sweep trajectory from a file: lines of time (4N0 generations, increasing) and allele frequency, ending at frequency 0)\n");
 	
 	fprintf(stderr,"\t -M migRate (sets all rates to migRate)\n");
 	fprintf(stderr,"\t -m popnID1 popnID2 migRate (sets migRate from popnID1 to popnID2)\n");

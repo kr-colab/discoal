@@ -64,7 +64,9 @@ selection:
   sweep_mode: "stochastic"
   sweep_mode: "deterministic"
   sweep_mode: "neutral"
+  sweep_mode: "trajectory_file"
   selection_coefficient: 10.0
+  trajectory_file: "/path/to/trajectory.txt"
   sweep_position: 0.5
   fixation_time_ago: 1.0
   initial_frequency: 1.0e-1

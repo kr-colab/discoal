@@ -1,0 +1,17 @@
+# With sweep_mode trajectory_file (-S), the file gives the sweep's time and
+# frequencies, so selection_coefficient is rejected, as -a is with -S.
+# Should error out with:
+#   "Error parsing config: with sweep_mode 'trajectory_file', the file gives the sweep's time and frequencies"
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+selection:
+  sweep_mode: trajectory_file
+  trajectory_file: "no_such_file.traj"
+  selection_coefficient: 100
