@@ -2405,69 +2405,33 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 		//first was it in population 0 (sweep) or not
 		double eventTime = cTime + ttau;
 		if(ranf() < sweepPopTotRate / totRate){
-			//event is in sweep pop; choose event
+			/* An event in population 0, chosen in proportion to its rate among
+			 * the sweep events (sweepPopTotRate). */
 			r = ranf();
-			sum = pCoalB;
-			//coalescent in B?
-			if(r < sum / sweepPopTotRate){
-				coalesceAtTimePopnSweep(eventTime, 0,1);
+			if (r < (sum = pCoalB) / sweepPopTotRate)
+				coalesceAtTimePopnSweep(eventTime, 0, 1);
+			else if (r < (sum += pCoalb) / sweepPopTotRate)
+				coalesceAtTimePopnSweep(eventTime, 0, 0);
+			else if (r < (sum += pRecb) / sweepPopTotRate) {
+				bp = recombineAtTimePopnSweep(eventTime, 0, 0, sweepSite, (1.0-x));
+				if (bp != 666) addBreakPoint(bp);
 			}
-			else{
-				sum += pCoalb;
-				//coalescent in b?
-				if(r < sum / sweepPopTotRate){
-					coalesceAtTimePopnSweep(eventTime,0, 0);
-				}
-				else{
-					sum += pRecb;
-					//recombination in b, also need bookkeeping
-					if(r < sum / sweepPopTotRate){
-						bp = recombineAtTimePopnSweep(eventTime,0, 0, sweepSite, (1.0-x));
-						if(bp != 666){
-							addBreakPoint(bp);
-						}
-					}
-					else{
-						sum += pRecB;
-						if( r < sum / sweepPopTotRate){
-							//recombination in B and bookkeeping
-							bp = recombineAtTimePopnSweep(eventTime,0, 1, sweepSite, x);
-							if(bp != 666){
-								addBreakPoint(bp);
-							}
-						}
-						else{
-							sum+= pGCB;
-							if( r < sum / sweepPopTotRate){
-								geneConversionAtTimePopnSweep(eventTime,0, 1, sweepSite, x);
-							}
-							else{
-								sum+= pGCb;
-								if( r < sum / sweepPopTotRate){
-									geneConversionAtTimePopnSweep(eventTime,0, 0, sweepSite, x);
-								}
-								else{
-									sum += pLeftRecb;
-									if ( r < sum / sweepPopTotRate){
-									        recombineToLeftPopnSweep(0, 0, x);
-									}
-									else{
-										sum += pLeftRecB;
-										if ( r < sum / sweepPopTotRate){
-										recombineToLeftPopnSweep(0, 1, x);
-										}
-										else{
-											//recurrent adaptive mutation:
-											//node in pop zero's sweep group exits sweep
-											recurrentMutAtTime(eventTime,0, 1);
-										}
-									}
-								}
-							}
-						}
-					}
-				}
+			else if (r < (sum += pRecB) / sweepPopTotRate) {
+				bp = recombineAtTimePopnSweep(eventTime, 0, 1, sweepSite, x);
+				if (bp != 666) addBreakPoint(bp);
 			}
+			else if (r < (sum += pGCB) / sweepPopTotRate)
+				geneConversionAtTimePopnSweep(eventTime, 0, 1, sweepSite, x);
+			else if (r < (sum += pGCb) / sweepPopTotRate)
+				geneConversionAtTimePopnSweep(eventTime, 0, 0, sweepSite, x);
+			else if (r < (sum += pLeftRecb) / sweepPopTotRate)
+				recombineToLeftPopnSweep(0, 0, x);
+			else if (r < (sum += pLeftRecB) / sweepPopTotRate)
+				recombineToLeftPopnSweep(0, 1, x);
+			else
+				/* recurrent adaptive mutation: a lineage leaves the
+				 * beneficial class */
+				recurrentMutAtTime(eventTime, 0, 1);
 		}
 		else{	
 			if(npops>1){
