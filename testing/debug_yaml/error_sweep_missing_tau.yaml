@@ -18,4 +18,4 @@ selection:
   selection_coefficient: 1000.0
   sweep_position: 0.5
 output:
-  output_type: "snp_array"
+  output_type: "haplotype"

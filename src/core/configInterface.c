@@ -44,6 +44,25 @@ static int check_nonneg_double(const char *arr, const char *field, int idx,
     return EXIT_SUCCESS;
 }
 
+/* A population no longer exists from the time a population_splits entry
+ * merges it (as `derived`) into another one. Reject an entry of `arr` that
+ * involves population `pop` at or after that time. */
+static int check_not_merged(const char *arr, int idx, int pop, double time,
+                            const struct demographic_events *dmo) {
+    for (int k = 0; k < dmo->num_population_splits; ++k) {
+        const struct population_split *sp = &dmo->population_splits[k];
+        if (pop == sp->derived && time >= sp->time) {
+            fprintf(stderr,
+                "Error parsing config: %s[%d] at time %g involves population "
+                "%d, which merges into population %d at time %g "
+                "(population_splits[%d])\n",
+                arr, idx, time, pop, sp->ancestral, sp->time, k);
+            return EXIT_FAILURE;
+        }
+    }
+    return EXIT_SUCCESS;
+}
+
 /* for string-valued options, use enums so that CYAML can automatically check
  * for invalid values */
 static const cyaml_strval_t output_types_strings[] = {
@@ -237,12 +256,10 @@ static const cyaml_schema_field_t selection_fields_schema[] = {
 /* schema for fields within output block */
 static const cyaml_schema_field_t output_fields_schema[] = {
     /* required arguments */
-    CYAML_FIELD_ENUM("output_type", CYAML_FLAG_DEFAULT, 
-        struct output_config, output_type, 
+    /* optional arguments; output_type defaults to haplotype (ms output) */
+    CYAML_FIELD_ENUM("output_type", CYAML_FLAG_OPTIONAL,
+        struct output_config, output_type,
         output_types_strings, CYAML_ARRAY_LEN(output_types_strings)),
-    /* optional arguments */
-    CYAML_FIELD_BOOL("finite_output", CYAML_FLAG_OPTIONAL,
-        struct output_config, finite_output),
     CYAML_FIELD_BOOL("hide_partial_snp", CYAML_FLAG_OPTIONAL,
         struct output_config, hide_partial_snp),
     CYAML_FIELD_BOOL("unsimplified_tree_sequence", CYAML_FLAG_OPTIONAL,
@@ -479,25 +496,94 @@ int parse_demography_block(struct demography_config *cfg)
         }
         /* parse demographic events; these will be sorted into time order later */
         if (cfg->demographic_events != NULL) {
-            if (cfg->demes_filename != NULL) {
-                fprintf(stderr, "Cannot use demographic_events if demes_filename is provided\n");
-                return EXIT_FAILURE;
-            }
             struct demographic_events *dmo = cfg->demographic_events;
-            if (dmo->num_ancient_samples > 0) {
-                /* FIXME: not sure how to implement parsing */
-                /* FIXME: are these counted in deme_sample_sizes? */
-                fprintf(stderr, "Ancient sample events not yet implemented\n");
+            /* A demes file gives the whole demography, so with one only
+             * ancient_samples may be set; the demes importer checks that
+             * each sample's deme exists at its sampling time. */
+            if (cfg->demes_filename != NULL &&
+                (dmo->num_population_size_changes > 0 ||
+                 dmo->num_population_splits > 0 ||
+                 dmo->num_migration_rate_changes > 0)) {
+                fprintf(stderr, "Error parsing config: with demes_filename, "
+                    "demographic_events may contain only ancient_samples; the "
+                    "demes file gives the demography\n");
                 return EXIT_FAILURE;
             }
-            /* Time-varying migration rate changes are not implemented in the
-             * main event loop yet (see discoalFunctions.c); reject rather than
-             * silently dropping them. */
-            if (dmo->num_migration_rate_changes > 0) {
-                fprintf(stderr,
-                    "Error parsing config: migration_rate_changes are not yet "
-                    "implemented (no handler in the main event loop)\n");
-                return EXIT_FAILURE;
+            /* Ancient samples, as -A sample_size population time: that many
+             * of the population's deme_sample_size samples are taken at
+             * `time` instead of at time 0. The count per population is
+             * checked against deme_sample_size after parsing, for the CLI
+             * and YAML alike. A sample from a population at or after the
+             * time it merges away is rejected, as for migration changes. */
+            for (int i = 0; i < dmo->num_ancient_samples; ++i) {
+                struct ancient_sample *as = &dmo->ancient_samples[i];
+                if (check_pop_index("ancient_samples", "population",
+                        i, as->population, cfg->num_demes) != EXIT_SUCCESS ||
+                    check_nonneg_double("ancient_samples", "time",
+                        i, as->time) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
+                if (as->sample_size < 1) {
+                    fprintf(stderr,
+                        "Error parsing config: ancient_samples[%d] "
+                        "sample_size (%d) must be >= 1\n",
+                        i, as->sample_size);
+                    return EXIT_FAILURE;
+                }
+                if (check_not_merged("ancient_samples", i, as->population,
+                        as->time, dmo) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
+                ensureEventsCapacity();
+                events[eventNumber].type = 'A';
+                events[eventNumber].time = userTimeToInternal(as->time);
+                events[eventNumber].popID = as->population;
+                events[eventNumber].lineageNumber = as->sample_size;
+                eventNumber++;
+            }
+            /* Migration rate changes, as -em time source destination rate:
+             * from `time` back into the past, lineages in `source` move to
+             * `destination` at `rate` (4 N0 m). A change that involves a
+             * population at or after the time it merges away (a
+             * population_splits entry with it as `derived`) is rejected: the
+             * population no longer exists then, and the split already stops
+             * its migration. */
+            for (int i = 0; i < dmo->num_migration_rate_changes; ++i) {
+                struct migration_rate_change *mrc = &dmo->migration_rate_changes[i];
+                if (check_pop_index("migration_rate_changes", "source",
+                        i, mrc->source, cfg->num_demes) != EXIT_SUCCESS ||
+                    check_pop_index("migration_rate_changes", "destination",
+                        i, mrc->destination, cfg->num_demes) != EXIT_SUCCESS ||
+                    check_nonneg_double("migration_rate_changes", "time",
+                        i, mrc->time) != EXIT_SUCCESS ||
+                    check_nonneg_double("migration_rate_changes", "rate",
+                        i, mrc->rate) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
+                if (mrc->source == mrc->destination) {
+                    fprintf(stderr,
+                        "Error parsing config: migration_rate_changes[%d] "
+                        "source and destination (%d) must differ\n",
+                        i, mrc->source);
+                    return EXIT_FAILURE;
+                }
+                /* The split already stops a merged population's migration. */
+                if (check_not_merged("migration_rate_changes", i, mrc->source,
+                        mrc->time, dmo) != EXIT_SUCCESS ||
+                    check_not_merged("migration_rate_changes", i,
+                        mrc->destination, mrc->time, dmo) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
+                ensureEventsCapacity();
+                events[eventNumber].type = 'm';
+                events[eventNumber].time = userTimeToInternal(mrc->time);
+                events[eventNumber].popID2 = mrc->source;
+                events[eventNumber].popID = mrc->destination;
+                events[eventNumber].popnSize = mrc->rate;
+                eventNumber++;
+                /* Migration that starts later still counts as migration for
+                 * initialize()'s check on multi-population models. */
+                if (mrc->rate > 0) migFlag = 1;
             }
             /* YAML times use the command-line units; see userTimeToInternal. */
             for (int i = 0; i < dmo->num_population_size_changes; ++i) {
@@ -548,8 +634,7 @@ int parse_demography_block(struct demography_config *cfg)
                 /* Unlike -ed, a YAML split ends the derived population, as
                  * in demes: set all migration into and out of it to zero at
                  * the split time. Otherwise lineages can migrate into the
-                 * merged population and be stranded there, and YAML has no
-                 * way to change migration rates. 'm' events set
+                 * merged population and be stranded there. 'm' events set
                  * migShape[popID2][popID] (lineages move popID2 -> popID). */
                 for (int k = 0; k < cfg->num_demes; ++k) {
                     if (k == split->derived) continue;
@@ -750,16 +835,20 @@ int parse_selection_block(struct selection_config *cfg)
 int parse_output_block(struct output_config *cfg) 
 {
     extern int tskitOutputMode, minimalTreeSeq, hidePartialSNP;
-    extern int finiteOutputFlag;
     extern char tskitOutputFilename[1024];
     if (cfg != NULL) {
         switch (cfg->output_type) {
+            case OUTPUT_DEFAULT:
             case OUTPUT_HAPLOTYPE:
-                // FIXME: it is not clear what should be done here
+                /* ms-format haplotypes on stdout, discoal's normal output */
                 break;
             case OUTPUT_SNP_ARRAY:
-                // FIXME: it is not clear what should be done here
-                break;
+                /* Kept in the value table only to give a clear error. */
+                fprintf(stderr,
+                    "Error parsing config: output_type \"snp_array\" is not "
+                    "supported; use \"haplotype\" (ms output, the default) "
+                    "or \"tree_sequence\"\n");
+                return EXIT_FAILURE;
             case OUTPUT_TREE_SEQN:
                 if (cfg->tree_sequence_filename == NULL ||
                     cfg->tree_sequence_filename[0] == '\0') {
@@ -772,9 +861,6 @@ int parse_output_block(struct output_config *cfg)
                 break;
             default:
                 break;
-        }
-        if (cfg->finite_output) {
-            finiteOutputFlag = 1;
         }
         if (cfg->hide_partial_snp) {
             hidePartialSNP = 1;

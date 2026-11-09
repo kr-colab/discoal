@@ -1,0 +1,26 @@
+# Ancient samples are part of a population's deme_sample_size, so they
+# cannot outnumber it. Should error out with:
+#   "Error: population 1 has 6 ancient samples but only 5 samples in all"
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [5, 5]
+  effective_population_size: 1.0
+  migration_matrix:
+    - row: [0.0, 0.1]
+    - row: [0.1, 0.0]
+  demographic_events:
+    ancient_samples:
+      - time: 0.2
+        population: 1
+        sample_size: 4
+      - time: 0.4
+        population: 1
+        sample_size: 2

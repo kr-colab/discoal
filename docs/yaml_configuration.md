@@ -92,6 +92,10 @@ demography:
     population_size_changes:
       - { time: 0.5, size: 0.1, population: 0 }
       - { time: 1.0, size: 2.0, population: 1 }
+    migration_rate_changes:
+      - { time: 0.2, rate: 0.5, source: 1, destination: 2 }
+    ancient_samples:
+      - { time: 0.1, population: 2, sample_size: 2 }
     population_splits:
       - { time: 2.0, derived: 1, ancestral: 0 }
       - { time: 3.0, derived: 2, ancestral: 0 }
@@ -122,17 +126,45 @@ Notes:
   `time` must be `> 0` and the two population indices must differ.
 - For `population_size_changes`, `time` must be `>= 0` and `size`
   must be `> 0` (extinction at zero is not modeled).
-- `demes_filename` and explicit `demographic_events` /
-  `migration_matrix` are mutually exclusive — use one or the other.
+- A `migration_rate_change` sets the rate (4Nm) at which lineages in
+  `source` move to `destination` backward in time, from `time` into
+  the past, until a later change. This is
+  `-em time source destination rate` on the CLI. `time` and `rate`
+  must be `>= 0`, and `source` and `destination` must differ. A
+  change that involves a population at or after the time it merges
+  into another one (a `population_split` with it as `derived`) is
+  rejected: the split already stops its migration.
+- A rate change to zero can leave lineages in populations that never
+  exchange migrants again and never merge. discoal then stops with an
+  error that names the stranded populations. To avoid this, keep a
+  connecting migration rate, or add a `population_split` that merges
+  the populations.
+- An `ancient_sample` takes `sample_size` of the population's
+  samples at `time` instead of at time 0. This is
+  `-A sample_size population time` on the CLI. The ancient samples
+  are part of `deme_sample_size`: with `deme_sample_size: [10, 5, 5]`
+  and the entry above, population 2 has 3 samples taken at time 0 and
+  2 taken at time 0.1. The ancient samples of a population must not
+  outnumber its samples. `time` must be `>= 0` and `sample_size`
+  `>= 1`. A sample from a population at or after the time it merges
+  into another one is rejected.
+- In the output, the samples of each population come in population
+  order; within a population, the ancient samples come first (the
+  earliest sampling time first), then the samples taken at time 0.
+- Ancient samples taken while a sweep is in progress are not yet
+  modeled correctly: their lineages do not get the correct sweep class
+  (issue #100).
+- Events at the same time take effect in this order:
+  `ancient_samples`, `migration_rate_changes`,
+  `population_size_changes`, `population_splits` (each split followed
+  by the migration changes that stop the merged population's
+  migration), and within each list in file order. On the CLI, events
+  at the same time take effect in command-line order, so an equivalent
+  command line must list them in this order to give the same output.
+- With `demes_filename`, `migration_matrix` must be omitted, and
+  `demographic_events` may contain only `ancient_samples`: the demes
+  file gives the demography. See "Combining with the demes format".
 
-Time-varying migration *is* supported: use the CLI primitives
-`-em time popID1 popID2 rate` (single pair) or
-`-eM time rate` (all off-diagonal pairs), or load a demes file
-with multi-window migration via `-D` / `demes_filename`.
-
-The `demographic_events` block also accepts the field name
-`ancient_samples`, which is part of the schema but is **not yet
-wired into the simulator** and will exit with an error if set.
 
 ## selection
 
@@ -164,20 +196,20 @@ and `recurrent_sweep_rate` must be `>= 0`.
 
 ```yaml
 output:
-  output_type: "tree_sequence"         # see notes; "haplotype" / "snp_array" are currently no-ops
+  output_type: "tree_sequence"         # optional; "haplotype" (default) or "tree_sequence"
   hide_partial_snp: false              # optional; suppresses the selected SNP (matches CLI -h)
   unsimplified_tree_sequence: false    # optional; only meaningful with tree_sequence output
   tree_sequence_filename: "out.trees"  # required if output_type is "tree_sequence"
-  finite_output: false                 # accepted but currently has no effect; see notes
 ```
 
 Notes:
 
-- Only `output_type: "tree_sequence"` actually changes simulator
-  behavior. Setting `"haplotype"` or `"snp_array"` is accepted by
-  the parser but currently has no effect — in either case discoal
-  emits its default ms-style stdout (one `//` block per replicate
-  with `segsites:`, `positions:`, and per-haplotype rows).
+- `output_type: "haplotype"` (the default) gives discoal's ms-format
+  output on stdout: one `//` block per replicate with `segsites:`,
+  `positions:`, and one row per haplotype. `"tree_sequence"` writes
+  tree sequence files instead (the CLI's `-ts`). The schema used to
+  accept `"snp_array"` and a `finite_output` field, which had no
+  effect; both are now rejected with an error.
 - When `output_type` is `"tree_sequence"`, discoal writes one
   `.trees` file per replicate, named by stripping the `.trees`
   suffix from `tree_sequence_filename` and appending
@@ -188,9 +220,6 @@ Notes:
   the selected SNP is excluded from the haplotype output. Useful
   when measuring θ from sweep simulations, where including the
   selected site biases the estimate.
-- `finite_output` is in the schema but is currently a stub: the
-  parser sets a global flag that nothing in the simulator
-  consults. Setting it has no effect today; treat it as reserved.
 
 ## Units
 
@@ -210,6 +239,7 @@ command line as `-en 1.0 ...`.
 
 This convention applies to every time field in the schema:
 `population_size_changes.time`, `population_splits.time`,
+`migration_rate_changes.time`, `ancient_samples.time`,
 `fixation_time_ago`, etc.
 
 A demes file does not use this convention: its times are in
@@ -224,7 +254,8 @@ Other unit conventions:
   matrix entries are relative ratios, not absolute counts. A size
   of `0.1` means "this population has 10% of the reference N at
   that time".
-- **Migration rates** (`migration_matrix` rows) are 4Nm.
+- **Migration rates** (`migration_matrix` rows and
+  `migration_rate_changes.rate`) are 4Nm.
 - **Selection coefficient** is 2Ns, matching `-a`.
 
 ## Combining with the demes format
@@ -236,9 +267,24 @@ using the present-day size of the first present-day deme as the
 reference N. Demes migration rates (per-generation) are scaled to
 4Nm.
 
-When a demes file is in use, the `demographic_events` and
-`migration_matrix` blocks must be omitted — the parser rejects
-the combination rather than silently overriding either.
+When a demes file is in use, the `migration_matrix` block must be
+omitted, and `demographic_events` may contain only
+`ancient_samples` — the parser rejects other combinations rather
+than silently overriding either. For ancient samples with a demes
+model:
+
+- `population` is an index into `deme_sample_size`, which follows
+  the order of demes in the demes file, extinct demes included.
+- `time` is in units of 4 N_ref generations, where N_ref is the
+  present-day size of the first deme that exists at time 0:
+  `time = generations / (4 * N_ref)`.
+- The deme must exist at the sampling time: from its end time
+  (included) back to its start time (excluded). discoal stops with
+  an error otherwise.
+- A deme that is extinct at time 0 can have samples if all of them
+  are ancient.
+
+See `config_examples/ancient_demes_example.yaml`.
 
 Note that the demes importer's handling of multi-window migration
 is currently coarser than the demes spec strictly intends. If you
@@ -296,10 +342,7 @@ The YAML interface does not currently expose:
 
 - prior distributions (`-Pt`, `-Pa`, `-Pu`, `-Px`, etc.);
 - linked-locus sweeps (`-ls`, `-ld`, `-ln`);
-- conditional simulation (`-C`);
-- ancient samples and time-varying migration rates (the schema
-  accepts these field names but the parser rejects them at
-  runtime — see the demography section).
+- conditional simulation (`-C`).
 
 Use the positional command-line interface for these. The CLI
 reference is in `docs/basic_usage.rst`,

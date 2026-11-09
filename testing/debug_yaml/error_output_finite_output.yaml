@@ -1,0 +1,15 @@
+# finite_output never had an effect and is no longer in the schema.
+# libcyaml rejects the unknown key with:
+#   "Unexpected key: finite_output"
+
+simulation:
+  sample_size: 4
+  num_replicates: 1
+  num_sites: 1000
+  seed: [42, 4242]
+genetics:
+  mutation_rate: 1.0
+  recombination_rate: 0.0
+output:
+  output_type: "haplotype"
+  finite_output: true

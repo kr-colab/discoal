@@ -41,6 +41,7 @@
 #include "unity.h"
 #include "configInterface.h"
 #include "discoal.h"
+#include "discoalFunctions.h"
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,7 +58,7 @@ extern int popnSizes[MAXPOPS];
 extern int npops;
 extern int migFlag;
 extern int EFFECTIVE_POPN_SIZE;
-extern int gcMean, finiteOutputFlag;
+extern int gcMean;
 extern int recurSweepMode, partialSweepMode, softSweepMode;
 extern int tskitOutputMode, minimalTreeSeq, hidePartialSNP;
 extern double theta, rho;
@@ -77,6 +78,31 @@ extern int eventNumber, eventsCapacity;
 static char workdir_path[PATH_MAX];
 static char yaml_path[PATH_MAX];
 static char original_cwd[PATH_MAX];
+
+/* The simulation and genetics blocks that most single-block tests share:
+ * 10 samples, 1 replicate, 1000 sites, no mutation or recombination. */
+#define BASE_YAML \
+    "simulation:\n" \
+    "  sample_size: 10\n" \
+    "  num_replicates: 1\n" \
+    "  num_sites: 1000\n" \
+    "genetics:\n" \
+    "  mutation_rate: 0.0\n" \
+    "  recombination_rate: 0.0\n"
+
+static void clear_events(void) {
+    free(events);
+    events = NULL;
+    eventNumber = 0;
+    eventsCapacity = 0;
+}
+
+/* Clear the event list and the parser globals. setUp calls this; tests
+ * that apply several configurations in turn call it between them. */
+static void reset_all(void) {
+    clear_events();
+    reset_config_globals();
+}
 
 void setUp(void) {
     if (getcwd(original_cwd, sizeof(original_cwd)) == NULL) {
@@ -98,14 +124,7 @@ void setUp(void) {
     currentSize = (double *)calloc(MAXPOPS, sizeof(double));
     TEST_ASSERT_NOT_NULL_MESSAGE(currentSize, "setUp: currentSize calloc failed");
 
-    if (events != NULL) {
-        free(events);
-        events = NULL;
-    }
-    eventNumber = 0;
-    eventsCapacity = 0;
-
-    reset_config_globals();
+    reset_all();
 }
 
 void tearDown(void) {
@@ -119,12 +138,7 @@ void tearDown(void) {
         free(currentSize);
         currentSize = NULL;
     }
-    if (events != NULL) {
-        free(events);
-        events = NULL;
-    }
-    eventNumber = 0;
-    eventsCapacity = 0;
+    clear_events();
 }
 
 /*
@@ -987,46 +1001,127 @@ void test_demography_population_split_rejects_nonpositive_time(void) {
 }
 
 /*
- * migration_rate_changes are parsed by libcyaml but rejected by
- * parse_demography_block, because the main event loop in
- * discoalFunctions.c does not yet implement the handler. This test
- * exists so the rejection is exercised; if someone later wires up
- * the handler, this test will start failing as a reminder to
- * remove the explicit error path.
+ * A migration_rate_changes entry becomes one 'm' event, as
+ * -em time source destination rate: popID2 is the source, popID the
+ * destination, popnSize the new rate (4 N0 m), and the time is in
+ * internal units (2 N0 generations, twice the YAML value). A positive
+ * rate counts as migration for initialize()'s check on models with
+ * more than one population.
  */
-void test_demography_rejects_migration_rate_changes_not_implemented(void) {
+void test_demography_migration_rate_change_event(void) {
     const char *yaml =
-        "simulation:\n"
-        "  sample_size: 10\n"
-        "  num_replicates: 1\n"
-        "  num_sites: 1000\n"
-        "genetics:\n"
-        "  mutation_rate: 0.0\n"
-        "  recombination_rate: 0.0\n"
+        BASE_YAML
         "demography:\n"
         "  deme_sample_size: [5, 5]\n"
         "  demographic_events:\n"
         "    migration_rate_changes:\n"
         "      - time: 0.1\n"
-        "        rate: 1.0\n"
+        "        rate: 1.5\n"
         "        source: 0\n"
         "        destination: 1\n";
-    TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    TEST_ASSERT_EQUAL_INT(1, eventNumber);
+    TEST_ASSERT_EQUAL_INT('m', events[0].type);
+    TEST_ASSERT_EQUAL_DOUBLE(0.2, events[0].time);
+    TEST_ASSERT_EQUAL_INT(0, events[0].popID2);
+    TEST_ASSERT_EQUAL_INT(1, events[0].popID);
+    TEST_ASSERT_EQUAL_DOUBLE(1.5, events[0].popnSize);
+    TEST_ASSERT_EQUAL_INT(1, migFlag);
+}
+
+/* A rate of zero is a valid change, but it is not migration. */
+void test_demography_migration_rate_change_to_zero(void) {
+    const char *yaml =
+        BASE_YAML
+        "demography:\n"
+        "  deme_sample_size: [5, 5]\n"
+        "  demographic_events:\n"
+        "    migration_rate_changes:\n"
+        "      - time: 0.1\n"
+        "        rate: 0.0\n"
+        "        source: 1\n"
+        "        destination: 0\n"
+        "    population_splits:\n"
+        "      - time: 1.0\n"
+        "        ancestral: 0\n"
+        "        derived: 1\n";
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    TEST_ASSERT_EQUAL_INT('m', events[0].type);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, events[0].popnSize);
+    TEST_ASSERT_EQUAL_INT(0, migFlag);
+}
+
+/* Bad source, destination, time or rate values are rejected. */
+void test_demography_migration_rate_change_rejects_bad_values(void) {
+    const char *fmt =
+        BASE_YAML
+        "demography:\n"
+        "  deme_sample_size: [5, 5]\n"
+        "  migration_matrix:\n"
+        "    - row: [0.0, 0.1]\n"
+        "    - row: [0.1, 0.0]\n"
+        "  demographic_events:\n"
+        "    migration_rate_changes:\n"
+        "      - time: %s\n"
+        "        rate: %s\n"
+        "        source: %s\n"
+        "        destination: %s\n";
+    const char *bad[][4] = {
+        {"0.1", "1.0", "2", "0"},    /* source out of range */
+        {"0.1", "1.0", "0", "-1"},   /* destination out of range */
+        {"0.1", "1.0", "1", "1"},    /* source equals destination */
+        {"-0.1", "1.0", "0", "1"},   /* negative time */
+        {"0.1", "-1.0", "0", "1"},   /* negative rate */
+    };
+    char yaml[2048];
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
+        reset_all();
+        snprintf(yaml, sizeof(yaml), fmt,
+                 bad[i][0], bad[i][1], bad[i][2], bad[i][3]);
+        TEST_ASSERT_NOT_EQUAL_MESSAGE(EXIT_SUCCESS,
+            apply_from_yaml_string(yaml), bad[i][2]);
+    }
 }
 
 /*
- * ancient_samples are parsed by libcyaml but rejected by
- * parse_demography_block; the handler is not yet implemented.
+ * A change that involves a population at or after the time it merges
+ * away is rejected; one before the merge is accepted.
  */
-void test_demography_rejects_ancient_samples_not_implemented(void) {
+void test_demography_migration_rate_change_after_split_rejected(void) {
+    const char *fmt =
+        BASE_YAML
+        "demography:\n"
+        "  deme_sample_size: [5, 5]\n"
+        "  migration_matrix:\n"
+        "    - row: [0.0, 0.1]\n"
+        "    - row: [0.1, 0.0]\n"
+        "  demographic_events:\n"
+        "    migration_rate_changes:\n"
+        "      - time: %s\n"
+        "        rate: 0.5\n"
+        "        source: 1\n"
+        "        destination: 0\n"
+        "    population_splits:\n"
+        "      - time: 1.0\n"
+        "        ancestral: 0\n"
+        "        derived: 1\n";
+    char yaml[2048];
+    snprintf(yaml, sizeof(yaml), fmt, "1.0");
+    TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    reset_all();
+    snprintf(yaml, sizeof(yaml), fmt, "0.9");
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+}
+
+/*
+ * An ancient_samples entry becomes one 'A' event, as
+ * -A sample_size population time: popID is the population,
+ * lineageNumber the count, and the time is in internal units (twice
+ * the YAML value).
+ */
+void test_demography_ancient_sample_event(void) {
     const char *yaml =
-        "simulation:\n"
-        "  sample_size: 10\n"
-        "  num_replicates: 1\n"
-        "  num_sites: 1000\n"
-        "genetics:\n"
-        "  mutation_rate: 0.0\n"
-        "  recombination_rate: 0.0\n"
+        BASE_YAML
         "demography:\n"
         "  deme_sample_size: [10]\n"
         "  demographic_events:\n"
@@ -1034,7 +1129,99 @@ void test_demography_rejects_ancient_samples_not_implemented(void) {
         "      - time: 0.1\n"
         "        population: 0\n"
         "        sample_size: 5\n";
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    TEST_ASSERT_EQUAL_INT(1, eventNumber);
+    TEST_ASSERT_EQUAL_INT('A', events[0].type);
+    TEST_ASSERT_EQUAL_DOUBLE(0.2, events[0].time);
+    TEST_ASSERT_EQUAL_INT(0, events[0].popID);
+    TEST_ASSERT_EQUAL_INT(5, events[0].lineageNumber);
+}
+
+/*
+ * Events at the same time keep the order in which the parser emits them
+ * (the event sort is stable): ancient samples, migration rate changes,
+ * size changes, then each split with its migration-stopping events. The
+ * YAML guide documents this order, and equivalent command lines rely
+ * on it.
+ */
+void test_demography_same_time_event_order(void) {
+    const char *yaml =
+        BASE_YAML
+        "demography:\n"
+        "  deme_sample_size: [5, 5]\n"
+        "  demographic_events:\n"
+        "    population_splits:\n"
+        "      - {time: 0.5, ancestral: 0, derived: 1}\n"
+        "    population_size_changes:\n"
+        "      - {time: 0.5, size: 2.0, population: 0}\n"
+        "    migration_rate_changes:\n"
+        "      - {time: 0.4, rate: 0.3, source: 1, destination: 0}\n"
+        "    ancient_samples:\n"
+        "      - {time: 0.5, population: 0, sample_size: 2}\n";
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    sortEventArray(events, eventNumber);
+    /* 0.4: migration change; 0.5: ancient sample, size change, split,
+     * then two migration-stopping events. */
+    const char expected[] = {'m', 'A', 'n', 'p', 'm', 'm'};
+    TEST_ASSERT_EQUAL_INT(6, eventNumber);
+    for (int i = 0; i < 6; ++i) {
+        TEST_ASSERT_EQUAL_INT_MESSAGE(expected[i], events[i].type,
+                                      "event type out of order");
+    }
+}
+
+/* Bad population, time or sample_size values are rejected. */
+void test_demography_ancient_sample_rejects_bad_values(void) {
+    const char *fmt =
+        BASE_YAML
+        "demography:\n"
+        "  deme_sample_size: [5, 5]\n"
+        "  migration_matrix:\n"
+        "    - row: [0.0, 0.1]\n"
+        "    - row: [0.1, 0.0]\n"
+        "  demographic_events:\n"
+        "    ancient_samples:\n"
+        "      - time: %s\n"
+        "        population: %s\n"
+        "        sample_size: %s\n";
+    const char *bad[][3] = {
+        {"0.1", "2", "1"},     /* population out of range */
+        {"0.1", "-1", "1"},    /* negative population */
+        {"-0.1", "0", "1"},    /* negative time */
+        {"0.1", "0", "0"},     /* no samples */
+    };
+    char yaml[2048];
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
+        reset_all();
+        snprintf(yaml, sizeof(yaml), fmt, bad[i][0], bad[i][1], bad[i][2]);
+        TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    }
+}
+
+/*
+ * An ancient sample from a population at or after the time it merges
+ * away is rejected; one before the merge is accepted.
+ */
+void test_demography_ancient_sample_after_split_rejected(void) {
+    const char *fmt =
+        BASE_YAML
+        "demography:\n"
+        "  deme_sample_size: [5, 5]\n"
+        "  demographic_events:\n"
+        "    ancient_samples:\n"
+        "      - time: %s\n"
+        "        population: 1\n"
+        "        sample_size: 2\n"
+        "    population_splits:\n"
+        "      - time: 1.0\n"
+        "        ancestral: 0\n"
+        "        derived: 1\n";
+    char yaml[2048];
+    snprintf(yaml, sizeof(yaml), fmt, "1.0");
     TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    reset_all();
+    snprintf(yaml, sizeof(yaml), fmt, "0.9");
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
 }
 
 /*
@@ -1147,10 +1334,73 @@ void test_demography_migration_matrix_sets_mig_flag(void) {
 }
 
 /*
- * demographic_events and demes_filename are mutually exclusive: the
- * demes file owns event generation when present, so explicit events
- * would conflict.
+ * With demes_filename, demographic_events may hold only ancient_samples:
+ * the demes file gives the demography, so other explicit events would
+ * conflict with it.
  */
+static const char *ancient_with_demes_fmt =
+    "simulation:\n"
+    "  sample_size: 4\n"
+    "  num_replicates: 1\n"
+    "  num_sites: 1000\n"
+    "genetics:\n"
+    "  mutation_rate: 0.0\n"
+    "  recombination_rate: 0.0\n"
+    "demography:\n"
+    "  deme_sample_size: [0, 2, 2]\n"
+    "  demes_filename: \"extinct_deme.yaml\"\n"
+    "  demographic_events:\n"
+    "    ancient_samples:\n"
+    "      - time: %s\n"
+    "        population: 2\n"
+    "        sample_size: %s\n";
+
+/*
+ * Ancient samples may be combined with a demes file. Here all samples of
+ * the extinct deme X (index 2 in file order) are ancient, taken at 0.5
+ * (4N units), while X exists. The 'A' event keeps its population index
+ * and has the time in internal units; the demes events follow it.
+ */
+void test_demography_ancient_samples_with_demes_file(void) {
+    copy_fixture_to_workdir("extinct_deme.yaml");
+    char yaml[2048];
+    snprintf(yaml, sizeof(yaml), ancient_with_demes_fmt, "0.5", "2");
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    TEST_ASSERT_EQUAL_INT(3, npops);
+    TEST_ASSERT_TRUE(eventNumber > 1);
+    TEST_ASSERT_EQUAL_INT('A', events[0].type);
+    TEST_ASSERT_EQUAL_INT(2, events[0].popID);
+    TEST_ASSERT_EQUAL_INT(2, events[0].lineageNumber);
+    TEST_ASSERT_EQUAL_DOUBLE(1.0, events[0].time);
+}
+
+/*
+ * An ancient sample must come from a deme that exists at its sampling
+ * time (X: from 0.25 back to 1.0, the start excluded), and samples taken
+ * at time 0 may not be in a deme that is extinct then.
+ */
+void test_demography_ancient_samples_with_demes_file_rejected(void) {
+    copy_fixture_to_workdir("extinct_deme.yaml");
+    const char *bad[][2] = {
+        {"0.1", "2"},   /* X does not exist yet */
+        {"1.0", "2"},   /* X's start time: its lineages move to ANC */
+        {"1.5", "2"},   /* X no longer exists */
+        {"0.5", "1"},   /* one of X's samples would be taken at time 0 */
+    };
+    char yaml[2048];
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
+        reset_all();
+        snprintf(yaml, sizeof(yaml), ancient_with_demes_fmt,
+                 bad[i][0], bad[i][1]);
+        TEST_ASSERT_NOT_EQUAL_MESSAGE(EXIT_SUCCESS,
+            apply_from_yaml_string(yaml), bad[i][0]);
+    }
+    /* At X's end time the sample is accepted. */
+    reset_all();
+    snprintf(yaml, sizeof(yaml), ancient_with_demes_fmt, "0.25", "2");
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+}
+
 void test_demography_rejects_events_and_demes_filename_both_set(void) {
     /* parse_demography_block rejects the combination before it ever
      * tries to read the demes file, so loading the file is not
@@ -1673,29 +1923,53 @@ void test_load_soft_partial_sweep(void) {
 /* ----- Output block + load-level + end-to-end ----- */
 
 /*
- * An output block with finite_output and hide_partial_snp set
- * populates finiteOutputFlag and hidePartialSNP. The output_type is
- * haplotype here only because the boolean flags are independent of
- * which output_type is chosen.
+ * An output block with output_type haplotype and hide_partial_snp set
+ * populates hidePartialSNP and leaves tree sequence output off.
  */
 void test_load_output_section(void) {
     const char *yaml =
-        "simulation:\n"
-        "  sample_size: 10\n"
-        "  num_replicates: 1\n"
-        "  num_sites: 1000\n"
-        "genetics:\n"
-        "  mutation_rate: 0.0\n"
-        "  recombination_rate: 0.0\n"
+        BASE_YAML
         "output:\n"
         "  output_type: haplotype\n"
-        "  finite_output: true\n"
         "  hide_partial_snp: true\n";
 
     int rc = apply_from_yaml_string(yaml);
     TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, rc);
-    TEST_ASSERT_EQUAL_INT(1, finiteOutputFlag);
     TEST_ASSERT_EQUAL_INT(1, hidePartialSNP);
+    TEST_ASSERT_EQUAL_INT(0, tskitOutputMode);
+}
+
+/* output_type may be omitted: the output block then gives ms output. */
+void test_output_type_defaults_to_haplotype(void) {
+    const char *yaml =
+        BASE_YAML
+        "output:\n"
+        "  hide_partial_snp: true\n";
+
+    int rc = apply_from_yaml_string(yaml);
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, rc);
+    TEST_ASSERT_EQUAL_INT(1, hidePartialSNP);
+    TEST_ASSERT_EQUAL_INT(0, tskitOutputMode);
+}
+
+/* snp_array never had an implementation; it is rejected. */
+void test_output_rejects_snp_array(void) {
+    const char *yaml =
+        BASE_YAML
+        "output:\n"
+        "  output_type: snp_array\n";
+
+    TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+}
+
+/* finite_output never had an effect; it is no longer in the schema. */
+void test_output_rejects_finite_output(void) {
+    const char *yaml =
+        BASE_YAML
+        "output:\n"
+        "  finite_output: true\n";
+
+    TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
 }
 
 /*
@@ -1894,7 +2168,7 @@ void test_apply_full_config(void) {
         "  fixation_time_ago: 0.025\n"
         "output:\n"
         "  output_type: haplotype\n"
-        "  finite_output: true\n";
+        "  hide_partial_snp: true\n";
 
     int rc = apply_from_yaml_string(yaml);
     TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, rc);
@@ -1928,7 +2202,7 @@ void test_apply_full_config(void) {
     TEST_ASSERT_EQUAL_DOUBLE(0.05, tau);  /* 0.025 * 2.0 */
 
     /* output */
-    TEST_ASSERT_EQUAL_INT(1, finiteOutputFlag);
+    TEST_ASSERT_EQUAL_INT(1, hidePartialSNP);
 
     /* events: size-change at events[0] (demography first), sweep at events[1] */
     TEST_ASSERT_EQUAL_INT(2, eventNumber);
@@ -1975,7 +2249,6 @@ void test_apply_zero_block_yaml(void) {
 
     /* No output block: every output global unchanged. */
     TEST_ASSERT_EQUAL_INT(0, tskitOutputMode);
-    TEST_ASSERT_EQUAL_INT(0, finiteOutputFlag);
     TEST_ASSERT_EQUAL_INT(0, hidePartialSNP);
     TEST_ASSERT_EQUAL_INT(0, minimalTreeSeq);
 
@@ -2028,14 +2301,22 @@ int main(void) {
     RUN_TEST(test_demography_population_split_rejects_same_derived_ancestral);
     RUN_TEST(test_demography_population_split_rejects_bad_pop_index);
     RUN_TEST(test_demography_population_split_rejects_nonpositive_time);
-    RUN_TEST(test_demography_rejects_migration_rate_changes_not_implemented);
-    RUN_TEST(test_demography_rejects_ancient_samples_not_implemented);
+    RUN_TEST(test_demography_migration_rate_change_event);
+    RUN_TEST(test_demography_migration_rate_change_to_zero);
+    RUN_TEST(test_demography_migration_rate_change_rejects_bad_values);
+    RUN_TEST(test_demography_migration_rate_change_after_split_rejected);
+    RUN_TEST(test_demography_ancient_sample_event);
+    RUN_TEST(test_demography_same_time_event_order);
+    RUN_TEST(test_demography_ancient_sample_rejects_bad_values);
+    RUN_TEST(test_demography_ancient_sample_after_split_rejected);
     RUN_TEST(test_demography_migration_matrix_requires_square);
     RUN_TEST(test_demography_migration_matrix_requires_square_rows);
     RUN_TEST(test_demography_migration_matrix_rejects_nonzero_diagonal);
     RUN_TEST(test_demography_migration_matrix_rejects_negative_rate);
     RUN_TEST(test_demography_migration_matrix_sets_mig_flag);
     RUN_TEST(test_demography_rejects_events_and_demes_filename_both_set);
+    RUN_TEST(test_demography_ancient_samples_with_demes_file);
+    RUN_TEST(test_demography_ancient_samples_with_demes_file_rejected);
     RUN_TEST(test_demography_rejects_migration_matrix_and_demes_filename_both_set);
 
     /* Selection block */
@@ -2061,6 +2342,9 @@ int main(void) {
 
     /* Output block + load-level + end-to-end */
     RUN_TEST(test_load_output_section);
+    RUN_TEST(test_output_type_defaults_to_haplotype);
+    RUN_TEST(test_output_rejects_snp_array);
+    RUN_TEST(test_output_rejects_finite_output);
     RUN_TEST(test_load_tskit_output);
     RUN_TEST(test_output_tree_sequence_requires_filename);
     RUN_TEST(test_output_rejects_empty_tree_sequence_filename);

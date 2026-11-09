@@ -20,4 +20,4 @@ selection:
   fixation_time_ago: 0.1
   recurrent_sweep_rate: 0.001
 output:
-  output_type: "snp_array"
+  output_type: "haplotype"

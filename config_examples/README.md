@@ -10,6 +10,9 @@ This directory contains example YAML configuration files for discoal.
 - `sweep_example.yaml` - Selective sweep simulation
 - `demographic_example.yaml` - Population size changes and gene conversion
 - `demes_example.yaml` - Using an external demes file for demography
+- `migration_change_example.yaml` - Migration rates that change over time
+- `ancient_samples_example.yaml` - Ancient samples in two populations
+- `ancient_demes_example.yaml` - Ancient samples with a demes model, from an extinct deme
 
 ## Running Examples
 

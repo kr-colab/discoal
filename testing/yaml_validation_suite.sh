@@ -51,6 +51,9 @@ declare -A FIXTURE_MODE=(
     [basic_example.yaml]="ms"
     [sweep_example.yaml]="ms"
     [demographic_example.yaml]="ms"
+    [migration_change_example.yaml]="ms"
+    [ancient_samples_example.yaml]="ms"
+    [ancient_demes_example.yaml]="ms"
     [demes_example.yaml]="ms"
     [tree_sequence_example.yaml]="trees"
 )
@@ -58,6 +61,9 @@ declare -A FIXTURE_SAMPLE=(
     [basic_example.yaml]=10
     [sweep_example.yaml]=15
     [demographic_example.yaml]=20
+    [migration_change_example.yaml]=20
+    [ancient_samples_example.yaml]=20
+    [ancient_demes_example.yaml]=20
     [demes_example.yaml]=20
     [tree_sequence_example.yaml]=20
 )
@@ -65,6 +71,9 @@ declare -A FIXTURE_REPS=(
     [basic_example.yaml]=2
     [sweep_example.yaml]=10
     [demographic_example.yaml]=2
+    [migration_change_example.yaml]=2
+    [ancient_samples_example.yaml]=2
+    [ancient_demes_example.yaml]=2
     [demes_example.yaml]=10
     [tree_sequence_example.yaml]=5
 )
@@ -77,6 +86,7 @@ declare -A FIXTURE_TREES_FILE=(
 # Values are space-separated basenames under EXAMPLES_DIR.
 declare -A FIXTURE_AUX_FILES=(
     [demes_example.yaml]="demes_example.demes.yaml"
+    [ancient_demes_example.yaml]="ancient_demes_example.demes.yaml"
 )
 
 fail() {

@@ -805,7 +805,6 @@ void getParameters(int argc,const char **argv){
 	priorTheta=priorRho=priorAlpha=priorTau=priorX=priorF0=priorUA=priorC=0;
 
 	eventFlag = 1;
-	finiteOutputFlag = 0;
 	outputStyle = 'h';
 	mask = 0;
 	migFlag = 0;
@@ -813,8 +812,6 @@ void getParameters(int argc,const char **argv){
 	recurSweepMode = 0;
 	partialSweepMode = 0;
 	softSweepMode = 0;
-	ancSampleFlag = 0;
-	ancSampleSize = 0;
 	hidePartialSNP = 0;
 	tskitOutputMode = 0;
 	tskitOutputFilename[0] = '\0';
@@ -1153,6 +1150,9 @@ void getParameters(int argc,const char **argv){
 							events[eventNumber].popID = atoi(argv[++args]);   /* destination pop */
 							events[eventNumber].popnSize = atof(argv[++args]); /* new rate stored in popnSize field */
 							events[eventNumber].type = 'm';  /* lowercase 'm' for time-varying migration event */
+							/* Migration that starts later still counts as
+							 * migration for initialize()'s check. */
+							if (events[eventNumber].popnSize > 0) migFlag = 1;
 							eventNumber++;
 						}
 						break;
@@ -1173,6 +1173,9 @@ void getParameters(int argc,const char **argv){
 									eventNumber++;
 								}
 							}
+							/* As for -em: migration that starts later still
+							 * counts for initialize()'s check. */
+							if (rate_val > 0) migFlag = 1;
 						}
 						break;
 				}
@@ -1347,11 +1350,8 @@ void getParameters(int argc,const char **argv){
 			events[eventNumber].lineageNumber = atoi(argv[++args]);
 			events[eventNumber].popID = atoi(argv[++args]);	 
 			events[eventNumber].time = userTimeToInternal(atof(argv[++args])); 
-			ancSampleSize += events[eventNumber].lineageNumber;
 			events[eventNumber].type = 'A'; //ancient sample
-			ancSampleFlag = 1;
 			eventNumber++;
-			assert(events[eventNumber-1].lineageNumber < sampleSize);
 			break;
 			case 'T' :
 			fprintf(stderr, "Error: -T tree output mode has been removed.\n");
@@ -1372,6 +1372,39 @@ void getParameters(int argc,const char **argv){
 
 	if (validateShapeTrajectories(events, eventNumber) != 0) {
 		exit(1);
+	}
+
+	/* Ancient samples are taken from a population's sample count, so the
+	 * ancient samples of one population must not outnumber its samples.
+	 * initialize() relies on this when it makes sample nodes ancient. A
+	 * negative time would put a sample after the present. */
+	{
+		int ancientPerPop[MAXPOPS] = {0};
+		for (i = 0; i < eventNumber; i++) {
+			if (events[i].type != 'A') continue;
+			int p = events[i].popID;
+			if (p < 0 || p >= npops || events[i].lineageNumber < 1) {
+				fprintf(stderr, "Error: ancient sample of %d lineages from "
+					"population %d; the count must be >= 1 and the population "
+					"between 0 and %d\n", events[i].lineageNumber, p, npops - 1);
+				exit(1);
+			}
+			if (events[i].time < 0) {
+				fprintf(stderr, "Error: ancient sample of %d lineages from "
+					"population %d at time %g; the time must be >= 0\n",
+					events[i].lineageNumber, p,
+					internalTimeToUser(events[i].time));
+				exit(1);
+			}
+			ancientPerPop[p] += events[i].lineageNumber;
+			if (ancientPerPop[p] > sampleSizes[p]) {
+				fprintf(stderr, "Error: population %d has %d ancient samples "
+					"but only %d samples in all; ancient samples are part of "
+					"the population's sample count\n",
+					p, ancientPerPop[p], sampleSizes[p]);
+				exit(1);
+			}
+		}
 	}
 
 	//make sure events are kosher

@@ -81,13 +81,25 @@ def run_discoal(argv, reps, timeout=300):
 def discoal_argv(case, reps, seed, tmp):
     """Command-line arguments for a case. A demes case runs through a -Y
     config that loads the demes file; deme_sample_size follows the order of
-    demes in the file, extinct demes included."""
+    demes in the file, extinct demes included. Ancient samples of a demes
+    case go in the config's ancient_samples, with times converted from
+    generations to units of 4 N_ref generations (N_ref: the present size of
+    the first deme that exists at time 0)."""
     n = sum(case["samples"].values())
     if "demes" not in case:
         return ([str(n), str(reps), "1000", "-t", str(THETA)]
                 + case["flags"] + ["-d", str(seed), str(seed + 1)])
-    sizes = [case["samples"].get(d.name, 0)
-             for d in demes.load(case["demes"]).demes]
+    graph = case["graph"]
+    names = [d.name for d in graph.demes]
+    sizes = [case["samples"].get(name, 0) for name in names]
+    n_ref = next(d.epochs[-1].end_size for d in graph.demes
+                 if d.end_time == 0)
+    events = ""
+    if case.get("ancient"):
+        entries = ", ".join(
+            f"{{time: {t / (4 * n_ref)!r}, population: {names.index(p)}, "
+            f"sample_size: {k}}}" for p, k, t in case["ancient"])
+        events = f", demographic_events: {{ancient_samples: [{entries}]}}"
     cfg = os.path.join(tmp, "config.yaml")
     with open(cfg, "w") as f:
         f.write(f"simulation: {{sample_size: {n}, "
@@ -95,14 +107,21 @@ def discoal_argv(case, reps, seed, tmp):
                 f"seed: [{seed}, {seed + 1}]}}\n"
                 f"genetics: {{mutation_rate: {THETA}, recombination_rate: 0}}\n"
                 f"demography: {{deme_sample_size: {sizes}, "
-                f"demes_filename: \"{case['demes']}\"}}\n")
+                f"demes_filename: \"{case['demes']}\"{events}}}\n")
     return ["-Y", cfg]
 
 
-def msprime_mean(demography, samples, reps, seed):
-    """Expected segsites under msprime: mean branch length times MU."""
+def msprime_mean(demography, samples, reps, seed, ancient=()):
+    """Expected segsites under msprime: mean branch length times MU.
+    `ancient` lists (population, count, time in generations); as with
+    discoal's -A, these samples are part of the counts in `samples`."""
+    present = dict(samples)
+    for p, k, _ in ancient:
+        present[p] -= k
     sets = [msprime.SampleSet(k, population=p, ploidy=1)
-            for p, k in samples.items()]
+            for p, k in present.items() if k > 0]
+    sets += [msprime.SampleSet(k, population=p, time=t, ploidy=1)
+             for p, k, t in ancient]
     return mean_se([ts.segregating_sites(mode="branch") * MU
                     for ts in msprime.sim_ancestry(
                         samples=sets, demography=demography, ploidy=2,
@@ -364,15 +383,43 @@ pulses:
 """
 
 
-def demes_case(tmp, name, samples, text=None, path=None):
+# A present-day deme A and a ghost deme X that went extinct 2000
+# generations ago, both from ANC; they exchange migrants while both exist.
+# All of X's samples are ancient. N_ref is A's size.
+DEMES_EXTINCT_GHOST = """time_units: generations
+demes:
+  - name: ANC
+    epochs:
+      - end_time: 8000
+        start_size: 10000
+  - name: A
+    ancestors: [ANC]
+    epochs:
+      - end_time: 0
+        start_size: 10000
+  - name: X
+    ancestors: [ANC]
+    epochs:
+      - end_time: 2000
+        start_size: 5000
+migrations:
+  - demes: [A, X]
+    rate: 1e-4
+"""
+
+
+def demes_case(tmp, name, samples, text=None, path=None, ancient=()):
     """A case that loads a demes model, given as YAML text or a file path,
-    and compares it with msprime's Demography.from_demes."""
+    and compares it with msprime's Demography.from_demes. `ancient` lists
+    (deme, count, time in generations), as in msprime_mean."""
     if path is None:
         path = os.path.join(tmp, re.sub(r"\W+", "_", name) + ".demes.yaml")
         with open(path, "w") as f:
             f.write(text)
-    return dict(name=name, samples=samples, demes=path, alts={},
-                model=msprime.Demography.from_demes(demes.load(path)))
+    graph = demes.load(path)
+    return dict(name=name, samples=samples, demes=path, graph=graph, alts={},
+                ancient=list(ancient),
+                model=msprime.Demography.from_demes(graph))
 
 
 def cases(tmp):
@@ -392,6 +439,21 @@ def cases(tmp):
 
     def linear(k):
         return linear_pop(0.5 * 4 * N0, gamma / (k * N0), 1 - gamma * 0.5)
+
+    def ancient(k, sets):
+        """-A sample sets (population, count, time) with times in k N0."""
+        return [(pop, n, t * k * N0) for pop, n, t in sets]
+
+    # Lineages in P1 move to P0 backward in time; P1 merges into P0.
+    one_way = msprime.Demography()
+    # msprime keeps the ancestral population of a split inactive until the
+    # split unless told otherwise; P0 has samples and receives migrants.
+    one_way.add_population(name="P0", initial_size=N0, initially_active=True)
+    one_way.add_population(name="P1", initial_size=N0)
+    one_way.set_migration_rate(source="P1", dest="P0", rate=m / (4 * N0))
+    one_way.add_population_split(time=4 * N0, derived=["P1"], ancestral="P0")
+    anc1 = [("A", 3, 0.25), ("A", 2, 1.0)]
+    anc2 = [("P1", 4, 0.3), ("P0", 3, 0.6), ("P1", 2, 0.6)]
 
     return [
         dict(name="-en time in 4N0 generations", samples=s20,
@@ -427,6 +489,19 @@ def cases(tmp):
              alts={"rate 2 x 4N0 m": two_pop(2 * m / (4 * N0), 4 * N0,
                                             "P1", "P0",
                                             growth_p1=-5 / (4 * N0))}),
+        dict(name="-A time in 4N0 generations, two ancient sets",
+             samples=s20,
+             flags=["-A", "3", "0", "0.25", "-A", "2", "0", "1.0"],
+             model=one_pop([]), ancient=ancient(4, anc1),
+             alts={"2N0 generations": (one_pop([]), ancient(2, anc1))}),
+        dict(name="-A in two populations with migration and a merge",
+             samples={"P0": 10, "P1": 10},
+             flags=["-p", "2", "10", "10", "-m", "1", "0", str(m),
+                    "-ed", "1.0", "1", "0",
+                    "-A", "4", "1", "0.3", "-A", "3", "0", "0.6",
+                    "-A", "2", "1", "0.6"],
+             model=one_way, ancient=ancient(4, anc2),
+             alts={"2N0 generations": (one_way, ancient(2, anc2))}),
         demes_case(tmp, "demes exponential epoch", s20, DEMES_GROWTH),
         demes_case(tmp, "demes exponential epoch between constant epochs",
                    s20, DEMES_GROWTH_MIDDLE),
@@ -446,6 +521,9 @@ def cases(tmp):
                    DEMES_PULSE_AND_ADMIXTURE),
         demes_case(tmp, "demes joined only by a pulse", {"A": 10, "B": 10},
                    DEMES_PULSE_ONLY),
+        demes_case(tmp, "demes ancient samples, one from an extinct deme",
+                   {"A": 12, "X": 8}, DEMES_EXTINCT_GHOST,
+                   ancient=[("X", 8, 3000), ("A", 4, 1000)]),
         demes_case(tmp, "demes splits, sizes, migration windows",
                    {"A": 10, "B": 5, "C": 5},
                    path=os.path.join(REPO, "config_examples",
@@ -558,9 +636,15 @@ def main():
         for i, case in enumerate(cases(tmp)):
             seed = 1010 + 10 * i
             d = run_discoal(discoal_argv(case, reps, seed, tmp), reps)
-            ref = msprime_mean(case["model"], case["samples"], reps, seed)
-            alts = {k: msprime_mean(mm, case["samples"], reps, seed + 1)
-                    for k, mm in case["alts"].items()}
+            anc = case.get("ancient", ())
+            ref = msprime_mean(case["model"], case["samples"], reps, seed,
+                               anc)
+            # An alternative is a model, or a (model, ancient samples) pair.
+            alts = {}
+            for k, mm in case["alts"].items():
+                model, alt_anc = mm if isinstance(mm, tuple) else (mm, anc)
+                alts[k] = msprime_mean(model, case["samples"], reps,
+                                       seed + 1, alt_anc)
             all_ok &= report(case["name"], d, ref, alts)
 
         for i, case in enumerate(tree_cases(tmp, reps)):

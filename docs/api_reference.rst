@@ -132,7 +132,23 @@ Demographic Options
    
    * numSamples: Number of ancient lineages
    * popID: Population to sample from
-   * time: Sampling time in past
+   * time: Sampling time in past, in units of 4N0 generations
+
+   The ancient samples are part of the population's sample count: with
+   ``-p 2 10 10 -A 4 1 0.3``, population 1 has 6 samples taken at time 0
+   and 4 taken at time 0.3. The ancient samples of a population must not
+   outnumber its samples, and the time must be ``>= 0``. Give ``-A`` more
+   than once for samples at different times.
+
+   In the output, the samples of each population come in population
+   order. Within a population, the ancient samples come first, the
+   earliest sampling time first, then the samples taken at time 0. In the
+   example above, the rows of population 1 are 4 ancient samples, then 6
+   present-day samples.
+
+   Ancient samples taken while a sweep is in progress are not yet modeled
+   correctly: their lineages do not get the correct sweep class (issue
+   #100). Ancient samples taken before or after the sweep are correct.
 
 Selection Options
 ^^^^^^^^^^^^^^^^^

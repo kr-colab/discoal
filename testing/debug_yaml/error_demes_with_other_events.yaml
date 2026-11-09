@@ -1,0 +1,20 @@
+# With a demes file, demographic_events may contain only ancient_samples.
+# Should error out with:
+#   "Error parsing config: with demes_filename, demographic_events may contain only ancient_samples"
+
+simulation:
+  sample_size: 20
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 1.0
+  recombination_rate: 0.0
+demography:
+  deme_sample_size: [0, 12, 8]
+  demes_filename: "config_examples/ancient_demes_example.demes.yaml"
+  demographic_events:
+    population_size_changes:
+      - time: 0.1
+        size: 2.0
+        population: 1

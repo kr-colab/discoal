@@ -1,0 +1,41 @@
+# Two populations with ancient samples. Lineages in pop 1 move to pop 0
+# backward in time (4N0 m = 2.0), and pop 1 merges into pop 0 at t=1.0.
+# Of pop 1's 10 samples, 4 are taken at t=0.3 and 2 at t=0.6; of pop 0's
+# 10 samples, 3 are taken at t=0.6. The other samples are taken at t=0.
+# An ancient sample is -A sample_size population time on the command line,
+# and, as there, it is part of the population's deme_sample_size.
+# A YAML split also stops all migration into and out of the merged
+# population; on the command line that takes the -em events after -ed.
+# Equivalent to: discoal 20 2 10000 -t 1.0 -r 1.0 -p 2 10 10 -m 1 0 2.0 -A 4 1 0.3 -A 3 0 0.6 -A 2 1 0.6 -ed 1.0 1 0 -em 1.0 0 1 0 -em 1.0 1 0 0 -d 12345 10102
+
+simulation:
+  sample_size: 20
+  num_replicates: 2
+  num_sites: 10000
+  seed: [12345, 10102]
+
+genetics:
+  mutation_rate: 1.0
+  recombination_rate: 1.0
+
+demography:
+  deme_sample_size: [10, 10]
+  effective_population_size: 1.0
+  migration_matrix:
+    - row: [0.0, 0.0]
+    - row: [2.0, 0.0]
+  demographic_events:
+    ancient_samples:
+      - time: 0.3
+        population: 1
+        sample_size: 4
+      - time: 0.6
+        population: 0
+        sample_size: 3
+      - time: 0.6
+        population: 1
+        sample_size: 2
+    population_splits:
+      - time: 1.0
+        ancestral: 0
+        derived: 1

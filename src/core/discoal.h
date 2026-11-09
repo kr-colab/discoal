@@ -99,6 +99,7 @@ event;
 #define USER_TO_INTERNAL_TIME 2.0
 static inline double userTimeToInternal(double t) { return t * USER_TO_INTERNAL_TIME; }
 static inline double userRateToInternal(double r) { return r / USER_TO_INTERNAL_TIME; }
+static inline double internalTimeToUser(double t) { return t / USER_TO_INTERNAL_TIME; }
 
 typedef enum {
     SHAPE_CONSTANT = 0,
@@ -151,7 +152,7 @@ ActiveMaterial activeMaterialSegments;  // New segment-based structure
 
 int sampleSize, sampleNumber, breakNumber, segSites,alleleNumber, \
 	totNodeNumber, totChunkNumber, npops, eventFlag, nSites, activeSites,\
-	mask, finiteOutputFlag, outputStyle, effectiveSampleSize, runMode, gcMean,\
+	mask, outputStyle, effectiveSampleSize, runMode, gcMean,\
 	*breakPoints, breakPointsCapacity, sampleSizes[MAXPOPS];
 
 double  leftRho, rho, theta, tDiv, alpha, sweepSite, tau, my_gamma, \
@@ -223,8 +224,6 @@ double partialSweepFinalFreq;
 
 double deltaTMod;
 
-int ancSampleSize, ancPopID, ancSampleFlag;
-int ancSampleTime;
 
 int hidePartialSNP;
 

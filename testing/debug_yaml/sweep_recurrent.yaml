@@ -21,4 +21,4 @@ selection:
   sweep_position: 0.5
   recurrent_sweep_rate: 0.001
 output:
-  output_type: "snp_array"
+  output_type: "haplotype"

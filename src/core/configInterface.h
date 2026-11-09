@@ -38,6 +38,7 @@
 
 /* enumerate string-valued options */
 enum output_types {
+    OUTPUT_DEFAULT = 0,      /* output_type not given: haplotype */
     OUTPUT_HAPLOTYPE = 1,
     OUTPUT_SNP_ARRAY = 2,
     OUTPUT_TREE_SEQN = 3,
@@ -111,9 +112,8 @@ struct demography_config {
     const char *demes_filename;                    /* optional, path to demes YAML */
 };
 struct output_config {
-    enum output_types output_type;
-    bool finite_output;                  /* optional, ??? */ // TODO what does this do
-    bool hide_partial_snp;               /* optional, ??? */
+    enum output_types output_type;       /* optional, default haplotype */
+    bool hide_partial_snp;               /* optional, as -h */
     bool unsimplified_tree_sequence;     /* optional, don't simplify tree sequence */
     const char *tree_sequence_filename;  /* required if output type is "tree_sequence" */
 };

@@ -14,4 +14,4 @@ demography:
   deme_sample_size: [10]
   effective_population_size: 3.0e9
 output:
-  output_type: "snp_array"
+  output_type: "haplotype"
