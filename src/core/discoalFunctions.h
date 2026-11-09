@@ -119,6 +119,9 @@ void sortEventArray(struct event *eArray, int eNumber);
 int addPriorSizeChange(const char *what, double timeLow, double timeHigh,
                        double sizeLow, double sizeHigh, int popID);
 void drawPriors();
+void sampleSweepTrajectory(int currentEventNumber, double *sizeRatio,
+	char sweepMode, double initialFreq, double *finalFreq, double alpha,
+	double f0, double currentTime);
 
 int findRootAtSite(float site);
 int hasMaterialHere(rootedNode *aNode, float site);

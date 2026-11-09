@@ -108,7 +108,6 @@ int main(int argc, const char * argv[]){
 	int i,j,k, totalSimCount;
 	float tempSite;
 	int lastBreak;
-	double probAccept;
 	
 	getParameters(argc,argv);
 	atexit(removeTrajectoryFile);
@@ -371,27 +370,8 @@ int main(int argc, const char * argv[]){
 				}
 			//	printf("event%d currentTime: %f nextTime: %f popnSize: %f\n",j,currentTime,nextTime,currentSize);
 
-				//generate a proposed trajectory
-				char previousTrajectoryFile[256] = "";
-				probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, currentSize, sweepMode, currentFreq, &currentFreq, alpha, f0, currentTime);
-				while(ranf()>probAccept){
-					// Clean up rejected trajectory
-					if (previousTrajectoryFile[0] != '\0') {
-						cleanupRejectedTrajectory(previousTrajectoryFile);
-					}
-					strcpy(previousTrajectoryFile, trajectoryFilename);
-					
-					probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, currentSize, sweepMode, currentFreq, &currentFreq, alpha, f0, currentTime);
-					//printf("probAccept: %lf\n",probAccept);
-				}
-				
-				// Clean up any remaining rejected trajectory
-				if (previousTrajectoryFile[0] != '\0' && strcmp(previousTrajectoryFile, trajectoryFilename) != 0) {
-					cleanupRejectedTrajectory(previousTrajectoryFile);
-				}
-				
-				// Now mmap the accepted trajectory
-				mmapAcceptedTrajectory(trajectoryFilename, totalTrajectorySteps);
+				sampleSweepTrajectory(currentEventNumber, currentSize, sweepMode,
+					currentFreq, &currentFreq, alpha, f0, currentTime);
 				
 				currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
 					 currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
@@ -505,6 +485,14 @@ int main(int argc, const char * argv[]){
 		// Sort and simplify the tree sequence after ancestry simulation is complete
 		// This removes all non-ancestral nodes and edges before mutation placement
 		if (tsk_tables != NULL) {
+			/* Edges are buffered and written at the next node or flush.
+			 * The last events of a replicate can come from any sampler
+			 * (neutral, sweep or recurrent sweep); write their edges now,
+			 * or simplify drops the nodes they need. */
+			if (tskit_flush_edges() != 0) {
+				fprintf(stderr, "Error: failed to write buffered tree sequence edges\n");
+				exit(1);
+			}
 			// fprintf(stderr, "Debug: Sorting tskit tables\n");
 			// Sort tables (required before simplification)
 			int ret = tsk_table_collection_sort(tsk_tables, NULL, 0);

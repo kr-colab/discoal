@@ -505,6 +505,13 @@ def cases(tmp):
              alts={"rate 2 x 4N0 m": two_pop(2 * m / (4 * N0), 4 * N0,
                                             "P1", "P0",
                                             growth_p1=-5 / (4 * N0))}),
+        # Recurrent-sweep mode at a rate so low that no sweep happens must
+        # give the neutral coalescent: the recurrent sampler used to leave
+        # the edges of the last coalescence unwritten, which removed the
+        # root branch of every genealogy.
+        dict(name="-R at a near-zero rate gives the neutral coalescent",
+             samples=s20, flags=["-R", "0.000001", "-a", "500"],
+             model=one_pop([]), alts={}),
         dict(name="-Pe1: size change with priors on time and size",
              samples=s20, flags=["-Pe1", "0.2", "0.6", "0.1", "1.0"],
              model=prior_en(4), alts={"2N0 generations": prior_en(2)}),

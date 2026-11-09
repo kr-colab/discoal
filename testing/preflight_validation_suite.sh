@@ -129,6 +129,14 @@ run_pass_case "eM_alone_counts_as_migration" \
 run_pass_case "Pe1_and_Pe2_run" \
     20 5 10000 -t 10 -Pe1 0.1 0.2 0.1 1.0 -Pe2 0.3 0.4 0.5 2.0
 
+# Recurrent sweeps that happen: the sampler used to read a sweep
+# trajectory that was never mapped, and crashed.
+run_pass_case "R_recurrent_sweeps_happen" \
+    20 3 10000 -t 10 -r 10 -R 5 -a 500 -d 12345 10102
+
+run_pass_case "L_recurrent_sweeps_left_of_locus_happen" \
+    20 3 10000 -t 10 -r 10 -L 5 -a 500 -d 12345 10102
+
 # ----- Cases that should fail with a documented error -----
 echo
 echo -e "${YELLOW}-- Failure cases (must exit non-zero with expected message) --${NC}"

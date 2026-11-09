@@ -1951,6 +1951,29 @@ void cleanupRejectedTrajectory(const char *filename) {
 	}
 }
 
+/* Draw a sweep trajectory by rejection sampling: propose trajectories
+ * until one is accepted, deleting the file of each rejected one. Then map
+ * the accepted one for the sweep samplers and delete the file of the
+ * trajectory that was mapped before (the previous sweep, with recurrent
+ * sweeps). The arguments are those of proposeTrajectory(). */
+void sampleSweepTrajectory(int currentEventNumber, double *sizeRatio,
+	char sweepMode, double initialFreq, double *finalFreq, double alpha,
+	double f0, double currentTime){
+	char previousMapped[256] = "";
+	if (trajectoryFd != -1)
+		strcpy(previousMapped, trajectoryFilename);
+	double probAccept = proposeTrajectory(currentEventNumber, currentTrajectory,
+		sizeRatio, sweepMode, initialFreq, finalFreq, alpha, f0, currentTime);
+	while (ranf() > probAccept) {
+		cleanupRejectedTrajectory(trajectoryFilename);
+		probAccept = proposeTrajectory(currentEventNumber, currentTrajectory,
+			sizeRatio, sweepMode, initialFreq, finalFreq, alpha, f0, currentTime);
+	}
+	mmapAcceptedTrajectory(trajectoryFilename, totalTrajectorySteps);
+	if (previousMapped[0] != '\0' && strcmp(previousMapped, trajectoryFilename) != 0)
+		unlink(previousMapped);
+}
+
 /*proposeTrajectory-- this function creates a sweep trajectory and deals with
 complications like changing population size, or soft sweeps, etc 
 returns the acceptance probability of the trajectory */
@@ -2645,7 +2668,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 specified time. returns endTime. can handle multiple popns*/
 double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *finalFreq, double alpha, char sweepMode, double *sizeRatio){
 	double cTime, cRate[npops], rRate[npops], gcRate[npops], mRate[npops],totRate, waitTime, bp,r, r2;
-	double totCRate, totRRate, totGCRate,totMRate, eSum,curSweepSite, initFreq, probAccept;
+	double totCRate, totRRate, totGCRate,totMRate, eSum,curSweepSite, initFreq;
 	int  i,j;
 
 	if(startTime == endTime){
@@ -2758,12 +2781,8 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 							else{
 								initFreq=1.0-(1.0/(2*sizeRatio[0]*EFFECTIVE_POPN_SIZE));
 							}
-							//generate a proposed trajectory
-							probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, sizeRatio, sweepMode, initFreq, finalFreq, alpha, f0, cTime);
-							while(ranf()>probAccept){
-								probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, sizeRatio, sweepMode, initFreq, finalFreq, alpha, f0, cTime);
-								//printf("probAccept: %lf\n",probAccept);
-							}
+							sampleSweepTrajectory(currentEventNumber, sizeRatio, sweepMode,
+								initFreq, finalFreq, alpha, f0, cTime);
 							cTime= sweepPhaseEventsConditionalTrajectory(bpArray, cTime, endTime, curSweepSite,\
 								initFreq, finalFreq, &activeSweepFlag, alpha,\
 								sizeRatio, sweepMode,0, 0);
