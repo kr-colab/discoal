@@ -147,9 +147,10 @@ Demographic Options
    example above, the rows of population 1 are 4 ancient samples, then 6
    present-day samples.
 
-   Ancient samples taken while a sweep is in progress are not yet modeled
-   correctly: their lineages do not get the correct sweep class (issue
-   #100). Ancient samples taken before or after the sweep are correct.
+   An ancient sample taken while a sweep is in progress (in population 0)
+   carries the beneficial allele with the allele's frequency at the
+   sampling time; with a partial sweep (``-c``), its carriers carry the
+   selected SNP.
 
 Selection Options
 ^^^^^^^^^^^^^^^^^

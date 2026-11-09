@@ -13,7 +13,9 @@ site is at the sweep position given by -x. The checks:
      replicate can hold more than one (with a tiny theta, every site is a
      selected site);
   4. in tree sequence output (-ts) the site is at -x times the number of
-     sites.
+     sites;
+  5. ancient samples taken during the sweep carry the allele with the
+     frequency it has then (here a few generations back, so about c).
 
 Needs build/discoal, numpy and tskit. Exit code 0 if every check passes.
 """
@@ -42,7 +44,7 @@ def run(args):
                           capture_output=True, text=True, check=True).stdout
 
 
-def replicates(out):
+def replicates(out, n_samples=N_SAMPLES):
     """(positions, haplotype rows) for each replicate of ms output."""
     reps = []
     for block in out.split("//")[1:]:
@@ -52,7 +54,7 @@ def replicates(out):
             reps.append(([], []))
             continue
         positions = [float(x) for x in lines[1].split()[1:]]
-        reps.append((positions, lines[2:2 + N_SAMPLES]))
+        reps.append((positions, lines[2:2 + n_samples]))
     return reps
 
 
@@ -103,6 +105,23 @@ def main():
     report(nsites.mean() > 2.0 and nsites.max() > 3,
            f"recurrent partial sweeps: {nsites.mean():.2f} selected sites "
            f"per replicate on average, maximum {nsites.max()}")
+
+    # Ancient samples come first in their population's rows. Taken 0.4
+    # generations before the end of a partial sweep to c = 0.5, each
+    # carries the allele with probability about 0.5.
+    n_anc, n_all = 10, N_SAMPLES + 10
+    out = run([n_all, reps, SITES, "-t", 0.0001, "-r", 20, "-ws", 0,
+               "-a", 500, "-N", N_SWEEP, "-x", x, "-c", 0.5,
+               "-A", n_anc, 0, 0.00001, "-d", 11, 12])
+    anc = []
+    for positions, rows in replicates(out, n_all):
+        k = next((i for i, p in enumerate(positions) if abs(p - x) < 1e-6),
+                 None)
+        anc.append(0 if k is None else sum(r[k] == "1" for r in rows[:n_anc]))
+    anc = np.array(anc)
+    z = (anc.mean() - n_anc * 0.5) / np.sqrt(n_anc * 0.25 / len(anc))
+    report(abs(z) < Z_MAX, f"ancient samples during the sweep: derived count "
+                           f"mean {anc.mean():.2f} of {n_anc} (about 5, z={z:+.1f})")
 
     with tempfile.TemporaryDirectory() as tmp:
         prefix = os.path.join(tmp, "p.trees")

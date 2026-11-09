@@ -161,9 +161,10 @@ Notes:
 - In the output, the samples of each population come in population
   order; within a population, the ancient samples come first (the
   earliest sampling time first), then the samples taken at time 0.
-- Ancient samples taken while a sweep is in progress are not yet
-  modeled correctly: their lineages do not get the correct sweep class
-  (issue #100).
+- An ancient sample taken while a sweep is in progress (in population
+  0) carries the beneficial allele with the allele's frequency at the
+  sampling time; with a partial sweep, its carriers carry the selected
+  SNP.
 - Events at the same time take effect in this order:
   `ancient_samples`, `migration_rate_changes`,
   `population_size_changes`, `population_splits`, `admixtures` (each
@@ -211,8 +212,6 @@ present, as `-ws 0`. For recurrent hitchhiking, set
   random positions inside the locus (`-R rate`).
 - Recurrent sweeps are always stochastic, as with `-R` and `-L`, so
   `recurrent_sweep_rate` needs `sweep_mode: "stochastic"`.
-- Ancient samples taken while a sweep is in progress are not yet
-  modeled correctly (issue #100).
 
 Validation: `selection_coefficient` must be `>= 0`, and exactly
 zero when `sweep_mode: "neutral"`. `sweep_position` is a fraction

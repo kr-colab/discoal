@@ -19,6 +19,10 @@ the sweep logic is replaced, so that it follows discoal's -ws / -f / -c /
 
 The statistics are branch-mode total branch length and diversity in
 generations, for 20 genomes over the whole contig (no mutation noise).
+Cases with ancient samples add 10 genomes taken a given number of
+generations before the end (SLiM remembers a few individuals in every
+tick, as the end is not known in advance), and report their diversity and
+their divergence from the present-day samples.
 msprime's SweepGenicSelection gives a diffusion reference for the hard
 sweep.
 
@@ -27,7 +31,12 @@ Wright-Fisher population with discrete generations, and its values are a
 few percent above both diffusion models (about 3% at N = 1000, 4 to 5% at
 N = 5000); discoal's soft and partial sweeps should differ from SLiM by
 about as much as its hard sweep does. Before the soft-sweep fix, discoal's
-soft sweep with f0 = 0.05 was 23% above SLiM.
+soft sweep with f0 = 0.05 was 23% above SLiM. Ancient samples taken during
+the sweep (100 generations before fixation) have about 6% more diversity
+in discoal than in SLiM: 100 generations before fixation the allele's mean
+frequency is 0.68 in SLiM and 0.63 on discoal's diffusion trajectory, the
+same diffusion/Wright-Fisher difference. Before the fix for ancient
+samples during a sweep (#100), their diversity was 69% below SLiM.
 
 Needs build/discoal, stdpopsim, SLiM (slim on the PATH), pyslim, msprime,
 tskit and numpy. stdpopsim 0.3 writes scripts for SLiM 4; for SLiM 5 the
@@ -87,13 +96,23 @@ function (void)sweep_step(void) {
     g_mut = time_to_tick(drawn_mutations[0, 0]);
     // G0 is the last tick (the present) of this constant-size model.
     community.registerLateEvent(NULL, "{sweep_step();}", g_mut + 1, G0);
+    // For ancient samples: the sampling time is fixed relative to the end
+    // of the run, which is not known in advance, so a few individuals are
+    // remembered in every tick from REMEMBER_FROM ticks before the draw.
+    // Those saved before the draw survive restore().
+    if (REMEMBER_PER_TICK > 0)
+        community.registerLateEvent(NULL,
+            "{sim.treeSeqRememberIndividuals(p0.sampleIndividuals(REMEMBER_PER_TICK));}",
+            max(1, g_mut - REMEMBER_FROM), G0);
 }
 """
 
 
-def stdpopsim_script(n, rho, t_mut):
+def stdpopsim_script(n, rho, t_mut, lead=0):
     """stdpopsim's SLiM script with one mutation drawn t_mut generations
-    ago, and the state saved before the draw."""
+    ago, and the state saved before the draw. The draw comes at least
+    `lead` + 500 ticks after the start of the run (the run ends at the
+    sweep's end, so ancient samples older than that need the lead)."""
     sp = stdpopsim.get_species("HomSap")
     model = stdpopsim.PiecewiseConstantSize(n)
     contig = sp.get_contig(length=L, mutation_rate=0,
@@ -113,11 +132,12 @@ def stdpopsim_script(n, rho, t_mut):
     with contextlib.redirect_stdout(buf):
         stdpopsim.get_engine("slim").simulate(
             model, contig, {"pop_0": N_GENOMES // 2}, extended_events=events,
-            slim_script=True, slim_burn_in=t_mut / n + 0.5, seed=1)
+            slim_script=True, slim_burn_in=(t_mut + lead) / n + 0.5, seed=1)
     return buf.getvalue()
 
 
-def sweep_script(base, f0, s_hom, final, trees_file):
+def sweep_script(base, f0, s_hom, final, trees_file, remember=0,
+                 remember_from=0):
     # SLiM 5 calls genomes haplosomes; this is the script's only use.
     s = base.replace("sample(pop.genomes, 1)", "sample(pop.haplosomes, 1)")
     s = s.replace('defineConstant("trees_file", ',
@@ -125,24 +145,37 @@ def sweep_script(base, f0, s_hom, final, trees_file):
     head = (f'    defineConstant("trees_file", "{trees_file}");\n'
             f'    defineConstant("F0", {float(f0)!r});\n'
             f'    defineConstant("S_HOM", {float(s_hom)!r});\n'
-            f'    defineConstant("FINAL", {float(final)!r});\n')
+            f'    defineConstant("FINAL", {float(final)!r});\n'
+            f'    defineConstant("REMEMBER_PER_TICK", {int(remember)});\n'
+            f'    defineConstant("REMEMBER_FROM", {int(remember_from)});\n')
     i = s.index('    defineConstant("pop_names"')
     return s[:i] + head + s[i:] + SWEEP_LOGIC
 
 
-def stats(ts):
-    """(total branch length, diversity) per base pair, in the tree
-    sequence's time units."""
-    return (ts.segregating_sites(mode="branch"), ts.diversity(mode="branch"))
+def stats(ts, ancient=None):
+    """Per base pair, in the tree sequence's time units: total branch
+    length and diversity; with ancient samples (node array `ancient`), the
+    diversity of the other (present-day) samples, the diversity of the
+    ancient samples, and the divergence between the two."""
+    if ancient is None:
+        return (ts.segregating_sites(mode="branch"),
+                ts.diversity(mode="branch"))
+    present = np.setdiff1d(ts.samples(), ancient)
+    return (ts.segregating_sites(mode="branch"),
+            ts.diversity(present, mode="branch"),
+            ts.diversity(ancient, mode="branch"),
+            ts.divergence([present, ancient], mode="branch"))
 
 
 def run_slim(job):
-    base, n, rho, f0, s_hom, final, seed = job
+    base, n, rho, f0, s_hom, final, seed, ancient = job
+    n_anc, t_anc = ancient if ancient else (0, 0)
     with tempfile.TemporaryDirectory() as tmp:
         trees = os.path.join(tmp, "out.trees")
         script = os.path.join(tmp, "sweep.slim")
         with open(script, "w") as fh:
-            fh.write(sweep_script(base, f0, s_hom, final, trees))
+            fh.write(sweep_script(base, f0, s_hom, final, trees,
+                                  n_anc // 2, t_anc + 100 if n_anc else 0))
         subprocess.run(["slim", "-s", str(seed), script], check=True,
                        capture_output=True)
         ts = tskit.load(trees)
@@ -153,23 +186,31 @@ def run_slim(job):
                            recombination_rate=rho / (4 * n * L),
                            random_seed=seed)
     rng = np.random.default_rng(seed)
-    inds = rng.choice(pyslim.individuals_alive_at(ts, 0), N_GENOMES // 2,
-                      replace=False)
-    return stats(ts.simplify(np.concatenate([ts.individual(i).nodes
-                                             for i in inds])))
+    inds = list(rng.choice(pyslim.individuals_alive_at(ts, 0),
+                           N_GENOMES // 2, replace=False))
+    if n_anc:
+        # The individuals remembered t_anc ticks before the end.
+        inds += list(pyslim.individuals_alive_at(ts, t_anc)[:n_anc // 2])
+    nodes = np.concatenate([ts.individual(i).nodes for i in inds])
+    ts = ts.simplify(nodes)
+    return stats(ts, np.arange(N_GENOMES, len(nodes)) if n_anc else None)
 
 
 def run_discoal(job):
-    args, n, reps, seed = job
+    args, n, reps, seed, n_anc = job
     with tempfile.TemporaryDirectory() as tmp:
         prefix = os.path.join(tmp, "d.trees")
-        subprocess.run([DISCOAL, str(N_GENOMES), str(reps), str(L)] + args +
-                       ["-N", str(n), "-d", str(seed), str(seed + 1),
-                        "-ts", prefix], check=True, capture_output=True)
-        # discoal node times are in units of 2N generations.
-        return [tuple(2 * n * v for v in
-                      stats(tskit.load(os.path.join(tmp, f"d_rep{k}.trees"))))
-                for k in range(1, reps + 1)]
+        subprocess.run([DISCOAL, str(N_GENOMES + n_anc), str(reps), str(L)] +
+                       args + ["-N", str(n), "-d", str(seed), str(seed + 1),
+                               "-ts", prefix], check=True, capture_output=True)
+        out = []
+        for k in range(1, reps + 1):
+            ts = tskit.load(os.path.join(tmp, f"d_rep{k}.trees"))
+            ancient = (ts.samples()[ts.nodes_time[ts.samples()] > 0]
+                       if n_anc else None)
+            # discoal node times are in units of 2N generations.
+            out.append(tuple(2 * n * v for v in stats(ts, ancient)))
+        return out
 
 
 def run_msprime(job):
@@ -190,8 +231,11 @@ def mean_se(vals):
 
 
 # name: (f0, final frequency, alpha, rho, generations before the present at
-# which SLiM draws the mutation, in units of N). f0 = 1 with alpha = 0 is a
-# neutral fixation (-wn).
+# which SLiM draws the mutation, in units of N, and optionally ancient
+# samples: (number of genomes, generations before the present)). f0 = 1
+# with alpha = 0 is a neutral fixation (-wn). An ancient sample 100
+# generations back falls inside the sweep (about 300 generations at
+# N = 1000, alpha = 100); 1000 generations back is before its origin.
 CASES = {
     "hard": (0.0, 1.0, 100, 20, 6),
     "soft f0=0.02": (0.02, 1.0, 100, 20, 6),
@@ -201,12 +245,17 @@ CASES = {
     "soft f0=0.05 rho=100": (0.05, 1.0, 100, 100, 6),
     "partial soft f0=0.05 c=0.7": (0.05, 0.7, 100, 20, 6),
     "neutral fixation (-wn)": (1.0, 1.0, 0, 20, 20),
+    "hard ancient during sweep": (0.0, 1.0, 100, 20, 6, (10, 100)),
+    "soft f0=0.05 ancient during sweep": (0.05, 1.0, 100, 20, 6, (10, 100)),
+    "hard ancient before origin": (0.0, 1.0, 100, 20, 6, (10, 1000)),
 }
 
 
-def discoal_args(f0, final, alpha, rho):
+def discoal_args(n, f0, final, alpha, rho, ancient=None):
     """discoal's arguments for a case (sweep ending at the present)."""
     args = ["-t", "0", "-r", str(rho), "-x", "0.5", "-a", str(alpha)]
+    if ancient:
+        args += ["-A", str(ancient[0]), "0", str(ancient[1] / (4 * n))]
     if alpha == 0:
         return args + ["-wn", "0"]
     args += ["-ws", "0"]
@@ -243,20 +292,28 @@ def main():
           f"   {'ref. div':>13s} {'discoal div':>13s} {'z':>6s}"
           "   (reference: SLiM, or msprime where named)", flush=True)
     with concurrent.futures.ProcessPoolExecutor(args.workers) as pool:
-        for name, (f0, final, alpha, rho, t_mut) in CASES.items():
+        for name, case in CASES.items():
+            f0, final, alpha, rho, t_mut = case[:5]
+            ancient = case[5] if len(case) > 5 else None
             if wanted and name not in wanted:
                 continue
-            base = stdpopsim_script(n, rho, t_mut * n)
-            jobs = [(base, n, rho, f0, alpha / n, final, 1000 + k)
+            base = stdpopsim_script(n, rho, t_mut * n,
+                                    ancient[1] + 100 if ancient else 0)
+            jobs = [(base, n, rho, f0, alpha / n, final, 1000 + k, ancient)
                     for k in range(int(reps * 1.05))]
             sl = [v for v in pool.map(run_slim, jobs) if v is not None][:reps]
             chunks = max(1, reps // 25)
+            dargs = discoal_args(n, f0, final, alpha, rho, ancient)
             dc = [v for c in pool.map(run_discoal,
-                                      [(discoal_args(f0, final, alpha, rho), n,
-                                        reps // chunks, 7000 + 10 * k)
+                                      [(dargs, n, reps // chunks, 7000 + 10 * k,
+                                        ancient[0] if ancient else 0)
                                        for k in range(chunks)]) for v in c]
             (ms, ss, ns), (md, sd, _) = mean_se(sl), mean_se(dc)
             print(row(name, ms, ss, md, sd, f"   [SLiM n={ns}]"), flush=True)
+            if ancient:
+                # ancient-sample diversity, and ancient/present divergence
+                print(row("  ancient div. / divergence", ms[2:], ss[2:],
+                          md[2:], sd[2:]), flush=True)
             if name == "hard":
                 mm, sm, _ = mean_se([v for c in pool.map(
                     run_msprime, [(n, rho, alpha, 20, 100 + k)
