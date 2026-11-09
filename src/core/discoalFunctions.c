@@ -364,7 +364,6 @@ rootedNode *newRootedNode(double cTime, int popn) {
 	temp->parentsRecorded = 0;
 	temp->isFullyRecorded = 0;
 	temp->inActiveSet = 0;  // Will be set to 1 for sample nodes
-	temp->carriesSweepMutation = 0;  // No sweep mutation by default
 	
 	// Initialize ancestry segment tree to NULL (will be set during initialization)
 	temp->ancestryRoot = NULL;
@@ -836,11 +835,6 @@ void coalesceAtTimePopn(double cTime, int popn){
 	temp->lLim = nSites;
 	temp->rLim = 0;
 	
-	// Propagate sweep mutation flag if either child carries it
-	if (lChild->carriesSweepMutation || rChild->carriesSweepMutation) {
-		temp->carriesSweepMutation = 1;
-	}
-	
 	// Add the parent node to discoal's arrays and tskit BEFORE merging/recording
 	addNode(temp);
 	
@@ -1158,21 +1152,6 @@ int recombineAtTimePopn(double cTime, int popn){
 		updateAncestryStatsFromTree(lParent);
 		updateAncestryStatsFromTree(rParent);
 		
-		// Propagate sweep mutation flag based on which parent gets the sweep site
-		if (aNode->carriesSweepMutation) {
-			// Determine which parent inherits the sweep mutation based on sweep site position
-			extern double sweepSite;
-			if (sweepSite >= 0.0) {
-				if (sweepSite < (float)xOver / nSites) {
-					// Sweep site is on the left, so left parent inherits
-					lParent->carriesSweepMutation = 1;
-				} else {
-					// Sweep site is on the right, so right parent inherits
-					rParent->carriesSweepMutation = 1;
-				}
-			}
-		}
-		
 		addNode(lParent);
 		addNode(rParent);
 		
@@ -1254,21 +1233,6 @@ void geneConversionAtTimePopn(double cTime, int popn){
 		// Update stats from the ancestry trees
 		updateAncestryStatsFromTree(lParent);
 		updateAncestryStatsFromTree(rParent);
-		
-		// Propagate sweep mutation flag based on whether sweep site is in converted tract
-		if (aNode->carriesSweepMutation) {
-			extern double sweepSite;
-			if (sweepSite >= 0.0) {
-				int sweepSitePos = (int)(sweepSite * nSites);
-				if (sweepSitePos >= xOver && sweepSitePos < xOver + tractL) {
-					// Sweep site is in the converted tract
-					lParent->carriesSweepMutation = 1;
-				} else {
-					// Sweep site is outside the converted tract
-					rParent->carriesSweepMutation = 1;
-				}
-			}
-		}
 		
 		addNode(lParent);
 		addNode(rParent);
@@ -1913,6 +1877,62 @@ static double trajectoryEnd(int fromStandingVariation, double N){
 	return fromStandingVariation ? 0.0 : 1.0/(2.*N);
 }
 
+/* A partial sweep starts (going back in time) with its lineages in
+ * population 0 split into the two sweep classes. The selected allele is
+ * then at partialSweepFinalFreq, carried by the beneficial class. Add a
+ * site at the selected position with a mutation on each beneficial
+ * lineage that has ancestral material there; the samples below these
+ * lineages at the site carry the allele. Each sweep, recurrent ones
+ * included, gets its own site. -h (hidePartialSNP) leaves it out, as does
+ * a selected site outside the locus. */
+static void recordPartialSweepSite(double site){
+	int i;
+	tsk_id_t site_id = TSK_NULL;
+	if (hidePartialSNP || site < 0.0)
+		return;
+	for(i = 0; i < alleleNumber; i++){
+		if(nodes[i]->population != 0 || nodes[i]->sweepPopn != 1 ||
+		   !isAncestralHere(nodes[i], site))
+			continue;
+		/* The lineage's recorded node; in minimal mode a recombination
+		 * parent has none, and its single child holds the material. */
+		rootedNode *recorded;
+		if (findTrueDescendants(nodes[i], &recorded, 1) == 0)
+			continue;
+		tsk_id_t node_id = get_tskit_node_id(recorded);
+		if (site_id == TSK_NULL) {
+			site_id = tskit_add_site(site * nSites, "0");
+			if (site_id < 0) {
+				fprintf(stderr, "Error: failed to add the partial sweep site\n");
+				exit(1);
+			}
+		}
+		if (tskit_add_mutation(site_id, node_id, "1") < 0) {
+			fprintf(stderr, "Error: failed to add the partial sweep mutation\n");
+			exit(1);
+		}
+	}
+}
+
+/* Start a sweep (going back in time): put the lineages of population 0
+ * into the sweep classes (sweepPopn 1 is the beneficial class). In a
+ * partial sweep each lineage is in the beneficial class with probability
+ * partialSweepFinalFreq, and the selected site is recorded; otherwise
+ * every lineage is. */
+static void startSweep(double sweepSite){
+	int i;
+	for(i=0;i<alleleNumber;i++){
+		if(nodes[i]->population!=0)
+			continue;
+		if(partialSweepMode == 1)
+			nodes[i]->sweepPopn = (ranf() > partialSweepFinalFreq) ? 0 : 1;
+		else
+			nodes[i]->sweepPopn = 1;
+	}
+	if(partialSweepMode == 1)
+		recordPartialSweepSite(sweepSite);
+}
+
 /* Draw a sweep trajectory by rejection sampling: propose trajectories
  * until one is accepted, deleting the file of each rejected one. Then map
  * the accepted one for the sweep samplers and delete the file of the
@@ -2130,29 +2150,9 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	if(minF < 1.0/(2.*N))
 		minF = 1.0/(2.*N);
 
-	//if new sweep then reset sweepPopnIDs; only popn 0 sweeps, sweepPopn==1 is the beneficial class
 	if(!*stillSweeping){
-		for(i=0;i<alleleNumber;i++){
-			if(nodes[i]->population==0){
-				if(partialSweepMode == 1){
-					//for partial sweeps choose randomly acccording to final sweep freq
-					if(ranf()>partialSweepFinalFreq){
-						nodes[i]->sweepPopn = 0;						
-					}
-					else{
-						nodes[i]->sweepPopn = 1;
-						if(isAncestralHere(nodes[i],sweepSite) && hidePartialSNP == 0) {
-							// Mark that this node carries the sweep mutation
-							nodes[i]->carriesSweepMutation = 1;
-						}
-					}
-				}
-				else{
-			 		nodes[i]->sweepPopn=1;
-				}
-			}
-		}
-	*stillSweeping = 1;
+		startSweep(sweepSite);
+		*stillSweeping = 1;
 	}
 	
 	//assume that sweep always happens in popn 0!!!
@@ -2548,17 +2548,6 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 			}
 		//	printf("lParentsp:%d rParentsp:%d\n",lParent->sweepPopn,rParent->sweepPopn);
 			
-			// Propagate sweep mutation flag to the parent that contains the sweep site
-			if (aNode->carriesSweepMutation) {
-				if (sweepSite < (float)xOver / nSites) {
-					// Sweep site is on the left
-					lParent->carriesSweepMutation = 1;
-				} else {
-					// Sweep site is on the right
-					rParent->carriesSweepMutation = 1;
-				}
-			}
-			
 			// Split ancestry segment tree at crossover point
 			extern int minimalTreeSeq;
 			if (!minimalTreeSeq) {
@@ -2679,22 +2668,12 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 			r = ranf();
 			if (r < popnFreq)rParent->sweepPopn = sp;
 			else rParent->sweepPopn = (sp == 0) ? 1:0;
-			
-			// Propagate sweep mutation flag to lParent (has the converted tract with sweep site)
-			if (aNode->carriesSweepMutation) {
-				lParent->carriesSweepMutation = 1;
-			}
 		}
 		else{ //rParent has sweep site, lParent is then random
 			rParent->sweepPopn = sp;
 			r = ranf();
 			if (r < popnFreq) lParent->sweepPopn = sp;
 			else lParent->sweepPopn = (sp == 0) ? 1:0;
-			
-			// Propagate sweep mutation flag to rParent (has the sweep site)
-			if (aNode->carriesSweepMutation) {
-				rParent->carriesSweepMutation = 1;
-			}
 		}
 		//	printf("lParentsp:%d rParentsp:%d\n",lParent->sweepPopn,rParent->sweepPopn);
 			//add in the nodes
@@ -2742,11 +2721,6 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	temp->nancSites = 0;
 	temp->lLim = nSites;
 	temp->rLim = 0;
-	
-	// Propagate sweep mutation flag if either child carries it
-	if (lChild->carriesSweepMutation || rChild->carriesSweepMutation) {
-		temp->carriesSweepMutation = 1;
-	}
 	
 	// Add the parent node to discoal's arrays and tskit BEFORE merging/recording
 	addNode(temp);

@@ -538,20 +538,6 @@ int main(int argc, const char * argv[]){
 				}
 			}
 
-			/* Active discoal nodes cache the pre-simplify tskit ID on each
-			 * rootedNode. Downstream code (notably tskit_record_sweep_mutations)
-			 * reads node->tskit_node_id and hands it to the mutation table,
-			 * which now only has the simplified node rows -- the stale ID
-			 * dereferences an out-of-bounds row and the later sort fails with
-			 * TSK_ERR_NODE_OUT_OF_BOUNDS, silently dropping the replicate
-			 * (issue #76). Remap in place so cached IDs stay consistent. */
-			for (int i = 0; i < alleleNumber; i++) {
-				if (nodes[i] == NULL) continue;
-				tsk_id_t old_id = nodes[i]->tskit_node_id;
-				if (old_id == TSK_NULL) continue;
-				nodes[i]->tskit_node_id = node_map[old_id];
-			}
-
 			free(samples);
 			free(node_map);
 		}
@@ -561,15 +547,6 @@ int main(int argc, const char * argv[]){
 		
 		//assign root
 	//	root = nodes[0];
-		//add Mutations
-		// First record any sweep mutations
-		if (sweepMode != 'n' && sweepSite >= 0.0) {
-			if (tskit_record_sweep_mutations(sweepSite) < 0) {
-				fprintf(stderr, "Error: Failed to record sweep mutations in tskit\n");
-				exit(1);
-			}
-		}
-		
 		// Place mutations using tskit edge-based algorithm
 		extern double theta;
 		if (tskit_place_mutations_edge_based(theta) < 0) {

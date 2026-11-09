@@ -28,7 +28,6 @@ void setUp(void) {
     testNode->parentsRecorded = 0;
     testNode->isFullyRecorded = 0;
     testNode->inActiveSet = 0;
-    testNode->carriesSweepMutation = 0;
     testNode->popListIndex = -1;
 }
 
@@ -57,7 +56,6 @@ void test_node_initialization(void) {
     TEST_ASSERT_EQUAL(0, testNode->parentsRecorded);
     TEST_ASSERT_EQUAL(0, testNode->isFullyRecorded);
     TEST_ASSERT_EQUAL(0, testNode->inActiveSet);
-    TEST_ASSERT_EQUAL(0, testNode->carriesSweepMutation);
     TEST_ASSERT_EQUAL(-1, testNode->popListIndex);
 }
 
@@ -93,7 +91,6 @@ void test_newRootedNode_creation(void) {
     TEST_ASSERT_EQUAL(0, node->parentsRecorded);
     TEST_ASSERT_EQUAL(0, node->isFullyRecorded);
     TEST_ASSERT_EQUAL(0, node->inActiveSet);
-    TEST_ASSERT_EQUAL(0, node->carriesSweepMutation);
     TEST_ASSERT_EQUAL(-1, node->popListIndex);
     free(node);
 }
