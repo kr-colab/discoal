@@ -1949,6 +1949,15 @@ static void startSweep(double sweepSite){
 		recordPartialSweepSite(sweepSite);
 }
 
+/* The selected allele's frequency at the start of a sweep (going back in
+ * time): one copy short of fixation in population 0 at time t, or the
+ * final frequency of a partial sweep if that is lower. The size is
+ * sizeAt(0, t), since currentSize is not updated for growth. */
+double sweepStartFreq(double t){
+	const double nearlyFixed = 1.0 - (1.0 / (2.0 * EFFECTIVE_POPN_SIZE * sizeAt(0, t)));
+	return partialSweepMode ? MIN(partialSweepFinalFreq, nearlyFixed) : nearlyFixed;
+}
+
 /* The -S trajectory, built by buildSweepTrajectoryFromFile(); NULL
  * without -S. */
 static float *fileTrajectory = NULL;
@@ -2151,8 +2160,8 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 	j=0;
 	/* Population 0's size at the sweep's start (sizeRatio[0] is not
 	 * updated for growth). */
-	N = (double) floor(N_0 * sizeAt(0, currentTime));
 	Nmax = currentSizeRatio = sizeAt(0, currentTime);
+	N = (double) floor(N_0 * currentSizeRatio);
 	x = initialFreq;
 	minF = f0;
 	const int fromStandingVariation = (f0 > 1.0/(2.*N));
@@ -2313,8 +2322,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	pCoalB = pCoalb = pRecB = pRecb = totRate = pRecurMut = pLeftRecB = pLeftRecb = totGCRate = totCRate = totRRate = 0;
 	sweepPopTotRate = pGCB = pGCb = 0;
 
-	const double N_0 = N;
-	N = (double) floor(N_0 * sizeAt(0, cTime));
+	N = (double) floor(N * sizeAt(0, cTime));
 	ttau = 0.0;
 	x = initialFreq;
 	minF = f0;
@@ -2355,24 +2363,26 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 		while(eventProb > eventRand && x > xEnd && (cTime+ttau) < endTime ){
 			ttau += tIncOrig;
 
-			/* The trajectory ended: the sweep ends at its last step. The
-			 * trajectory's own end test follows N through size changes
-			 * (-en, -eg), so it can end above the fixed xEnd of this loop. */
+			/* The trajectory ended: the sweep ends at its last step. xEnd
+			 * follows N as the trajectory's end test does, but the time here
+			 * restarts after each event and can round differently, so this
+			 * guards against reading past the trajectory. */
 			if (currentTrajectoryStep >= totalTrajectorySteps) {
 				ttau -= tIncOrig;
 				trajectoryDone = 1;
 				break;
 			}
 		x = currentTrajectory[currentTrajectoryStep++];
-		xEnd = trajectoryEnd(fromStandingVariation, floor(N_0 * sizeAt(0, cTime + ttau)));
+		const double size0 = sizeAt(0, cTime + ttau);
+		xEnd = trajectoryEnd(fromStandingVariation, floor(EFFECTIVE_POPN_SIZE * size0));
 		/* The origin of an allele from standing variation: no rates at
 		 * frequency 0. (A sweep from a new mutation ends above 0.) */
 		if (x <= 0.0) break;
 
 			//calculate event probs
 			//first 4 events are probs of events in population 0
-			pCoalB = ((sweepPopnSizes[1] * (sweepPopnSizes[1] - 1) ) * 0.5)/x*tIncOrig / sizeAt(0, cTime + ttau);
-			pCoalb = ((sweepPopnSizes[0] * (sweepPopnSizes[0] - 1) ) * 0.5)/(1-x)*tIncOrig / sizeAt(0, cTime + ttau);
+			pCoalB = ((sweepPopnSizes[1] * (sweepPopnSizes[1] - 1) ) * 0.5)/x*tIncOrig / size0;
+			pCoalb = ((sweepPopnSizes[0] * (sweepPopnSizes[0] - 1) ) * 0.5)/(1-x)*tIncOrig / size0;
 			pRecB = rho * sweepPopnSizes[1]*0.5 *tIncOrig; // / sizeRatio[0];
 			pRecb = rho * sweepPopnSizes[0]*0.5 *tIncOrig;// / sizeRatio[0];
 			pGCB = my_gamma * sweepPopnSizes[1]*0.5 *tIncOrig;// / sizeRatio[0];
@@ -2622,12 +2632,7 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 							else{
 								curSweepSite = ranf();
 							}
-							if(partialSweepMode==1){
-								initFreq=MIN(partialSweepFinalFreq,1.0-(1.0/(2*sizeAt(0, cTime)*EFFECTIVE_POPN_SIZE)));
-							}
-							else{
-								initFreq=1.0-(1.0/(2*sizeAt(0, cTime)*EFFECTIVE_POPN_SIZE));
-							}
+							initFreq = sweepStartFreq(cTime);
 							sampleSweepTrajectory(currentEventNumber, sizeRatio, sweepMode,
 								initFreq, finalFreq, alpha, f0, cTime);
 							cTime= sweepPhaseEventsConditionalTrajectory(bpArray, cTime, endTime, curSweepSite,\

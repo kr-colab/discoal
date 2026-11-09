@@ -361,14 +361,7 @@ int main(int argc, const char * argv[]){
 				case 's':
 				assert(activeSweepFlag == 0);
 				currentTime = events[j].time;
-				/* Population 0's size now: currentSize[0] is not updated
-				 * for growth (-eg, -el). */
-				if (partialSweepMode == 1){
-					currentFreq = MIN(partialSweepFinalFreq,1.0 - (1.0 / (2.0 * N * sizeAt(0, currentTime))));
-				}
-				else{
-					currentFreq = 1.0 - (1.0 / (2.0 * N * sizeAt(0, currentTime)));
-				}
+				currentFreq = sweepStartFreq(currentTime);
 			//	printf("event%d currentTime: %f nextTime: %f popnSize: %f\n",j,currentTime,nextTime,currentSize);
 
 				sampleSweepTrajectory(currentEventNumber, currentSize, sweepMode,
@@ -1395,12 +1388,12 @@ void getParameters(int argc,const char **argv){
 	/* Priors on the sweep's frequencies (-Pf, -Pc, or YAML priors) follow
 	 * the YAML rules. A soft sweep that is partial needs every drawn f0
 	 * below every drawn final frequency. -Pf counts as a soft sweep. */
-	if(priorF0 && !(pF0Low >= 0.0 && pF0Low <= pF0Up && pF0Up < 1.0)){
+	if(priorF0 && !uniformBoundsOk(pF0Low, pF0Up, 0.0, 1.0, 0, 1)){
 		fprintf(stderr, "Error: -Pf %g %g: the bounds must satisfy 0 <= low <= "
 			"high < 1\n", pF0Low, pF0Up);
 		exit(1);
 	}
-	if(priorC && !(pCLow >= 0.0 && pCLow <= pCUp && pCUp < 1.0)){
+	if(priorC && !uniformBoundsOk(pCLow, pCUp, 0.0, 1.0, 0, 1)){
 		fprintf(stderr, "Error: -Pc %g %g: the bounds must satisfy 0 <= low <= "
 			"high < 1\n", pCLow, pCUp);
 		exit(1);

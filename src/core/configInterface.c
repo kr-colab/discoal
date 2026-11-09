@@ -1163,11 +1163,18 @@ struct uniform_prior_spec {
     double *low, *high;
 };
 
+/* A uniform prior's bounds: low <= high, both inside [lo, hi], with lo or
+ * hi excluded if open_lo or open_hi. Also used for the -P flags. */
+int uniformBoundsOk(double low, double high, double lo, double hi,
+                    int open_lo, int open_hi) {
+    int lo_ok = open_lo ? low > lo : low >= lo;
+    int hi_ok = open_hi ? high < hi : high <= hi;
+    return lo_ok && hi_ok && low <= high;
+}
+
 static int apply_uniform_prior(const struct uniform_prior_spec *u) {
     const struct uniform_prior *p = u->prior;
-    int lo_ok = u->open_lo ? p->low > u->lo : p->low >= u->lo;
-    int hi_ok = u->open_hi ? p->high < u->hi : p->high <= u->hi;
-    if (!(lo_ok && hi_ok && p->low <= p->high)) {
+    if (!uniformBoundsOk(p->low, p->high, u->lo, u->hi, u->open_lo, u->open_hi)) {
         fprintf(stderr,
             "Error parsing config: priors.%s must satisfy %g %s low <= high "
             "%s %g (got low %g, high %g)\n", u->name,
