@@ -2255,6 +2255,9 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			}
 			j++;
 		}
+		/* The trajectory has ended: later events are not part of it, and a
+		 * later size change must not set its acceptance probability. */
+		if (x <= trajectoryEnd(fromStandingVariation, N)) break;
 	}
 	
 	// Flush any remaining data in buffer

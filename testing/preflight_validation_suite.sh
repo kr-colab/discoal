@@ -237,6 +237,12 @@ run_pass_case "eg_during_partial_sweep" \
 run_pass_case "eg_during_sweep_default_N" \
     20 20 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0 0 2 -d 3 4
 
+# A size change of population 0 long after the sweep: the trajectory has
+# ended by then, so the change must not lower the acceptance of every
+# proposed trajectory (the run took longer than a minute).
+run_pass_case "en_long_after_sweep" \
+    20 2 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -en 1.0 0 0.00001 -d 1 2
+
 # Exponential growth over a long time: after the sweep one lineage is left
 # in each population, and while they wait to migrate the size underflows to
 # 0. Coalescence must then still happen (at once).
