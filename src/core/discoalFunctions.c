@@ -2149,8 +2149,10 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 	
 	tIncOrig = 1.0 / (deltaTMod * EFFECTIVE_POPN_SIZE);
 	j=0;
-	N = (double) floor(N_0 * sizeRatio[0]);
-	Nmax = currentSizeRatio = sizeRatio[0];
+	/* Population 0's size at the sweep's start (sizeRatio[0] is not
+	 * updated for growth). */
+	N = (double) floor(N_0 * sizeAt(0, currentTime));
+	Nmax = currentSizeRatio = sizeAt(0, currentTime);
 	x = initialFreq;
 	minF = f0;
 	const int fromStandingVariation = (f0 > 1.0/(2.*N));
@@ -2308,7 +2310,8 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	pCoalB = pCoalb = pRecB = pRecb = totRate = pRecurMut = pLeftRecB = pLeftRecb = totGCRate = totCRate = totRRate = 0;
 	sweepPopTotRate = pGCB = pGCb = 0;
 
-	N = (double) floor(N * sizeRatio[0]);
+	const double N_0 = N;
+	N = (double) floor(N_0 * sizeAt(0, cTime));
 	ttau = 0.0;
 	x = initialFreq;
 	minF = f0;
@@ -2332,8 +2335,10 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	insweepphase = 1;
 	
 	//go for epoch time, sweep freq, or root
-	/* N is fixed in this loop, so the end of the trajectory is too. */
-	const double xEnd = trajectoryEnd(f0 > 1.0/(2.*N), N);
+	/* The sweep ends at trajectoryEnd() for population 0's size at each
+	 * step, as in proposeTrajectory(), so the two end on the same step. */
+	const int fromStandingVariation = (f0 > 1.0/(2.*N));
+	double xEnd = trajectoryEnd(fromStandingVariation, N);
 	/* Ancient samples of population 0 that join later keep the sweep going
 	 * even when fewer than two present-day lineages are left in it, or none
 	 * in the beneficial class: they must see the sweep when they join. */
@@ -2356,6 +2361,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 				break;
 			}
 		x = currentTrajectory[currentTrajectoryStep++];
+		xEnd = trajectoryEnd(fromStandingVariation, floor(N_0 * sizeAt(0, cTime + ttau)));
 		/* The origin of an allele from standing variation: no rates at
 		 * frequency 0. (A sweep from a new mutation ends above 0.) */
 		if (x <= 0.0) break;
@@ -2614,10 +2620,10 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 								curSweepSite = ranf();
 							}
 							if(partialSweepMode==1){
-								initFreq=MIN(partialSweepFinalFreq,1.0-(1.0/(2*sizeRatio[0]*EFFECTIVE_POPN_SIZE)));
+								initFreq=MIN(partialSweepFinalFreq,1.0-(1.0/(2*sizeAt(0, cTime)*EFFECTIVE_POPN_SIZE)));
 							}
 							else{
-								initFreq=1.0-(1.0/(2*sizeRatio[0]*EFFECTIVE_POPN_SIZE));
+								initFreq=1.0-(1.0/(2*sizeAt(0, cTime)*EFFECTIVE_POPN_SIZE));
 							}
 							sampleSweepTrajectory(currentEventNumber, sizeRatio, sweepMode,
 								initFreq, finalFreq, alpha, f0, cTime);

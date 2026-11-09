@@ -361,11 +361,13 @@ int main(int argc, const char * argv[]){
 				case 's':
 				assert(activeSweepFlag == 0);
 				currentTime = events[j].time;
+				/* Population 0's size now: currentSize[0] is not updated
+				 * for growth (-eg, -el). */
 				if (partialSweepMode == 1){
-					currentFreq = MIN(partialSweepFinalFreq,1.0 - (1.0 / (2.0 * N * currentSize[0])));
+					currentFreq = MIN(partialSweepFinalFreq,1.0 - (1.0 / (2.0 * N * sizeAt(0, currentTime))));
 				}
 				else{
-					currentFreq = 1.0 - (1.0 / (2.0 * N * currentSize[0]));
+					currentFreq = 1.0 - (1.0 / (2.0 * N * sizeAt(0, currentTime)));
 				}
 			//	printf("event%d currentTime: %f nextTime: %f popnSize: %f\n",j,currentTime,nextTime,currentSize);
 
