@@ -24,8 +24,9 @@ For each model:
      very large size somewhere), r is raised to reach it.
   3. Compute branch-mode statistics on each tree sequence: diversity,
      segregating sites (total branch length) and Tajima's D over all
-     samples, diversity within each sampled deme, and, with recombination,
-     the number of distinct trees along the sequence.
+     samples, diversity within each set of samples ("diversity[A]" for deme
+     A at time 0, "diversity[A@320]" for deme A 320 generations ago), and,
+     with recombination, the number of distinct trees along the sequence.
   4. Compare the two distributions of each statistic with a two-sample KS
      test, Bonferroni-corrected over all tests in the run.
 
@@ -35,13 +36,33 @@ present-day deme; they are converted to generations before the statistics
 are computed. A time-unit or size-scaling error therefore shows up as a
 shift in diversity and segregating sites, not only in Tajima's D.
 
-Samples: `--samples` haploid genomes from every deme that exists at time 0,
-whatever stdpopsim's default sampling time; both simulators get the same
-samples. discoal's deme_sample_size is indexed by the order of demes in the
-graph, extinct demes included, so other demes get 0. A model is skipped,
+Samples: sets of `--samples` haploid genomes, each from one deme at one
+time; both simulators get the same sets.
+
+  - Every deme that exists at time 0 gives a set at time 0.
+  - In a stdpopsim catalog model, a population with a default sampling time
+    later than 0 is sampled at that time instead (ancient DNA samples, for
+    example the Neanderthal in HomSap/AncientEurasia_9K19). This is the
+    sampling its authors give, including for extinct demes.
+  - Each generic model and demes file also runs as a second model,
+    "<label>+ancient", which adds one set from every deme, extinct demes
+    included, at a random time inside the deme's lifetime (away from its
+    ends; for a deme with no start time, up to twice its oldest epoch's
+    size in generations after the end of that epoch). The times are drawn from a seed made
+    from the label, so they are the same in every run.
+
+discoal gets the sets at times after 0 as YAML ancient_samples. Its
+deme_sample_size is indexed by the order of demes in the graph, extinct
+demes included, and counts the ancient samples too. The statistics find
+each set's samples by population and node time, and stop with an error if
+a set does not hold exactly `--samples` nodes. A model is skipped,
 with the reason, if it uses features that discoal does not support
 (selfing, cloning, size functions other than constant and exponential), has
-no deme at time 0, or if msprime cannot simulate it.
+no deme at time 0, or if msprime cannot simulate it (stranded lineages, or
+node times beyond floating-point precision). In a model that can
+leave lineages in demes that never exchange migrants again, a rare
+replicate strands them: msprime then reports an infinite waiting time and
+discoal stops with an error. Either one skips the model.
 
 A model with a deme size below 100 is first scaled up: sizes and times are
 multiplied by c and migration rates divided by c, which leaves the
@@ -78,6 +99,7 @@ import sys
 import tempfile
 import time
 import warnings
+import zlib
 
 import demes
 import msprime
@@ -94,6 +116,43 @@ ALPHA = 0.01
 def present_demes(graph):
     """Names of the demes that exist at time 0, in graph order."""
     return [d.name for d in graph.demes if d.end_time == 0]
+
+
+def sample_sets(kind, payload, graph, scale, rng):
+    """(deme name, time in generations) for each set of samples; see the
+    module docstring. `scale` is rescale()'s factor, which also applies to
+    stdpopsim's sampling times. `rng` draws a random ancient set from every
+    deme, or is None."""
+    times = {}
+    if kind == "catalog":
+        species, model_id = payload
+        model = stdpopsim.get_species(species).get_demographic_model(model_id)
+        times = {pop.name: pop.default_sampling_time * scale
+                 for pop in model.populations
+                 if pop.default_sampling_time}
+    sets = [(d.name, times.get(d.name, 0.0)) for d in graph.demes
+            if d.name in times or d.end_time == 0]
+    if rng is not None:
+        # Graph times are in its time_units (generations or years); sample
+        # times are in generations.
+        gt = graph.generation_time
+        for d in graph.demes:
+            lo = d.end_time
+            # With no start time, go past the end of the oldest epoch by
+            # twice its size: the oldest size alone can be tiny next to
+            # N_ref (valid/growth_rates_03.yaml).
+            hi = (d.start_time if np.isfinite(d.start_time)
+                  else max(lo, d.epochs[0].end_time)
+                  + 2 * d.epochs[0].start_size * gt)
+            span = hi - lo
+            t = rng.uniform(lo + 0.01 * span, hi - 0.01 * span)
+            sets.append((d.name, float(t / gt)))
+    return sets
+
+
+def set_label(name, t):
+    """Statistic label of a set: the deme name, with "@time" if ancient."""
+    return name if t == 0 else f"{name}@{t:.6g}"
 
 
 def unsupported(graph):
@@ -178,18 +237,31 @@ def random_generic(rng, n):
     return jobs
 
 
-def per_deme_sets(ts, pop_ids):
-    """Sample node arrays, one per population id, in the given order."""
-    return [ts.samples(population=p) for p in pop_ids]
+def set_nodes(ts, set_ids, n):
+    """Sample node arrays, one per (population id, node time) in set_ids;
+    each must hold exactly n nodes."""
+    out = []
+    node_time = ts.tables.nodes.time
+    for p, t in set_ids:
+        s = ts.samples(population=p)
+        # No absolute tolerance: an ancient time near 0 is not time 0.
+        s = s[np.isclose(node_time[s], t, rtol=1e-6, atol=0)]
+        if len(s) != n:
+            raise RuntimeError(f"{len(s)} sample nodes in population {p} at "
+                               f"time {t:g}, expected {n}")
+        out.append(s)
+    return out
 
 
-def collect(tree_seqs, pop_ids, names, time_scale, count_trees):
-    """Statistics for each tree sequence; returns {stat name: array}. With
-    count_trees (recombination on), every replicate also records its number
-    of distinct trees, which tracks the recombination rate."""
+def collect(tree_seqs, set_ids, labels, n, time_scale, count_trees):
+    """Statistics for each tree sequence; returns {stat name: array}.
+    set_ids holds (population id, node time in the tree sequence's units)
+    for each set of samples. With count_trees (recombination on), every
+    replicate also records its number of distinct trees, which tracks the
+    recombination rate."""
     out = {}
     for ts in tree_seqs:
-        sets = per_deme_sets(ts, pop_ids)
+        sets = set_nodes(ts, set_ids, n)
         allset = np.concatenate(sets)
         vals = {
             "diversity": ts.diversity(allset, mode="branch") * time_scale,
@@ -200,7 +272,7 @@ def collect(tree_seqs, pop_ids, names, time_scale, count_trees):
         if count_trees:
             vals["num_trees"] = ts.num_trees
         if len(sets) > 1:
-            for name, s in zip(names, sets):
+            for name, s in zip(labels, sets):
                 vals[f"diversity[{name}]"] = (
                     ts.diversity(s, mode="branch") * time_scale)
         for k, v in vals.items():
@@ -208,11 +280,18 @@ def collect(tree_seqs, pop_ids, names, time_scale, count_trees):
     return {k: np.array(v) for k, v in out.items()}
 
 
-def run_discoal(demes_path, graph, names, n, reps, seed, tmp, timeout,
+def run_discoal(demes_path, graph, sets, n, reps, seed, tmp, timeout,
                 rho, sites):
-    """Run discoal; return ({stat: array}, N_ref)."""
+    """Run discoal; return ({stat: array}, N_ref as discoal reports it)."""
     index = {d.name: i for i, d in enumerate(graph.demes)}
-    sizes = [n if d.name in names else 0 for d in graph.demes]
+    sizes = [n * sum(name == d.name for name, _ in sets) for d in graph.demes]
+    # YAML times are in units of 4 N_ref generations.
+    n_ref = reference_size(graph)
+    ancient = ", ".join(
+        f"{{time: {float(t / (4 * n_ref))!r}, population: {index[name]}, "
+        f"sample_size: {n}}}" for name, t in sets if t > 0)
+    events = (f", demographic_events: {{ancient_samples: [{ancient}]}}"
+              if ancient else "")
     cfg = os.path.join(tmp, "config.yaml")
     with open(cfg, "w") as f:
         f.write(f"simulation: {{sample_size: {sum(sizes)}, "
@@ -222,7 +301,7 @@ def run_discoal(demes_path, graph, names, n, reps, seed, tmp, timeout,
                 # positive rate can exceed discoal's mutation limit.
                 f"genetics: {{mutation_rate: 0, recombination_rate: {rho}}}\n"
                 f"demography: {{deme_sample_size: {sizes}, "
-                f"demes_filename: \"{demes_path}\"}}\n")
+                f"demes_filename: \"{demes_path}\"{events}}}\n")
     prefix = os.path.join(tmp, "d.trees")
     r = subprocess.run([DISCOAL, "-v", "-Y", cfg, "-ts", prefix],
                        capture_output=True, text=True, timeout=timeout)
@@ -232,7 +311,9 @@ def run_discoal(demes_path, graph, names, n, reps, seed, tmp, timeout,
     m = re.search(r"as reference with N=([0-9.eE+-]+)", r.stderr)
     if not m:
         raise RuntimeError("could not find N_ref in discoal -v output")
-    n_ref = float(m.group(1))
+    # The log prints N_ref to 6 significant digits; audit_model checks it
+    # against reference_size(), and the exact value scales the times here.
+    reported_n_ref = float(m.group(1))
     files = [os.path.join(tmp, f"d_rep{i}.trees") for i in range(1, reps + 1)]
     missing = [f for f in files if not os.path.exists(f)]
     if missing:
@@ -240,13 +321,13 @@ def run_discoal(demes_path, graph, names, n, reps, seed, tmp, timeout,
         errs = [l for l in r.stderr.splitlines() if "rror" in l]
         raise RuntimeError(f"{len(missing)} of {reps} tree files missing; "
                            f"{errs[-1] if errs else 'no error message'}")
-    pop_ids = [index[name] for name in names]
     # Node times are in units of 2 N_ref generations.
-    res = collect((tskit.load(f) for f in files), pop_ids, names, 2 * n_ref,
-                  rho > 0)
+    set_ids = [(index[name], t / (2 * n_ref)) for name, t in sets]
+    res = collect((tskit.load(f) for f in files), set_ids,
+                  [set_label(*x) for x in sets], n, 2 * n_ref, rho > 0)
     for f in files:
         os.remove(f)
-    return res, n_ref
+    return res, reported_n_ref
 
 
 def reference_size(graph):
@@ -271,17 +352,17 @@ def recombination(graph, rho, sites):
     return r, 4 * reference_size(graph) * r * sites
 
 
-def run_msprime(graph, names, n, reps, seed, r, sites):
+def run_msprime(graph, sets, n, reps, seed, r, sites):
     """msprime with the same samples, recombination rate r per generation
     on a discrete genome of length `sites`."""
     dem = msprime.Demography.from_demes(graph)
-    samples = [msprime.SampleSet(n, population=name, ploidy=1, time=0)
-               for name in names]
-    pop_ids = [dem[name].id for name in names]
+    samples = [msprime.SampleSet(n, population=name, ploidy=1, time=t)
+               for name, t in sets]
+    set_ids = [(dem[name].id, t) for name, t in sets]
     tss = msprime.sim_ancestry(samples=samples, demography=dem, ploidy=2,
                                sequence_length=sites, recombination_rate=r,
                                num_replicates=reps, random_seed=seed)
-    return collect(tss, pop_ids, names, 1.0, r > 0)
+    return collect(tss, set_ids, [set_label(*x) for x in sets], n, 1.0, r > 0)
 
 
 # demes specification test cases with near-zero migration between demes:
@@ -377,11 +458,11 @@ def run_cached(cache_dir, key, limit, compute, deterministic):
 def audit_model(job):
     """Run one model. Returns a dict with rows of test results, an error, or
     a reason to skip it, and the time of each simulation."""
-    (kind, label, payload, reps, n, seed, timeout, rho, sites, cache_dir,
-     discoal_id) = job
+    (kind, label, payload, ancient, reps, n, seed, timeout, rho, sites,
+     cache_dir, discoal_id) = job
     timings = {}
     try:
-        if rho > 0 and label in SLOW_WITH_RECOMBINATION:
+        if rho > 0 and label.removesuffix("+ancient") in SLOW_WITH_RECOMBINATION:
             return dict(model=label, timings=timings, skipped="too slow with "
                         "recombination (near-zero migration, very tall trees)")
         with warnings.catch_warnings():
@@ -394,7 +475,9 @@ def audit_model(job):
             warnings.simplefilter("ignore")
             graph, scale = rescale(graph)
             model_id = demes.dumps(graph)
-        names = present_demes(graph)
+        rng = (np.random.default_rng(zlib.crc32(label.encode()))
+               if ancient else None)
+        sets = sample_sets(kind, payload, graph, scale, rng)
         r, discoal_rho = recombination(graph, rho, sites)
         ms_id = ("msprime", msprime.__version__)
 
@@ -407,15 +490,20 @@ def audit_model(job):
         def quiet_msprime(rate, n_reps):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                return run_msprime(graph, names, n, n_reps, seed, rate, sites)
+                return run_msprime(graph, sets, n, n_reps, seed, rate, sites)
 
         def msprime_cannot(e):
-            return "Infinite waiting time" in str(e)
+            # Stranded lineages, or node times that floating point cannot
+            # tell apart (a parent at the same time as its child), which
+            # happens with ancient samples at times near 1e25 generations
+            # in models with sizes near 1e-20 (valid/growth_rates_03.yaml).
+            return ("Infinite waiting time" in str(e)
+                    or "time value <= to its child" in str(e))
 
         def msprime_result(name, rate, n_reps):
             """Run (or reuse) an msprime simulation; returns (stats, outcome)
             where outcome is None, or a skip or an error for the model."""
-            res = simulate(name, (model_id, names, n, n_reps, seed, sites,
+            res = simulate(name, (model_id, sets, n, n_reps, seed, sites,
                                   rate, ms_id),
                            lambda: quiet_msprime(rate, n_reps), msprime_cannot)
             if "stats" in res:
@@ -452,17 +540,27 @@ def audit_model(job):
             with tempfile.TemporaryDirectory() as tmp:
                 path = os.path.join(tmp, "model.demes.yaml")
                 demes.dump(graph, path)
-                return run_discoal(path, graph, names, n, reps, seed, tmp,
+                return run_discoal(path, graph, sets, n, reps, seed, tmp,
                                    timeout, discoal_rho, sites)
         # discoal errors (non-zero exit, missing tree files) repeat for the
         # same binary and inputs; other exceptions are retried.
-        res = simulate("discoal", (model_id, names, n, reps, seed, sites,
+        res = simulate("discoal", (model_id, sets, n, reps, seed, sites,
                                    discoal_rho, discoal_id), run_d,
                        lambda e: isinstance(e, RuntimeError))
         if res.get("timed_out"):
             return dict(model=label, timings=timings,
                         error=f"discoal did not finish in {timeout} s")
         if "failed" in res:
+            # In a model where lineages can be left in demes that never
+            # exchange migrants again, a rare replicate strands them. discoal
+            # stops there as msprime does ("infinite waiting time"), which
+            # skips the model above; a run of msprime's replicates can miss
+            # a replicate that discoal's run hits, so skip it here too.
+            if "can never coalesce" in res["failed"]:
+                return dict(model=label, timings=timings,
+                            skipped="discoal: lineages stranded in one "
+                                    "replicate (msprime: infinite waiting "
+                                    "time)")
             return dict(model=label, timings=timings, error=res["failed"])
         d = {k: np.array(v) for k, v in res["stats"].items()}
         n_ref = res["extra"]
@@ -481,7 +579,8 @@ def audit_model(job):
                              discoal_mean=d[stat].mean(),
                              msprime_mean=m[stat].mean(),
                              ks_d=ks.statistic, p=ks.pvalue))
-        return dict(model=label, n_ref=n_ref, demes=names, rows=rows,
+        return dict(model=label, n_ref=n_ref,
+                    demes=[set_label(*x) for x in sets], rows=rows,
                     scale=scale, rho_factor=rho_factor, timings=timings)
     except Exception as e:  # report and keep going with other models
         return dict(model=label, timings=timings,
@@ -550,18 +649,23 @@ def main():
     cache_dir = None if args.no_cache else args.cache_dir
     discoal_id = ("discoal", file_sha256(DISCOAL))
 
-    specs = [("catalog", f"{sp.id}/{mdl.id}", (sp.id, mdl.id))
+    # (kind, label, payload, random ancient samples)
+    specs = [("catalog", f"{sp.id}/{mdl.id}", (sp.id, mdl.id), False)
              for sp in stdpopsim.all_species() for mdl in sp.demographic_models]
-    specs += random_generic(np.random.default_rng(args.seed), args.generic)
+    others = random_generic(np.random.default_rng(args.seed), args.generic)
     for d in args.demes_dir:
         root = os.path.dirname(os.path.abspath(d))
         for path in sorted(glob.glob(os.path.join(d, "**", "*.yaml"),
                                      recursive=True)):
-            specs.append(("file", os.path.relpath(path, root), path))
+            others.append(("file", os.path.relpath(path, root), path))
+    specs += [(kind, label, payload, False) for kind, label, payload in others]
+    specs += [(kind, label + "+ancient", payload, True)
+              for kind, label, payload in others]
     wanted = set(filter(None, args.models.split(",")))
-    jobs = [(kind, label, payload, args.reps, args.samples, 1000 + 10 * i,
-             args.timeout, args.rho, args.sites, cache_dir, discoal_id)
-            for i, (kind, label, payload) in enumerate(specs)
+    jobs = [(kind, label, payload, ancient, args.reps, args.samples,
+             1000 + 10 * i, args.timeout, args.rho, args.sites, cache_dir,
+             discoal_id)
+            for i, (kind, label, payload, ancient) in enumerate(specs)
             if not wanted or label in wanted]
     # Report each model as it finishes; long runs then show progress.
     results = []
