@@ -1,0 +1,33 @@
+# Priors: each replicate draws its own parameter values, as the -P flags
+# do. Here theta is uniform on [5, 15]; rho is exponential with mean 10,
+# capped at 50; the sweep's alpha (2Ns) is uniform on [500, 2000], its
+# fixation time on [0, 0.05] and its position on [0.4, 0.6]; and pop 0
+# changes size, at a time uniform on [0.1, 0.5], to a size uniform on
+# [0.2, 2.0]. Times are in units of 4N generations.
+# With a prior on fixation_time_ago, the selection block needs no
+# fixation_time_ago; on the command line -Pu still needs -ws, whose value
+# is replaced by the draw.
+# Equivalent to: discoal 20 2 10000 -t 10 -r 10 -ws 0 -a 1000 -x 0.5 -Pt 5 15 -Pre 10 50 -Pa 500 2000 -Pu 0 0.05 -Px 0.4 0.6 -Pe1 0.1 0.5 0.2 2.0 -d 12345 10102
+
+simulation:
+  sample_size: 20
+  num_replicates: 2
+  num_sites: 10000
+  seed: [12345, 10102]
+
+genetics:
+  mutation_rate: 10.0
+  recombination_rate: 10.0
+
+selection:
+  sweep_mode: stochastic
+  selection_coefficient: 1000
+
+priors:
+  mutation_rate: {low: 5, high: 15}
+  recombination_rate_exponential: {mean: 10, upper: 50}
+  selection_coefficient: {low: 500, high: 2000}
+  fixation_time_ago: {low: 0, high: 0.05}
+  sweep_position: {low: 0.4, high: 0.6}
+  population_size_changes:
+    - {time_low: 0.1, time_high: 0.5, size_low: 0.2, size_high: 2.0}

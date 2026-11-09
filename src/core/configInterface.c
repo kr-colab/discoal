@@ -1,4 +1,5 @@
 #include "configInterface.h"
+#include "discoalFunctions.h"
 #include <assert.h>
 #include <limits.h>
 #include <math.h>
@@ -327,6 +328,54 @@ static const cyaml_schema_field_t output_fields_schema[] = {
 
 
 /* top level schema */
+static const cyaml_schema_field_t uniform_prior_fields_schema[] = {
+    CYAML_FIELD_FLOAT("low", CYAML_FLAG_DEFAULT, struct uniform_prior, low),
+    CYAML_FIELD_FLOAT("high", CYAML_FLAG_DEFAULT, struct uniform_prior, high),
+    CYAML_FIELD_END
+};
+static const cyaml_schema_field_t exponential_prior_fields_schema[] = {
+    CYAML_FIELD_FLOAT("mean", CYAML_FLAG_DEFAULT, struct exponential_prior, mean),
+    CYAML_FIELD_FLOAT("upper", CYAML_FLAG_DEFAULT, struct exponential_prior, upper),
+    CYAML_FIELD_END
+};
+static const cyaml_schema_field_t prior_size_change_fields_schema[] = {
+    CYAML_FIELD_FLOAT("time_low", CYAML_FLAG_DEFAULT,
+        struct prior_size_change, time_low),
+    CYAML_FIELD_FLOAT("time_high", CYAML_FLAG_DEFAULT,
+        struct prior_size_change, time_high),
+    CYAML_FIELD_FLOAT("size_low", CYAML_FLAG_DEFAULT,
+        struct prior_size_change, size_low),
+    CYAML_FIELD_FLOAT("size_high", CYAML_FLAG_DEFAULT,
+        struct prior_size_change, size_high),
+    CYAML_FIELD_INT("population", CYAML_FLAG_OPTIONAL,
+        struct prior_size_change, population),
+    CYAML_FIELD_END
+};
+static const cyaml_schema_value_t prior_size_change_schema = {
+    CYAML_VALUE_MAPPING(CYAML_FLAG_DEFAULT, struct prior_size_change,
+        prior_size_change_fields_schema),
+};
+#define UNIFORM_PRIOR_FIELD(key, member) \
+    CYAML_FIELD_MAPPING_PTR(key, CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL, \
+        struct priors_config, member, uniform_prior_fields_schema)
+static const cyaml_schema_field_t priors_fields_schema[] = {
+    UNIFORM_PRIOR_FIELD("mutation_rate", mutation_rate),
+    UNIFORM_PRIOR_FIELD("recombination_rate", recombination_rate),
+    CYAML_FIELD_MAPPING_PTR("recombination_rate_exponential",
+        CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL, struct priors_config,
+        recombination_rate_exponential, exponential_prior_fields_schema),
+    UNIFORM_PRIOR_FIELD("selection_coefficient", selection_coefficient),
+    UNIFORM_PRIOR_FIELD("fixation_time_ago", fixation_time_ago),
+    UNIFORM_PRIOR_FIELD("beneficial_mutation_rate", beneficial_mutation_rate),
+    UNIFORM_PRIOR_FIELD("sweep_position", sweep_position),
+    UNIFORM_PRIOR_FIELD("initial_frequency", initial_frequency),
+    UNIFORM_PRIOR_FIELD("final_frequency", final_frequency),
+    CYAML_FIELD_SEQUENCE_COUNT("population_size_changes",
+        CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL, struct priors_config,
+        population_size_changes, num_population_size_changes,
+        &prior_size_change_schema, 1, CYAML_UNLIMITED),
+    CYAML_FIELD_END
+};
 static const cyaml_schema_field_t discoal_config_fields_schema[] = {
     /* required blocks */
     CYAML_FIELD_MAPPING_PTR("simulation", CYAML_FLAG_POINTER,
@@ -340,6 +389,8 @@ static const cyaml_schema_field_t discoal_config_fields_schema[] = {
         struct discoal_config, selection, selection_fields_schema),
     CYAML_FIELD_MAPPING_PTR("output", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
         struct discoal_config, output, output_fields_schema),
+    CYAML_FIELD_MAPPING_PTR("priors", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        struct discoal_config, priors, priors_fields_schema),
     CYAML_FIELD_END
 };
 static const cyaml_schema_value_t discoal_config_schema = {
@@ -938,12 +989,14 @@ int parse_selection_block(struct selection_config *cfg)
         }
         /* A sweep outside the locus has no position inside it: -ls, -ld,
          * -ln and -L set the sweep site to -1. */
+        extern int priorX;
         if ((linked || cfg->recurrent_sweeps_left_of_locus) &&
-            cfg->sweep_position != NULL) {
+            (cfg->sweep_position != NULL || priorX)) {
             fprintf(stderr,
-                "Error parsing config: sweep_position cannot be set with "
-                "left_rho or recurrent_sweeps_left_of_locus; the sweep is "
-                "outside the locus\n");
+                "Error parsing config: sweep_position (or a prior on it) "
+                "cannot be set with left_rho or "
+                "recurrent_sweeps_left_of_locus; the sweep is outside the "
+                "locus\n");
             return EXIT_FAILURE;
         }
         if (cfg->recurrent_sweeps_left_of_locus && !recurrent) {
@@ -993,6 +1046,12 @@ int parse_selection_block(struct selection_config *cfg)
                 "fixation_time_ago (or a prior on it) unless "
                 "recurrent_sweep_rate is set\n");
             return EXIT_FAILURE;
+        }
+        if (cfg->fixation_time_ago == NULL) {
+            /* Only a prior: the event holds the lower bound until the
+             * first draw. */
+            extern double pTauLow;
+            tau = pTauLow;
         }
         if (linked) {
             sweepSite = -1.0;
@@ -1059,6 +1118,146 @@ int parse_output_block(struct output_config *cfg)
     return EXIT_SUCCESS;
 }
 
+/* Check a uniform prior's bounds: lo_min <= low <= high <= hi_max. */
+static int check_uniform_prior(const char *name, const struct uniform_prior *p,
+                               double lo_min, double hi_max) {
+    if (!(p->low >= lo_min && p->low <= p->high && p->high <= hi_max)) {
+        fprintf(stderr,
+            "Error parsing config: priors.%s must satisfy %g <= low <= high "
+            "<= %g (got low %g, high %g)\n",
+            name, lo_min, hi_max, p->low, p->high);
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
+}
+
+/* The priors block, as the -P flags: each sets the same globals as its
+ * flag, and drawPriors() draws the values for every replicate. Parsed
+ * before the selection block, which needs to know about a prior on
+ * fixation_time_ago. Priors on sweep parameters need a selection block. */
+int parse_priors_block(struct priors_config *cfg, int has_selection,
+                       unsigned num_demes)
+{
+    extern int priorTheta, priorRho, priorAlpha, priorTau, priorX, priorF0,
+        priorUA, priorC, partialSweepMode;
+    extern double pThetaUp, pThetaLow, pRhoMean, pRhoUp, pRhoLow, pAlphaUp,
+        pAlphaLow, pTauUp, pTauLow, pXUp, pXLow, pF0Up, pF0Low, pUALow,
+        pUAUp, pCUp, pCLow;
+    const double inf = INFINITY;
+    if (cfg == NULL) {
+        return EXIT_SUCCESS;
+    }
+    if (!has_selection &&
+        (cfg->selection_coefficient || cfg->fixation_time_ago ||
+         cfg->beneficial_mutation_rate || cfg->sweep_position ||
+         cfg->initial_frequency || cfg->final_frequency)) {
+        fprintf(stderr,
+            "Error parsing config: priors on selection_coefficient, "
+            "fixation_time_ago, beneficial_mutation_rate, sweep_position, "
+            "initial_frequency or final_frequency need a selection block\n");
+        return EXIT_FAILURE;
+    }
+    if (cfg->mutation_rate) {
+        if (check_uniform_prior("mutation_rate", cfg->mutation_rate, 0, inf))
+            return EXIT_FAILURE;
+        priorTheta = 1;
+        pThetaLow = cfg->mutation_rate->low;
+        pThetaUp = cfg->mutation_rate->high;
+    }
+    if (cfg->recombination_rate && cfg->recombination_rate_exponential) {
+        fprintf(stderr,
+            "Error parsing config: priors.recombination_rate and "
+            "priors.recombination_rate_exponential cannot both be set\n");
+        return EXIT_FAILURE;
+    }
+    if (cfg->recombination_rate) {
+        if (check_uniform_prior("recombination_rate", cfg->recombination_rate,
+                0, inf))
+            return EXIT_FAILURE;
+        priorRho = 1;
+        pRhoLow = cfg->recombination_rate->low;
+        pRhoUp = cfg->recombination_rate->high;
+    }
+    if (cfg->recombination_rate_exponential) {
+        struct exponential_prior *e = cfg->recombination_rate_exponential;
+        if (!(e->mean > 0 && e->upper > 0)) {
+            fprintf(stderr,
+                "Error parsing config: priors.recombination_rate_exponential "
+                "mean (%g) and upper (%g) must be > 0\n", e->mean, e->upper);
+            return EXIT_FAILURE;
+        }
+        priorRho = 2;
+        pRhoMean = e->mean;
+        pRhoUp = e->upper;
+    }
+    if (cfg->selection_coefficient) {
+        if (check_uniform_prior("selection_coefficient",
+                cfg->selection_coefficient, 0, inf))
+            return EXIT_FAILURE;
+        priorAlpha = 1;
+        pAlphaLow = cfg->selection_coefficient->low;
+        pAlphaUp = cfg->selection_coefficient->high;
+    }
+    if (cfg->fixation_time_ago) {
+        if (check_uniform_prior("fixation_time_ago", cfg->fixation_time_ago,
+                0, inf))
+            return EXIT_FAILURE;
+        priorTau = 1;
+        pTauLow = userTimeToInternal(cfg->fixation_time_ago->low);
+        pTauUp = userTimeToInternal(cfg->fixation_time_ago->high);
+    }
+    if (cfg->beneficial_mutation_rate) {
+        if (check_uniform_prior("beneficial_mutation_rate",
+                cfg->beneficial_mutation_rate, 0, inf))
+            return EXIT_FAILURE;
+        priorUA = 1;
+        pUALow = cfg->beneficial_mutation_rate->low;
+        pUAUp = cfg->beneficial_mutation_rate->high;
+    }
+    if (cfg->sweep_position) {
+        if (check_uniform_prior("sweep_position", cfg->sweep_position, 0, 1))
+            return EXIT_FAILURE;
+        priorX = 1;
+        pXLow = cfg->sweep_position->low;
+        pXUp = cfg->sweep_position->high;
+    }
+    if (cfg->initial_frequency) {
+        if (check_uniform_prior("initial_frequency", cfg->initial_frequency,
+                0, 1) || cfg->initial_frequency->high >= 1)
+            return EXIT_FAILURE;
+        priorF0 = 1;
+        pF0Low = cfg->initial_frequency->low;
+        pF0Up = cfg->initial_frequency->high;
+    }
+    if (cfg->final_frequency) {
+        if (check_uniform_prior("final_frequency", cfg->final_frequency, 0, 1)
+            || cfg->final_frequency->low <= 0
+            || cfg->final_frequency->high >= 1) {
+            fprintf(stderr,
+                "Error parsing config: priors.final_frequency must be inside "
+                "(0, 1)\n");
+            return EXIT_FAILURE;
+        }
+        priorC = 1;
+        partialSweepMode = 1;
+        pCLow = cfg->final_frequency->low;
+        pCUp = cfg->final_frequency->high;
+    }
+    for (unsigned i = 0; i < cfg->num_population_size_changes; ++i) {
+        struct prior_size_change *p = &cfg->population_size_changes[i];
+        char what[64];
+        snprintf(what, sizeof(what), "priors.population_size_changes[%u]", i);
+        if (check_pop_index("priors.population_size_changes", "population",
+                (int)i, p->population, num_demes) != EXIT_SUCCESS)
+            return EXIT_FAILURE;
+        if (addPriorSizeChange(what, userTimeToInternal(p->time_low),
+                userTimeToInternal(p->time_high), p->size_low, p->size_high,
+                p->population) != 0)
+            return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
+}
+
 int apply_yaml_config(struct discoal_config *config)
 {
     int ret = EXIT_SUCCESS;
@@ -1068,6 +1267,9 @@ int apply_yaml_config(struct discoal_config *config)
     ret = parse_genetics_block(config->genetics);
     if (ret != EXIT_SUCCESS) { goto out; }
     ret = parse_demography_block(config->demography);
+    if (ret != EXIT_SUCCESS) { goto out; }
+    ret = parse_priors_block(config->priors, config->selection != NULL,
+        config->demography ? config->demography->num_demes : 1);
     if (ret != EXIT_SUCCESS) { goto out; }
     ret = parse_selection_block(config->selection);
     if (ret != EXIT_SUCCESS) { goto out; }

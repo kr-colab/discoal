@@ -57,6 +57,7 @@ declare -A FIXTURE_MODE=(
     [linked_sweep_example.yaml]="ms"
     [recurrent_linked_sweeps_example.yaml]="ms"
     [admixture_example.yaml]="ms"
+    [priors_example.yaml]="ms"
     [demes_example.yaml]="ms"
     [tree_sequence_example.yaml]="trees"
 )
@@ -70,6 +71,7 @@ declare -A FIXTURE_SAMPLE=(
     [linked_sweep_example.yaml]=20
     [recurrent_linked_sweeps_example.yaml]=20
     [admixture_example.yaml]=20
+    [priors_example.yaml]=20
     [demes_example.yaml]=20
     [tree_sequence_example.yaml]=20
 )
@@ -83,6 +85,7 @@ declare -A FIXTURE_REPS=(
     [linked_sweep_example.yaml]=2
     [recurrent_linked_sweeps_example.yaml]=2
     [admixture_example.yaml]=2
+    [priors_example.yaml]=2
     [demes_example.yaml]=10
     [tree_sequence_example.yaml]=5
 )

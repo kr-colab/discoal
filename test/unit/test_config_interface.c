@@ -70,6 +70,11 @@ extern double migMatConst[MAXPOPS][MAXPOPS];
 extern char sweepMode;
 extern double leftRho, deltaTMod;
 extern int leftRhoFlag;
+extern int priorTheta, priorRho, priorAlpha, priorTau, priorX, priorF0, priorUA,
+    priorC, numPriorSizeChanges;
+extern double pThetaUp, pThetaLow, pRhoMean, pRhoUp, pRhoLow, pAlphaUp,
+    pAlphaLow, pTauUp, pTauLow, pXUp, pXLow, pF0Up, pF0Low, pUALow, pUAUp,
+    pCUp, pCLow;
 extern char tskitOutputFilename[1024];
 extern long seed1, seed2;
 extern double *currentSize;
@@ -1873,6 +1878,99 @@ void test_selection_sweep_time_step(void) {
     TEST_ASSERT_EQUAL_DOUBLE(200.0, deltaTMod);
 }
 
+/* Each prior sets the globals its -P flag sets; times are converted to
+ * internal units, as for -Pu and -Pe1. */
+void test_priors_set_globals(void) {
+    const char *yaml =
+        BASE_YAML
+        "selection:\n"
+        "  sweep_mode: stochastic\n"
+        "  selection_coefficient: 100\n"
+        "priors:\n"
+        "  mutation_rate: {low: 5, high: 15}\n"
+        "  recombination_rate: {low: 1, high: 2}\n"
+        "  selection_coefficient: {low: 500, high: 2000}\n"
+        "  fixation_time_ago: {low: 0.01, high: 0.05}\n"
+        "  beneficial_mutation_rate: {low: 0.001, high: 0.01}\n"
+        "  sweep_position: {low: 0.4, high: 0.6}\n"
+        "  initial_frequency: {low: 0.01, high: 0.1}\n"
+        "  final_frequency: {low: 0.5, high: 0.9}\n"
+        "  population_size_changes:\n"
+        "    - {time_low: 0.1, time_high: 0.5, size_low: 0.2, size_high: 2.0}\n";
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    TEST_ASSERT_EQUAL_INT(1, priorTheta);
+    TEST_ASSERT_EQUAL_DOUBLE(5, pThetaLow);
+    TEST_ASSERT_EQUAL_DOUBLE(15, pThetaUp);
+    TEST_ASSERT_EQUAL_INT(1, priorRho);
+    TEST_ASSERT_EQUAL_DOUBLE(1, pRhoLow);
+    TEST_ASSERT_EQUAL_DOUBLE(2, pRhoUp);
+    TEST_ASSERT_EQUAL_INT(1, priorAlpha);
+    TEST_ASSERT_EQUAL_INT(1, priorTau);
+    TEST_ASSERT_EQUAL_DOUBLE(0.02, pTauLow);
+    TEST_ASSERT_EQUAL_DOUBLE(0.10, pTauUp);
+    TEST_ASSERT_EQUAL_INT(1, priorUA);
+    TEST_ASSERT_EQUAL_INT(1, priorX);
+    TEST_ASSERT_EQUAL_INT(1, priorF0);
+    TEST_ASSERT_EQUAL_INT(1, priorC);
+    TEST_ASSERT_EQUAL_INT(1, partialSweepMode);
+    TEST_ASSERT_EQUAL_INT(1, numPriorSizeChanges);
+    /* The prior size change, then the sweep at the lower bound of the
+     * prior on fixation_time_ago (no fixed value is given). */
+    TEST_ASSERT_EQUAL_INT(2, eventNumber);
+    TEST_ASSERT_EQUAL_INT('n', events[0].type);
+    TEST_ASSERT_EQUAL_INT(1, events[0].priorSlot);
+    TEST_ASSERT_EQUAL_DOUBLE(0.2, events[0].time);
+    TEST_ASSERT_EQUAL_DOUBLE(0.2, events[0].popnSize);
+    TEST_ASSERT_EQUAL_INT('s', events[1].type);
+    TEST_ASSERT_EQUAL_DOUBLE(0.02, events[1].time);
+}
+
+/* -Pre: an exponential prior on rho, capped at upper. */
+void test_priors_recombination_exponential(void) {
+    const char *yaml =
+        BASE_YAML
+        "priors:\n"
+        "  recombination_rate_exponential: {mean: 10, upper: 50}\n";
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    TEST_ASSERT_EQUAL_INT(2, priorRho);
+    TEST_ASSERT_EQUAL_DOUBLE(10, pRhoMean);
+    TEST_ASSERT_EQUAL_DOUBLE(50, pRhoUp);
+}
+
+/* Bad priors are rejected. */
+void test_priors_reject_bad_values(void) {
+    const char *bad[] = {
+        /* low above high */
+        "priors:\n  mutation_rate: {low: 15, high: 5}\n",
+        /* two priors on rho */
+        "priors:\n  recombination_rate: {low: 1, high: 2}\n"
+        "  recombination_rate_exponential: {mean: 10, upper: 50}\n",
+        /* a sweep prior without a selection block */
+        "priors:\n  selection_coefficient: {low: 1, high: 2}\n",
+        /* sweep_position outside [0, 1] */
+        "selection:\n  sweep_mode: stochastic\n  selection_coefficient: 1\n"
+        "  fixation_time_ago: 0.01\n"
+        "priors:\n  sweep_position: {low: 0.5, high: 1.5}\n",
+        /* a prior on the position of a sweep outside the locus */
+        "selection:\n  sweep_mode: stochastic\n  selection_coefficient: 1\n"
+        "  fixation_time_ago: 0.01\n  left_rho: 10\n"
+        "priors:\n  sweep_position: {low: 0.4, high: 0.6}\n",
+        /* a size bound of 0, and a population out of range */
+        "priors:\n  population_size_changes:\n"
+        "    - {time_low: 0.1, time_high: 0.5, size_low: 0, size_high: 2}\n",
+        "priors:\n  population_size_changes:\n"
+        "    - {time_low: 0.1, time_high: 0.5, size_low: 1, size_high: 2,"
+        " population: 1}\n",
+    };
+    char yaml[2048];
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
+        reset_all();
+        snprintf(yaml, sizeof(yaml), "%s%s", BASE_YAML, bad[i]);
+        TEST_ASSERT_NOT_EQUAL_MESSAGE(EXIT_SUCCESS,
+            apply_from_yaml_string(yaml), bad[i]);
+    }
+}
+
 /* Combinations that have no command-line meaning are rejected. */
 void test_selection_rejects_bad_combinations(void) {
     const char *bad[] = {
@@ -2498,6 +2596,9 @@ int main(void) {
     RUN_TEST(test_selection_recurrent_sweeps_left_of_locus);
     RUN_TEST(test_selection_sweep_time_step);
     RUN_TEST(test_selection_rejects_bad_combinations);
+    RUN_TEST(test_priors_set_globals);
+    RUN_TEST(test_priors_recombination_exponential);
+    RUN_TEST(test_priors_reject_bad_values);
     RUN_TEST(test_selection_emits_sweep_event_at_tau);
     RUN_TEST(test_selection_recurrent_sets_flags_without_event);
     RUN_TEST(test_load_partial_sweep);
