@@ -45,8 +45,9 @@ static int check_nonneg_double(const char *arr, const char *field, int idx,
 }
 
 /* A population no longer exists from the time a population_splits entry
- * merges it (as `derived`) into another one. Reject an entry of `arr` that
- * involves population `pop` at or after that time. */
+ * merges it (as `derived`) into another one, or an admixtures entry moves
+ * all its lineages into two others (as `population`). Reject an entry of
+ * `arr` that involves population `pop` at or after that time. */
 static int check_not_merged(const char *arr, int idx, int pop, double time,
                             const struct demographic_events *dmo) {
     for (int k = 0; k < dmo->num_population_splits; ++k) {
@@ -60,7 +61,38 @@ static int check_not_merged(const char *arr, int idx, int pop, double time,
             return EXIT_FAILURE;
         }
     }
+    for (int k = 0; k < dmo->num_admixtures; ++k) {
+        const struct admixture *ad = &dmo->admixtures[k];
+        if (pop == ad->population && time >= ad->time) {
+            fprintf(stderr,
+                "Error parsing config: %s[%d] at time %g involves population "
+                "%d, which is admixed from populations %d and %d at time %g "
+                "(admixtures[%d])\n",
+                arr, idx, time, pop, ad->source_1, ad->source_2, ad->time, k);
+            return EXIT_FAILURE;
+        }
+    }
     return EXIT_SUCCESS;
+}
+
+/* Unlike -ed and -ea, a YAML split or admixture ends a population, as in
+ * demes: set all migration into and out of it to zero at that time.
+ * Otherwise lineages can migrate into the ended population and be
+ * stranded there. 'm' events set migShape[popID2][popID] (lineages move
+ * popID2 -> popID). */
+static void end_population_migration(int pop, double time, unsigned num_demes) {
+    for (int k = 0; k < (int)num_demes; ++k) {
+        if (k == pop) continue;
+        for (int dir = 0; dir < 2; ++dir) {
+            ensureEventsCapacity();
+            events[eventNumber].type = 'm';
+            events[eventNumber].time = userTimeToInternal(time);
+            events[eventNumber].popID2 = dir ? pop : k;
+            events[eventNumber].popID = dir ? k : pop;
+            events[eventNumber].popnSize = 0.0;
+            eventNumber++;
+        }
+    }
 }
 
 /* for string-valued options, use enums so that CYAML can automatically check
@@ -177,6 +209,19 @@ static const cyaml_schema_value_t ancient_sample_schema = {
         ancient_sample_fields_schema),
 };
 
+static const cyaml_schema_field_t admixture_fields_schema[] = {
+    /* required arguments */
+    CYAML_FIELD_FLOAT("time", CYAML_FLAG_DEFAULT, struct admixture, time),
+    CYAML_FIELD_INT("population", CYAML_FLAG_DEFAULT, struct admixture, population),
+    CYAML_FIELD_INT("source_1", CYAML_FLAG_DEFAULT, struct admixture, source_1),
+    CYAML_FIELD_INT("source_2", CYAML_FLAG_DEFAULT, struct admixture, source_2),
+    CYAML_FIELD_FLOAT("proportion", CYAML_FLAG_DEFAULT, struct admixture, proportion),
+    CYAML_FIELD_END
+};
+static const cyaml_schema_value_t admixture_schema = {
+    CYAML_VALUE_MAPPING(CYAML_FLAG_DEFAULT, struct admixture,
+        admixture_fields_schema),
+};
 static const cyaml_schema_field_t demographic_events_fields_schema[] = { /* sub-block */
     /* optional arguments */
     CYAML_FIELD_SEQUENCE_COUNT("population_size_changes", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
@@ -191,6 +236,9 @@ static const cyaml_schema_field_t demographic_events_fields_schema[] = { /* sub-
     CYAML_FIELD_SEQUENCE_COUNT("ancient_samples", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
         struct demographic_events, ancient_samples, num_ancient_samples,
         &ancient_sample_schema, 1, CYAML_UNLIMITED),
+    CYAML_FIELD_SEQUENCE_COUNT("admixtures", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        struct demographic_events, admixtures, num_admixtures,
+        &admixture_schema, 1, CYAML_UNLIMITED),
     CYAML_FIELD_END
 };
 
@@ -511,7 +559,8 @@ int parse_demography_block(struct demography_config *cfg)
             if (cfg->demes_filename != NULL &&
                 (dmo->num_population_size_changes > 0 ||
                  dmo->num_population_splits > 0 ||
-                 dmo->num_migration_rate_changes > 0)) {
+                 dmo->num_migration_rate_changes > 0 ||
+                 dmo->num_admixtures > 0)) {
                 fprintf(stderr, "Error parsing config: with demes_filename, "
                     "demographic_events may contain only ancient_samples; the "
                     "demes file gives the demography\n");
@@ -639,23 +688,77 @@ int parse_demography_block(struct demography_config *cfg)
                 events[eventNumber].popID2 = split->ancestral;
                 eventNumber++;
                 tDiv = split->time;  /* mark merger model active */
-                /* Unlike -ed, a YAML split ends the derived population, as
-                 * in demes: set all migration into and out of it to zero at
-                 * the split time. Otherwise lineages can migrate into the
-                 * merged population and be stranded there. 'm' events set
-                 * migShape[popID2][popID] (lineages move popID2 -> popID). */
-                for (int k = 0; k < cfg->num_demes; ++k) {
-                    if (k == split->derived) continue;
-                    for (int dir = 0; dir < 2; ++dir) {
-                        ensureEventsCapacity();
-                        events[eventNumber].type = 'm';
-                        events[eventNumber].time = userTimeToInternal(split->time);
-                        events[eventNumber].popID2 = dir ? split->derived : k;
-                        events[eventNumber].popID = dir ? k : split->derived;
-                        events[eventNumber].popnSize = 0.0;
-                        eventNumber++;
+                end_population_migration(split->derived, split->time,
+                    cfg->num_demes);
+            }
+            for (int i = 0; i < dmo->num_admixtures; ++i) {
+                struct admixture *ad = &dmo->admixtures[i];
+                if (check_pop_index("admixtures", "population",
+                        i, ad->population, cfg->num_demes) != EXIT_SUCCESS ||
+                    check_pop_index("admixtures", "source_1",
+                        i, ad->source_1, cfg->num_demes) != EXIT_SUCCESS ||
+                    check_pop_index("admixtures", "source_2",
+                        i, ad->source_2, cfg->num_demes) != EXIT_SUCCESS ||
+                    check_positive_double("admixtures", "time",
+                        i, ad->time) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
+                if (ad->population == ad->source_1 ||
+                    ad->population == ad->source_2 ||
+                    ad->source_1 == ad->source_2) {
+                    fprintf(stderr,
+                        "Error parsing config: admixtures[%d] population (%d), "
+                        "source_1 (%d) and source_2 (%d) must be distinct\n",
+                        i, ad->population, ad->source_1, ad->source_2);
+                    return EXIT_FAILURE;
+                }
+                if (ad->proportion < 0.0 || ad->proportion > 1.0) {
+                    fprintf(stderr,
+                        "Error parsing config: admixtures[%d].proportion (%g) "
+                        "must be in [0, 1]\n", i, ad->proportion);
+                    return EXIT_FAILURE;
+                }
+                /* The sources must still exist; the admixed population must
+                 * not have ended before (an entry ends it at its own time,
+                 * so compare with times strictly before). */
+                if (check_not_merged("admixtures", i, ad->source_1, ad->time,
+                        dmo) != EXIT_SUCCESS ||
+                    check_not_merged("admixtures", i, ad->source_2, ad->time,
+                        dmo) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
+                for (int k = 0; k < dmo->num_admixtures; ++k) {
+                    if (k != i && dmo->admixtures[k].population == ad->population
+                        && dmo->admixtures[k].time <= ad->time) {
+                        fprintf(stderr,
+                            "Error parsing config: admixtures[%d] and "
+                            "admixtures[%d] both admix population %d; a "
+                            "population is admixed once\n", k, i, ad->population);
+                        return EXIT_FAILURE;
                     }
                 }
+                for (int k = 0; k < dmo->num_population_splits; ++k) {
+                    if (dmo->population_splits[k].derived == ad->population &&
+                        dmo->population_splits[k].time <= ad->time) {
+                        fprintf(stderr,
+                            "Error parsing config: admixtures[%d] at time %g "
+                            "admixes population %d, which merges away at time "
+                            "%g (population_splits[%d])\n", i, ad->time,
+                            ad->population, dmo->population_splits[k].time, k);
+                        return EXIT_FAILURE;
+                    }
+                }
+                ensureEventsCapacity();
+                events[eventNumber].type = 'a';
+                events[eventNumber].time = userTimeToInternal(ad->time);
+                events[eventNumber].popID = ad->population;
+                events[eventNumber].popID2 = ad->source_1;
+                events[eventNumber].popID3 = ad->source_2;
+                events[eventNumber].admixProp = ad->proportion;
+                eventNumber++;
+                tDiv = ad->time;  /* populations are joined, as by a split */
+                end_population_migration(ad->population, ad->time,
+                    cfg->num_demes);
             }
         }
         /* parse migration matrix */

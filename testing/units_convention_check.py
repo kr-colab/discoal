@@ -456,6 +456,21 @@ def cases(tmp):
                                      {"initial_size":
                                       rng.uniform(0.1, 1.0) * N0})])
 
+    def admixed(k, p):
+        """P0 is admixed at 0.1 (k N0 generations per unit): its lineages
+        go to P1 (size 0.1 N0) with probability p, else to P2; P2 merges
+        into P1 at 0.5."""
+        d = msprime.Demography()
+        d.add_population(name="P0", initial_size=N0)
+        d.add_population(name="P1", initial_size=0.1 * N0,
+                         initially_active=True)
+        d.add_population(name="P2", initial_size=N0, initially_active=True)
+        d.add_admixture(time=0.1 * k * N0, derived="P0",
+                        ancestral=["P1", "P2"], proportions=[p, 1 - p])
+        d.add_population_split(time=0.5 * k * N0, derived=["P2"],
+                               ancestral="P1")
+        return d
+
     def ancient(k, sets):
         """-A sample sets (population, count, time) with times in k N0."""
         return [(pop, n, t * k * N0) for pop, n, t in sets]
@@ -512,6 +527,13 @@ def cases(tmp):
         dict(name="-R at a near-zero rate gives the neutral coalescent",
              samples=s20, flags=["-R", "0.000001", "-a", "500"],
              model=one_pop([]), alts={}),
+        dict(name="-ea proportion is the share that goes to the first source",
+             samples={"P0": 20},
+             flags=["-p", "3", "20", "0", "0", "-en", "0", "1", "0.1",
+                    "-ea", "0.1", "0", "1", "2", "0.3", "-ed", "0.5", "2", "1"],
+             model=admixed(4, 0.3),
+             alts={"share to the second source": admixed(4, 0.7),
+                   "2N0 generations": admixed(2, 0.3)}),
         dict(name="-Pe1: size change with priors on time and size",
              samples=s20, flags=["-Pe1", "0.2", "0.6", "0.1", "1.0"],
              model=prior_en(4), alts={"2N0 generations": prior_en(2)}),

@@ -1172,6 +1172,74 @@ void test_demography_same_time_event_order(void) {
     }
 }
 
+/*
+ * An admixtures entry is one 'a' event, as -ea time population source_1
+ * source_2 proportion, followed by the events that stop all migration into
+ * and out of the admixed population (as for a split).
+ */
+void test_demography_admixture_event(void) {
+    const char *yaml =
+        BASE_YAML
+        "demography:\n"
+        "  deme_sample_size: [10, 0, 0]\n"
+        "  demographic_events:\n"
+        "    admixtures:\n"
+        "      - {time: 0.1, population: 0, source_1: 1, source_2: 2,\n"
+        "         proportion: 0.3}\n";
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    TEST_ASSERT_EQUAL_INT(5, eventNumber);
+    TEST_ASSERT_EQUAL_INT('a', events[0].type);
+    TEST_ASSERT_EQUAL_DOUBLE(0.2, events[0].time);
+    TEST_ASSERT_EQUAL_INT(0, events[0].popID);
+    TEST_ASSERT_EQUAL_INT(1, events[0].popID2);
+    TEST_ASSERT_EQUAL_INT(2, events[0].popID3);
+    TEST_ASSERT_EQUAL_DOUBLE(0.3, events[0].admixProp);
+    for (int k = 1; k < 5; ++k) {
+        TEST_ASSERT_EQUAL_INT('m', events[k].type);
+        TEST_ASSERT_EQUAL_DOUBLE(0.0, events[k].popnSize);
+        TEST_ASSERT_TRUE(events[k].popID == 0 || events[k].popID2 == 0);
+    }
+}
+
+/* Bad admixtures entries, and events for an admixed population after
+ * its admixture, are rejected. */
+void test_demography_admixture_rejects_bad_values(void) {
+    const char *fmt =
+        BASE_YAML
+        "demography:\n"
+        "  deme_sample_size: [10, 0, 0]\n"
+        "  demographic_events:\n"
+        "    admixtures:\n"
+        "      - {time: 0.1, population: 0, source_1: 1, source_2: 2,\n"
+        "         proportion: 0.3}\n"
+        "%s";
+    const char *bad[] = {
+        "      - {time: 0.2, population: 0, source_1: 1, source_2: 2,"
+        " proportion: 0.5}\n",                          /* admixed twice */
+        "      - {time: 0.2, population: 1, source_1: 1, source_2: 2,"
+        " proportion: 0.5}\n",                          /* not distinct */
+        "      - {time: 0.2, population: 1, source_1: 0, source_2: 2,"
+        " proportion: 0.5}\n",                          /* source ended */
+        "      - {time: 0.2, population: 1, source_1: 3, source_2: 2,"
+        " proportion: 0.5}\n",                          /* bad index */
+        "      - {time: 0.2, population: 2, source_1: 1, source_2: 0,"
+        " proportion: 0.5}\n",                          /* source ended */
+        "      - {time: 0.2, population: 1, source_1: 2, source_2: 0,"
+        " proportion: 1.5}\n",                          /* proportion */
+        "    migration_rate_changes:\n"
+        "      - {time: 0.2, rate: 1.0, source: 0, destination: 1}\n",
+        "    ancient_samples:\n"
+        "      - {time: 0.1, population: 0, sample_size: 2}\n",
+    };
+    char yaml[2048];
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
+        reset_all();
+        snprintf(yaml, sizeof(yaml), fmt, bad[i]);
+        TEST_ASSERT_NOT_EQUAL_MESSAGE(EXIT_SUCCESS,
+            apply_from_yaml_string(yaml), bad[i]);
+    }
+}
+
 /* Bad population, time or sample_size values are rejected. */
 void test_demography_ancient_sample_rejects_bad_values(void) {
     const char *fmt =
@@ -2397,6 +2465,8 @@ int main(void) {
     RUN_TEST(test_demography_migration_rate_change_after_split_rejected);
     RUN_TEST(test_demography_ancient_sample_event);
     RUN_TEST(test_demography_same_time_event_order);
+    RUN_TEST(test_demography_admixture_event);
+    RUN_TEST(test_demography_admixture_rejects_bad_values);
     RUN_TEST(test_demography_ancient_sample_rejects_bad_values);
     RUN_TEST(test_demography_ancient_sample_after_split_rejected);
     RUN_TEST(test_demography_migration_matrix_requires_square);

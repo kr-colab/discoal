@@ -65,6 +65,13 @@ struct population_split {
     double time;
     int derived, ancestral;
 };
+/* -ea: backward in time, the lineages of `population` move to source_1
+ * with probability `proportion` and to source_2 otherwise. */
+struct admixture {
+    double time;
+    int population, source_1, source_2;
+    double proportion;
+};
 struct ancient_sample {
     double time;
     int sample_size, population;
@@ -78,6 +85,8 @@ struct demographic_events {
     unsigned num_population_splits; 
     struct ancient_sample *ancient_samples;
     unsigned num_ancient_samples;
+    struct admixture *admixtures;
+    unsigned num_admixtures;
 };
 
 
