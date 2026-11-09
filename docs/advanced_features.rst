@@ -104,10 +104,13 @@ simulation or an estimate from data:
    ./discoal 20 100 10000 -t 10 -r 10 -N 10000 -S trajectory.txt -x 0.3
 
 The sweep starts (going back in time) at the first time, here the
-present. The last frequency must be 0: going back in time, the allele
-reaches its origin there, and the sweep ends. Between the rows, discoal
-interpolates the frequency linearly at each of its sweep time steps, of
-``1/(i N)`` in units of 2N₀ generations (``-i``, default 40, and ``-N``).
+present. The last frequency must be 0, the allele's origin. Between the
+rows, discoal interpolates the frequency linearly at each of its sweep
+time steps, of ``1/(i N)`` in units of 2N₀ generations (``-i``, default
+40, and ``-N``). As with a simulated sweep, the sweep ends at the first
+step at which the frequency is at or below 1/(2N), so rows after that
+point have no effect, and frequencies above 1 - 1/(2N) are used as
+1 - 1/(2N).
 If the first frequency is below 1, as here, the sweep is partial, as
 with ``-c``: each sampled lineage carries the allele with that
 probability, and the selected SNP is in the output. The file gives the

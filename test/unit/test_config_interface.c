@@ -1955,10 +1955,12 @@ void test_selection_trajectory_file(void) {
         "  sweep_mode: stochastic\n"
         "  fixation_time_ago: 0.01\n"));
 
-    /* The last frequency must be 0, and times must increase. */
+    /* The last frequency must be 0, times must increase, and both must be
+     * finite numbers. */
     const char *bad[] = {"0.01 0.8\n0.02 0.1\n", "0.01 0.8\n0.01 0\n",
-                         "0.01 0.8 3\n0.02 0\n"};
-    for (int i = 0; i < 3; i++) {
+                         "0.01 0.8 3\n0.02 0\n", "0.01 0.8\n0.015 nan\n0.02 0\n",
+                         "0.01 0.8\ninf 0\n"};
+    for (int i = 0; i < 5; i++) {
         reset_all();
         f = fopen(path, "w");
         fputs(bad[i], f);

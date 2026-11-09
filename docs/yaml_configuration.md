@@ -215,7 +215,8 @@ present, as `-ws 0`. For recurrent hitchhiking, set
   `recurrent_sweep_rate` needs `sweep_mode: "stochastic"`.
 - `sweep_mode: "trajectory_file"` with `trajectory_file` is `-S`: the
   sweep follows the trajectory in the file (times in 4N0 generations
-  before the present, and frequencies, ending at 0; see `-S` in
+  before the present, and frequencies, ending at 0; the sweep ends at
+  the first frequency at or below 1/(2N); see `-S` in
   `docs/api_reference.rst`). A first frequency below 1 makes the sweep
   partial. The file gives the sweep's time and strength, so
   `selection_coefficient`, `fixation_time_ago`, `initial_frequency`,

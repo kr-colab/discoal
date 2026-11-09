@@ -2006,9 +2006,9 @@ int setSweepTrajectoryFile(const char *path){
 		double t, x;
 		if (sscanf(line, "%lf %lf %c", &t, &x, &c) != 2)
 			error = "expected a time and a frequency";
-		else if (t < 0.0 || (rows > 0 && t <= points[rows-1].time))
+		else if (!isfinite(t) || t < 0.0 || (rows > 0 && t <= points[rows-1].time))
 			error = "times must be >= 0 and increase down the file";
-		else if (x < 0.0 || x > 1.0 || (rows > 0 && points[rows-1].freq == 0.0))
+		else if (!(x >= 0.0 && x <= 1.0) || (rows > 0 && points[rows-1].freq == 0.0))
 			error = "frequencies must be in [0, 1], and only the last can be 0";
 		else {
 			if (rows == capacity) {
@@ -2051,9 +2051,13 @@ int setSweepTrajectoryFile(const char *path){
 /* The -S trajectory on the sweep sampler's grid. The sampler reads value k
  * at sweep start + (k+1) dt, with dt = 1/(deltaTMod N); each value is the
  * file's trajectory interpolated linearly at that time, and the last is 0,
- * at or after the file's last time. The sweep's start, N and dt are the
- * same in every replicate, so getParameters() builds this once, and
- * sampleSweepTrajectory() hands it to the sampler. */
+ * at or after the file's last time. Values are capped at 1 - 1/(2N), where
+ * a simulated sweep starts: at frequency 1 the wild-type class has no
+ * copies, and its coalescence rate is 0/0. The sampler ends the sweep at
+ * the first value at or below 1/(2N), as for a simulated sweep. The
+ * sweep's start, N and dt are the same in every replicate, so
+ * getParameters() builds this once, and sampleSweepTrajectory() hands it
+ * to the sampler. */
 void buildSweepTrajectoryFromFile(void){
 	const double dt = 1.0 / (deltaTMod * EFFECTIVE_POPN_SIZE);
 	const double start = trajFilePoints[0].time;
@@ -2070,6 +2074,9 @@ void buildSweepTrajectoryFromFile(void){
 		fprintf(stderr, "Error: out of memory for the trajectory file\n");
 		exit(1);
 	}
+	/* nextafterf: with a large N, 1 - 1/(2N) rounds to 1 as a float. */
+	const float cap = fminf((float)(1.0 - 1.0 / (2.0 * EFFECTIVE_POPN_SIZE)),
+	                        nextafterf(1.0f, 0.0f));
 	int r = 0;
 	for (long int k = 0; k < steps; k++) {
 		double t = start + (k + 1) * dt;
@@ -2079,10 +2086,16 @@ void buildSweepTrajectoryFromFile(void){
 		} else {
 			const struct trajPoint *p = &trajFilePoints[r];
 			double w = (t - p[0].time) / (p[1].time - p[0].time);
-			grid[k] = (float)(p[0].freq + w * (p[1].freq - p[0].freq));
+			grid[k] = fminf((float)(p[0].freq + w * (p[1].freq - p[0].freq)), cap);
 		}
 	}
 	grid[steps - 1] = 0.0f;
+	if (grid[0] <= 1.0 / (2.0 * EFFECTIVE_POPN_SIZE)) {
+		fprintf(stderr, "Error: the trajectory file falls to 1/(2N) or below "
+			"within one sweep time step (1/(%g N) in 2N0 generations), so the "
+			"sweep would have no effect\n", deltaTMod);
+		exit(1);
+	}
 	free(fileTrajectory);
 	fileTrajectory = grid;
 	fileTrajectorySteps = steps;

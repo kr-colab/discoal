@@ -8,7 +8,11 @@ The checks:
      (branch mode, from -ts output) agree within Z_MAX standard errors;
   2. a file whose first frequency is 0.5 gives a partial sweep: the number
      of samples that carry the selected SNP at -x is Binomial(n, 0.5);
-  3. -S runs with ancient samples taken during the sweep.
+  3. frequencies of 1 are used as 1 - 1/(2N), where a simulated sweep
+     starts: a file that holds the allele at 1 before the sweep (going
+     back in time) gives the same genealogies as the file without that
+     plateau (at exactly 1 the wild-type coalescence rate is 0/0);
+  4. -S runs with ancient samples taken during the sweep.
 
 The comparison with -wd cannot be byte for byte: a simulated trajectory
 uses a random number for its acceptance step, and a trajectory from a
@@ -68,6 +72,21 @@ def write_partial(path):
         f.write(f"{400 * 2.5e-5:.10g} 0\n")
 
 
+def write_rows(path, rows):
+    with open(path, "w") as f:
+        f.writelines(f"{t:g} {x:g}\n" for t, x in rows)
+
+
+def compare(report, what, a, b):
+    """Report whether two branch_stats results agree."""
+    for name, (ma, sa, na), (mb, sb, nb) in zip(
+            ("total branch length", "diversity"), a, b):
+        z = (ma - mb) / math.sqrt(sa ** 2 + sb ** 2)
+        report(abs(z) < Z_MAX and na == nb == REPS,
+               f"{what}: {name} {ma:.4f} vs {mb:.4f} (z={z:+.1f}, "
+               f"{na} replicates)")
+
+
 def branch_stats(tmp, tag, sweep_args):
     """Mean total branch length and diversity per replicate, with their
     standard errors."""
@@ -96,14 +115,18 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         det = os.path.join(tmp, "det.traj")
         write_deterministic(det)
-        a = branch_stats(tmp, "file", ["-S", det])
-        b = branch_stats(tmp, "wd", ["-wd", str(TAU), "-a", str(ALPHA)])
-        for name, (ma, sa, na), (mb, sb, nb) in zip(
-                ("total branch length", "diversity"), a, b):
-            z = (ma - mb) / math.sqrt(sa ** 2 + sb ** 2)
-            report(abs(z) < Z_MAX and na == nb == REPS,
-                   f"-S with -wd's trajectory: {name} {ma:.4f} vs -wd "
-                   f"{mb:.4f} (z={z:+.1f}, {na} replicates)")
+        compare(report, "-S with -wd's trajectory vs -wd",
+                branch_stats(tmp, "file", ["-S", det]),
+                branch_stats(tmp, "wd", ["-wd", str(TAU), "-a", str(ALPHA)]))
+
+        plateau = os.path.join(tmp, "plateau.traj")
+        no_plateau = os.path.join(tmp, "no_plateau.traj")
+        sweep = [(0.05, 1), (0.051, 0.5), (0.052, 0)]
+        write_rows(plateau, [(0, 1)] + sweep)
+        write_rows(no_plateau, sweep)
+        compare(report, "-S with a plateau at 1 vs without",
+                branch_stats(tmp, "plateau", ["-S", plateau]),
+                branch_stats(tmp, "no_plateau", ["-S", no_plateau]))
 
         part = os.path.join(tmp, "partial.traj")
         write_partial(part)

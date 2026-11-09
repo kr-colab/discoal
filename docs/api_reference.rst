@@ -196,10 +196,12 @@ Selection Options
    the frequency of the selected allele, separated by white space; blank
    lines and lines that start with ``#`` are skipped. Times must increase
    down the file, every frequency but the last must be in (0, 1], and the
-   last must be 0, the allele's origin, which ends the sweep. The sweep
-   starts (going back in time) at the first time. discoal interpolates the
-   frequency linearly at each of its sweep time steps (``-N``, ``-i``). If
-   the first frequency is below 1, the sweep is partial, as with ``-c``.
+   last must be 0, the allele's origin. The sweep starts (going back in
+   time) at the first time. discoal interpolates the frequency linearly at
+   each of its sweep time steps (``-N``, ``-i``), and the sweep ends at the
+   first step at which the frequency is at or below 1/(2N), as a simulated
+   sweep does. Frequencies above 1 - 1/(2N) are used as 1 - 1/(2N). If the
+   first frequency is below 1, the sweep is partial, as with ``-c``.
    ``-S`` cannot be combined with ``-ws``, ``-wd``, ``-wn``, ``-ls``,
    ``-ld``, ``-ln``, ``-R``, ``-L``, ``-a``, ``-f``, ``-c``, ``-Pa``,
    ``-Pu``, ``-Pf`` or ``-Pc``.
