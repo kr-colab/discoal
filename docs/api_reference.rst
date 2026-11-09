@@ -187,7 +187,10 @@ Selection Options
 
 .. option:: -c frequency
 
-   Final frequency for partial sweep
+   Final frequency for partial sweep. It must be above 1/(2N), one copy
+   of the allele (N from ``-N``); with ``-Pc``, the high bound must be. A
+   frequency at or below one copy when the sweep starts (a draw from
+   ``-Pc``, or after a size change) gives a sweep that ends at once.
 
 .. option:: -S file
 

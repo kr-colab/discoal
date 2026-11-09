@@ -1849,6 +1849,12 @@ void mmapAcceptedTrajectory(const char *filename, long int numSteps) {
 	
 	// Calculate file size
 	trajectoryFileSize = numSteps * sizeof(float);
+	/* A trajectory with no steps (the sweep ends at once) has nothing to
+	 * read, and mmap cannot map zero bytes. */
+	if (numSteps == 0) {
+		currentTrajectory = NULL;
+		return;
+	}
 	
 	// Memory map the file
 	currentTrajectory = (float *)mmap(NULL, trajectoryFileSize, PROT_READ, 
@@ -2164,9 +2170,13 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			popShape[events[i].popID].anchor_value = events[i].popnSize;
 			popShape[events[i].popID].rate_param = 0.0;
 			popShape[events[i].popID].anchor_time = events[i].time;
-			currentSizeRatio = events[i].popnSize;  /* legacy cache for inner loop */
-			N = floor(N_0 * events[i].popnSize);
-			if(currentSizeRatio > Nmax) Nmax = currentSizeRatio;
+			/* Only population 0 sweeps: the size of another population
+			 * must not set the trajectory's N, its end or its acceptance. */
+			if(events[i].popID == 0){
+				currentSizeRatio = events[i].popnSize;  /* legacy cache for inner loop */
+				N = floor(N_0 * events[i].popnSize);
+				if(currentSizeRatio > Nmax) Nmax = currentSizeRatio;
+			}
 		}
 		if(events[i].type == 'g'){
 			popShape[events[i].popID].type = SHAPE_EXPONENTIAL;
@@ -2177,7 +2187,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			 * event time. A future refinement could compute the maximum
 			 * over the interval analytically. */
 			double sr_now = sizeAt(events[i].popID, events[i].time);
-			if(sr_now > Nmax) Nmax = sr_now;
+			if(events[i].popID == 0 && sr_now > Nmax) Nmax = sr_now;
 		}
 		if(events[i].type == 'l'){
 			popShape[events[i].popID].type = SHAPE_LINEAR;
@@ -2185,7 +2195,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			popShape[events[i].popID].rate_param = events[i].popnSize;
 			popShape[events[i].popID].anchor_time = events[i].time;
 			double sr_now = sizeAt(events[i].popID, events[i].time);
-			if(sr_now > Nmax) Nmax = sr_now;
+			if(events[i].popID == 0 && sr_now > Nmax) Nmax = sr_now;
 		}
 		if(minF < 1.0/(2.*N)) minF = 1.0/(2.*N);
 		tInc = 1.0 / (deltaTMod * N);
@@ -2328,6 +2338,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	 * even when fewer than two present-day lineages are left in it, or none
 	 * in the beneficial class: they must see the sweep when they join. */
 	const int ancientToCome = dormantLineagesIn(0);
+	int trajectoryDone = 0;
 	while( x > xEnd && (cTime+ttau) < endTime && (popnSizes[0] > 1 || ancientToCome > 0)){ 
 		//rejection algorithm of Braverman et al. 1995
 		eventRand = ranf();
@@ -2336,11 +2347,14 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 		while(eventProb > eventRand && x > xEnd && (cTime+ttau) < endTime ){
 			ttau += tIncOrig;
 
+			/* The trajectory ended: the sweep ends at its last step. The
+			 * trajectory's own end test follows N through size changes
+			 * (-en, -eg), so it can end above the fixed xEnd of this loop. */
 			if (currentTrajectoryStep >= totalTrajectorySteps) {
-			fprintf(stderr, "Error: trajectory step %ld exceeds total steps %ld\n", 
-					currentTrajectoryStep, totalTrajectorySteps);
-			exit(1);
-		}
+				ttau -= tIncOrig;
+				trajectoryDone = 1;
+				break;
+			}
 		x = currentTrajectory[currentTrajectoryStep++];
 		/* The origin of an allele from standing variation: no rates at
 		 * frequency 0. (A sweep from a new mutation ends above 0.) */
@@ -2392,76 +2406,41 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 			*finalFreq = x;
 			return(cTime+ttau);
 		}
-		/* The trajectory reached the allele's origin with no event. */
-		if (x <= 0.0) break;
+		/* The trajectory reached the allele's origin, or its end, with no
+		 * event. */
+		if (x <= 0.0 || trajectoryDone) break;
 
 		//Decide which event took place
 		//first was it in population 0 (sweep) or not
 		double eventTime = cTime + ttau;
 		if(ranf() < sweepPopTotRate / totRate){
-			//event is in sweep pop; choose event
+			/* An event in population 0, chosen in proportion to its rate among
+			 * the sweep events (sweepPopTotRate). */
 			r = ranf();
-			sum = pCoalB;
-			//coalescent in B?
-			if(r < sum / sweepPopTotRate){
-				coalesceAtTimePopnSweep(eventTime, 0,1);
+			if (r < (sum = pCoalB) / sweepPopTotRate)
+				coalesceAtTimePopnSweep(eventTime, 0, 1);
+			else if (r < (sum += pCoalb) / sweepPopTotRate)
+				coalesceAtTimePopnSweep(eventTime, 0, 0);
+			else if (r < (sum += pRecb) / sweepPopTotRate) {
+				bp = recombineAtTimePopnSweep(eventTime, 0, 0, sweepSite, (1.0-x));
+				if (bp != 666) addBreakPoint(bp);
 			}
-			else{
-				sum += pCoalb;
-				//coalescent in b?
-				if(r < sum / sweepPopTotRate){
-					coalesceAtTimePopnSweep(eventTime,0, 0);
-				}
-				else{
-					sum += pRecb;
-					//recombination in b, also need bookkeeping
-					if(r < sum / sweepPopTotRate){
-						bp = recombineAtTimePopnSweep(eventTime,0, 0, sweepSite, (1.0-x));
-						if(bp != 666){
-							addBreakPoint(bp);
-						}
-					}
-					else{
-						sum += pRecB;
-						if( r < sum / sweepPopTotRate){
-							//recombination in B and bookkeeping
-							bp = recombineAtTimePopnSweep(eventTime,0, 1, sweepSite, x);
-							if(bp != 666){
-								addBreakPoint(bp);
-							}
-						}
-						else{
-							sum+= pGCB;
-							if( r < sum / sweepPopTotRate){
-								geneConversionAtTimePopnSweep(eventTime,0, 1, sweepSite, x);
-							}
-							else{
-								sum+= pGCb;
-								if( r < sum / sweepPopTotRate){
-									geneConversionAtTimePopnSweep(eventTime,0, 0, sweepSite, x);
-								}
-								else{
-									sum += pLeftRecb;
-									if ( r < sum / totRate){
-									        recombineToLeftPopnSweep(0, 0, x);
-									}
-									else{
-										sum += pLeftRecB;
-										if ( r < sum / totRate){
-										recombineToLeftPopnSweep(0, 1, x);
-										}
-										else{
-											//recurrent adaptive mutation:
-											//node in pop zero's sweep group exits sweep
-											recurrentMutAtTime(eventTime,0, 1);
-										}
-									}
-								}
-							}
-						}
-					}
-				}
+			else if (r < (sum += pRecB) / sweepPopTotRate) {
+				bp = recombineAtTimePopnSweep(eventTime, 0, 1, sweepSite, x);
+				if (bp != 666) addBreakPoint(bp);
 			}
+			else if (r < (sum += pGCB) / sweepPopTotRate)
+				geneConversionAtTimePopnSweep(eventTime, 0, 1, sweepSite, x);
+			else if (r < (sum += pGCb) / sweepPopTotRate)
+				geneConversionAtTimePopnSweep(eventTime, 0, 0, sweepSite, x);
+			else if (r < (sum += pLeftRecb) / sweepPopTotRate)
+				recombineToLeftPopnSweep(0, 0, x);
+			else if (r < (sum += pLeftRecB) / sweepPopTotRate)
+				recombineToLeftPopnSweep(0, 1, x);
+			else
+				/* recurrent adaptive mutation: a lineage leaves the
+				 * beneficial class */
+				recurrentMutAtTime(eventTime, 0, 1);
 		}
 		else{	
 			if(npops>1){
