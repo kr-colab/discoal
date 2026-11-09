@@ -271,6 +271,16 @@ run_fail_case "Pf_high_above_c" \
 run_pass_case "en_long_after_sweep" \
     20 2 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -en 1.0 0 0.00001 -d 1 2
 
+# Recurrent soft sweeps are not implemented; -Pf makes a sweep soft too.
+run_fail_case "R_with_Pf" \
+    "recurrent soft sweeps" \
+    20 2 1000 -t 5 -r 5 -R 1 -a 500 -Pf 0.01 0.1
+
+# A sweep needs at least one individual in population 0 at its start.
+run_fail_case "sweep_in_population_below_one" \
+    "fewer than one individual" \
+    20 2 1000 -t 5 -r 5 -en 0 0 0.0000001 -ws 0 -a 500
+
 # Exponential growth over a long time: after the sweep one lineage is left
 # in each population, and while they wait to migrate the size underflows to
 # 0. Coalescence must then still happen (at once).

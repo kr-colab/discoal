@@ -1430,8 +1430,9 @@ void getParameters(int argc,const char **argv){
 		exit(666);
 	}
 	if(softSweep && recurSweepMode == 1){
-		printf("Error with event specification: currently recurrent soft sweeps are not implemented. this will be a future addition\n");
-		exit(666);
+		fprintf(stderr, "Error: recurrent soft sweeps (-R or -L with -f or "
+			"-Pf) are not implemented\n");
+		exit(1);
 	}
 	/* A partial sweep that ends below one copy of the allele has no
 	 * trajectory: the sweep ends when the frequency is 1/(2N). A prior
