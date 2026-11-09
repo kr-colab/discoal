@@ -1915,6 +1915,64 @@ void test_selection_sweep_time_step(void) {
     TEST_ASSERT_EQUAL_DOUBLE(200.0, deltaTMod);
 }
 
+/* sweep_mode trajectory_file with trajectory_file is -S: the file's first
+ * time is the sweep event (in internal units), its rows are kept, and
+ * fields that set the sweep's time or frequencies are rejected. */
+void test_selection_trajectory_file(void) {
+    extern int trajFileRows;
+    extern struct trajPoint *trajFilePoints;
+    char path[] = "/tmp/discoal_test_traj_XXXXXX";
+    int fd = mkstemp(path);
+    TEST_ASSERT_TRUE(fd >= 0);
+    FILE *f = fdopen(fd, "w");
+    fputs("# time frequency\n0.01 0.8\n0.02 0.3\n\n0.03 0\n", f);
+    fclose(f);
+    char fields[512];
+    snprintf(fields, sizeof(fields),
+        "  sweep_mode: trajectory_file\n"
+        "  trajectory_file: \"%s\"\n", path);
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_selection(fields));
+    TEST_ASSERT_EQUAL_INT(3, trajFileRows);
+    TEST_ASSERT_EQUAL_DOUBLE(userTimeToInternal(0.01), trajFilePoints[0].time);
+    TEST_ASSERT_EQUAL_DOUBLE(0.3, trajFilePoints[1].freq);
+    TEST_ASSERT_EQUAL_INT(1, eventNumber);
+    TEST_ASSERT_EQUAL_INT('s', events[0].type);
+    TEST_ASSERT_EQUAL_DOUBLE(userTimeToInternal(0.01), events[0].time);
+
+    reset_all();
+    snprintf(fields, sizeof(fields),
+        "  sweep_mode: trajectory_file\n"
+        "  selection_coefficient: 100\n"
+        "  trajectory_file: \"%s\"\n", path);
+    TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_selection(fields));
+
+    reset_all();
+    TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_selection(
+        "  sweep_mode: trajectory_file\n"));
+
+    reset_all();
+    TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_selection(
+        "  sweep_mode: stochastic\n"
+        "  fixation_time_ago: 0.01\n"));
+
+    /* The last frequency must be 0, times must increase, and both must be
+     * finite numbers. */
+    const char *bad[] = {"0.01 0.8\n0.02 0.1\n", "0.01 0.8\n0.01 0\n",
+                         "0.01 0.8 3\n0.02 0\n", "0.01 0.8\n0.015 nan\n0.02 0\n",
+                         "0.01 0.8\ninf 0\n"};
+    for (int i = 0; i < 5; i++) {
+        reset_all();
+        f = fopen(path, "w");
+        fputs(bad[i], f);
+        fclose(f);
+        snprintf(fields, sizeof(fields),
+            "  sweep_mode: trajectory_file\n"
+            "  trajectory_file: \"%s\"\n", path);
+        TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_selection(fields));
+    }
+    unlink(path);
+}
+
 /* Each prior sets the globals its -P flag sets; times are converted to
  * internal units, as for -Pu and -Pe1. */
 void test_priors_set_globals(void) {
@@ -2643,6 +2701,7 @@ int main(void) {
     RUN_TEST(test_selection_left_rho_zero);
     RUN_TEST(test_selection_recurrent_sweeps_left_of_locus);
     RUN_TEST(test_selection_sweep_time_step);
+    RUN_TEST(test_selection_trajectory_file);
     RUN_TEST(test_selection_rejects_bad_combinations);
     RUN_TEST(test_priors_set_globals);
     RUN_TEST(test_priors_recombination_exponential);

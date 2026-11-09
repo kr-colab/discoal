@@ -58,6 +58,7 @@ declare -A FIXTURE_MODE=(
     [recurrent_linked_sweeps_example.yaml]="ms"
     [admixture_example.yaml]="ms"
     [priors_example.yaml]="ms"
+    [trajectory_file_example.yaml]="ms"
     [demes_example.yaml]="ms"
     [tree_sequence_example.yaml]="trees"
 )
@@ -72,6 +73,7 @@ declare -A FIXTURE_SAMPLE=(
     [recurrent_linked_sweeps_example.yaml]=20
     [admixture_example.yaml]=20
     [priors_example.yaml]=20
+    [trajectory_file_example.yaml]=20
     [demes_example.yaml]=20
     [tree_sequence_example.yaml]=20
 )
@@ -86,6 +88,7 @@ declare -A FIXTURE_REPS=(
     [recurrent_linked_sweeps_example.yaml]=2
     [admixture_example.yaml]=2
     [priors_example.yaml]=2
+    [trajectory_file_example.yaml]=2
     [demes_example.yaml]=10
     [tree_sequence_example.yaml]=5
 )
@@ -99,6 +102,7 @@ declare -A FIXTURE_TREES_FILE=(
 declare -A FIXTURE_AUX_FILES=(
     [demes_example.yaml]="demes_example.demes.yaml"
     [ancient_demes_example.yaml]="ancient_demes_example.demes.yaml"
+    [trajectory_file_example.yaml]="trajectory_example.traj"
 )
 
 fail() {

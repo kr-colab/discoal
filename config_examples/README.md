@@ -17,6 +17,7 @@ This directory contains example YAML configuration files for discoal.
 - `linked_sweep_example.yaml` - A sweep outside the locus (-ls) with a set trajectory time step (-i)
 - `recurrent_linked_sweeps_example.yaml` - Recurrent sweeps to the left of the locus (-L)
 - `priors_example.yaml` - Parameter values drawn for each replicate (-P flags)
+- `trajectory_file_example.yaml` - A partial sweep with its trajectory read from `trajectory_example.traj` (-S)
 
 ## Running Examples
 

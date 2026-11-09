@@ -69,7 +69,7 @@ void reset_config_globals(void) {
     extern int npops;
     extern int migFlag;
     extern int EFFECTIVE_POPN_SIZE;
-    extern int gcMean;
+    extern int gcMean, trajFileRows;
     extern double leftRho, deltaTMod;
     extern int priorTheta, priorRho, priorAlpha, priorTau, priorX, priorF0,
         priorUA, priorC, numPriorSizeChanges;
@@ -91,6 +91,7 @@ void reset_config_globals(void) {
     migFlag = 0;
     EFFECTIVE_POPN_SIZE = 0;
     gcMean = 0;
+    trajFileRows = 0;
     leftRhoFlag = 0;
     leftRho = 0;
     deltaTMod = 0;

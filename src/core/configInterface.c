@@ -112,6 +112,7 @@ static const cyaml_strval_t sweep_modes_strings[] = {
     {"stochastic",    SWEEP_STOCHASTIC},
     {"deterministic", SWEEP_DETERMINISTIC},
     {"neutral",       SWEEP_NEUTRAL},
+    {"trajectory_file", SWEEP_TRAJECTORY_FILE},
 };
 
 
@@ -287,9 +288,13 @@ static const cyaml_schema_field_t selection_fields_schema[] = {
     CYAML_FIELD_ENUM("sweep_mode", CYAML_FLAG_DEFAULT, 
         struct selection_config, sweep_mode, 
         sweep_modes_strings, CYAML_ARRAY_LEN(sweep_modes_strings)),
-    CYAML_FIELD_FLOAT("selection_coefficient", CYAML_FLAG_DEFAULT,
+    /* optional arguments; selection_coefficient is required unless
+     * sweep_mode is trajectory_file */
+    CYAML_FIELD_FLOAT_PTR("selection_coefficient",
+        CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
         struct selection_config, selection_coefficient),
-    /* optional arguments */
+    CYAML_FIELD_STRING_PTR("trajectory_file", CYAML_FLAG_OPTIONAL,
+        struct selection_config, trajectory_file, 1, CYAML_UNLIMITED),
     CYAML_FIELD_FLOAT_PTR("sweep_position",
         CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
         struct selection_config, sweep_position),
@@ -885,19 +890,53 @@ int parse_selection_block(struct selection_config *cfg)
             default:
                 break;
         }
-        if (cfg->selection_coefficient < 0) {
+        /* sweep_mode trajectory_file is -S: the file gives the sweep's
+         * time and frequencies, so the fields that set these are not
+         * allowed. The other combinations (priors, for example) are
+         * checked with the command-line options. */
+        const int from_file = cfg->sweep_mode == SWEEP_TRAJECTORY_FILE;
+        if (from_file != (cfg->trajectory_file != NULL)) {
             fprintf(stderr,
-                "Error parsing config: selection_coefficient (%g) "
-                "must be >= 0\n", cfg->selection_coefficient);
+                "Error parsing config: trajectory_file goes with sweep_mode "
+                "'trajectory_file', and that mode needs it\n");
             return EXIT_FAILURE;
         }
-        if (cfg->sweep_mode == SWEEP_NEUTRAL && cfg->selection_coefficient > 0) {
+        if (from_file && (cfg->selection_coefficient != NULL ||
+                          cfg->fixation_time_ago != NULL ||
+                          cfg->initial_frequency != 0 ||
+                          cfg->final_frequency != 0 ||
+                          cfg->left_rho != NULL ||
+                          cfg->recurrent_sweep_rate != 0 ||
+                          cfg->recurrent_sweeps_left_of_locus)) {
             fprintf(stderr,
-                "Error parsing config: selection_coefficient (%g) must be 0 "
-                "when sweep_mode is 'neutral'\n", cfg->selection_coefficient);
+                "Error parsing config: with sweep_mode 'trajectory_file', "
+                "the file gives the sweep's time and frequencies; remove "
+                "selection_coefficient, fixation_time_ago, "
+                "initial_frequency, final_frequency, left_rho and the "
+                "recurrent sweep fields\n");
             return EXIT_FAILURE;
         }
-        alpha = cfg->selection_coefficient;
+        if (!from_file) {
+            if (cfg->selection_coefficient == NULL) {
+                fprintf(stderr,
+                    "Error parsing config: selection block requires "
+                    "selection_coefficient\n");
+                return EXIT_FAILURE;
+            }
+            if (*cfg->selection_coefficient < 0) {
+                fprintf(stderr,
+                    "Error parsing config: selection_coefficient (%g) "
+                    "must be >= 0\n", *cfg->selection_coefficient);
+                return EXIT_FAILURE;
+            }
+            if (cfg->sweep_mode == SWEEP_NEUTRAL && *cfg->selection_coefficient > 0) {
+                fprintf(stderr,
+                    "Error parsing config: selection_coefficient (%g) must be 0 "
+                    "when sweep_mode is 'neutral'\n", *cfg->selection_coefficient);
+                return EXIT_FAILURE;
+            }
+            alpha = *cfg->selection_coefficient;
+        }
         if (cfg->sweep_position != NULL) {
             if (*cfg->sweep_position < 0.0 || *cfg->sweep_position > 1.0) {
                 fprintf(stderr,
@@ -1019,6 +1058,11 @@ int parse_selection_block(struct selection_config *cfg)
                 sweepSite = -1.0;
             }
             return EXIT_SUCCESS;
+        }
+
+        if (from_file) {
+            return setSweepTrajectoryFile(cfg->trajectory_file) == 0
+                ? EXIT_SUCCESS : EXIT_FAILURE;
         }
 
         /* A single sweep (-ws/-wd/-wn, or -ls/-ld/-ln with left_rho) is an

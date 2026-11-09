@@ -1943,6 +1943,11 @@ static void startSweep(double sweepSite){
 		recordPartialSweepSite(sweepSite);
 }
 
+/* The -S trajectory, built by buildSweepTrajectoryFromFile(); NULL
+ * without -S. */
+static float *fileTrajectory = NULL;
+static long int fileTrajectorySteps = 0;
+
 /* Draw a sweep trajectory by rejection sampling: propose trajectories
  * until one is accepted, deleting the file of each rejected one. Then map
  * the accepted one for the sweep samplers and delete the file of the
@@ -1951,6 +1956,14 @@ static void startSweep(double sweepSite){
 void sampleSweepTrajectory(int currentEventNumber, double *sizeRatio,
 	char sweepMode, double initialFreq, double *finalFreq, double alpha,
 	double f0, double currentTime){
+	/* -S: the trajectory from the file, built once. It is not a mapped
+	 * file, so trajectoryFd stays -1 and nothing unmaps it. */
+	if (fileTrajectory != NULL) {
+		currentTrajectory = fileTrajectory;
+		currentTrajectoryStep = 0;
+		totalTrajectorySteps = fileTrajectorySteps;
+		return;
+	}
 	char previousMapped[256] = "";
 	if (trajectoryFd != -1)
 		strcpy(previousMapped, trajectoryFilename);
@@ -1964,6 +1977,128 @@ void sampleSweepTrajectory(int currentEventNumber, double *sizeRatio,
 	mmapAcceptedTrajectory(trajectoryFilename, totalTrajectorySteps);
 	if (strcmp(previousMapped, trajectoryFilename) != 0)
 		cleanupRejectedTrajectory(previousMapped);
+}
+
+/* -S: read a sweep trajectory from a text file with one point per line:
+ * the time before the present (4N0 generations) and the frequency of the
+ * selected allele, separated by white space. Blank lines and lines that
+ * start with '#' are skipped. Times must increase down the file; every
+ * frequency but the last must be in (0, 1], and the last must be 0, the
+ * allele's origin, which ends the sweep. Adds the sweep event at the first
+ * time and sets the sweep up as a stochastic one (sweepMode 's').
+ * getParameters() makes the sweep partial if the first frequency is below
+ * 1, and builds the trajectory the sampler reads. Returns 0, or -1 after
+ * printing an error. */
+int setSweepTrajectoryFile(const char *path){
+	FILE *in = fopen(path, "r");
+	if (in == NULL) {
+		fprintf(stderr, "Error: cannot open the trajectory file %s\n", path);
+		return -1;
+	}
+	struct trajPoint *points = NULL;
+	int rows = 0, capacity = 0, lineNumber = 0;
+	const char *error = NULL;
+	char line[1024], c;
+	while (error == NULL && fgets(line, sizeof(line), in) != NULL) {
+		lineNumber++;
+		if (sscanf(line, " %c", &c) != 1 || c == '#')
+			continue;
+		double t, x;
+		if (sscanf(line, "%lf %lf %c", &t, &x, &c) != 2)
+			error = "expected a time and a frequency";
+		else if (!isfinite(t) || t < 0.0 || (rows > 0 && t <= points[rows-1].time))
+			error = "times must be >= 0 and increase down the file";
+		else if (!(x >= 0.0 && x <= 1.0) || (rows > 0 && points[rows-1].freq == 0.0))
+			error = "frequencies must be in [0, 1], and only the last can be 0";
+		else {
+			if (rows == capacity) {
+				capacity = capacity ? 2 * capacity : 64;
+				struct trajPoint *grown = realloc(points, sizeof(*points) * capacity);
+				if (grown == NULL) {
+					error = "out of memory";
+					break;
+				}
+				points = grown;
+			}
+			points[rows].time = t;
+			points[rows].freq = x;
+			rows++;
+		}
+	}
+	fclose(in);
+	if (error != NULL)
+		fprintf(stderr, "Error: %s, line %d: %s\n", path, lineNumber, error);
+	else if (rows < 2 || points[rows-1].freq != 0.0)
+		fprintf(stderr, "Error: %s: a trajectory needs at least two rows, and "
+			"its last frequency must be 0 (the allele's origin)\n", path);
+	else {
+		for (int r = 0; r < rows; r++)
+			points[r].time = userTimeToInternal(points[r].time);
+		free(trajFilePoints);
+		trajFilePoints = points;
+		trajFileRows = rows;
+		sweepMode = 's';
+		ensureEventsCapacity();
+		events[eventNumber].time = points[0].time;
+		events[eventNumber].type = 's';
+		eventNumber++;
+		return 0;
+	}
+	free(points);
+	return -1;
+}
+
+/* The -S trajectory on the sweep sampler's grid. The sampler reads value k
+ * at sweep start + (k+1) dt, with dt = 1/(deltaTMod N); each value is the
+ * file's trajectory interpolated linearly at that time, and the last is 0,
+ * at or after the file's last time. Values are capped at 1 - 1/(2N), where
+ * a simulated sweep starts: at frequency 1 the wild-type class has no
+ * copies, and its coalescence rate is 0/0. The sampler ends the sweep at
+ * the first value at or below 1/(2N), as for a simulated sweep. The
+ * sweep's start, N and dt are the same in every replicate, so
+ * getParameters() builds this once, and sampleSweepTrajectory() hands it
+ * to the sampler. */
+void buildSweepTrajectoryFromFile(void){
+	const double dt = 1.0 / (deltaTMod * EFFECTIVE_POPN_SIZE);
+	const double start = trajFilePoints[0].time;
+	const double span = trajFilePoints[trajFileRows-1].time - start;
+	if (span / dt >= 500000000.0) {
+		fprintf(stderr, "Error: the trajectory file spans more than "
+			"500000000 sweep time steps; use a smaller -N or -i\n");
+		exit(1);
+	}
+	long int steps = (long int)ceil(span / dt);
+	if (steps < 1) steps = 1;
+	float *grid = malloc(sizeof(float) * steps);
+	if (grid == NULL) {
+		fprintf(stderr, "Error: out of memory for the trajectory file\n");
+		exit(1);
+	}
+	/* nextafterf: with a large N, 1 - 1/(2N) rounds to 1 as a float. */
+	const float cap = fminf((float)(1.0 - 1.0 / (2.0 * EFFECTIVE_POPN_SIZE)),
+	                        nextafterf(1.0f, 0.0f));
+	int r = 0;
+	for (long int k = 0; k < steps; k++) {
+		double t = start + (k + 1) * dt;
+		while (r < trajFileRows - 1 && trajFilePoints[r+1].time <= t) r++;
+		if (r == trajFileRows - 1) {
+			grid[k] = 0.0f;
+		} else {
+			const struct trajPoint *p = &trajFilePoints[r];
+			double w = (t - p[0].time) / (p[1].time - p[0].time);
+			grid[k] = fminf((float)(p[0].freq + w * (p[1].freq - p[0].freq)), cap);
+		}
+	}
+	grid[steps - 1] = 0.0f;
+	if (grid[0] <= 1.0 / (2.0 * EFFECTIVE_POPN_SIZE)) {
+		fprintf(stderr, "Error: the trajectory file falls to 1/(2N) or below "
+			"within one sweep time step (1/(%g N) in 2N0 generations), so the "
+			"sweep would have no effect\n", deltaTMod);
+		exit(1);
+	}
+	free(fileTrajectory);
+	fileTrajectory = grid;
+	fileTrajectorySteps = steps;
 }
 
 /*proposeTrajectory-- this function creates a sweep trajectory and deals with

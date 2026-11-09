@@ -48,6 +48,7 @@ enum sweep_modes {
     SWEEP_STOCHASTIC = 1,
     SWEEP_DETERMINISTIC = 2,
     SWEEP_NEUTRAL = 3,
+    SWEEP_TRAJECTORY_FILE = 4,  /* -S: the trajectory is read from a file */
 };
 
 
@@ -128,7 +129,8 @@ struct output_config {
 };
 struct selection_config {
     enum sweep_modes sweep_mode;
-    double selection_coefficient;    /* -a */
+    double *selection_coefficient;   /* -a; required unless the trajectory is from a file */
+    const char *trajectory_file;     /* -S; with sweep_mode trajectory_file */
     double *sweep_position;          /* optional, -x; NULL if absent (0.5) */
     double *fixation_time_ago;       /* optional, -ws/-wd/-wn tau; NULL if absent */
     double initial_frequency;        /* optional, -f; triggers soft sweep */

@@ -1,0 +1,14 @@
+# sweep_mode trajectory_file (-S) needs a trajectory_file.
+# Should error out with:
+#   "Error parsing config: trajectory_file goes with sweep_mode 'trajectory_file', and that mode needs it"
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+selection:
+  sweep_mode: trajectory_file
