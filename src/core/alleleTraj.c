@@ -43,14 +43,6 @@ double detSweepFreqGeneral(double alpha, double A) {
 	return epsilon / denom;
 }
 
-/* neutralStochastic-- returns the frequency of a neutral allele
-which is sweeping through the population. This is the jump process
-corresponding to the condition diffusion towards loss (i.e. backwards).
-takes the dt, small time increment, and the current allele freq (i.e. 1 for fixation) */
-double neutralStochastic(double dt, double currentFreq){
-	return neutralStochasticOptimized(dt, currentFreq);
-}
-
 /* Note: Optimized versions are now in alleleTraj.h as inline functions */
 
 /* genicSelectionStochastic-- returns the frequency of a selected allele

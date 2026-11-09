@@ -72,12 +72,14 @@ static double mean_time_below_ceiling(double f0, int n_paths) {
 }
 
 void test_neutral_phase_below_ceiling_has_first_passage_duration(void) {
+    /* Paths from 0.2 are about 8 times longer, so fewer are used. */
     const double ceilings[] = {0.05, 0.2};
+    const int n_paths[] = {10000, 4000};
     setall(21, 22);
     for (int k = 0; k < 2; k++) {
         double f0 = ceilings[k];
         double expected = 2.0 * (1.0 + (1.0 - f0) * log(1.0 - f0) / f0);
-        double mean = mean_time_below_ceiling(f0, 10000);
+        double mean = mean_time_below_ceiling(f0, n_paths[k]);
         TEST_ASSERT_DOUBLE_WITHIN(0.03 * expected, expected, mean);
     }
 }

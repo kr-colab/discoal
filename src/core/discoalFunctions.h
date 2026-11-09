@@ -78,9 +78,6 @@ void initializeNodeArrays();
 void ensureNodesCapacity(int requiredSize);
 void ensureAllNodesCapacity(int requiredSize);
 
-double sweepPhaseEventsGeneralPopNumber(int *bpArray, double startTime, double endTime, double sweepSite,\
-			double initialFreq, double *finalFreq, int *stillSweeping, double alpha,\
-			double *sizeRatio, char sweepMode,double f0, double uA);
 			
 			
 double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *finalFreq, double alpha, char sweepMode, double *sizeRatio);

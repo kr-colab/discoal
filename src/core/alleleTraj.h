@@ -8,7 +8,6 @@ double detSweepFreq(double t, double s);
  * detSweepFreq(tau, alpha) bit-exactly. */
 double detSweepFreqGeneral(double alpha, double A);
 
-double neutralStochastic(double dt, double currentFreq);
 double genicSelectionStochastic(double dt, double currentFreq, double alpha);
 double genicSelectionStochasticForwards(double dt, double currentFreq, double alpha);
 double coth(double x);
@@ -50,7 +49,9 @@ static inline double fast_tanh(double x) {
     return tanh(x);
 }
 
-/* Optimized inline version of neutralStochastic */
+/* One step back in time of a neutral allele's frequency, conditioned on
+ * loss (drift -x, variance x(1-x) per unit time): the history of an allele
+ * that fixed, followed back to its origin (-wn). */
 static inline double neutralStochasticOptimized(double dt, double currentFreq) {
     double drift_term = -currentFreq * dt;
     double variance = currentFreq * (1.0 - currentFreq) * dt;
