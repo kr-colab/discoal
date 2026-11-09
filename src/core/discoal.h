@@ -85,6 +85,9 @@ typedef struct event
 	int popID, popID2, popID3; //some events like splits involve two populations, admixture is 3
 	int lineageNumber; //some events involve a specified number of lineages, like ancient samples
 	double admixProp; // admixture proportion from population popID2
+	/* For an 'n' event whose time and size are drawn for each replicate:
+	 * 1 + its index in priorSizeChanges. 0 for every other event. */
+	int priorSlot;
 }
 event;
 
@@ -180,10 +183,17 @@ double SweepStartingFrequency, f0;
 double uA;
 
 double gammaCoRatio, gammaCoRatioMode;
-int priorTheta, priorRho, priorAlpha, priorTau, priorX, priorF0, priorE1, priorE2, priorUA, priorC;
+int priorTheta, priorRho, priorAlpha, priorTau, priorX, priorF0, priorUA, priorC;
 double gammaCoRatioMode, gammaCoRatio;
 double pThetaUp, pThetaLow,pRhoMean,pRhoUp,pRhoLow,pAlphaUp,pAlphaLow,pTauUp,pTauLow,pXUp,pXLow,pF0Up,pF0Low,pUALow,pUAUp,pCUp,pCLow;
-double pE2TLow,pE1TLow, pE2THigh, pE1THigh, pE1SLow, pE1SHigh, pE2SLow,pE2SHigh;
+/* Population size changes with uniform priors on time (internal units)
+ * and size (relative to N0): -Pe1, -Pe2 and YAML
+ * priors.population_size_changes. Each has one 'n' event in the event
+ * list, marked with priorSlot. */
+#define MAX_PRIOR_SIZE_CHANGES 64
+struct priorSizeChange { double timeLow, timeHigh, sizeLow, sizeHigh; };
+struct priorSizeChange priorSizeChanges[MAX_PRIOR_SIZE_CHANGES];
+int numPriorSizeChanges;
 double migMat[MAXPOPS][MAXPOPS], migMatConst[MAXPOPS][MAXPOPS];
 extern double *currentSize;
 double currentSizeConst[MAXPOPS];  /* snapshot of initial currentSize; restored per replicate */
@@ -223,6 +233,7 @@ int partialSweepMode,softSweepMode;
 double partialSweepFinalFreq;
 
 double deltaTMod;
+extern int leftRhoFlag;   /* -ls/-ld/-ln; defined in discoal_multipop.c */
 
 
 int hidePartialSNP;

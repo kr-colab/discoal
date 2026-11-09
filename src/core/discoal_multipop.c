@@ -108,7 +108,6 @@ int main(int argc, const char * argv[]){
 	int i,j,k, totalSimCount;
 	float tempSite;
 	int lastBreak;
-	double probAccept;
 	
 	getParameters(argc,argv);
 	atexit(removeTrajectoryFile);
@@ -371,27 +370,8 @@ int main(int argc, const char * argv[]){
 				}
 			//	printf("event%d currentTime: %f nextTime: %f popnSize: %f\n",j,currentTime,nextTime,currentSize);
 
-				//generate a proposed trajectory
-				char previousTrajectoryFile[256] = "";
-				probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, currentSize, sweepMode, currentFreq, &currentFreq, alpha, f0, currentTime);
-				while(ranf()>probAccept){
-					// Clean up rejected trajectory
-					if (previousTrajectoryFile[0] != '\0') {
-						cleanupRejectedTrajectory(previousTrajectoryFile);
-					}
-					strcpy(previousTrajectoryFile, trajectoryFilename);
-					
-					probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, currentSize, sweepMode, currentFreq, &currentFreq, alpha, f0, currentTime);
-					//printf("probAccept: %lf\n",probAccept);
-				}
-				
-				// Clean up any remaining rejected trajectory
-				if (previousTrajectoryFile[0] != '\0' && strcmp(previousTrajectoryFile, trajectoryFilename) != 0) {
-					cleanupRejectedTrajectory(previousTrajectoryFile);
-				}
-				
-				// Now mmap the accepted trajectory
-				mmapAcceptedTrajectory(trajectoryFilename, totalTrajectorySteps);
+				sampleSweepTrajectory(currentEventNumber, currentSize, sweepMode,
+					currentFreq, &currentFreq, alpha, f0, currentTime);
 				
 				currentTime = sweepPhaseEventsConditionalTrajectory(&breakPoints[0], currentTime, nextTime, sweepSite, \
 					 currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
@@ -505,6 +485,14 @@ int main(int argc, const char * argv[]){
 		// Sort and simplify the tree sequence after ancestry simulation is complete
 		// This removes all non-ancestral nodes and edges before mutation placement
 		if (tsk_tables != NULL) {
+			/* Edges are buffered and written at the next node or flush.
+			 * The last events of a replicate can come from any sampler
+			 * (neutral, sweep or recurrent sweep); write their edges now,
+			 * or simplify drops the nodes they need. */
+			if (tskit_flush_edges() != 0) {
+				fprintf(stderr, "Error: failed to write buffered tree sequence edges\n");
+				exit(1);
+			}
 			// fprintf(stderr, "Debug: Sorting tskit tables\n");
 			// Sort tables (required before simplification)
 			int ret = tsk_table_collection_sort(tsk_tables, NULL, 0);
@@ -803,6 +791,7 @@ void getParameters(int argc,const char **argv){
 	tDiv=666;
         gammaCoRatioMode = 0;
 	priorTheta=priorRho=priorAlpha=priorTau=priorX=priorF0=priorUA=priorC=0;
+	numPriorSizeChanges = 0;
 
 	eventFlag = 1;
 	outputStyle = 'h';
@@ -1279,27 +1268,17 @@ void getParameters(int argc,const char **argv){
 				  pF0Up=atof(argv[++args]);
 				break;
 				case 'e':
-				switch(argv[args][3]){
-					case '1':
-					priorE1 = 1;
-					pE1TLow=userTimeToInternal(atof(argv[++args]));
-					pE1THigh=userTimeToInternal(atof(argv[++args]));
-					pE1SLow=atof(argv[++args]);
-					pE1SHigh=atof(argv[++args]);
-						ensureEventsCapacity();
-					events[eventNumber].type = 'n';
-					eventNumber++;
-					break;
-					case '2':
-					priorE2 = 1;
-					pE2TLow=userTimeToInternal(atof(argv[++args]));
-					pE2THigh=userTimeToInternal(atof(argv[++args]));
-					pE2SLow=atof(argv[++args]);
-					pE2SHigh=atof(argv[++args]);
-						ensureEventsCapacity();
-					events[eventNumber].type = 'n';
-					eventNumber++;
-					break;
+				/* -Pe1 / -Pe2 lowTime highTime lowSize highSize: a size
+				 * change of population 0 with uniform priors on time and
+				 * size. Both work the same way; the digit only names them. */
+				if (argv[args][3] == '1' || argv[args][3] == '2') {
+					const char *opt = argv[args];
+					double tLow = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
+					double tHigh = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
+					double sLow = parseDoubleArg(argc, argv, &args, opt);
+					double sHigh = parseDoubleArg(argc, argv, &args, opt);
+					if (addPriorSizeChange(opt, tLow, tHigh, sLow, sHigh, 0) != 0)
+						exit(1);
 				}
 				break;
 			}
@@ -1435,6 +1414,21 @@ void getParameters(int argc,const char **argv){
 			}
 		}
 	}
+	/* Priors that contradict the sweep model, from the CLI or YAML: a
+	 * drawn position puts the sweep inside the locus, and a drawn tau
+	 * needs a single sweep. */
+	if(priorX && sweepSite < 0.0){
+		fprintf(stderr, "Error: a prior on the sweep position (-Px, or YAML "
+			"priors.sweep_position) cannot be combined with a sweep outside "
+			"the locus (-ls, -ld, -ln, -L)\n");
+		exit(1);
+	}
+	if(priorTau && recurSweepMode){
+		fprintf(stderr, "Error: a prior on the sweep time (-Pu, or YAML "
+			"priors.fixation_time_ago) needs a single sweep, not recurrent "
+			"sweeps (-R, -L)\n");
+		exit(1);
+	}
 	if(leftRhoFlag && sweepSite >= 0.0){
 		printf("Error with event specification: you chose leftRho mode but the sweep site is within the locus\n");
 		exit(666);
@@ -1477,7 +1471,7 @@ void usage(){
 	fprintf(stderr,"\t -ws tau (sweep happend tau generations ago- stochastic sweep)\n");  
 	fprintf(stderr,"\t -wd tau (sweep happend tau generations ago- deterministic sweep)\n"); 
 	fprintf(stderr,"\t -wn tau (sweep happend tau generations ago- neutral sweep)\n");
-	fprintf(stderr,"\t -ls tau leftRho (stochastic sweep some genetic distance to the left of the simulated window--specified by leftRho=4Nr)\n");
+	fprintf(stderr,"\t -ls tau leftRho (stochastic sweep some genetic distance to the left of the simulated window--at 4Nr = 2 x leftRho)\n");
 	fprintf(stderr,"\t\t similarly, ld and ln simulate deterministic and neutral sweeps to the left of the window, respectively\n");
 	fprintf(stderr,"\t -f first frequency at which selection acts on allele (F0; sweep models only)\n");
 	fprintf(stderr,"\t -uA rate at which adaptive mutation recurs during the sweep phase (sweep models only)\n");
@@ -1485,7 +1479,7 @@ void usage(){
 	fprintf(stderr,"\t -a alpha (=2Ns)\n");
 	fprintf(stderr,"\t -x sweepSite (0-1)\n");
 	fprintf(stderr,"\t -c partialSweepFinalFrequency (partial sweeps)\n");	
-	fprintf(stderr,"\t -i dt (sweep time increment scalar; default 400 -> 1/400N)\n");
+	fprintf(stderr,"\t -i dt (sweep time increment scalar; default 40 -> 1/40N)\n");
 	
 	fprintf(stderr,"\t -M migRate (sets all rates to migRate)\n");
 	fprintf(stderr,"\t -m popnID1 popnID2 migRate (sets migRate from popnID1 to popnID2)\n");

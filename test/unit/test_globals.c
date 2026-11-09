@@ -22,14 +22,21 @@ event *events = NULL;
 int eventNumber = 0;
 int eventsCapacity = 0;
 
+/* Defined in discoal_multipop.c, which the unit tests do not link. */
+int leftRhoFlag = 0;
+
 // Stub implementation of ensureEventsCapacity for testing
 void ensureEventsCapacity() {
+    /* New events start zeroed, as in discoal's ensureEventsCapacity;
+     * fields such as priorSlot rely on it. */
     if (events == NULL) {
         eventsCapacity = 100;
-        events = (event *)malloc(eventsCapacity * sizeof(event));
+        events = (event *)calloc(eventsCapacity, sizeof(event));
     } else if (eventNumber >= eventsCapacity - 1) {
+        int old = eventsCapacity;
         eventsCapacity *= 2;
         events = (event *)realloc(events, eventsCapacity * sizeof(event));
+        memset(&events[old], 0, (eventsCapacity - old) * sizeof(event));
     }
 }
 
@@ -63,6 +70,9 @@ void reset_config_globals(void) {
     extern int migFlag;
     extern int EFFECTIVE_POPN_SIZE;
     extern int gcMean;
+    extern double leftRho, deltaTMod;
+    extern int priorTheta, priorRho, priorAlpha, priorTau, priorX, priorF0,
+        priorUA, priorC, numPriorSizeChanges;
     extern int recurSweepMode, partialSweepMode, softSweepMode;
     extern int tskitOutputMode, minimalTreeSeq, hidePartialSNP;
     extern double theta, rho;
@@ -81,6 +91,11 @@ void reset_config_globals(void) {
     migFlag = 0;
     EFFECTIVE_POPN_SIZE = 0;
     gcMean = 0;
+    leftRhoFlag = 0;
+    leftRho = 0;
+    deltaTMod = 0;
+    priorTheta = priorRho = priorAlpha = priorTau = priorX = priorF0 = 0;
+    priorUA = priorC = numPriorSizeChanges = 0;
     recurSweepMode = 0;
     partialSweepMode = 0;
     softSweepMode = 0;

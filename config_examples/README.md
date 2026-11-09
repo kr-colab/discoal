@@ -13,6 +13,10 @@ This directory contains example YAML configuration files for discoal.
 - `migration_change_example.yaml` - Migration rates that change over time
 - `ancient_samples_example.yaml` - Ancient samples in two populations
 - `ancient_demes_example.yaml` - Ancient samples with a demes model, from an extinct deme
+- `admixture_example.yaml` - An admixed population (-ea)
+- `linked_sweep_example.yaml` - A sweep outside the locus (-ls) with a set trajectory time step (-i)
+- `recurrent_linked_sweeps_example.yaml` - Recurrent sweeps to the left of the locus (-L)
+- `priors_example.yaml` - Parameter values drawn for each replicate (-P flags)
 
 ## Running Examples
 

@@ -65,6 +65,13 @@ struct population_split {
     double time;
     int derived, ancestral;
 };
+/* -ea: backward in time, the lineages of `population` move to source_1
+ * with probability `proportion` and to source_2 otherwise. */
+struct admixture {
+    double time;
+    int population, source_1, source_2;
+    double proportion;
+};
 struct ancient_sample {
     double time;
     int sample_size, population;
@@ -78,6 +85,8 @@ struct demographic_events {
     unsigned num_population_splits; 
     struct ancient_sample *ancient_samples;
     unsigned num_ancient_samples;
+    struct admixture *admixtures;
+    unsigned num_admixtures;
 };
 
 
@@ -119,23 +128,54 @@ struct output_config {
 };
 struct selection_config {
     enum sweep_modes sweep_mode;
-    double selection_coefficient; 
-    double sweep_position;        
-    double fixation_time_ago; 
-    double initial_frequency;        /* optional, triggers soft sweep */
-    double final_frequency;          /* optional, triggers partial sweep  */
-    double beneficial_mutation_rate; /* optional TODO does this trigger recurrent sweeps */
-    double recurrent_sweep_rate;     /* optional TODO or does this trigger recurrent sweeps */
+    double selection_coefficient;    /* -a */
+    double *sweep_position;          /* optional, -x; NULL if absent (0.5) */
+    double *fixation_time_ago;       /* optional, -ws/-wd/-wn tau; NULL if absent */
+    double initial_frequency;        /* optional, -f; triggers soft sweep */
+    double final_frequency;          /* optional, -c; triggers partial sweep */
+    double beneficial_mutation_rate; /* optional, -uA */
+    double recurrent_sweep_rate;     /* optional, -R (or -L, below) */
+    double *left_rho;                /* optional, -ls/-ld/-ln leftRho; NULL if absent */
+    bool recurrent_sweeps_left_of_locus; /* optional, with recurrent_sweep_rate: -L */
+    double *sweep_time_step;         /* optional, -i; NULL if absent */
 };
 
 
 /* top level struct for config */
+/* Priors: each replaces a fixed value with a new draw for every replicate,
+ * as the -P flags do. Uniform on [low, high]. */
+struct uniform_prior {
+    double low, high;
+};
+/* -Pre: exponential with this mean, capped (not truncated) at upper. */
+struct exponential_prior {
+    double mean, upper;
+};
+/* -Pe1 / -Pe2: a size change with uniform priors on its time and size. */
+struct prior_size_change {
+    double time_low, time_high, size_low, size_high;
+    int population;                       /* optional, default 0 */
+};
+struct priors_config {
+    struct uniform_prior *mutation_rate;              /* -Pt */
+    struct uniform_prior *recombination_rate;         /* -Pr */
+    struct exponential_prior *recombination_rate_exponential; /* -Pre */
+    struct uniform_prior *selection_coefficient;      /* -Pa */
+    struct uniform_prior *fixation_time_ago;          /* -Pu */
+    struct uniform_prior *beneficial_mutation_rate;   /* -PuA */
+    struct uniform_prior *sweep_position;             /* -Px */
+    struct uniform_prior *initial_frequency;          /* -Pf */
+    struct uniform_prior *final_frequency;            /* -Pc */
+    struct prior_size_change *population_size_changes; /* -Pe1, -Pe2 */
+    unsigned num_population_size_changes;
+};
 struct discoal_config {
     struct simulation_config *simulation;
     struct genetics_config *genetics;
     struct demography_config *demography; /* optional */
     struct output_config *output;         /* optional */
     struct selection_config *selection;   /* optional */
+    struct priors_config *priors;         /* optional */
 };
 
 
@@ -144,6 +184,8 @@ int parse_genetics_block(struct genetics_config*);
 int parse_demography_block(struct demography_config*);
 int parse_selection_block(struct selection_config*);
 int parse_output_block(struct output_config*);
+int parse_priors_block(struct priors_config*, int has_selection,
+                       unsigned num_demes, const struct demographic_events*);
 int apply_yaml_config(struct discoal_config*);
 int load_yaml_config(const char*, struct discoal_config**);
 

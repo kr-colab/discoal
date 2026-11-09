@@ -1,0 +1,20 @@
+# A prior on the sweep position with a sweep outside the locus (left_rho).
+# The drawn position would put the sweep inside the locus. Should error
+# out with:
+#   "Error: a prior on the sweep position (-Px, or YAML priors.sweep_position) cannot be combined with a sweep outside the locus"
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 1.0
+  recombination_rate: 1.0
+selection:
+  sweep_mode: stochastic
+  selection_coefficient: 100
+  fixation_time_ago: 0.01
+  left_rho: 10
+priors:
+  sweep_position: {low: 0.4, high: 0.6}

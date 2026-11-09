@@ -126,6 +126,16 @@ Notes:
   `time` must be `> 0` and the two population indices must differ.
 - For `population_size_changes`, `time` must be `>= 0` and `size`
   must be `> 0` (extinction at zero is not modeled).
+- An `admixture` (in `admixtures`, for example
+  `{time: 0.1, population: 0, source_1: 1, source_2: 2, proportion: 0.3}`)
+  is `-ea time population source_1 source_2 proportion`:
+  backward in time, each lineage of `population` moves to `source_1`
+  with probability `proportion` and to `source_2` otherwise. Like a
+  split, a YAML admixture ends `population`: all migration into and
+  out of it stops at that time (a CLI `-ea` keeps it, as in ms). The
+  three populations must differ, the sources must still exist, a
+  population is admixed once, `time` must be `> 0` and `proportion`
+  in `[0, 1]`.
 - A `migration_rate_change` sets the rate (4Nm) at which lineages in
   `source` move to `destination` backward in time, from `time` into
   the past, until a later change. This is
@@ -156,9 +166,10 @@ Notes:
   (issue #100).
 - Events at the same time take effect in this order:
   `ancient_samples`, `migration_rate_changes`,
-  `population_size_changes`, `population_splits` (each split followed
-  by the migration changes that stop the merged population's
-  migration), and within each list in file order. On the CLI, events
+  `population_size_changes`, `population_splits`, `admixtures` (each
+  split and admixture followed by the migration changes that stop the
+  ended population's migration), then the size changes with priors,
+  and within each list in file order. On the CLI, events
   at the same time take effect in command-line order, so an equivalent
   command line must list them in this order to give the same output.
 - With `demes_filename`, `migration_matrix` must be omitted, and
@@ -171,26 +182,94 @@ Notes:
 ```yaml
 selection:
   sweep_mode: "stochastic"            # one of "stochastic" / "deterministic" / "neutral"
-  selection_coefficient: 10.0         # alpha = 2Ns
-  sweep_position: 0.5                 # in [0, 1]
-  fixation_time_ago: 1.0              # required unless using recurrent_sweep_rate
-  initial_frequency: 1.0e-1           # optional, triggers soft sweep from standing variation
-  final_frequency: 0.9                # optional, triggers partial sweep
-  beneficial_mutation_rate: 1.0e-2    # optional, soft sweep from recurrent mutation (uA)
-  recurrent_sweep_rate: 0.1           # optional, recurrent hitchhiking; mutually exclusive with fixation_time_ago
+  selection_coefficient: 10.0         # alpha = 2Ns (-a)
+  sweep_position: 0.5                 # optional, in [0, 1] (-x; default 0.5)
+  fixation_time_ago: 1.0              # single sweep: tau, >= 0 (-ws/-wd/-wn)
+  initial_frequency: 1.0e-1           # optional, soft sweep from standing variation (-f)
+  final_frequency: 0.9                # optional, partial sweep (-c)
+  beneficial_mutation_rate: 1.0e-2    # optional, soft sweep from recurrent mutation (-uA)
+  left_rho: 20                        # optional, sweep outside the locus at 4Nr = 2 x left_rho (-ls/-ld/-ln)
+  sweep_time_step: 40                 # optional, trajectory time step 1/(step N) (-i; default 40)
+  recurrent_sweep_rate: 0.1           # optional, recurrent hitchhiking (-R)
+  recurrent_sweeps_left_of_locus: true  # optional, with recurrent_sweep_rate (-L)
 ```
 
 `sweep_mode` maps directly to the CLI sweep family (`-ws`, `-wd`,
-`-wn`). For a single sweep, `fixation_time_ago` is required. For
-recurrent hitchhiking, set `recurrent_sweep_rate` instead and omit
-`fixation_time_ago`.
+`-wn`). A single sweep needs `fixation_time_ago` (or a prior on it,
+see "priors"); `fixation_time_ago: 0` is a sweep that ends at the
+present, as `-ws 0`. For recurrent hitchhiking, set
+`recurrent_sweep_rate` instead and omit `fixation_time_ago`.
+
+- `left_rho` puts the selected site outside the locus, at genetic
+  distance `4Nr = 2 x left_rho` to its left (that is, `left_rho` is
+  2Nr): `-ls tau left_rho` (or `-ld`, `-ln`, by `sweep_mode`), with
+  the same long-standing factor of 2. `left_rho: 0` puts it at the
+  left end of the locus. There is then no `sweep_position`.
+- `recurrent_sweeps_left_of_locus: true` with `recurrent_sweep_rate`
+  is `-L rate`: each sweep's distance from the locus (4Nr) is drawn
+  uniformly from (0, 4Ns). Without it, recurrent sweeps are at
+  random positions inside the locus (`-R rate`).
+- Recurrent sweeps are always stochastic, as with `-R` and `-L`, so
+  `recurrent_sweep_rate` needs `sweep_mode: "stochastic"`.
+- Ancient samples taken while a sweep is in progress are not yet
+  modeled correctly (issue #100).
 
 Validation: `selection_coefficient` must be `>= 0`, and exactly
 zero when `sweep_mode: "neutral"`. `sweep_position` is a fraction
 in `[0, 1]`. `initial_frequency` and `final_frequency`, when set,
 must be in `[0, 1)`; when both are set,
-`initial_frequency < final_frequency`. `beneficial_mutation_rate`
-and `recurrent_sweep_rate` must be `>= 0`.
+`initial_frequency < final_frequency`. `beneficial_mutation_rate`,
+`recurrent_sweep_rate`, `left_rho` and `fixation_time_ago` must be
+`>= 0`, and `sweep_time_step` `> 0`.
+
+## priors
+
+Each entry replaces a fixed value with a new draw for every
+replicate, as the CLI `-P` flags do. The same seeds give the same
+draws as the equivalent command line.
+
+```yaml
+priors:
+  mutation_rate: {low: 5, high: 15}             # theta, uniform (-Pt)
+  recombination_rate: {low: 0, high: 50}        # rho, uniform (-Pr)
+  # recombination_rate_exponential: {mean: 10, upper: 100}  # or this (-Pre)
+  selection_coefficient: {low: 100, high: 1000} # alpha (-Pa)
+  fixation_time_ago: {low: 0, high: 0.1}        # tau (-Pu)
+  beneficial_mutation_rate: {low: 0, high: 0.01}  # uA (-PuA)
+  sweep_position: {low: 0.4, high: 0.6}         # -Px
+  initial_frequency: {low: 0.01, high: 0.1}     # f0 (-Pf)
+  final_frequency: {low: 0.5, high: 0.9}        # partial sweep (-Pc)
+  population_size_changes:                      # -Pe1, -Pe2
+    - {time_low: 0.01, time_high: 0.5, size_low: 0.1, size_high: 10,
+       population: 0}
+```
+
+Notes:
+
+- Uniform priors draw from `[low, high]`, and need `low <= high`
+  inside the parameter's range (rates `>= 0`, `sweep_position` in
+  `[0, 1]`, `initial_frequency` in `[0, 1)`, `final_frequency`
+  inside `(0, 1)`).
+- `recombination_rate_exponential` draws rho from an exponential
+  distribution with the given mean and sets a draw above `upper` to
+  `upper` (a cap, not a truncation), as `-Pre`. It cannot be combined
+  with `recombination_rate`.
+- Priors on sweep parameters need a selection block. With a prior on
+  `fixation_time_ago`, the selection block needs no
+  `fixation_time_ago`; on the CLI, `-Pu` still needs a `-ws` value,
+  which the draw replaces. A prior on `sweep_position` cannot be
+  combined with `left_rho` or `recurrent_sweeps_left_of_locus`.
+- Each `population_size_changes` entry is a size change of
+  `population` (default 0) at a time uniform on
+  `[time_low, time_high]` (units of 4N generations) to a size
+  uniform on `[size_low, size_high]` (relative to N). Up to 64
+  entries may be given; `-Pe1` and `-Pe2` are the first two, for
+  population 0. The bounds must satisfy
+  `0 <= time_low <= time_high` and `0 < size_low <= size_high`. The
+  size trajectories are checked before the run at the lower bounds,
+  and again after each replicate's draws; discoal stops if a draw
+  makes a population size reach zero (for example, with a linear
+  decline).
 
 ## output
 
@@ -340,9 +419,9 @@ discoal 20 2 10000 -t 0.1 -r 0.1 -p 3 10 5 5 -M 0.1 \
 
 The YAML interface does not currently expose:
 
-- prior distributions (`-Pt`, `-Pa`, `-Pu`, `-Px`, etc.);
-- linked-locus sweeps (`-ls`, `-ld`, `-ln`);
-- conditional simulation (`-C`).
+- conditional simulation (`-C`);
+- a fixed number of segregating sites (`-s`);
+- a sweep trajectory read from a file (`-S`).
 
 Use the positional command-line interface for these. The CLI
 reference is in `docs/basic_usage.rst`,

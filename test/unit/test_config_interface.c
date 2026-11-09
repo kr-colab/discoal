@@ -68,6 +68,13 @@ extern double partialSweepFinalFreq, recurSweepRate;
 extern double tDiv;
 extern double migMatConst[MAXPOPS][MAXPOPS];
 extern char sweepMode;
+extern double leftRho, deltaTMod;
+extern int leftRhoFlag;
+extern int priorTheta, priorRho, priorAlpha, priorTau, priorX, priorF0, priorUA,
+    priorC, numPriorSizeChanges;
+extern double pThetaUp, pThetaLow, pRhoMean, pRhoUp, pRhoLow, pAlphaUp,
+    pAlphaLow, pTauUp, pTauLow, pXUp, pXLow, pF0Up, pF0Low, pUALow, pUAUp,
+    pCUp, pCLow;
 extern char tskitOutputFilename[1024];
 extern long seed1, seed2;
 extern double *currentSize;
@@ -1170,6 +1177,99 @@ void test_demography_same_time_event_order(void) {
     }
 }
 
+/*
+ * An admixtures entry is one 'a' event, as -ea time population source_1
+ * source_2 proportion, followed by the events that stop all migration into
+ * and out of the admixed population (as for a split).
+ */
+void test_demography_admixture_event(void) {
+    const char *yaml =
+        BASE_YAML
+        "demography:\n"
+        "  deme_sample_size: [10, 0, 0]\n"
+        "  demographic_events:\n"
+        "    admixtures:\n"
+        "      - {time: 0.1, population: 0, source_1: 1, source_2: 2,\n"
+        "         proportion: 0.3}\n";
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    TEST_ASSERT_EQUAL_INT(5, eventNumber);
+    TEST_ASSERT_EQUAL_INT('a', events[0].type);
+    TEST_ASSERT_EQUAL_DOUBLE(0.2, events[0].time);
+    TEST_ASSERT_EQUAL_INT(0, events[0].popID);
+    TEST_ASSERT_EQUAL_INT(1, events[0].popID2);
+    TEST_ASSERT_EQUAL_INT(2, events[0].popID3);
+    TEST_ASSERT_EQUAL_DOUBLE(0.3, events[0].admixProp);
+    for (int k = 1; k < 5; ++k) {
+        TEST_ASSERT_EQUAL_INT('m', events[k].type);
+        TEST_ASSERT_EQUAL_DOUBLE(0.0, events[k].popnSize);
+        TEST_ASSERT_TRUE(events[k].popID == 0 || events[k].popID2 == 0);
+    }
+}
+
+/* Bad admixtures entries, and events for an admixed population after
+ * its admixture, are rejected. */
+void test_demography_admixture_rejects_bad_values(void) {
+    const char *fmt =
+        BASE_YAML
+        "demography:\n"
+        "  deme_sample_size: [10, 0, 0]\n"
+        "  demographic_events:\n"
+        "    admixtures:\n"
+        "      - {time: 0.1, population: 0, source_1: 1, source_2: 2,\n"
+        "         proportion: 0.3}\n"
+        "%s";
+    const char *bad[] = {
+        "      - {time: 0.2, population: 0, source_1: 1, source_2: 2,"
+        " proportion: 0.5}\n",                          /* admixed twice */
+        "      - {time: 0.2, population: 1, source_1: 1, source_2: 2,"
+        " proportion: 0.5}\n",                          /* not distinct */
+        "      - {time: 0.2, population: 1, source_1: 0, source_2: 2,"
+        " proportion: 0.5}\n",                          /* source ended */
+        "      - {time: 0.2, population: 1, source_1: 3, source_2: 2,"
+        " proportion: 0.5}\n",                          /* bad index */
+        "      - {time: 0.2, population: 2, source_1: 1, source_2: 0,"
+        " proportion: 0.5}\n",                          /* source ended */
+        "      - {time: 0.2, population: 1, source_1: 2, source_2: 0,"
+        " proportion: 1.5}\n",                          /* proportion */
+        "    migration_rate_changes:\n"
+        "      - {time: 0.2, rate: 1.0, source: 0, destination: 1}\n",
+        "    ancient_samples:\n"
+        "      - {time: 0.1, population: 0, sample_size: 2}\n",
+    };
+    char yaml[2048];
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
+        reset_all();
+        snprintf(yaml, sizeof(yaml), fmt, bad[i]);
+        TEST_ASSERT_NOT_EQUAL_MESSAGE(EXIT_SUCCESS,
+            apply_from_yaml_string(yaml), bad[i]);
+    }
+}
+
+/* Admixtures take effect after splits at the same time; each is followed
+ * by the events that stop the admixed population's migration. */
+void test_demography_admixture_after_split_at_same_time(void) {
+    const char *yaml =
+        BASE_YAML
+        "demography:\n"
+        "  deme_sample_size: [4, 3, 3, 0]\n"
+        "  demographic_events:\n"
+        "    admixtures:\n"
+        "      - {time: 0.5, population: 0, source_1: 1, source_2: 2,\n"
+        "         proportion: 0.5}\n"
+        "    population_splits:\n"
+        "      - {time: 0.5, ancestral: 1, derived: 3}\n";
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    sortEventArray(events, eventNumber);
+    /* split, 6 migration stops, admixture, 6 migration stops */
+    const char expected[] = {'p', 'm', 'm', 'm', 'm', 'm', 'm',
+                             'a', 'm', 'm', 'm', 'm', 'm', 'm'};
+    TEST_ASSERT_EQUAL_INT(14, eventNumber);
+    for (int k = 0; k < 14; ++k) {
+        TEST_ASSERT_EQUAL_INT_MESSAGE(expected[k], events[k].type,
+                                      "event type out of order");
+    }
+}
+
 /* Bad population, time or sample_size values are rejected. */
 void test_demography_ancient_sample_rejects_bad_values(void) {
     const char *fmt =
@@ -1745,6 +1845,208 @@ void test_selection_requires_fixation_time_ago_when_not_recurrent(void) {
     TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
 }
 
+/* A selection block made of BASE_YAML and the given selection fields. */
+static int apply_selection(const char *fields) {
+    char yaml[2048];
+    snprintf(yaml, sizeof(yaml), "%sselection:\n%s", BASE_YAML, fields);
+    return apply_from_yaml_string(yaml);
+}
+
+/* fixation_time_ago may be 0, as -ws 0: a sweep that ends at the present. */
+void test_selection_fixation_time_ago_zero(void) {
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_selection(
+        "  sweep_mode: stochastic\n"
+        "  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0\n"));
+    TEST_ASSERT_EQUAL_INT(1, eventNumber);
+    TEST_ASSERT_EQUAL_INT('s', events[0].type);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, events[0].time);
+}
+
+/*
+ * left_rho is -ls/-ld/-ln: the sweep site is outside the locus
+ * (sweepSite -1), and leftRho is stored as -ls stores it (twice the
+ * value).
+ */
+void test_selection_left_rho(void) {
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_selection(
+        "  sweep_mode: deterministic\n"
+        "  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0.01\n"
+        "  left_rho: 20\n"));
+    TEST_ASSERT_EQUAL_INT('d', sweepMode);
+    TEST_ASSERT_EQUAL_DOUBLE(-1.0, sweepSite);
+    TEST_ASSERT_EQUAL_DOUBLE(40.0, leftRho);
+    TEST_ASSERT_EQUAL_INT(1, leftRhoFlag);
+    TEST_ASSERT_EQUAL_INT('s', events[0].type);
+}
+
+/* left_rho: 0 is a sweep at the left end of the locus, as -ls tau 0. */
+void test_selection_left_rho_zero(void) {
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_selection(
+        "  sweep_mode: stochastic\n"
+        "  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0.01\n"
+        "  left_rho: 0\n"));
+    TEST_ASSERT_EQUAL_DOUBLE(-1.0, sweepSite);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, leftRho);
+    TEST_ASSERT_EQUAL_INT(1, leftRhoFlag);
+}
+
+/* recurrent_sweeps_left_of_locus with recurrent_sweep_rate is -L. */
+void test_selection_recurrent_sweeps_left_of_locus(void) {
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_selection(
+        "  sweep_mode: stochastic\n"
+        "  selection_coefficient: 100\n"
+        "  recurrent_sweep_rate: 0.5\n"
+        "  recurrent_sweeps_left_of_locus: true\n"));
+    TEST_ASSERT_EQUAL_INT(1, recurSweepMode);
+    TEST_ASSERT_EQUAL_DOUBLE(-1.0, sweepSite);
+    TEST_ASSERT_EQUAL_INT(0, eventNumber);
+}
+
+/* sweep_time_step is -i. */
+void test_selection_sweep_time_step(void) {
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_selection(
+        "  sweep_mode: stochastic\n"
+        "  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0.01\n"
+        "  sweep_time_step: 200\n"));
+    TEST_ASSERT_EQUAL_DOUBLE(200.0, deltaTMod);
+}
+
+/* Each prior sets the globals its -P flag sets; times are converted to
+ * internal units, as for -Pu and -Pe1. */
+void test_priors_set_globals(void) {
+    const char *yaml =
+        BASE_YAML
+        "selection:\n"
+        "  sweep_mode: stochastic\n"
+        "  selection_coefficient: 100\n"
+        "priors:\n"
+        "  mutation_rate: {low: 5, high: 15}\n"
+        "  recombination_rate: {low: 1, high: 2}\n"
+        "  selection_coefficient: {low: 500, high: 2000}\n"
+        "  fixation_time_ago: {low: 0.01, high: 0.05}\n"
+        "  beneficial_mutation_rate: {low: 0.001, high: 0.01}\n"
+        "  sweep_position: {low: 0.4, high: 0.6}\n"
+        "  initial_frequency: {low: 0.01, high: 0.1}\n"
+        "  final_frequency: {low: 0.5, high: 0.9}\n"
+        "  population_size_changes:\n"
+        "    - {time_low: 0.1, time_high: 0.5, size_low: 0.2, size_high: 2.0}\n";
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    TEST_ASSERT_EQUAL_INT(1, priorTheta);
+    TEST_ASSERT_EQUAL_DOUBLE(5, pThetaLow);
+    TEST_ASSERT_EQUAL_DOUBLE(15, pThetaUp);
+    TEST_ASSERT_EQUAL_INT(1, priorRho);
+    TEST_ASSERT_EQUAL_DOUBLE(1, pRhoLow);
+    TEST_ASSERT_EQUAL_DOUBLE(2, pRhoUp);
+    TEST_ASSERT_EQUAL_INT(1, priorAlpha);
+    TEST_ASSERT_EQUAL_INT(1, priorTau);
+    TEST_ASSERT_EQUAL_DOUBLE(0.02, pTauLow);
+    TEST_ASSERT_EQUAL_DOUBLE(0.10, pTauUp);
+    TEST_ASSERT_EQUAL_INT(1, priorUA);
+    TEST_ASSERT_EQUAL_INT(1, priorX);
+    TEST_ASSERT_EQUAL_INT(1, priorF0);
+    TEST_ASSERT_EQUAL_INT(1, priorC);
+    TEST_ASSERT_EQUAL_INT(1, partialSweepMode);
+    TEST_ASSERT_EQUAL_INT(1, numPriorSizeChanges);
+    /* The prior size change, then the sweep at the lower bound of the
+     * prior on fixation_time_ago (no fixed value is given). */
+    TEST_ASSERT_EQUAL_INT(2, eventNumber);
+    TEST_ASSERT_EQUAL_INT('n', events[0].type);
+    TEST_ASSERT_EQUAL_INT(1, events[0].priorSlot);
+    TEST_ASSERT_EQUAL_DOUBLE(0.2, events[0].time);
+    TEST_ASSERT_EQUAL_DOUBLE(0.2, events[0].popnSize);
+    TEST_ASSERT_EQUAL_INT('s', events[1].type);
+    TEST_ASSERT_EQUAL_DOUBLE(0.02, events[1].time);
+}
+
+/* -Pre: an exponential prior on rho, capped at upper. */
+void test_priors_recombination_exponential(void) {
+    const char *yaml =
+        BASE_YAML
+        "priors:\n"
+        "  recombination_rate_exponential: {mean: 10, upper: 50}\n";
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    TEST_ASSERT_EQUAL_INT(2, priorRho);
+    TEST_ASSERT_EQUAL_DOUBLE(10, pRhoMean);
+    TEST_ASSERT_EQUAL_DOUBLE(50, pRhoUp);
+}
+
+/* Bad priors are rejected. */
+void test_priors_reject_bad_values(void) {
+    const char *bad[] = {
+        /* low above high */
+        "priors:\n  mutation_rate: {low: 15, high: 5}\n",
+        /* two priors on rho */
+        "priors:\n  recombination_rate: {low: 1, high: 2}\n"
+        "  recombination_rate_exponential: {mean: 10, upper: 50}\n",
+        /* a sweep prior without a selection block */
+        "priors:\n  selection_coefficient: {low: 1, high: 2}\n",
+        /* sweep_position outside [0, 1] */
+        "selection:\n  sweep_mode: stochastic\n  selection_coefficient: 1\n"
+        "  fixation_time_ago: 0.01\n"
+        "priors:\n  sweep_position: {low: 0.5, high: 1.5}\n",
+        /* a size bound of 0, and a population out of range */
+        "priors:\n  population_size_changes:\n"
+        "    - {time_low: 0.1, time_high: 0.5, size_low: 0, size_high: 2}\n",
+        "priors:\n  population_size_changes:\n"
+        "    - {time_low: 0.1, time_high: 0.5, size_low: 1, size_high: 2,"
+        " population: 1}\n",
+        /* initial_frequency must stay below 1 */
+        "selection:\n  sweep_mode: stochastic\n  selection_coefficient: 1\n"
+        "  fixation_time_ago: 0.01\n"
+        "priors:\n  initial_frequency: {low: 0.5, high: 1.0}\n",
+        /* a size change of a population that has merged away */
+        "demography:\n  deme_sample_size: [5, 5]\n"
+        "  demographic_events:\n    population_splits:\n"
+        "      - {time: 0.05, ancestral: 0, derived: 1}\n"
+        "priors:\n  population_size_changes:\n"
+        "    - {time_low: 0.1, time_high: 0.5, size_low: 1, size_high: 2,"
+        " population: 1}\n",
+    };
+    char yaml[2048];
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
+        reset_all();
+        snprintf(yaml, sizeof(yaml), "%s%s", BASE_YAML, bad[i]);
+        TEST_ASSERT_NOT_EQUAL_MESSAGE(EXIT_SUCCESS,
+            apply_from_yaml_string(yaml), bad[i]);
+    }
+}
+
+/* Combinations that have no command-line meaning are rejected. */
+void test_selection_rejects_bad_combinations(void) {
+    const char *bad[] = {
+        /* a sweep outside the locus has no position inside it */
+        "  sweep_mode: stochastic\n  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0.01\n  left_rho: 20\n  sweep_position: 0.5\n",
+        /* left_of_locus needs recurrent sweeps */
+        "  sweep_mode: stochastic\n  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0.01\n  recurrent_sweeps_left_of_locus: true\n",
+        /* recurrent sweeps are stochastic, as -R and -L */
+        "  sweep_mode: deterministic\n  selection_coefficient: 100\n"
+        "  recurrent_sweep_rate: 0.5\n",
+        /* left_rho is for a single sweep */
+        "  sweep_mode: stochastic\n  selection_coefficient: 100\n"
+        "  recurrent_sweep_rate: 0.5\n  left_rho: 20\n",
+        /* negative values */
+        "  sweep_mode: stochastic\n  selection_coefficient: 100\n"
+        "  fixation_time_ago: -0.1\n",
+        "  sweep_mode: stochastic\n  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0.01\n  left_rho: -1\n",
+        "  sweep_mode: stochastic\n  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0.01\n  sweep_time_step: -1\n",
+        "  sweep_mode: stochastic\n  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0.01\n  sweep_time_step: 0\n",
+    };
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
+        reset_all();
+        TEST_ASSERT_NOT_EQUAL_MESSAGE(EXIT_SUCCESS, apply_selection(bad[i]),
+                                      bad[i]);
+    }
+}
+
 /*
  * A non-recurrent selection block emits exactly one event of type
  * 's' at tau (= fixation_time_ago * 2.0).
@@ -2307,6 +2609,9 @@ int main(void) {
     RUN_TEST(test_demography_migration_rate_change_after_split_rejected);
     RUN_TEST(test_demography_ancient_sample_event);
     RUN_TEST(test_demography_same_time_event_order);
+    RUN_TEST(test_demography_admixture_event);
+    RUN_TEST(test_demography_admixture_rejects_bad_values);
+    RUN_TEST(test_demography_admixture_after_split_at_same_time);
     RUN_TEST(test_demography_ancient_sample_rejects_bad_values);
     RUN_TEST(test_demography_ancient_sample_after_split_rejected);
     RUN_TEST(test_demography_migration_matrix_requires_square);
@@ -2333,6 +2638,15 @@ int main(void) {
     RUN_TEST(test_selection_rejects_negative_recurrent_sweep_rate);
     RUN_TEST(test_selection_rejects_fixation_and_recurrent_both_set);
     RUN_TEST(test_selection_requires_fixation_time_ago_when_not_recurrent);
+    RUN_TEST(test_selection_fixation_time_ago_zero);
+    RUN_TEST(test_selection_left_rho);
+    RUN_TEST(test_selection_left_rho_zero);
+    RUN_TEST(test_selection_recurrent_sweeps_left_of_locus);
+    RUN_TEST(test_selection_sweep_time_step);
+    RUN_TEST(test_selection_rejects_bad_combinations);
+    RUN_TEST(test_priors_set_globals);
+    RUN_TEST(test_priors_recombination_exponential);
+    RUN_TEST(test_priors_reject_bad_values);
     RUN_TEST(test_selection_emits_sweep_event_at_tau);
     RUN_TEST(test_selection_recurrent_sets_flags_without_event);
     RUN_TEST(test_load_partial_sweep);

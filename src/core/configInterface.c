@@ -1,4 +1,5 @@
 #include "configInterface.h"
+#include "discoalFunctions.h"
 #include <assert.h>
 #include <limits.h>
 #include <math.h>
@@ -45,10 +46,14 @@ static int check_nonneg_double(const char *arr, const char *field, int idx,
 }
 
 /* A population no longer exists from the time a population_splits entry
- * merges it (as `derived`) into another one. Reject an entry of `arr` that
- * involves population `pop` at or after that time. */
+ * merges it (as `derived`) into another one, or an admixtures entry moves
+ * all its lineages into two others (as `population`). Reject an entry of
+ * `arr` that involves population `pop` at or after that time.
+ * skip_admixture is the index of an admixtures entry to ignore (the entry
+ * being checked, which ends `pop` itself), or -1. */
 static int check_not_merged(const char *arr, int idx, int pop, double time,
-                            const struct demographic_events *dmo) {
+                            const struct demographic_events *dmo,
+                            int skip_admixture) {
     for (int k = 0; k < dmo->num_population_splits; ++k) {
         const struct population_split *sp = &dmo->population_splits[k];
         if (pop == sp->derived && time >= sp->time) {
@@ -60,7 +65,39 @@ static int check_not_merged(const char *arr, int idx, int pop, double time,
             return EXIT_FAILURE;
         }
     }
+    for (int k = 0; k < dmo->num_admixtures; ++k) {
+        const struct admixture *ad = &dmo->admixtures[k];
+        if (k == skip_admixture) continue;
+        if (pop == ad->population && time >= ad->time) {
+            fprintf(stderr,
+                "Error parsing config: %s[%d] at time %g involves population "
+                "%d, which is admixed from populations %d and %d at time %g "
+                "(admixtures[%d])\n",
+                arr, idx, time, pop, ad->source_1, ad->source_2, ad->time, k);
+            return EXIT_FAILURE;
+        }
+    }
     return EXIT_SUCCESS;
+}
+
+/* Unlike -ed and -ea, a YAML split or admixture ends a population, as in
+ * demes: set all migration into and out of it to zero at that time.
+ * Otherwise lineages can migrate into the ended population and be
+ * stranded there. 'm' events set migShape[popID2][popID] (lineages move
+ * popID2 -> popID). */
+static void end_population_migration(int pop, double time, unsigned num_demes) {
+    for (int k = 0; k < (int)num_demes; ++k) {
+        if (k == pop) continue;
+        for (int dir = 0; dir < 2; ++dir) {
+            ensureEventsCapacity();
+            events[eventNumber].type = 'm';
+            events[eventNumber].time = userTimeToInternal(time);
+            events[eventNumber].popID2 = dir ? pop : k;
+            events[eventNumber].popID = dir ? k : pop;
+            events[eventNumber].popnSize = 0.0;
+            eventNumber++;
+        }
+    }
 }
 
 /* for string-valued options, use enums so that CYAML can automatically check
@@ -177,6 +214,19 @@ static const cyaml_schema_value_t ancient_sample_schema = {
         ancient_sample_fields_schema),
 };
 
+static const cyaml_schema_field_t admixture_fields_schema[] = {
+    /* required arguments */
+    CYAML_FIELD_FLOAT("time", CYAML_FLAG_DEFAULT, struct admixture, time),
+    CYAML_FIELD_INT("population", CYAML_FLAG_DEFAULT, struct admixture, population),
+    CYAML_FIELD_INT("source_1", CYAML_FLAG_DEFAULT, struct admixture, source_1),
+    CYAML_FIELD_INT("source_2", CYAML_FLAG_DEFAULT, struct admixture, source_2),
+    CYAML_FIELD_FLOAT("proportion", CYAML_FLAG_DEFAULT, struct admixture, proportion),
+    CYAML_FIELD_END
+};
+static const cyaml_schema_value_t admixture_schema = {
+    CYAML_VALUE_MAPPING(CYAML_FLAG_DEFAULT, struct admixture,
+        admixture_fields_schema),
+};
 static const cyaml_schema_field_t demographic_events_fields_schema[] = { /* sub-block */
     /* optional arguments */
     CYAML_FIELD_SEQUENCE_COUNT("population_size_changes", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
@@ -191,6 +241,9 @@ static const cyaml_schema_field_t demographic_events_fields_schema[] = { /* sub-
     CYAML_FIELD_SEQUENCE_COUNT("ancient_samples", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
         struct demographic_events, ancient_samples, num_ancient_samples,
         &ancient_sample_schema, 1, CYAML_UNLIMITED),
+    CYAML_FIELD_SEQUENCE_COUNT("admixtures", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        struct demographic_events, admixtures, num_admixtures,
+        &admixture_schema, 1, CYAML_UNLIMITED),
     CYAML_FIELD_END
 };
 
@@ -236,10 +289,12 @@ static const cyaml_schema_field_t selection_fields_schema[] = {
         sweep_modes_strings, CYAML_ARRAY_LEN(sweep_modes_strings)),
     CYAML_FIELD_FLOAT("selection_coefficient", CYAML_FLAG_DEFAULT,
         struct selection_config, selection_coefficient),
-    CYAML_FIELD_FLOAT("sweep_position", CYAML_FLAG_DEFAULT,
-        struct selection_config, sweep_position),
     /* optional arguments */
-    CYAML_FIELD_FLOAT("fixation_time_ago", CYAML_FLAG_OPTIONAL,
+    CYAML_FIELD_FLOAT_PTR("sweep_position",
+        CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        struct selection_config, sweep_position),
+    CYAML_FIELD_FLOAT_PTR("fixation_time_ago",
+        CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
         struct selection_config, fixation_time_ago),
     CYAML_FIELD_FLOAT("initial_frequency", CYAML_FLAG_OPTIONAL,
         struct selection_config, initial_frequency),
@@ -249,6 +304,13 @@ static const cyaml_schema_field_t selection_fields_schema[] = {
         struct selection_config, beneficial_mutation_rate),
     CYAML_FIELD_FLOAT("recurrent_sweep_rate", CYAML_FLAG_OPTIONAL,
         struct selection_config, recurrent_sweep_rate),
+    CYAML_FIELD_FLOAT_PTR("left_rho", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        struct selection_config, left_rho),
+    CYAML_FIELD_BOOL("recurrent_sweeps_left_of_locus", CYAML_FLAG_OPTIONAL,
+        struct selection_config, recurrent_sweeps_left_of_locus),
+    CYAML_FIELD_FLOAT_PTR("sweep_time_step",
+        CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        struct selection_config, sweep_time_step),
     CYAML_FIELD_END
 };
 
@@ -271,6 +333,54 @@ static const cyaml_schema_field_t output_fields_schema[] = {
 
 
 /* top level schema */
+static const cyaml_schema_field_t uniform_prior_fields_schema[] = {
+    CYAML_FIELD_FLOAT("low", CYAML_FLAG_DEFAULT, struct uniform_prior, low),
+    CYAML_FIELD_FLOAT("high", CYAML_FLAG_DEFAULT, struct uniform_prior, high),
+    CYAML_FIELD_END
+};
+static const cyaml_schema_field_t exponential_prior_fields_schema[] = {
+    CYAML_FIELD_FLOAT("mean", CYAML_FLAG_DEFAULT, struct exponential_prior, mean),
+    CYAML_FIELD_FLOAT("upper", CYAML_FLAG_DEFAULT, struct exponential_prior, upper),
+    CYAML_FIELD_END
+};
+static const cyaml_schema_field_t prior_size_change_fields_schema[] = {
+    CYAML_FIELD_FLOAT("time_low", CYAML_FLAG_DEFAULT,
+        struct prior_size_change, time_low),
+    CYAML_FIELD_FLOAT("time_high", CYAML_FLAG_DEFAULT,
+        struct prior_size_change, time_high),
+    CYAML_FIELD_FLOAT("size_low", CYAML_FLAG_DEFAULT,
+        struct prior_size_change, size_low),
+    CYAML_FIELD_FLOAT("size_high", CYAML_FLAG_DEFAULT,
+        struct prior_size_change, size_high),
+    CYAML_FIELD_INT("population", CYAML_FLAG_OPTIONAL,
+        struct prior_size_change, population),
+    CYAML_FIELD_END
+};
+static const cyaml_schema_value_t prior_size_change_schema = {
+    CYAML_VALUE_MAPPING(CYAML_FLAG_DEFAULT, struct prior_size_change,
+        prior_size_change_fields_schema),
+};
+#define UNIFORM_PRIOR_FIELD(key, member) \
+    CYAML_FIELD_MAPPING_PTR(key, CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL, \
+        struct priors_config, member, uniform_prior_fields_schema)
+static const cyaml_schema_field_t priors_fields_schema[] = {
+    UNIFORM_PRIOR_FIELD("mutation_rate", mutation_rate),
+    UNIFORM_PRIOR_FIELD("recombination_rate", recombination_rate),
+    CYAML_FIELD_MAPPING_PTR("recombination_rate_exponential",
+        CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL, struct priors_config,
+        recombination_rate_exponential, exponential_prior_fields_schema),
+    UNIFORM_PRIOR_FIELD("selection_coefficient", selection_coefficient),
+    UNIFORM_PRIOR_FIELD("fixation_time_ago", fixation_time_ago),
+    UNIFORM_PRIOR_FIELD("beneficial_mutation_rate", beneficial_mutation_rate),
+    UNIFORM_PRIOR_FIELD("sweep_position", sweep_position),
+    UNIFORM_PRIOR_FIELD("initial_frequency", initial_frequency),
+    UNIFORM_PRIOR_FIELD("final_frequency", final_frequency),
+    CYAML_FIELD_SEQUENCE_COUNT("population_size_changes",
+        CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL, struct priors_config,
+        population_size_changes, num_population_size_changes,
+        &prior_size_change_schema, 1, CYAML_UNLIMITED),
+    CYAML_FIELD_END
+};
 static const cyaml_schema_field_t discoal_config_fields_schema[] = {
     /* required blocks */
     CYAML_FIELD_MAPPING_PTR("simulation", CYAML_FLAG_POINTER,
@@ -284,6 +394,8 @@ static const cyaml_schema_field_t discoal_config_fields_schema[] = {
         struct discoal_config, selection, selection_fields_schema),
     CYAML_FIELD_MAPPING_PTR("output", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
         struct discoal_config, output, output_fields_schema),
+    CYAML_FIELD_MAPPING_PTR("priors", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        struct discoal_config, priors, priors_fields_schema),
     CYAML_FIELD_END
 };
 static const cyaml_schema_value_t discoal_config_schema = {
@@ -503,7 +615,8 @@ int parse_demography_block(struct demography_config *cfg)
             if (cfg->demes_filename != NULL &&
                 (dmo->num_population_size_changes > 0 ||
                  dmo->num_population_splits > 0 ||
-                 dmo->num_migration_rate_changes > 0)) {
+                 dmo->num_migration_rate_changes > 0 ||
+                 dmo->num_admixtures > 0)) {
                 fprintf(stderr, "Error parsing config: with demes_filename, "
                     "demographic_events may contain only ancient_samples; the "
                     "demes file gives the demography\n");
@@ -531,7 +644,7 @@ int parse_demography_block(struct demography_config *cfg)
                     return EXIT_FAILURE;
                 }
                 if (check_not_merged("ancient_samples", i, as->population,
-                        as->time, dmo) != EXIT_SUCCESS) {
+                        as->time, dmo, -1) != EXIT_SUCCESS) {
                     return EXIT_FAILURE;
                 }
                 ensureEventsCapacity();
@@ -569,9 +682,9 @@ int parse_demography_block(struct demography_config *cfg)
                 }
                 /* The split already stops a merged population's migration. */
                 if (check_not_merged("migration_rate_changes", i, mrc->source,
-                        mrc->time, dmo) != EXIT_SUCCESS ||
+                        mrc->time, dmo, -1) != EXIT_SUCCESS ||
                     check_not_merged("migration_rate_changes", i,
-                        mrc->destination, mrc->time, dmo) != EXIT_SUCCESS) {
+                        mrc->destination, mrc->time, dmo, -1) != EXIT_SUCCESS) {
                     return EXIT_FAILURE;
                 }
                 ensureEventsCapacity();
@@ -631,23 +744,58 @@ int parse_demography_block(struct demography_config *cfg)
                 events[eventNumber].popID2 = split->ancestral;
                 eventNumber++;
                 tDiv = split->time;  /* mark merger model active */
-                /* Unlike -ed, a YAML split ends the derived population, as
-                 * in demes: set all migration into and out of it to zero at
-                 * the split time. Otherwise lineages can migrate into the
-                 * merged population and be stranded there. 'm' events set
-                 * migShape[popID2][popID] (lineages move popID2 -> popID). */
-                for (int k = 0; k < cfg->num_demes; ++k) {
-                    if (k == split->derived) continue;
-                    for (int dir = 0; dir < 2; ++dir) {
-                        ensureEventsCapacity();
-                        events[eventNumber].type = 'm';
-                        events[eventNumber].time = userTimeToInternal(split->time);
-                        events[eventNumber].popID2 = dir ? split->derived : k;
-                        events[eventNumber].popID = dir ? k : split->derived;
-                        events[eventNumber].popnSize = 0.0;
-                        eventNumber++;
-                    }
+                end_population_migration(split->derived, split->time,
+                    cfg->num_demes);
+            }
+            for (int i = 0; i < dmo->num_admixtures; ++i) {
+                struct admixture *ad = &dmo->admixtures[i];
+                if (check_pop_index("admixtures", "population",
+                        i, ad->population, cfg->num_demes) != EXIT_SUCCESS ||
+                    check_pop_index("admixtures", "source_1",
+                        i, ad->source_1, cfg->num_demes) != EXIT_SUCCESS ||
+                    check_pop_index("admixtures", "source_2",
+                        i, ad->source_2, cfg->num_demes) != EXIT_SUCCESS ||
+                    check_positive_double("admixtures", "time",
+                        i, ad->time) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
                 }
+                if (ad->population == ad->source_1 ||
+                    ad->population == ad->source_2 ||
+                    ad->source_1 == ad->source_2) {
+                    fprintf(stderr,
+                        "Error parsing config: admixtures[%d] population (%d), "
+                        "source_1 (%d) and source_2 (%d) must be distinct\n",
+                        i, ad->population, ad->source_1, ad->source_2);
+                    return EXIT_FAILURE;
+                }
+                if (ad->proportion < 0.0 || ad->proportion > 1.0) {
+                    fprintf(stderr,
+                        "Error parsing config: admixtures[%d].proportion (%g) "
+                        "must be in [0, 1]\n", i, ad->proportion);
+                    return EXIT_FAILURE;
+                }
+                /* The sources and the admixed population must still exist:
+                 * not merged away by a split, and not admixed by another
+                 * entry (this entry ends the admixed population itself). */
+                if (check_not_merged("admixtures", i, ad->source_1, ad->time,
+                        dmo, -1) != EXIT_SUCCESS ||
+                    check_not_merged("admixtures", i, ad->source_2, ad->time,
+                        dmo, -1) != EXIT_SUCCESS ||
+                    check_not_merged("admixtures", i, ad->population,
+                        ad->time, dmo, i) != EXIT_SUCCESS) {
+                    return EXIT_FAILURE;
+                }
+                ensureEventsCapacity();
+                events[eventNumber].type = 'a';
+                events[eventNumber].time = userTimeToInternal(ad->time);
+                events[eventNumber].popID = ad->population;
+                events[eventNumber].popID2 = ad->source_1;
+                events[eventNumber].popID3 = ad->source_2;
+                events[eventNumber].admixProp = ad->proportion;
+                eventNumber++;
+                tDiv = ad->time;  /* populations are joined, as by a split */
+                end_population_migration(ad->population, ad->time,
+                    cfg->num_demes);
             }
         }
         /* parse migration matrix */
@@ -711,7 +859,7 @@ int parse_demography_block(struct demography_config *cfg)
     return EXIT_SUCCESS;
 }
 
-int parse_selection_block(struct selection_config *cfg) 
+int parse_selection_block(struct selection_config *cfg)
 {
     extern double alpha, sweepSite, tau, f0, uA;
     extern double partialSweepFinalFreq, recurSweepRate;
@@ -720,6 +868,10 @@ int parse_selection_block(struct selection_config *cfg)
     extern int eventNumber, eventsCapacity;
     extern struct event *events;
     if (cfg != NULL) {
+        int recurrent = cfg->recurrent_sweep_rate > 0;
+        /* left_rho: 0 is a sweep right at the left end of the locus,
+         * as -ls tau 0. */
+        int linked = cfg->left_rho != NULL;
         switch (cfg->sweep_mode) {
             case SWEEP_STOCHASTIC:
                 sweepMode = 's';
@@ -732,7 +884,7 @@ int parse_selection_block(struct selection_config *cfg)
                 break;
             default:
                 break;
-        } /* FIXME: need to add recurrent sweep modes */
+        }
         if (cfg->selection_coefficient < 0) {
             fprintf(stderr,
                 "Error parsing config: selection_coefficient (%g) "
@@ -746,15 +898,23 @@ int parse_selection_block(struct selection_config *cfg)
             return EXIT_FAILURE;
         }
         alpha = cfg->selection_coefficient;
-        if (cfg->sweep_position < 0.0 || cfg->sweep_position > 1.0) {
-            fprintf(stderr,
-                "Error parsing config: sweep_position (%g) must be in [0, 1]\n",
-                cfg->sweep_position);
-            return EXIT_FAILURE;
+        if (cfg->sweep_position != NULL) {
+            if (*cfg->sweep_position < 0.0 || *cfg->sweep_position > 1.0) {
+                fprintf(stderr,
+                    "Error parsing config: sweep_position (%g) must be in "
+                    "[0, 1]\n", *cfg->sweep_position);
+                return EXIT_FAILURE;
+            }
+            sweepSite = *cfg->sweep_position;
         }
-        sweepSite = cfg->sweep_position;
-        if (cfg->fixation_time_ago > 0) {
-            tau = userTimeToInternal(cfg->fixation_time_ago);
+        if (cfg->fixation_time_ago != NULL) {
+            if (*cfg->fixation_time_ago < 0) {
+                fprintf(stderr,
+                    "Error parsing config: fixation_time_ago (%g) must be "
+                    ">= 0\n", *cfg->fixation_time_ago);
+                return EXIT_FAILURE;
+            }
+            tau = userTimeToInternal(*cfg->fixation_time_ago);
         }
         if (cfg->initial_frequency < 0 || cfg->initial_frequency >= 1.0) {
             fprintf(stderr,
@@ -799,35 +959,93 @@ int parse_selection_block(struct selection_config *cfg)
                 "must be >= 0\n", cfg->recurrent_sweep_rate);
             return EXIT_FAILURE;
         }
-        if (cfg->recurrent_sweep_rate > 0) {
-            recurSweepRate = cfg->recurrent_sweep_rate;
-            recurSweepMode = 1;
-        }
-
-        if (cfg->fixation_time_ago > 0 && cfg->recurrent_sweep_rate > 0) {
+        if (linked && *cfg->left_rho < 0) {
             fprintf(stderr,
-                "Error parsing config: fixation_time_ago and "
-                "recurrent_sweep_rate cannot both be set\n");
+                "Error parsing config: left_rho (%g) must be >= 0\n",
+                *cfg->left_rho);
+            return EXIT_FAILURE;
+        }
+        if (cfg->sweep_time_step != NULL && *cfg->sweep_time_step <= 0) {
+            fprintf(stderr,
+                "Error parsing config: sweep_time_step (%g) must be > 0\n",
+                *cfg->sweep_time_step);
+            return EXIT_FAILURE;
+        }
+        if (cfg->sweep_time_step != NULL) {
+            deltaTMod = *cfg->sweep_time_step;
+        }
+        /* A sweep outside the locus has no position inside it: -ls, -ld,
+         * -ln and -L set the sweep site to -1. */
+        if ((linked || cfg->recurrent_sweeps_left_of_locus) &&
+            cfg->sweep_position != NULL) {
+            fprintf(stderr,
+                "Error parsing config: sweep_position cannot be set with "
+                "left_rho or recurrent_sweeps_left_of_locus; the sweep is "
+                "outside the locus\n");
+            return EXIT_FAILURE;
+        }
+        if (cfg->recurrent_sweeps_left_of_locus && !recurrent) {
+            fprintf(stderr,
+                "Error parsing config: recurrent_sweeps_left_of_locus needs "
+                "recurrent_sweep_rate > 0\n");
             return EXIT_FAILURE;
         }
 
-        /* Single sweep (matching `-ws`/`-wd`/`-wn`) requires fixation_time_ago
-         * and emits an `'s'` event at tau. Recurrent sweeps (matching `-R`)
-         * are driven by recurSweepMode + recurSweepRate alone and do not
-         * produce an event. */
-        if (cfg->recurrent_sweep_rate <= 0) {
-            if (cfg->fixation_time_ago <= 0) {
+        if (recurrent) {
+            /* -R and -L: recurrent sweeps, which are always stochastic. */
+            if (cfg->fixation_time_ago != NULL) {
                 fprintf(stderr,
-                    "Error parsing config: selection block requires "
-                    "fixation_time_ago > 0 unless recurrent_sweep_rate "
-                    "is set\n");
+                    "Error parsing config: fixation_time_ago and "
+                    "recurrent_sweep_rate cannot both be set\n");
                 return EXIT_FAILURE;
             }
-            ensureEventsCapacity();
-            events[eventNumber].time = tau;
-            events[eventNumber].type = 's';
-            eventNumber++;
+            if (linked) {
+                fprintf(stderr,
+                    "Error parsing config: left_rho is for a single sweep; "
+                    "with recurrent_sweep_rate use "
+                    "recurrent_sweeps_left_of_locus\n");
+                return EXIT_FAILURE;
+            }
+            if (cfg->sweep_mode != SWEEP_STOCHASTIC) {
+                fprintf(stderr,
+                    "Error parsing config: recurrent sweeps are stochastic; "
+                    "set sweep_mode to 'stochastic' with "
+                    "recurrent_sweep_rate\n");
+                return EXIT_FAILURE;
+            }
+            recurSweepRate = cfg->recurrent_sweep_rate;
+            recurSweepMode = 1;
+            if (cfg->recurrent_sweeps_left_of_locus) {
+                sweepSite = -1.0;
+            }
+            return EXIT_SUCCESS;
         }
+
+        /* A single sweep (-ws/-wd/-wn, or -ls/-ld/-ln with left_rho) is an
+         * 's' event at tau. With a prior on fixation_time_ago, the event's
+         * time is drawn for each replicate; until then it is the lower
+         * bound, set by the priors block. */
+        if (cfg->fixation_time_ago == NULL && !priorTau) {
+            fprintf(stderr,
+                "Error parsing config: selection block requires "
+                "fixation_time_ago (or a prior on it) unless "
+                "recurrent_sweep_rate is set\n");
+            return EXIT_FAILURE;
+        }
+        if (cfg->fixation_time_ago == NULL) {
+            /* Only a prior: the event holds the lower bound until the
+             * first draw. */
+            tau = pTauLow;
+        }
+        if (linked) {
+            sweepSite = -1.0;
+            leftRho = *cfg->left_rho * 2.0;  /* stored as -ls stores it */
+            leftRhoFlag = 1;
+        }
+        ensureEventsCapacity();
+        events[eventNumber].time = tau;
+        events[eventNumber].type = 's';
+        eventNumber++;
     }
     return EXIT_SUCCESS;
 }
@@ -884,6 +1102,120 @@ int parse_output_block(struct output_config *cfg)
     return EXIT_SUCCESS;
 }
 
+/* One uniform prior of the priors block and the globals its -P flag sets.
+ * The bounds must satisfy lo <= low <= high <= hi, with strict
+ * inequalities where open_lo / open_hi is set. */
+struct uniform_prior_spec {
+    const char *name;
+    const struct uniform_prior *prior;   /* NULL if not given */
+    int needs_selection;
+    double lo, hi;
+    int open_lo, open_hi;
+    int is_time;                         /* convert to internal units */
+    int *flag;
+    double *low, *high;
+};
+
+static int apply_uniform_prior(const struct uniform_prior_spec *u) {
+    const struct uniform_prior *p = u->prior;
+    int lo_ok = u->open_lo ? p->low > u->lo : p->low >= u->lo;
+    int hi_ok = u->open_hi ? p->high < u->hi : p->high <= u->hi;
+    if (!(lo_ok && hi_ok && p->low <= p->high)) {
+        fprintf(stderr,
+            "Error parsing config: priors.%s must satisfy %g %s low <= high "
+            "%s %g (got low %g, high %g)\n", u->name,
+            u->lo, u->open_lo ? "<" : "<=", u->open_hi ? "<" : "<=", u->hi,
+            p->low, p->high);
+        return EXIT_FAILURE;
+    }
+    *u->flag = 1;
+    *u->low = u->is_time ? userTimeToInternal(p->low) : p->low;
+    *u->high = u->is_time ? userTimeToInternal(p->high) : p->high;
+    return EXIT_SUCCESS;
+}
+
+/* The priors block, as the -P flags: each entry sets the same globals as
+ * its flag, and drawPriors() draws the values for every replicate. Parsed
+ * before the selection block, which emits the sweep event when
+ * fixation_time_ago has only a prior. */
+int parse_priors_block(struct priors_config *cfg, int has_selection,
+                       unsigned num_demes, const struct demographic_events *dmo)
+{
+    if (cfg == NULL) {
+        return EXIT_SUCCESS;
+    }
+    const double inf = INFINITY;
+    const struct uniform_prior_spec uniform[] = {
+        {"mutation_rate", cfg->mutation_rate, 0, 0, inf, 0, 0, 0,
+            &priorTheta, &pThetaLow, &pThetaUp},
+        {"recombination_rate", cfg->recombination_rate, 0, 0, inf, 0, 0, 0,
+            &priorRho, &pRhoLow, &pRhoUp},
+        {"selection_coefficient", cfg->selection_coefficient, 1, 0, inf, 0, 0, 0,
+            &priorAlpha, &pAlphaLow, &pAlphaUp},
+        {"fixation_time_ago", cfg->fixation_time_ago, 1, 0, inf, 0, 0, 1,
+            &priorTau, &pTauLow, &pTauUp},
+        {"beneficial_mutation_rate", cfg->beneficial_mutation_rate, 1, 0, inf,
+            0, 0, 0, &priorUA, &pUALow, &pUAUp},
+        {"sweep_position", cfg->sweep_position, 1, 0, 1, 0, 0, 0,
+            &priorX, &pXLow, &pXUp},
+        {"initial_frequency", cfg->initial_frequency, 1, 0, 1, 0, 1, 0,
+            &priorF0, &pF0Low, &pF0Up},
+        {"final_frequency", cfg->final_frequency, 1, 0, 1, 1, 1, 0,
+            &priorC, &pCLow, &pCUp},
+    };
+    for (size_t k = 0; k < sizeof(uniform) / sizeof(uniform[0]); ++k) {
+        if (uniform[k].prior == NULL) continue;
+        if (uniform[k].needs_selection && !has_selection) {
+            fprintf(stderr,
+                "Error parsing config: priors.%s needs a selection block\n",
+                uniform[k].name);
+            return EXIT_FAILURE;
+        }
+        if (apply_uniform_prior(&uniform[k]) != EXIT_SUCCESS)
+            return EXIT_FAILURE;
+    }
+    /* A prior on the final frequency makes the sweep partial, as -Pc. */
+    if (cfg->final_frequency) {
+        partialSweepMode = 1;
+    }
+    if (cfg->recombination_rate_exponential) {
+        struct exponential_prior *e = cfg->recombination_rate_exponential;
+        if (cfg->recombination_rate) {
+            fprintf(stderr,
+                "Error parsing config: priors.recombination_rate and "
+                "priors.recombination_rate_exponential cannot both be set\n");
+            return EXIT_FAILURE;
+        }
+        if (!(e->mean > 0 && e->upper > 0)) {
+            fprintf(stderr,
+                "Error parsing config: priors.recombination_rate_exponential "
+                "mean (%g) and upper (%g) must be > 0\n", e->mean, e->upper);
+            return EXIT_FAILURE;
+        }
+        priorRho = 2;
+        pRhoMean = e->mean;
+        pRhoUp = e->upper;
+    }
+    for (unsigned i = 0; i < cfg->num_population_size_changes; ++i) {
+        struct prior_size_change *p = &cfg->population_size_changes[i];
+        const char *what = "priors.population_size_changes";
+        if (check_pop_index(what, "population", (int)i, p->population,
+                num_demes) != EXIT_SUCCESS)
+            return EXIT_FAILURE;
+        /* The drawn time is not known yet; reject a population that has
+         * already ended at the lower bound. */
+        if (dmo != NULL &&
+            check_not_merged(what, (int)i, p->population, p->time_low, dmo,
+                -1) != EXIT_SUCCESS)
+            return EXIT_FAILURE;
+        if (addPriorSizeChange(what, userTimeToInternal(p->time_low),
+                userTimeToInternal(p->time_high), p->size_low, p->size_high,
+                p->population) != 0)
+            return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
+}
+
 int apply_yaml_config(struct discoal_config *config)
 {
     int ret = EXIT_SUCCESS;
@@ -893,6 +1225,10 @@ int apply_yaml_config(struct discoal_config *config)
     ret = parse_genetics_block(config->genetics);
     if (ret != EXIT_SUCCESS) { goto out; }
     ret = parse_demography_block(config->demography);
+    if (ret != EXIT_SUCCESS) { goto out; }
+    ret = parse_priors_block(config->priors, config->selection != NULL,
+        config->demography ? config->demography->num_demes : 1,
+        config->demography ? config->demography->demographic_events : NULL);
     if (ret != EXIT_SUCCESS) { goto out; }
     ret = parse_selection_block(config->selection);
     if (ret != EXIT_SUCCESS) { goto out; }

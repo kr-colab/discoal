@@ -1,0 +1,35 @@
+# An admixed population. Going backward in time: at t=0.1, each lineage in
+# pop 0 moves to pop 1 with probability 0.3 and to pop 2 otherwise (-ea);
+# pop 1 is small (size 0.1); at t=0.5 pop 2 merges into pop 1.
+# A YAML admixture ends the admixed population, as a split ends the merged
+# one: all migration into and out of it stops. On the command line that
+# takes -em events after -ea (and after -ed for the split).
+# Equivalent to: discoal 20 2 10000 -t 10 -r 10 -p 3 20 0 0 -en 0 1 0.1 -ed 0.5 2 1 -em 0.5 0 2 0 -em 0.5 2 0 0 -em 0.5 1 2 0 -em 0.5 2 1 0 -ea 0.1 0 1 2 0.3 -em 0.1 1 0 0 -em 0.1 0 1 0 -em 0.1 2 0 0 -em 0.1 0 2 0 -d 12345 10102
+
+simulation:
+  sample_size: 20
+  num_replicates: 2
+  num_sites: 10000
+  seed: [12345, 10102]
+
+genetics:
+  mutation_rate: 10.0
+  recombination_rate: 10.0
+
+demography:
+  deme_sample_size: [20, 0, 0]
+  demographic_events:
+    population_size_changes:
+      - time: 0
+        size: 0.1
+        population: 1
+    population_splits:
+      - time: 0.5
+        ancestral: 1
+        derived: 2
+    admixtures:
+      - time: 0.1
+        population: 0
+        source_1: 1
+        source_2: 2
+        proportion: 0.3

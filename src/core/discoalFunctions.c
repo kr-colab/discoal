@@ -146,6 +146,98 @@ rootedNode *pickNodePopnFast(int popn) {
 	return list->nodes[index];
 }
 
+/* Append a population size change with uniform priors on its time (in
+ * internal units) and its size (relative to N0). Its 'n' event holds the
+ * lower bounds until drawPriors() draws the values for a replicate, so the
+ * preflight check of the size trajectories sees the lower bounds. `what`
+ * names the source in error messages. Returns 0, or -1 after printing an
+ * error. */
+int addPriorSizeChange(const char *what, double timeLow, double timeHigh,
+                       double sizeLow, double sizeHigh, int popID){
+	if (numPriorSizeChanges >= MAX_PRIOR_SIZE_CHANGES) {
+		fprintf(stderr, "Error: %s: at most %d population size changes "
+			"with priors\n", what, MAX_PRIOR_SIZE_CHANGES);
+		return -1;
+	}
+	if (!(timeLow >= 0 && timeLow <= timeHigh && sizeLow > 0 &&
+	      sizeLow <= sizeHigh)) {
+		fprintf(stderr, "Error: %s: the bounds must satisfy "
+			"0 <= time low <= time high and 0 < size low <= size high "
+			"(got time %g to %g, size %g to %g)\n", what,
+			internalTimeToUser(timeLow), internalTimeToUser(timeHigh),
+			sizeLow, sizeHigh);
+		return -1;
+	}
+	int slot = numPriorSizeChanges++;
+	priorSizeChanges[slot] = (struct priorSizeChange){timeLow, timeHigh,
+		sizeLow, sizeHigh};
+	ensureEventsCapacity();
+	events[eventNumber].type = 'n';
+	events[eventNumber].time = timeLow;
+	events[eventNumber].popnSize = sizeLow;
+	events[eventNumber].popID = popID;
+	events[eventNumber].priorSlot = slot + 1;
+	eventNumber++;
+	return 0;
+}
+
+/* Draw this replicate's values for every parameter that has a prior, then
+ * sort the events, whose times may have changed. Prior size changes are
+ * drawn in the order they were given, not in event order, so the random
+ * stream does not depend on how the previous replicate sorted the events. */
+void drawPriors(){
+	int i, k;
+	if(priorUA==1)
+		uA = genunf(pUALow,pUAUp);
+	if(priorTheta==1)
+		theta = genunf(pThetaLow,pThetaUp);
+	if(priorC==1)
+		partialSweepFinalFreq = genunf(pCLow,pCUp);
+	if(priorRho==1){
+		rho = genunf(pRhoLow,pRhoUp);
+	}
+	else if(priorRho==2){
+		/* Exponential with mean pRhoMean, capped (not truncated) at pRhoUp. */
+		rho = genexp(pRhoMean);
+		if (rho > pRhoUp)
+			rho = pRhoUp;
+	}
+	if(gammaCoRatioMode==1)
+		my_gamma = rho*gammaCoRatio;
+	if(priorAlpha==1)
+		alpha = genunf(pAlphaLow,pAlphaUp);
+	if(priorX==1)
+		sweepSite = genunf(pXLow,pXUp);
+	if(priorF0==1)
+		f0 = genunf(pF0Low,pF0Up);
+	if(priorTau==1){
+		tau = genunf(pTauLow,pTauUp);
+		for(i=0;i<eventNumber;i++){
+			if(events[i].type=='s')
+				events[i].time=tau;
+		}
+	}
+	if(numPriorSizeChanges > 0){
+		double drawnTime[MAX_PRIOR_SIZE_CHANGES], drawnSize[MAX_PRIOR_SIZE_CHANGES];
+		for(k = 0; k < numPriorSizeChanges; k++){
+			drawnTime[k] = genunf(priorSizeChanges[k].timeLow, priorSizeChanges[k].timeHigh);
+			drawnSize[k] = genunf(priorSizeChanges[k].sizeLow, priorSizeChanges[k].sizeHigh);
+		}
+		for(i = 0; i < eventNumber; i++){
+			k = events[i].priorSlot - 1;
+			if(k >= 0){
+				events[i].time = drawnTime[k];
+				events[i].popnSize = drawnSize[k];
+			}
+		}
+	}
+	sortEventArray(events,eventNumber);
+	/* The check before the run saw the lower bounds of the prior size
+	 * changes; check the trajectories this replicate actually uses. */
+	if(numPriorSizeChanges > 0 && validateShapeTrajectories(events, eventNumber) != 0)
+		exit(1);
+}
+
 /* Ancient samples are taken from the start of their population's
  * samples, in event order (the events are sorted by time). Return the
  * index of the 'A' event that takes sample i of population p, or -1 if
@@ -239,138 +331,8 @@ void initialize(){
 		eventFlag = 0;
 	}
 	
-	//priors on parameters?
-        if(priorUA==1)
-          uA = genunf(pUALow,pUAUp);
-	if(priorTheta==1)
-	  theta = genunf(pThetaLow,pThetaUp);
-	if(priorC==1)
-	  partialSweepFinalFreq = genunf(pCLow,pCUp);
-	if(priorRho==1){
-          rho = genunf(pRhoLow,pRhoUp);
-        }
-        else if(priorRho==2){
-	  rho = genexp(pRhoMean);
-          if (rho > pRhoUp)
-              rho = pRhoUp;
-        }
-        if(gammaCoRatioMode==1)
-            my_gamma = rho*gammaCoRatio;
-	if(priorAlpha==1)
-	  alpha = genunf(pAlphaLow,pAlphaUp);
-	if(priorX==1)
-	  sweepSite = genunf(pXLow,pXUp);
-	if(priorF0==1)
-	  f0 = genunf(pF0Low,pF0Up);
-	if(priorTau==1){
-	  tau = genunf(pTauLow,pTauUp);
-	  for(i=0;i<eventNumber;i++){
-	    if(events[i].type=='s')
-	      events[i].time=tau;
-	  }
-	}
-	if(priorE1==1){
-		events[1].time = genunf(pE1TLow,pE1THigh);
-		events[1].popnSize = genunf(pE1SLow,pE1SHigh);
-	}
-	if(priorE2==1){
-		events[2].time = genunf(pE2TLow,pE2THigh);
-		events[2].popnSize = genunf(pE2SLow,pE2SHigh);
-	}
-	sortEventArray(events,eventNumber);
-	
+	drawPriors();
 }
-
-void initializeTwoSite(){
-	int i,j,p, count=0;
-	int leafID=0;
-	/* initialize the arrays */
-	totChunkNumber = 0;
-	initializeBreakPoints();
-	initializeNodeArrays();
-	initializePopLists();  // Initialize population lists for O(1) node selection
-	for(p=0;p<npops;p++){
-		popnSizes[p]=sampleSizes[p];
-		for( i = 0; i < sampleSizes[p]; i++){
-			nodes[count] = newRootedNode(0,p);
-			nodes[count]->nancSites = nSites;
-			nodes[count]->lLim=0;
-			nodes[count]->rLim=nSites-1;
-			
-			// Track sample node ID in tskit (create node first)
-			tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
-			set_tskit_node_id(nodes[count], tsk_id);
-			addSampleNodeId(tsk_id);
-			
-			// Initialize ancestry segment tree for leaf node with tskit node ID
-			nodes[count]->ancestryRoot = newSegment(0, nSites, tsk_id, NULL, NULL);
-			if(p>0)nodes[count]->sweepPopn = 0;
-			nodes[count]->id=leafID++;
-			nodes[count]->inActiveSet = 1;  // Sample nodes start in active set
-			
-			// Add to population list
-			addNodeToPopList(nodes[count], p);
-			
-			count += 1;
-		}
-	}
-	
-	breakNumber = 0;
-	// Initialize segment-based active material (all sites start as active)
-	initializeActiveMaterial(&activeMaterialSegments, nSites);
-	
-	//set initial counts
-	alleleNumber = sampleSize;
-	totNodeNumber = sampleSize;
-	freedNodeCount = 0;  // Initialize freed node counter
-	activeSites = nSites;
-	if (npops>1){
-		if(tDiv==666 && mig[0] == 0 && mig[1] == 0){
-			fprintf(stderr,"tDiv not set in population split model\n");
-			exit(1);
-		}
-		
-		eventFlag = 0;
-	}
-	
-	//priors on parameters?
-        if(priorUA==1)
-          uA = genunf(pUALow,pUAUp);
-	if(priorTheta==1)
-	  theta = genunf(pThetaLow,pThetaUp);
-	if(priorRho==1)
-          rho = genunf(pRhoLow,pRhoUp);
-        else if(priorRho==2){
-	  rho = genexp(pRhoMean);
-	  if (rho > pRhoUp)
-	    rho = pRhoUp;
-	}
-        if(gammaCoRatioMode==1)
-            my_gamma = rho*gammaCoRatio;
-	if(priorAlpha==1)
-	  alpha = genunf(pAlphaLow,pAlphaUp);
-	if(priorX==1)
-	  sweepSite = genunf(pXLow,pXUp);
-	if(priorF0==1)
-	  f0 = genunf(pF0Low,pF0Up);
-	if(priorTau==1){
-	  tau = genunf(pTauLow,pTauUp);
-	  for(i=0;i<eventNumber;i++){
-	    if(events[i].type=='s')
-	      events[i].time=tau;
-	  }
-	}
-	if(priorE1==1){
-		events[1].time = genunf(pE1TLow,pE1THigh);
-		events[1].popnSize = genunf(pE1SLow,pE1SHigh);
-	}
-	if(priorE2==1){
-		events[2].time = genunf(pE2TLow,pE2THigh);
-		events[2].popnSize = genunf(pE2SLow,pE2SHigh);
-	}
-	sortEventArray(events,eventNumber);
-}
-
 
 static int total_nodes_allocated = 0;
 
@@ -1941,6 +1903,29 @@ void cleanupRejectedTrajectory(const char *filename) {
 	}
 }
 
+/* Draw a sweep trajectory by rejection sampling: propose trajectories
+ * until one is accepted, deleting the file of each rejected one. Then map
+ * the accepted one for the sweep samplers and delete the file of the
+ * trajectory that was mapped before (the previous sweep, with recurrent
+ * sweeps). The arguments are those of proposeTrajectory(). */
+void sampleSweepTrajectory(int currentEventNumber, double *sizeRatio,
+	char sweepMode, double initialFreq, double *finalFreq, double alpha,
+	double f0, double currentTime){
+	char previousMapped[256] = "";
+	if (trajectoryFd != -1)
+		strcpy(previousMapped, trajectoryFilename);
+	double probAccept = proposeTrajectory(currentEventNumber, currentTrajectory,
+		sizeRatio, sweepMode, initialFreq, finalFreq, alpha, f0, currentTime);
+	while (ranf() > probAccept) {
+		cleanupRejectedTrajectory(trajectoryFilename);
+		probAccept = proposeTrajectory(currentEventNumber, currentTrajectory,
+			sizeRatio, sweepMode, initialFreq, finalFreq, alpha, f0, currentTime);
+	}
+	mmapAcceptedTrajectory(trajectoryFilename, totalTrajectorySteps);
+	if (strcmp(previousMapped, trajectoryFilename) != 0)
+		cleanupRejectedTrajectory(previousMapped);
+}
+
 /*proposeTrajectory-- this function creates a sweep trajectory and deals with
 complications like changing population size, or soft sweeps, etc 
 returns the acceptance probability of the trajectory */
@@ -2635,7 +2620,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 specified time. returns endTime. can handle multiple popns*/
 double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *finalFreq, double alpha, char sweepMode, double *sizeRatio){
 	double cTime, cRate[npops], rRate[npops], gcRate[npops], mRate[npops],totRate, waitTime, bp,r, r2;
-	double totCRate, totRRate, totGCRate,totMRate, eSum,curSweepSite, initFreq, probAccept;
+	double totCRate, totRRate, totGCRate,totMRate, eSum,curSweepSite, initFreq;
 	int  i,j;
 
 	if(startTime == endTime){
@@ -2748,12 +2733,8 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 							else{
 								initFreq=1.0-(1.0/(2*sizeRatio[0]*EFFECTIVE_POPN_SIZE));
 							}
-							//generate a proposed trajectory
-							probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, sizeRatio, sweepMode, initFreq, finalFreq, alpha, f0, cTime);
-							while(ranf()>probAccept){
-								probAccept = proposeTrajectory(currentEventNumber, currentTrajectory, sizeRatio, sweepMode, initFreq, finalFreq, alpha, f0, cTime);
-								//printf("probAccept: %lf\n",probAccept);
-							}
+							sampleSweepTrajectory(currentEventNumber, sizeRatio, sweepMode,
+								initFreq, finalFreq, alpha, f0, cTime);
 							cTime= sweepPhaseEventsConditionalTrajectory(bpArray, cTime, endTime, curSweepSite,\
 								initFreq, finalFreq, &activeSweepFlag, alpha,\
 								sizeRatio, sweepMode,0, 0);

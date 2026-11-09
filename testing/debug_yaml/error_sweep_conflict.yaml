@@ -1,5 +1,4 @@
-# PR #48 (#39): fixation_time_ago and recurrent_sweep_rate both set.
-# Should error out with:
+# fixation_time_ago and recurrent_sweep_rate both set. Should error out with:
 #   "Error parsing config: fixation_time_ago and recurrent_sweep_rate cannot both be set"
 
 simulation:

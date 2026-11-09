@@ -106,7 +106,8 @@ Demographic Options
    * time: When admixture occurs
    * admixPop: Admixed population
    * pop1, pop2: Source populations
-   * prop: Proportion from pop1
+   * prop: Proportion from pop1: backward in time, each lineage of
+     admixPop moves to pop1 with probability prop and to pop2 otherwise
 
 .. option:: -M migRate
 
@@ -187,25 +188,30 @@ Selection Options
 
    Final frequency for partial sweep
 
-.. option:: -ls tau
+.. option:: -ls tau leftRho
 
-   Stochastic sweep to the left of locus
+   Stochastic sweep to the left of the locus. The selected site is at
+   genetic distance 4Nr = 2 x leftRho from the locus; that is, leftRho
+   is 2Nr. (This factor of 2 is a long-standing convention of
+   discoal; ``-L`` draws the distance 4Nr directly.)
 
-.. option:: -ld tau  
+.. option:: -ld tau leftRho
 
-   Deterministic sweep to the left of locus
+   Deterministic sweep to the left of the locus
 
-.. option:: -ln tau
+.. option:: -ln tau leftRho
 
-   Neutral fixation to the left of locus
+   Neutral fixation to the left of the locus
 
 .. option:: -R rate
 
-   Recurrent hitchhiking rate at locus
+   Recurrent stochastic sweeps at random positions inside the locus, at
+   this rate per 2N individuals per generation
 
 .. option:: -L rate
 
-   Recurrent hitchhiking rate to left of locus
+   Recurrent stochastic sweeps to the left of the locus; each sweep's
+   distance (4Nr) is drawn uniformly from (0, 4Ns)
 
 Prior Distributions
 ^^^^^^^^^^^^^^^^^^^
@@ -248,11 +254,16 @@ Prior Distributions
 
 .. option:: -Pe1 timeLow timeHigh sizeLow sizeHigh
 
-   Prior on first demographic event
+   A size change of population 0 with uniform priors on its time (units
+   of 4N generations) and its size (relative to N), drawn for each
+   replicate. The bounds must satisfy 0 <= timeLow <= timeHigh and
+   0 < sizeLow <= sizeHigh. The size trajectories are checked before the
+   run at the lower bounds, and again after each replicate's draws;
+   discoal stops if a draw makes a population size reach zero.
 
 .. option:: -Pe2 timeLow timeHigh sizeLow sizeHigh
 
-   Prior on second demographic event
+   A second size change with priors, as ``-Pe1``
 
 Advanced Options
 ^^^^^^^^^^^^^^^^
