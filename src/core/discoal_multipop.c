@@ -1272,12 +1272,12 @@ void getParameters(int argc,const char **argv){
 				 * change of population 0 with uniform priors on time and
 				 * size. Both work the same way; the digit only names them. */
 				if (argv[args][3] == '1' || argv[args][3] == '2') {
-					double tLow = userTimeToInternal(atof(argv[++args]));
-					double tHigh = userTimeToInternal(atof(argv[++args]));
-					double sLow = atof(argv[++args]);
-					double sHigh = atof(argv[++args]);
-					if (addPriorSizeChange(argv[args - 4], tLow, tHigh,
-					                       sLow, sHigh, 0) != 0)
+					const char *opt = argv[args];
+					double tLow = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
+					double tHigh = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
+					double sLow = parseDoubleArg(argc, argv, &args, opt);
+					double sHigh = parseDoubleArg(argc, argv, &args, opt);
+					if (addPriorSizeChange(opt, tLow, tHigh, sLow, sHigh, 0) != 0)
 						exit(1);
 				}
 				break;
@@ -1413,6 +1413,21 @@ void getParameters(int argc,const char **argv){
 				exit(666);
 			}
 		}
+	}
+	/* Priors that contradict the sweep model, from the CLI or YAML: a
+	 * drawn position puts the sweep inside the locus, and a drawn tau
+	 * needs a single sweep. */
+	if(priorX && sweepSite < 0.0){
+		fprintf(stderr, "Error: a prior on the sweep position (-Px, or YAML "
+			"priors.sweep_position) cannot be combined with a sweep outside "
+			"the locus (-ls, -ld, -ln, -L)\n");
+		exit(1);
+	}
+	if(priorTau && recurSweepMode){
+		fprintf(stderr, "Error: a prior on the sweep time (-Pu, or YAML "
+			"priors.fixation_time_ago) needs a single sweep, not recurrent "
+			"sweeps (-R, -L)\n");
+		exit(1);
 	}
 	if(leftRhoFlag && sweepSite >= 0.0){
 		printf("Error with event specification: you chose leftRho mode but the sweep site is within the locus\n");

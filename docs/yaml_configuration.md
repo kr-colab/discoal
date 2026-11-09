@@ -263,8 +263,10 @@ Notes:
   entries may be given; `-Pe1` and `-Pe2` are the first two, for
   population 0. The bounds must satisfy
   `0 <= time_low <= time_high` and `0 < size_low <= size_high`. The
-  check of size trajectories before the run sees the lower bounds
-  only.
+  size trajectories are checked before the run at the lower bounds,
+  and again after each replicate's draws; discoal stops if a draw
+  makes a population size reach zero (for example, with a linear
+  decline).
 
 ## output
 

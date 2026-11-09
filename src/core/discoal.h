@@ -233,6 +233,7 @@ int partialSweepMode,softSweepMode;
 double partialSweepFinalFreq;
 
 double deltaTMod;
+extern int leftRhoFlag;   /* -ls/-ld/-ln; defined in discoal_multipop.c */
 
 
 int hidePartialSNP;

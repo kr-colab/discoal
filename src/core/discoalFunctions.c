@@ -217,17 +217,25 @@ void drawPriors(){
 				events[i].time=tau;
 		}
 	}
-	for(k = 0; k < numPriorSizeChanges; k++){
-		double t = genunf(priorSizeChanges[k].timeLow, priorSizeChanges[k].timeHigh);
-		double size = genunf(priorSizeChanges[k].sizeLow, priorSizeChanges[k].sizeHigh);
+	if(numPriorSizeChanges > 0){
+		double drawnTime[MAX_PRIOR_SIZE_CHANGES], drawnSize[MAX_PRIOR_SIZE_CHANGES];
+		for(k = 0; k < numPriorSizeChanges; k++){
+			drawnTime[k] = genunf(priorSizeChanges[k].timeLow, priorSizeChanges[k].timeHigh);
+			drawnSize[k] = genunf(priorSizeChanges[k].sizeLow, priorSizeChanges[k].sizeHigh);
+		}
 		for(i = 0; i < eventNumber; i++){
-			if(events[i].priorSlot == k + 1){
-				events[i].time = t;
-				events[i].popnSize = size;
+			k = events[i].priorSlot - 1;
+			if(k >= 0){
+				events[i].time = drawnTime[k];
+				events[i].popnSize = drawnSize[k];
 			}
 		}
 	}
 	sortEventArray(events,eventNumber);
+	/* The check before the run saw the lower bounds of the prior size
+	 * changes; check the trajectories this replicate actually uses. */
+	if(numPriorSizeChanges > 0 && validateShapeTrajectories(events, eventNumber) != 0)
+		exit(1);
 }
 
 /* Ancient samples are taken from the start of their population's
@@ -325,62 +333,6 @@ void initialize(){
 	
 	drawPriors();
 }
-
-void initializeTwoSite(){
-	int i,j,p, count=0;
-	int leafID=0;
-	/* initialize the arrays */
-	totChunkNumber = 0;
-	initializeBreakPoints();
-	initializeNodeArrays();
-	initializePopLists();  // Initialize population lists for O(1) node selection
-	for(p=0;p<npops;p++){
-		popnSizes[p]=sampleSizes[p];
-		for( i = 0; i < sampleSizes[p]; i++){
-			nodes[count] = newRootedNode(0,p);
-			nodes[count]->nancSites = nSites;
-			nodes[count]->lLim=0;
-			nodes[count]->rLim=nSites-1;
-			
-			// Track sample node ID in tskit (create node first)
-			tsk_id_t tsk_id = tskit_add_node(0.0, p, 1);  // time=0, is_sample=1
-			set_tskit_node_id(nodes[count], tsk_id);
-			addSampleNodeId(tsk_id);
-			
-			// Initialize ancestry segment tree for leaf node with tskit node ID
-			nodes[count]->ancestryRoot = newSegment(0, nSites, tsk_id, NULL, NULL);
-			if(p>0)nodes[count]->sweepPopn = 0;
-			nodes[count]->id=leafID++;
-			nodes[count]->inActiveSet = 1;  // Sample nodes start in active set
-			
-			// Add to population list
-			addNodeToPopList(nodes[count], p);
-			
-			count += 1;
-		}
-	}
-	
-	breakNumber = 0;
-	// Initialize segment-based active material (all sites start as active)
-	initializeActiveMaterial(&activeMaterialSegments, nSites);
-	
-	//set initial counts
-	alleleNumber = sampleSize;
-	totNodeNumber = sampleSize;
-	freedNodeCount = 0;  // Initialize freed node counter
-	activeSites = nSites;
-	if (npops>1){
-		if(tDiv==666 && mig[0] == 0 && mig[1] == 0){
-			fprintf(stderr,"tDiv not set in population split model\n");
-			exit(1);
-		}
-		
-		eventFlag = 0;
-	}
-	
-	drawPriors();
-}
-
 
 static int total_nodes_allocated = 0;
 
@@ -1970,8 +1922,8 @@ void sampleSweepTrajectory(int currentEventNumber, double *sizeRatio,
 			sizeRatio, sweepMode, initialFreq, finalFreq, alpha, f0, currentTime);
 	}
 	mmapAcceptedTrajectory(trajectoryFilename, totalTrajectorySteps);
-	if (previousMapped[0] != '\0' && strcmp(previousMapped, trajectoryFilename) != 0)
-		unlink(previousMapped);
+	if (strcmp(previousMapped, trajectoryFilename) != 0)
+		cleanupRejectedTrajectory(previousMapped);
 }
 
 /*proposeTrajectory-- this function creates a sweep trajectory and deals with

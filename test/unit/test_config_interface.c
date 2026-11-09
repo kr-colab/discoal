@@ -1976,10 +1976,6 @@ void test_priors_reject_bad_values(void) {
         "selection:\n  sweep_mode: stochastic\n  selection_coefficient: 1\n"
         "  fixation_time_ago: 0.01\n"
         "priors:\n  sweep_position: {low: 0.5, high: 1.5}\n",
-        /* a prior on the position of a sweep outside the locus */
-        "selection:\n  sweep_mode: stochastic\n  selection_coefficient: 1\n"
-        "  fixation_time_ago: 0.01\n  left_rho: 10\n"
-        "priors:\n  sweep_position: {low: 0.4, high: 0.6}\n",
         /* a size bound of 0, and a population out of range */
         "priors:\n  population_size_changes:\n"
         "    - {time_low: 0.1, time_high: 0.5, size_low: 0, size_high: 2}\n",

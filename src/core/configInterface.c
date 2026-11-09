@@ -48,9 +48,12 @@ static int check_nonneg_double(const char *arr, const char *field, int idx,
 /* A population no longer exists from the time a population_splits entry
  * merges it (as `derived`) into another one, or an admixtures entry moves
  * all its lineages into two others (as `population`). Reject an entry of
- * `arr` that involves population `pop` at or after that time. */
+ * `arr` that involves population `pop` at or after that time.
+ * skip_admixture is the index of an admixtures entry to ignore (the entry
+ * being checked, which ends `pop` itself), or -1. */
 static int check_not_merged(const char *arr, int idx, int pop, double time,
-                            const struct demographic_events *dmo) {
+                            const struct demographic_events *dmo,
+                            int skip_admixture) {
     for (int k = 0; k < dmo->num_population_splits; ++k) {
         const struct population_split *sp = &dmo->population_splits[k];
         if (pop == sp->derived && time >= sp->time) {
@@ -64,6 +67,7 @@ static int check_not_merged(const char *arr, int idx, int pop, double time,
     }
     for (int k = 0; k < dmo->num_admixtures; ++k) {
         const struct admixture *ad = &dmo->admixtures[k];
+        if (k == skip_admixture) continue;
         if (pop == ad->population && time >= ad->time) {
             fprintf(stderr,
                 "Error parsing config: %s[%d] at time %g involves population "
@@ -639,7 +643,7 @@ int parse_demography_block(struct demography_config *cfg)
                     return EXIT_FAILURE;
                 }
                 if (check_not_merged("ancient_samples", i, as->population,
-                        as->time, dmo) != EXIT_SUCCESS) {
+                        as->time, dmo, -1) != EXIT_SUCCESS) {
                     return EXIT_FAILURE;
                 }
                 ensureEventsCapacity();
@@ -677,9 +681,9 @@ int parse_demography_block(struct demography_config *cfg)
                 }
                 /* The split already stops a merged population's migration. */
                 if (check_not_merged("migration_rate_changes", i, mrc->source,
-                        mrc->time, dmo) != EXIT_SUCCESS ||
+                        mrc->time, dmo, -1) != EXIT_SUCCESS ||
                     check_not_merged("migration_rate_changes", i,
-                        mrc->destination, mrc->time, dmo) != EXIT_SUCCESS) {
+                        mrc->destination, mrc->time, dmo, -1) != EXIT_SUCCESS) {
                     return EXIT_FAILURE;
                 }
                 ensureEventsCapacity();
@@ -769,35 +773,16 @@ int parse_demography_block(struct demography_config *cfg)
                         "must be in [0, 1]\n", i, ad->proportion);
                     return EXIT_FAILURE;
                 }
-                /* The sources must still exist; the admixed population must
-                 * not have ended before (an entry ends it at its own time,
-                 * so compare with times strictly before). */
+                /* The sources and the admixed population must still exist:
+                 * not merged away by a split, and not admixed by another
+                 * entry (this entry ends the admixed population itself). */
                 if (check_not_merged("admixtures", i, ad->source_1, ad->time,
-                        dmo) != EXIT_SUCCESS ||
+                        dmo, -1) != EXIT_SUCCESS ||
                     check_not_merged("admixtures", i, ad->source_2, ad->time,
-                        dmo) != EXIT_SUCCESS) {
+                        dmo, -1) != EXIT_SUCCESS ||
+                    check_not_merged("admixtures", i, ad->population,
+                        ad->time, dmo, i) != EXIT_SUCCESS) {
                     return EXIT_FAILURE;
-                }
-                for (int k = 0; k < dmo->num_admixtures; ++k) {
-                    if (k != i && dmo->admixtures[k].population == ad->population
-                        && dmo->admixtures[k].time <= ad->time) {
-                        fprintf(stderr,
-                            "Error parsing config: admixtures[%d] and "
-                            "admixtures[%d] both admix population %d; a "
-                            "population is admixed once\n", k, i, ad->population);
-                        return EXIT_FAILURE;
-                    }
-                }
-                for (int k = 0; k < dmo->num_population_splits; ++k) {
-                    if (dmo->population_splits[k].derived == ad->population &&
-                        dmo->population_splits[k].time <= ad->time) {
-                        fprintf(stderr,
-                            "Error parsing config: admixtures[%d] at time %g "
-                            "admixes population %d, which merges away at time "
-                            "%g (population_splits[%d])\n", i, ad->time,
-                            ad->population, dmo->population_splits[k].time, k);
-                        return EXIT_FAILURE;
-                    }
                 }
                 ensureEventsCapacity();
                 events[eventNumber].type = 'a';
@@ -875,10 +860,9 @@ int parse_demography_block(struct demography_config *cfg)
 
 int parse_selection_block(struct selection_config *cfg)
 {
-    extern double alpha, sweepSite, tau, f0, uA, leftRho, deltaTMod;
+    extern double alpha, sweepSite, tau, f0, uA;
     extern double partialSweepFinalFreq, recurSweepRate;
-    extern int recurSweepMode, partialSweepMode, softSweepMode, leftRhoFlag;
-    extern int priorTau;
+    extern int recurSweepMode, partialSweepMode, softSweepMode;
     extern char sweepMode;
     extern int eventNumber, eventsCapacity;
     extern struct event *events;
@@ -989,14 +973,12 @@ int parse_selection_block(struct selection_config *cfg)
         }
         /* A sweep outside the locus has no position inside it: -ls, -ld,
          * -ln and -L set the sweep site to -1. */
-        extern int priorX;
         if ((linked || cfg->recurrent_sweeps_left_of_locus) &&
-            (cfg->sweep_position != NULL || priorX)) {
+            cfg->sweep_position != NULL) {
             fprintf(stderr,
-                "Error parsing config: sweep_position (or a prior on it) "
-                "cannot be set with left_rho or "
-                "recurrent_sweeps_left_of_locus; the sweep is outside the "
-                "locus\n");
+                "Error parsing config: sweep_position cannot be set with "
+                "left_rho or recurrent_sweeps_left_of_locus; the sweep is "
+                "outside the locus\n");
             return EXIT_FAILURE;
         }
         if (cfg->recurrent_sweeps_left_of_locus && !recurrent) {
@@ -1008,10 +990,10 @@ int parse_selection_block(struct selection_config *cfg)
 
         if (recurrent) {
             /* -R and -L: recurrent sweeps, which are always stochastic. */
-            if (cfg->fixation_time_ago != NULL || priorTau) {
+            if (cfg->fixation_time_ago != NULL) {
                 fprintf(stderr,
-                    "Error parsing config: fixation_time_ago (or a prior on "
-                    "it) and recurrent_sweep_rate cannot both be set\n");
+                    "Error parsing config: fixation_time_ago and "
+                    "recurrent_sweep_rate cannot both be set\n");
                 return EXIT_FAILURE;
             }
             if (linked) {
@@ -1050,7 +1032,6 @@ int parse_selection_block(struct selection_config *cfg)
         if (cfg->fixation_time_ago == NULL) {
             /* Only a prior: the event holds the lower bound until the
              * first draw. */
-            extern double pTauLow;
             tau = pTauLow;
         }
         if (linked) {
@@ -1118,68 +1099,90 @@ int parse_output_block(struct output_config *cfg)
     return EXIT_SUCCESS;
 }
 
-/* Check a uniform prior's bounds: lo_min <= low <= high <= hi_max. */
-static int check_uniform_prior(const char *name, const struct uniform_prior *p,
-                               double lo_min, double hi_max) {
-    if (!(p->low >= lo_min && p->low <= p->high && p->high <= hi_max)) {
+/* One uniform prior of the priors block and the globals its -P flag sets.
+ * The bounds must satisfy lo <= low <= high <= hi, with strict
+ * inequalities where open_lo / open_hi is set. */
+struct uniform_prior_spec {
+    const char *name;
+    const struct uniform_prior *prior;   /* NULL if not given */
+    int needs_selection;
+    double lo, hi;
+    int open_lo, open_hi;
+    int is_time;                         /* convert to internal units */
+    int *flag;
+    double *low, *high;
+};
+
+static int apply_uniform_prior(const struct uniform_prior_spec *u) {
+    const struct uniform_prior *p = u->prior;
+    int lo_ok = u->open_lo ? p->low > u->lo : p->low >= u->lo;
+    int hi_ok = u->open_hi ? p->high < u->hi : p->high <= u->hi;
+    if (!(lo_ok && hi_ok && p->low <= p->high)) {
         fprintf(stderr,
-            "Error parsing config: priors.%s must satisfy %g <= low <= high "
-            "<= %g (got low %g, high %g)\n",
-            name, lo_min, hi_max, p->low, p->high);
+            "Error parsing config: priors.%s must satisfy %g %s low <= high "
+            "%s %g (got low %g, high %g)\n", u->name,
+            u->lo, u->open_lo ? "<" : "<=", u->open_hi ? "<" : "<=", u->hi,
+            p->low, p->high);
         return EXIT_FAILURE;
     }
+    *u->flag = 1;
+    *u->low = u->is_time ? userTimeToInternal(p->low) : p->low;
+    *u->high = u->is_time ? userTimeToInternal(p->high) : p->high;
     return EXIT_SUCCESS;
 }
 
-/* The priors block, as the -P flags: each sets the same globals as its
- * flag, and drawPriors() draws the values for every replicate. Parsed
- * before the selection block, which needs to know about a prior on
- * fixation_time_ago. Priors on sweep parameters need a selection block. */
+/* The priors block, as the -P flags: each entry sets the same globals as
+ * its flag, and drawPriors() draws the values for every replicate. Parsed
+ * before the selection block, which emits the sweep event when
+ * fixation_time_ago has only a prior. */
 int parse_priors_block(struct priors_config *cfg, int has_selection,
                        unsigned num_demes, const struct demographic_events *dmo)
 {
-    extern int priorTheta, priorRho, priorAlpha, priorTau, priorX, priorF0,
-        priorUA, priorC, partialSweepMode;
-    extern double pThetaUp, pThetaLow, pRhoMean, pRhoUp, pRhoLow, pAlphaUp,
-        pAlphaLow, pTauUp, pTauLow, pXUp, pXLow, pF0Up, pF0Low, pUALow,
-        pUAUp, pCUp, pCLow;
-    const double inf = INFINITY;
     if (cfg == NULL) {
         return EXIT_SUCCESS;
     }
-    if (!has_selection &&
-        (cfg->selection_coefficient || cfg->fixation_time_ago ||
-         cfg->beneficial_mutation_rate || cfg->sweep_position ||
-         cfg->initial_frequency || cfg->final_frequency)) {
-        fprintf(stderr,
-            "Error parsing config: priors on selection_coefficient, "
-            "fixation_time_ago, beneficial_mutation_rate, sweep_position, "
-            "initial_frequency or final_frequency need a selection block\n");
-        return EXIT_FAILURE;
-    }
-    if (cfg->mutation_rate) {
-        if (check_uniform_prior("mutation_rate", cfg->mutation_rate, 0, inf))
+    const double inf = INFINITY;
+    const struct uniform_prior_spec uniform[] = {
+        {"mutation_rate", cfg->mutation_rate, 0, 0, inf, 0, 0, 0,
+            &priorTheta, &pThetaLow, &pThetaUp},
+        {"recombination_rate", cfg->recombination_rate, 0, 0, inf, 0, 0, 0,
+            &priorRho, &pRhoLow, &pRhoUp},
+        {"selection_coefficient", cfg->selection_coefficient, 1, 0, inf, 0, 0, 0,
+            &priorAlpha, &pAlphaLow, &pAlphaUp},
+        {"fixation_time_ago", cfg->fixation_time_ago, 1, 0, inf, 0, 0, 1,
+            &priorTau, &pTauLow, &pTauUp},
+        {"beneficial_mutation_rate", cfg->beneficial_mutation_rate, 1, 0, inf,
+            0, 0, 0, &priorUA, &pUALow, &pUAUp},
+        {"sweep_position", cfg->sweep_position, 1, 0, 1, 0, 0, 0,
+            &priorX, &pXLow, &pXUp},
+        {"initial_frequency", cfg->initial_frequency, 1, 0, 1, 0, 1, 0,
+            &priorF0, &pF0Low, &pF0Up},
+        {"final_frequency", cfg->final_frequency, 1, 0, 1, 1, 1, 0,
+            &priorC, &pCLow, &pCUp},
+    };
+    for (size_t k = 0; k < sizeof(uniform) / sizeof(uniform[0]); ++k) {
+        if (uniform[k].prior == NULL) continue;
+        if (uniform[k].needs_selection && !has_selection) {
+            fprintf(stderr,
+                "Error parsing config: priors.%s needs a selection block\n",
+                uniform[k].name);
             return EXIT_FAILURE;
-        priorTheta = 1;
-        pThetaLow = cfg->mutation_rate->low;
-        pThetaUp = cfg->mutation_rate->high;
-    }
-    if (cfg->recombination_rate && cfg->recombination_rate_exponential) {
-        fprintf(stderr,
-            "Error parsing config: priors.recombination_rate and "
-            "priors.recombination_rate_exponential cannot both be set\n");
-        return EXIT_FAILURE;
-    }
-    if (cfg->recombination_rate) {
-        if (check_uniform_prior("recombination_rate", cfg->recombination_rate,
-                0, inf))
+        }
+        if (apply_uniform_prior(&uniform[k]) != EXIT_SUCCESS)
             return EXIT_FAILURE;
-        priorRho = 1;
-        pRhoLow = cfg->recombination_rate->low;
-        pRhoUp = cfg->recombination_rate->high;
+    }
+    /* A prior on the final frequency makes the sweep partial, as -Pc. */
+    if (cfg->final_frequency) {
+        partialSweepMode = 1;
     }
     if (cfg->recombination_rate_exponential) {
         struct exponential_prior *e = cfg->recombination_rate_exponential;
+        if (cfg->recombination_rate) {
+            fprintf(stderr,
+                "Error parsing config: priors.recombination_rate and "
+                "priors.recombination_rate_exponential cannot both be set\n");
+            return EXIT_FAILURE;
+        }
         if (!(e->mean > 0 && e->upper > 0)) {
             fprintf(stderr,
                 "Error parsing config: priors.recombination_rate_exponential "
@@ -1190,77 +1193,17 @@ int parse_priors_block(struct priors_config *cfg, int has_selection,
         pRhoMean = e->mean;
         pRhoUp = e->upper;
     }
-    if (cfg->selection_coefficient) {
-        if (check_uniform_prior("selection_coefficient",
-                cfg->selection_coefficient, 0, inf))
-            return EXIT_FAILURE;
-        priorAlpha = 1;
-        pAlphaLow = cfg->selection_coefficient->low;
-        pAlphaUp = cfg->selection_coefficient->high;
-    }
-    if (cfg->fixation_time_ago) {
-        if (check_uniform_prior("fixation_time_ago", cfg->fixation_time_ago,
-                0, inf))
-            return EXIT_FAILURE;
-        priorTau = 1;
-        pTauLow = userTimeToInternal(cfg->fixation_time_ago->low);
-        pTauUp = userTimeToInternal(cfg->fixation_time_ago->high);
-    }
-    if (cfg->beneficial_mutation_rate) {
-        if (check_uniform_prior("beneficial_mutation_rate",
-                cfg->beneficial_mutation_rate, 0, inf))
-            return EXIT_FAILURE;
-        priorUA = 1;
-        pUALow = cfg->beneficial_mutation_rate->low;
-        pUAUp = cfg->beneficial_mutation_rate->high;
-    }
-    if (cfg->sweep_position) {
-        if (check_uniform_prior("sweep_position", cfg->sweep_position, 0, 1))
-            return EXIT_FAILURE;
-        priorX = 1;
-        pXLow = cfg->sweep_position->low;
-        pXUp = cfg->sweep_position->high;
-    }
-    if (cfg->initial_frequency) {
-        if (check_uniform_prior("initial_frequency", cfg->initial_frequency,
-                0, 1))
-            return EXIT_FAILURE;
-        if (cfg->initial_frequency->high >= 1) {
-            fprintf(stderr,
-                "Error parsing config: priors.initial_frequency high (%g) "
-                "must be < 1\n", cfg->initial_frequency->high);
-            return EXIT_FAILURE;
-        }
-        priorF0 = 1;
-        pF0Low = cfg->initial_frequency->low;
-        pF0Up = cfg->initial_frequency->high;
-    }
-    if (cfg->final_frequency) {
-        if (check_uniform_prior("final_frequency", cfg->final_frequency, 0, 1)
-            || cfg->final_frequency->low <= 0
-            || cfg->final_frequency->high >= 1) {
-            fprintf(stderr,
-                "Error parsing config: priors.final_frequency must be inside "
-                "(0, 1)\n");
-            return EXIT_FAILURE;
-        }
-        priorC = 1;
-        partialSweepMode = 1;
-        pCLow = cfg->final_frequency->low;
-        pCUp = cfg->final_frequency->high;
-    }
     for (unsigned i = 0; i < cfg->num_population_size_changes; ++i) {
         struct prior_size_change *p = &cfg->population_size_changes[i];
-        char what[64];
-        snprintf(what, sizeof(what), "priors.population_size_changes[%u]", i);
-        if (check_pop_index("priors.population_size_changes", "population",
-                (int)i, p->population, num_demes) != EXIT_SUCCESS)
+        const char *what = "priors.population_size_changes";
+        if (check_pop_index(what, "population", (int)i, p->population,
+                num_demes) != EXIT_SUCCESS)
             return EXIT_FAILURE;
         /* The drawn time is not known yet; reject a population that has
          * already ended at the lower bound. */
         if (dmo != NULL &&
-            check_not_merged("priors.population_size_changes", (int)i,
-                p->population, p->time_low, dmo) != EXIT_SUCCESS)
+            check_not_merged(what, (int)i, p->population, p->time_low, dmo,
+                -1) != EXIT_SUCCESS)
             return EXIT_FAILURE;
         if (addPriorSizeChange(what, userTimeToInternal(p->time_low),
                 userTimeToInternal(p->time_high), p->size_low, p->size_high,

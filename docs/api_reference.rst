@@ -255,8 +255,9 @@ Prior Distributions
    A size change of population 0 with uniform priors on its time (units
    of 4N generations) and its size (relative to N), drawn for each
    replicate. The bounds must satisfy 0 <= timeLow <= timeHigh and
-   0 < sizeLow <= sizeHigh. The check of size trajectories before the
-   run sees the lower bounds only.
+   0 < sizeLow <= sizeHigh. The size trajectories are checked before the
+   run at the lower bounds, and again after each replicate's draws;
+   discoal stops if a draw makes a population size reach zero.
 
 .. option:: -Pe2 timeLow timeHigh sizeLow sizeHigh
 

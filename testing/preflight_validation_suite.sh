@@ -169,6 +169,14 @@ run_fail_case "Pe1_zero_size_bound" \
     "0 < size low <= size high" \
     20 5 10000 -t 10 -Pe1 0.1 0.2 0 1.0
 
+run_fail_case "Px_with_sweep_outside_locus" \
+    "cannot be combined with a sweep outside the locus" \
+    20 2 1000 -t 5 -ls 0.01 10 -a 100 -Px 0.4 0.6
+
+run_fail_case "Pu_with_recurrent_sweeps" \
+    "needs a single sweep, not recurrent sweeps" \
+    20 2 1000 -t 5 -R 0.1 -a 100 -Pu 0 0.1
+
 run_fail_case "A_negative_time" \
     "the time must be >= 0" \
     4 2 100 -t 2 -A 1 0 -0.1
