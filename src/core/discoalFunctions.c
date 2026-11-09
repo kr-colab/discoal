@@ -1903,6 +1903,16 @@ void cleanupRejectedTrajectory(const char *filename) {
 	}
 }
 
+/* The frequency at which a sweep trajectory, followed back in time, ends:
+ * the selected allele's origin. A sweep from a new mutation ends at one
+ * copy, 1/(2N). A sweep from standing variation (f0 above 1/(2N)) ends with
+ * the neutral history below f0, which is followed back to frequency 0:
+ * that history, reversed, starts at the allele's origin, and stopping at
+ * the first return to 1/(2N) would cut it short. */
+static double trajectoryEnd(double f0, double N){
+	return (f0 > 1.0/(2.*N)) ? 0.0 : 1.0/(2.*N);
+}
+
 /* Draw a sweep trajectory by rejection sampling: propose trajectories
  * until one is accepted, deleting the file of each rejected one. Then map
  * the accepted one for the sweep samplers and delete the file of the
@@ -2014,7 +2024,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 		if(minF < 1.0/(2.*N)) minF = 1.0/(2.*N);
 		tInc = 1.0 / (deltaTMod * N);
 		//iterate until epoch time or sweep freq
-		while( x > 1.0/(2.*N) && (currentTime+ttau) < localNextTime){
+		while( x > trajectoryEnd(f0, N) && (currentTime+ttau) < localNextTime){
 			ttau += tIncOrig;
 			double sr_now = sizeAt(0, currentTime + ttau);
 			N = floor(N_0 * sr_now);
@@ -2043,9 +2053,10 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 				}
 			}
 			else{
+				/* Below f0: the neutral history of the allele before it
+				 * became beneficial, back to its origin. */
 				insweepphase = 0;
-				/* tInc already set above */
-				x = neutralStochasticOptimized(tInc, x);
+				x = neutralStochasticBelowCeiling(tInc, x, minF);
 			}
 			//printf("j: %ld x: %f\n",j,x);
 			
@@ -2431,12 +2442,12 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	insweepphase = 1;
 	
 	//go for epoch time, sweep freq, or root
-	while( x > 1.0/(2.*N) && (cTime+ttau) < endTime && popnSizes[0] > 1){ 
+	while( x > trajectoryEnd(f0, N) && (cTime+ttau) < endTime && popnSizes[0] > 1){ 
 		//rejection algorithm of Braverman et al. 1995
 		eventRand = ranf();
 		eventProb = 1.0;
 		//wait for something
-		while(eventProb > eventRand && x > (1.0 / (2*N)) && (cTime+ttau) < endTime ){
+		while(eventProb > eventRand && x > trajectoryEnd(f0, N) && (cTime+ttau) < endTime ){
 			ttau += tIncOrig;
 
 			if (currentTrajectoryStep >= totalTrajectorySteps) {
@@ -2445,6 +2456,9 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 			exit(1);
 		}
 		x = currentTrajectory[currentTrajectoryStep++];
+		/* The origin of an allele from standing variation: no rates at
+		 * frequency 0. (A sweep from a new mutation ends above 0.) */
+		if (x <= 0.0) break;
 
 			//calculate event probs
 			//first 4 events are probs of events in population 0
@@ -2487,6 +2501,8 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 
 		}
 		if(cTime+ttau >= endTime) return(cTime+ttau);
+		/* The trajectory reached the allele's origin with no event. */
+		if (x <= 0.0) break;
 
 		//Decide which event took place
 		//first was it in population 0 (sweep) or not

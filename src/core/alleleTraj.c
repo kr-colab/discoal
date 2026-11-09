@@ -48,21 +48,7 @@ which is sweeping through the population. This is the jump process
 corresponding to the condition diffusion towards loss (i.e. backwards).
 takes the dt, small time increment, and the current allele freq (i.e. 1 for fixation) */
 double neutralStochastic(double dt, double currentFreq){
-	// Precompute common expressions
-	double drift = -currentFreq * dt;
-	double p_q = currentFreq * (1.0 - currentFreq);
-	
-	// Early return for boundary cases to avoid sqrt of negative
-	if (p_q <= 0.0) {
-		return currentFreq + drift;
-	}
-	
-	double diffusion = sqrt(p_q * dt);
-	
-	// Use arithmetic instead of branching: sign = ±1
-	double sign = 2.0 * ranf() - 1.0;
-	
-	return currentFreq + drift + sign * diffusion;
+	return neutralStochasticOptimized(dt, currentFreq);
 }
 
 /* Note: Optimized versions are now in alleleTraj.h as inline functions */
