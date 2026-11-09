@@ -1245,6 +1245,31 @@ void test_demography_admixture_rejects_bad_values(void) {
     }
 }
 
+/* Admixtures take effect after splits at the same time; each is followed
+ * by the events that stop the admixed population's migration. */
+void test_demography_admixture_after_split_at_same_time(void) {
+    const char *yaml =
+        BASE_YAML
+        "demography:\n"
+        "  deme_sample_size: [4, 3, 3, 0]\n"
+        "  demographic_events:\n"
+        "    admixtures:\n"
+        "      - {time: 0.5, population: 0, source_1: 1, source_2: 2,\n"
+        "         proportion: 0.5}\n"
+        "    population_splits:\n"
+        "      - {time: 0.5, ancestral: 1, derived: 3}\n";
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    sortEventArray(events, eventNumber);
+    /* split, 6 migration stops, admixture, 6 migration stops */
+    const char expected[] = {'p', 'm', 'm', 'm', 'm', 'm', 'm',
+                             'a', 'm', 'm', 'm', 'm', 'm', 'm'};
+    TEST_ASSERT_EQUAL_INT(14, eventNumber);
+    for (int k = 0; k < 14; ++k) {
+        TEST_ASSERT_EQUAL_INT_MESSAGE(expected[k], events[k].type,
+                                      "event type out of order");
+    }
+}
+
 /* Bad population, time or sample_size values are rejected. */
 void test_demography_ancient_sample_rejects_bad_values(void) {
     const char *fmt =
@@ -1961,6 +1986,17 @@ void test_priors_reject_bad_values(void) {
         "priors:\n  population_size_changes:\n"
         "    - {time_low: 0.1, time_high: 0.5, size_low: 1, size_high: 2,"
         " population: 1}\n",
+        /* initial_frequency must stay below 1 */
+        "selection:\n  sweep_mode: stochastic\n  selection_coefficient: 1\n"
+        "  fixation_time_ago: 0.01\n"
+        "priors:\n  initial_frequency: {low: 0.5, high: 1.0}\n",
+        /* a size change of a population that has merged away */
+        "demography:\n  deme_sample_size: [5, 5]\n"
+        "  demographic_events:\n    population_splits:\n"
+        "      - {time: 0.05, ancestral: 0, derived: 1}\n"
+        "priors:\n  population_size_changes:\n"
+        "    - {time_low: 0.1, time_high: 0.5, size_low: 1, size_high: 2,"
+        " population: 1}\n",
     };
     char yaml[2048];
     for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
@@ -2565,6 +2601,7 @@ int main(void) {
     RUN_TEST(test_demography_same_time_event_order);
     RUN_TEST(test_demography_admixture_event);
     RUN_TEST(test_demography_admixture_rejects_bad_values);
+    RUN_TEST(test_demography_admixture_after_split_at_same_time);
     RUN_TEST(test_demography_ancient_sample_rejects_bad_values);
     RUN_TEST(test_demography_ancient_sample_after_split_rejected);
     RUN_TEST(test_demography_migration_matrix_requires_square);

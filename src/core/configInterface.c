@@ -1136,7 +1136,7 @@ static int check_uniform_prior(const char *name, const struct uniform_prior *p,
  * before the selection block, which needs to know about a prior on
  * fixation_time_ago. Priors on sweep parameters need a selection block. */
 int parse_priors_block(struct priors_config *cfg, int has_selection,
-                       unsigned num_demes)
+                       unsigned num_demes, const struct demographic_events *dmo)
 {
     extern int priorTheta, priorRho, priorAlpha, priorTau, priorX, priorF0,
         priorUA, priorC, partialSweepMode;
@@ -1223,8 +1223,14 @@ int parse_priors_block(struct priors_config *cfg, int has_selection,
     }
     if (cfg->initial_frequency) {
         if (check_uniform_prior("initial_frequency", cfg->initial_frequency,
-                0, 1) || cfg->initial_frequency->high >= 1)
+                0, 1))
             return EXIT_FAILURE;
+        if (cfg->initial_frequency->high >= 1) {
+            fprintf(stderr,
+                "Error parsing config: priors.initial_frequency high (%g) "
+                "must be < 1\n", cfg->initial_frequency->high);
+            return EXIT_FAILURE;
+        }
         priorF0 = 1;
         pF0Low = cfg->initial_frequency->low;
         pF0Up = cfg->initial_frequency->high;
@@ -1250,6 +1256,12 @@ int parse_priors_block(struct priors_config *cfg, int has_selection,
         if (check_pop_index("priors.population_size_changes", "population",
                 (int)i, p->population, num_demes) != EXIT_SUCCESS)
             return EXIT_FAILURE;
+        /* The drawn time is not known yet; reject a population that has
+         * already ended at the lower bound. */
+        if (dmo != NULL &&
+            check_not_merged("priors.population_size_changes", (int)i,
+                p->population, p->time_low, dmo) != EXIT_SUCCESS)
+            return EXIT_FAILURE;
         if (addPriorSizeChange(what, userTimeToInternal(p->time_low),
                 userTimeToInternal(p->time_high), p->size_low, p->size_high,
                 p->population) != 0)
@@ -1269,7 +1281,8 @@ int apply_yaml_config(struct discoal_config *config)
     ret = parse_demography_block(config->demography);
     if (ret != EXIT_SUCCESS) { goto out; }
     ret = parse_priors_block(config->priors, config->selection != NULL,
-        config->demography ? config->demography->num_demes : 1);
+        config->demography ? config->demography->num_demes : 1,
+        config->demography ? config->demography->demographic_events : NULL);
     if (ret != EXIT_SUCCESS) { goto out; }
     ret = parse_selection_block(config->selection);
     if (ret != EXIT_SUCCESS) { goto out; }
