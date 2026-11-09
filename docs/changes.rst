@@ -1,0 +1,29 @@
+Changes in discoal 2.0
+======================
+
+Breaking Changes
+----------------
+
+These changes can make a command that worked with discoal 1.x fail, or
+give different output.
+
+``-C`` is removed
+^^^^^^^^^^^^^^^^^
+
+discoal 1.x had ``-C lSpot rSpot``, which kept only the replicates with
+recombination in sites ``lSpot`` to ``rSpot`` during a sweep. discoal 2.0
+does not have this option, and stops with "Unknown option '-C'".
+
+To get the same result, write tree sequences (``-ts``) and use tskit to
+keep only the replicates whose trees change in the region.
+
+``-s`` is not supported
+^^^^^^^^^^^^^^^^^^^^^^^
+
+In ms, ``-s k`` gives exactly ``k`` segregating sites in each replicate.
+discoal 1.x read ``-s`` but did not use it: the number of sites came from
+``-t`` only, and discoal gave no warning. discoal 2.0 stops with an error
+if you give ``-s``.
+
+To get a fixed number of segregating sites, write tree sequences
+(``-ts``) and use tskit to put that number of mutations on the trees.

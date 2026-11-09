@@ -78,9 +78,10 @@ Fixed Segregating Sites and Conditional Simulation
 
 discoal does not have ms's ``-s`` (a fixed number of segregating sites),
 and it no longer has ``-C`` (keep only replicates with recombination in
-a region). Both are simple to do with tskit on tree sequence output
-(``-ts``): for example, place a set number of mutations on the
-genealogy, or keep only the replicates whose trees change in a region.
+a region); see :doc:`changes`. Both are simple to do with tskit on tree
+sequence output (``-ts``): for example, place a set number of mutations
+on the genealogy, or keep only the replicates whose trees change in a
+region.
 
 Sweep Trajectory From a File
 ----------------------------
