@@ -1885,32 +1885,42 @@ static double trajectoryEnd(int fromStandingVariation, double N){
  * lineages at the site carry the allele. Each sweep, recurrent ones
  * included, gets its own site. -h (hidePartialSNP) leaves it out, as does
  * a selected site outside the locus. */
-static void recordPartialSweepSite(double site){
-	int i;
-	tsk_id_t site_id = TSK_NULL;
-	if (hidePartialSNP || site < 0.0)
+/* The selected site of the partial sweep in progress (as a fraction of
+ * the locus), and its tskit site once a mutation has been added there. */
+static double partialSweepSite = -1.0;
+static tsk_id_t partialSweepSiteId = TSK_NULL;
+
+/* Mark a lineage as a carrier of the partial sweep's selected allele: a
+ * mutation at the selected site on its recorded tskit node (in minimal
+ * mode a recombination parent has none, and its single child holds the
+ * material). The site is created with its first mutation. */
+static void addPartialSweepCarrier(rootedNode *lineage){
+	rootedNode *recorded;
+	if (findTrueDescendants(lineage, &recorded, 1) == 0)
 		return;
-	for(i = 0; i < alleleNumber; i++){
-		if(nodes[i]->population != 0 || nodes[i]->sweepPopn != 1 ||
-		   !isAncestralHere(nodes[i], site))
-			continue;
-		/* The lineage's recorded node; in minimal mode a recombination
-		 * parent has none, and its single child holds the material. */
-		rootedNode *recorded;
-		if (findTrueDescendants(nodes[i], &recorded, 1) == 0)
-			continue;
-		tsk_id_t node_id = get_tskit_node_id(recorded);
-		if (site_id == TSK_NULL) {
-			site_id = tskit_add_site(site * nSites, "0");
-			if (site_id < 0) {
-				fprintf(stderr, "Error: failed to add the partial sweep site\n");
-				exit(1);
-			}
-		}
-		if (tskit_add_mutation(site_id, node_id, "1") < 0) {
-			fprintf(stderr, "Error: failed to add the partial sweep mutation\n");
+	if (partialSweepSiteId == TSK_NULL) {
+		partialSweepSiteId = tskit_add_site(partialSweepSite * nSites, "0");
+		if (partialSweepSiteId < 0) {
+			fprintf(stderr, "Error: failed to add the partial sweep site\n");
 			exit(1);
 		}
+	}
+	if (tskit_add_mutation(partialSweepSiteId, get_tskit_node_id(recorded), "1") < 0) {
+		fprintf(stderr, "Error: failed to add the partial sweep mutation\n");
+		exit(1);
+	}
+}
+
+static void recordPartialSweepSite(double site){
+	int i;
+	partialSweepSite = (hidePartialSNP || site < 0.0) ? -1.0 : site;
+	partialSweepSiteId = TSK_NULL;
+	if (partialSweepSite < 0.0)
+		return;
+	for(i = 0; i < alleleNumber; i++){
+		if(nodes[i]->population == 0 && nodes[i]->sweepPopn == 1 &&
+		   isAncestralHere(nodes[i], site))
+			addPartialSweepCarrier(nodes[i]);
 	}
 }
 
@@ -2122,6 +2132,16 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 }
 
 
+/* The number of ancient sample lineages of population popn not yet added
+ * (dormant: they join at their sampling time). */
+static int dormantLineagesIn(int popn){
+	int i, count = 0;
+	for(i = 0; i < alleleNumber; i++)
+		if(nodes[i]->population == (popn + 1) * -1)
+			count++;
+	return count;
+}
+
 /*sweepPhaseEventsConditionalTrajectory-- does sweep phase with trajectory created externally */
 double sweepPhaseEventsConditionalTrajectory(int *bpArray, double startTime, double endTime, double sweepSite,\
 double initialFreq, double *finalFreq, int *stillSweeping, double alpha,\
@@ -2169,7 +2189,11 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	//go for epoch time, sweep freq, or root
 	/* N is fixed in this loop, so the end of the trajectory is too. */
 	const double xEnd = trajectoryEnd(f0 > 1.0/(2.*N), N);
-	while( x > xEnd && (cTime+ttau) < endTime && popnSizes[0] > 1){ 
+	/* Ancient samples of population 0 that join later keep the sweep going
+	 * even when fewer than two present-day lineages are left in it, or none
+	 * in the beneficial class: they must see the sweep when they join. */
+	const int ancientToCome = dormantLineagesIn(0);
+	while( x > xEnd && (cTime+ttau) < endTime && (popnSizes[0] > 1 || ancientToCome > 0)){ 
 		//rejection algorithm of Braverman et al. 1995
 		eventRand = ranf();
 		eventProb = 1.0;
@@ -2227,7 +2251,12 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 
 
 		}
-		if(cTime+ttau >= endTime) return(cTime+ttau);
+		if(cTime+ttau >= endTime){
+			/* The next event comes first (for example ancient samples, which
+			 * need the allele's frequency now); the sweep goes on after it. */
+			*finalFreq = x;
+			return(cTime+ttau);
+		}
 		/* The trajectory reached the allele's origin with no event. */
 		if (x <= 0.0) break;
 
@@ -2351,7 +2380,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	else{
 		*stillSweeping = 0; 
 	}
-	if(sweepPopnSizes[1]==0) *stillSweeping = 0; 
+	if(sweepPopnSizes[1]==0 && ancientToCome == 0) *stillSweeping = 0;
 
 	*finalFreq = x;
 //	printf("sp: %d %d\n",	sweepPopnSizes[0], 	sweepPopnSizes[1]);
@@ -2995,21 +3024,27 @@ void admixPopns(int popnSrc, int popnDest1, int popnDest2, double admixProp){
 }
 
 //addAncientSample -- adds ancient samples by basically flipping population id of already alloced alleles and sets there time
+/* Add the dormant ancient samples of population popnDest at their
+ * sampling time. If population 0 is sweeping then, each ancient lineage of
+ * population 0 carries the beneficial allele (sweepPopn 1) with probability
+ * currentFreq, the allele's frequency at that time, and is in the
+ * wild-type class (sweepPopn 0) otherwise. */
 void addAncientSample(int lineageNumber, int popnDest, double addTime, int stillSweeping, double currentFreq){
 	int i;
 	int count = 0;
-	double rn;
 	for(i=0; i < alleleNumber && count < lineageNumber; i++){
 		if(nodes[i]->population == (popnDest+1) * -1){
 			nodes[i]->population = popnDest;
 			nodes[i]->time = addTime;
 			// Add to destination population list
 			addNodeToPopList(nodes[i], popnDest);
-			if(stillSweeping == 1){
-				rn = ranf();
-				if(rn<currentFreq){
-					nodes[i]->sweepPopn=1;
-				}
+			if(stillSweeping == 1 && popnDest == 0){
+				nodes[i]->sweepPopn = (ranf() < currentFreq) ? 1 : 0;
+				/* An ancient carrier of a partial sweep's allele carries
+				 * its selected SNP too. */
+				if(partialSweepMode == 1 && nodes[i]->sweepPopn == 1 &&
+				   partialSweepSite >= 0.0)
+					addPartialSweepCarrier(nodes[i]);
 			}
 			//printf("time for %d: %f\n", i, nodes[i]->time);
 			popnSizes[popnDest]++;
