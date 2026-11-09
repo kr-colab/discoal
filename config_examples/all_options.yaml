@@ -45,6 +45,12 @@ demography:
       - time: 0.1
         population: 1
         sample_size: 2
+    admixtures:
+      - time: 0.05
+        population: 2
+        source_1: 0
+        source_2: 1
+        proportion: 0.3
     population_splits:
       - time: 2.0
         ancestral: 0
@@ -64,7 +70,23 @@ selection:
   initial_frequency: 1.0e-1
   final_frequency: 0.9
   beneficial_mutation_rate: 1.0e-2
+  left_rho: 20
+  sweep_time_step: 40
   recurrent_sweep_rate: 0.1
+  recurrent_sweeps_left_of_locus: true
+
+priors:
+  mutation_rate: {low: 5, high: 15}
+  recombination_rate: {low: 0, high: 50}
+  recombination_rate_exponential: {mean: 10, upper: 100}
+  selection_coefficient: {low: 100, high: 1000}
+  fixation_time_ago: {low: 0, high: 0.1}
+  beneficial_mutation_rate: {low: 0, high: 0.01}
+  sweep_position: {low: 0.4, high: 0.6}
+  initial_frequency: {low: 0.01, high: 0.1}
+  final_frequency: {low: 0.5, high: 0.9}
+  population_size_changes:
+    - {time_low: 0.01, time_high: 0.5, size_low: 0.1, size_high: 10, population: 0}
 
 output:
   output_type: "haplotype"
