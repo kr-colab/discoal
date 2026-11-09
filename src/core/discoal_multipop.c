@@ -1173,6 +1173,9 @@ void getParameters(int argc,const char **argv){
 									eventNumber++;
 								}
 							}
+							/* As for -em: migration that starts later still
+							 * counts for initialize()'s check. */
+							if (rate_val > 0) migFlag = 1;
 						}
 						break;
 				}
@@ -1373,7 +1376,8 @@ void getParameters(int argc,const char **argv){
 
 	/* Ancient samples are taken from a population's sample count, so the
 	 * ancient samples of one population must not outnumber its samples.
-	 * initialize() relies on this when it marks sample nodes as ancient. */
+	 * initialize() relies on this when it makes sample nodes ancient. A
+	 * negative time would put a sample after the present. */
 	{
 		int ancientPerPop[MAXPOPS] = {0};
 		for (i = 0; i < eventNumber; i++) {
@@ -1383,6 +1387,13 @@ void getParameters(int argc,const char **argv){
 				fprintf(stderr, "Error: ancient sample of %d lineages from "
 					"population %d; the count must be >= 1 and the population "
 					"between 0 and %d\n", events[i].lineageNumber, p, npops - 1);
+				exit(1);
+			}
+			if (events[i].time < 0) {
+				fprintf(stderr, "Error: ancient sample of %d lineages from "
+					"population %d at time %g; the time must be >= 0\n",
+					events[i].lineageNumber, p,
+					internalTimeToUser(events[i].time));
 				exit(1);
 			}
 			ancientPerPop[p] += events[i].lineageNumber;

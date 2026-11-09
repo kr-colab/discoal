@@ -148,6 +148,12 @@ Notes:
   outnumber its samples. `time` must be `>= 0` and `sample_size`
   `>= 1`. A sample from a population at or after the time it merges
   into another one is rejected.
+- In the output, the samples of each population come in population
+  order; within a population, the ancient samples come first (the
+  earliest sampling time first), then the samples taken at time 0.
+- Ancient samples taken while a sweep is in progress are not yet
+  modeled correctly: their lineages do not get the correct sweep class
+  (issue #100).
 - Events at the same time take effect in this order:
   `ancient_samples`, `migration_rate_changes`,
   `population_size_changes`, `population_splits` (each split followed

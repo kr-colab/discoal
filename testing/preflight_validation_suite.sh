@@ -119,6 +119,11 @@ run_pass_case "event_after_old_time_cap" \
 run_pass_case "lineage_without_ancestral_material_is_not_stranded" \
     2 1 2 -t 1 -r 20 -p 2 2 0 -m 0 1 2 -m 1 0 2 -em 1.0 0 1 0 -em 1.0 1 0 0 -d 66 73
 
+# Migration that starts later, with -eM and no -m, is still migration for
+# the check that a model with several populations can coalesce.
+run_pass_case "eM_alone_counts_as_migration" \
+    4 1 100 -t 2 -p 2 2 2 -eM 0.1 1 -d 1 2
+
 # ----- Cases that should fail with a documented error -----
 echo
 echo -e "${YELLOW}-- Failure cases (must exit non-zero with expected message) --${NC}"
@@ -146,6 +151,10 @@ run_fail_case "M_initial_negative" \
 run_fail_case "em_negative_rate" \
     "rate must be non-negative" \
     5 1 100 -t 5 -p 2 5 0 -m 0 1 0.5 -em 0.1 0 1 -0.2
+
+run_fail_case "A_negative_time" \
+    "the time must be >= 0" \
+    4 2 100 -t 2 -A 1 0 -0.1
 
 echo
 echo -e "${BLUE}=== Summary ===${NC}"

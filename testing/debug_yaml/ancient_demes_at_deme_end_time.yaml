@@ -1,0 +1,22 @@
+# An ancient sample a rounding error below the time at which an extinct deme
+# ends (X ends 2000 generations ago, 0.05 in units of 4N generations with
+# N = 10000). The demes importer sets it to the end time, so the sample is
+# taken after the deme gets its size; this must run.
+# The demes file path is relative to the repository root, where the suite runs.
+
+simulation:
+  sample_size: 20
+  num_replicates: 2
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 1.0
+  recombination_rate: 1.0
+demography:
+  deme_sample_size: [0, 16, 4]
+  demes_filename: "config_examples/ancient_demes_example.demes.yaml"
+  demographic_events:
+    ancient_samples:
+      - time: 0.04999999996
+        population: 2
+        sample_size: 4

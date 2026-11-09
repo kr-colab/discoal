@@ -184,7 +184,9 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
     // deme's end time (inclusive) back to its start time (exclusive; at the
     // start time its lineages move to its ancestors). Times are compared in
     // internal units; the small tolerance lets a sample at exactly a deme's
-    // end time pass despite rounding.
+    // end time pass despite rounding. Such a sample is set to the end time
+    // itself: a time just below it would take the sample before the event
+    // that gives the deme its size, into a deme of size 0.
     int ancientCount[MAXPOPS] = {0};
     double gt = graph->generation_time;
     for (int k = 0; k < *eventNumber; k++) {
@@ -200,7 +202,8 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
         double tEnd = demesTimeToCoalTime(demeEndTime(deme), gt, referenceN);
         double tStart = demesTimeToCoalTime(deme->start_time, gt, referenceN);
         double eps = 1e-9 * fmax(1.0, e->time);
-        if (e->time < tEnd - eps || e->time >= tStart - eps) {
+        if (fabs(e->time - tEnd) <= eps) e->time = tEnd;
+        if (e->time < tEnd || e->time >= tStart - eps) {
             fprintf(stderr, "Error: ancient sample at time %g (units of 4N "
                     "generations, N = %g) is from deme '%s', which exists only "
                     "from time %g back to time %g\n",

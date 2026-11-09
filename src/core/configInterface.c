@@ -634,8 +634,7 @@ int parse_demography_block(struct demography_config *cfg)
                 /* Unlike -ed, a YAML split ends the derived population, as
                  * in demes: set all migration into and out of it to zero at
                  * the split time. Otherwise lineages can migrate into the
-                 * merged population and be stranded there, and YAML has no
-                 * way to change migration rates. 'm' events set
+                 * merged population and be stranded there. 'm' events set
                  * migShape[popID2][popID] (lineages move popID2 -> popID). */
                 for (int k = 0; k < cfg->num_demes; ++k) {
                     if (k == split->derived) continue;
