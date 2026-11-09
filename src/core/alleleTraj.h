@@ -8,7 +8,6 @@ double detSweepFreq(double t, double s);
  * detSweepFreq(tau, alpha) bit-exactly. */
 double detSweepFreqGeneral(double alpha, double A);
 
-double neutralStochastic(double dt, double currentFreq);
 double genicSelectionStochastic(double dt, double currentFreq, double alpha);
 double genicSelectionStochasticForwards(double dt, double currentFreq, double alpha);
 double coth(double x);
@@ -50,20 +49,43 @@ static inline double fast_tanh(double x) {
     return tanh(x);
 }
 
-/* Optimized inline version of neutralStochastic */
+/* One step back in time of a neutral allele's frequency, conditioned on
+ * loss (drift -x, variance x(1-x) per unit time): the history of an allele
+ * that fixed, followed back to its origin (-wn). */
 static inline double neutralStochasticOptimized(double dt, double currentFreq) {
-    // Precompute common expressions
     double drift_term = -currentFreq * dt;
     double variance = currentFreq * (1.0 - currentFreq) * dt;
-    
-    // Early return for edge cases to avoid sqrt of negative/zero
+
     if (variance <= 0.0) return currentFreq + drift_term;
-    
+
+    /* The noise is +-sqrt(variance) with probability 1/2 each, so the step
+     * has the diffusion's variance; a uniform draw on (-1, 1) would give a
+     * third of it. */
     double diffusion_term = sqrt(variance);
-    
-    // Use arithmetic instead of branching for better performance
-    // ranf() returns [0,1), so (2*ranf()-1) gives us ±1
-    return currentFreq + drift_term + (2.0 * ranf() - 1.0) * diffusion_term;
+    return currentFreq + drift_term +
+        (ranf() < 0.5 ? diffusion_term : -diffusion_term);
+}
+
+/* One step back in time of a neutral allele's frequency below `ceiling`,
+ * the frequency it first reached, forward in time, at the end of this
+ * phase (for a soft sweep, f0: the allele drifted up to f0 and then became
+ * beneficial). Backward from that first passage, the frequency is neutral
+ * drift conditioned to reach 0 without returning to the ceiling: drift
+ * -x(1-x)/(ceiling - x), variance x(1-x) per unit time. The drift is
+ * singular at the ceiling, where this phase starts, so the step is taken
+ * on z = (ceiling - x)^2, which by Ito's formula follows
+ * dz = 3x(1-x) dt - 2 sqrt(z x(1-x)) dW with no singularity; x stays below
+ * the ceiling. (With ceiling 1 the drift is -x, as in
+ * neutralStochasticOptimized.) */
+static inline double neutralStochasticBelowCeiling(double dt, double currentFreq,
+                                                   double ceiling) {
+    double p_q = currentFreq * (1.0 - currentFreq);
+    if (p_q <= 0.0) return currentFreq;
+    double z = (ceiling - currentFreq) * (ceiling - currentFreq);
+    double noise = 2.0 * sqrt(z * p_q * dt);
+    z += 3.0 * p_q * dt + (ranf() < 0.5 ? noise : -noise);
+    if (z < 0.0) z = -z;  /* reflect at the ceiling */
+    return ceiling - sqrt(z);
 }
 
 /* Optimized inline version of genicSelectionStochastic (backwards in time) */
