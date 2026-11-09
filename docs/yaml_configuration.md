@@ -188,7 +188,7 @@ selection:
   initial_frequency: 1.0e-1           # optional, soft sweep from standing variation (-f)
   final_frequency: 0.9                # optional, partial sweep (-c)
   beneficial_mutation_rate: 1.0e-2    # optional, soft sweep from recurrent mutation (-uA)
-  left_rho: 20                        # optional, sweep outside the locus (-ls/-ld/-ln)
+  left_rho: 20                        # optional, sweep outside the locus at 4Nr = 2 x left_rho (-ls/-ld/-ln)
   sweep_time_step: 40                 # optional, trajectory time step 1/(step N) (-i; default 40)
   recurrent_sweep_rate: 0.1           # optional, recurrent hitchhiking (-R)
   recurrent_sweeps_left_of_locus: true  # optional, with recurrent_sweep_rate (-L)
@@ -201,8 +201,10 @@ present, as `-ws 0`. For recurrent hitchhiking, set
 `recurrent_sweep_rate` instead and omit `fixation_time_ago`.
 
 - `left_rho` puts the selected site outside the locus, at genetic
-  distance `4Nr = left_rho` to its left: `-ls tau left_rho` (or
-  `-ld`, `-ln`, by `sweep_mode`). There is then no `sweep_position`.
+  distance `4Nr = 2 x left_rho` to its left (that is, `left_rho` is
+  2Nr): `-ls tau left_rho` (or `-ld`, `-ln`, by `sweep_mode`), with
+  the same long-standing factor of 2. `left_rho: 0` puts it at the
+  left end of the locus. There is then no `sweep_position`.
 - `recurrent_sweeps_left_of_locus: true` with `recurrent_sweep_rate`
   is `-L rate`: each sweep's distance from the locus (4Nr) is drawn
   uniformly from (0, 4Ns). Without it, recurrent sweeps are at
@@ -246,7 +248,8 @@ Notes:
 
 - Uniform priors draw from `[low, high]`, and need `low <= high`
   inside the parameter's range (rates `>= 0`, `sweep_position` in
-  `[0, 1]`, frequencies inside `(0, 1)`).
+  `[0, 1]`, `initial_frequency` in `[0, 1)`, `final_frequency`
+  inside `(0, 1)`).
 - `recombination_rate_exponential` draws rho from an exponential
   distribution with the given mean and sets a draw above `upper` to
   `upper` (a cap, not a truncation), as `-Pre`. It cannot be combined
@@ -259,7 +262,7 @@ Notes:
 - Each `population_size_changes` entry is a size change of
   `population` (default 0) at a time uniform on
   `[time_low, time_high]` (units of 4N generations) to a size
-  uniform on `[size_low, size_high]` (relative to N). Any number of
+  uniform on `[size_low, size_high]` (relative to N). Up to 64
   entries may be given; `-Pe1` and `-Pe2` are the first two, for
   population 0. The bounds must satisfy
   `0 <= time_low <= time_high` and `0 < size_low <= size_high`. The

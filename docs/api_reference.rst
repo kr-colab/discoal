@@ -190,8 +190,10 @@ Selection Options
 
 .. option:: -ls tau leftRho
 
-   Stochastic sweep to the left of the locus, at genetic distance
-   leftRho = 4Nr from it
+   Stochastic sweep to the left of the locus. The selected site is at
+   genetic distance 4Nr = 2 x leftRho from the locus; that is, leftRho
+   is 2Nr. (This factor of 2 is a long-standing convention of
+   discoal; ``-L`` draws the distance 4Nr directly.)
 
 .. option:: -ld tau leftRho
 

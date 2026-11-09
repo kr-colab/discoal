@@ -135,9 +135,9 @@ struct selection_config {
     double final_frequency;          /* optional, -c; triggers partial sweep */
     double beneficial_mutation_rate; /* optional, -uA */
     double recurrent_sweep_rate;     /* optional, -R (or -L, below) */
-    double left_rho;                 /* optional, -ls/-ld/-ln leftRho */
+    double *left_rho;                /* optional, -ls/-ld/-ln leftRho; NULL if absent */
     bool recurrent_sweeps_left_of_locus; /* optional, with recurrent_sweep_rate: -L */
-    double sweep_time_step;          /* optional, -i */
+    double *sweep_time_step;         /* optional, -i; NULL if absent */
 };
 
 

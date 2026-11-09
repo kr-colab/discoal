@@ -304,11 +304,12 @@ static const cyaml_schema_field_t selection_fields_schema[] = {
         struct selection_config, beneficial_mutation_rate),
     CYAML_FIELD_FLOAT("recurrent_sweep_rate", CYAML_FLAG_OPTIONAL,
         struct selection_config, recurrent_sweep_rate),
-    CYAML_FIELD_FLOAT("left_rho", CYAML_FLAG_OPTIONAL,
+    CYAML_FIELD_FLOAT_PTR("left_rho", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
         struct selection_config, left_rho),
     CYAML_FIELD_BOOL("recurrent_sweeps_left_of_locus", CYAML_FLAG_OPTIONAL,
         struct selection_config, recurrent_sweeps_left_of_locus),
-    CYAML_FIELD_FLOAT("sweep_time_step", CYAML_FLAG_OPTIONAL,
+    CYAML_FIELD_FLOAT_PTR("sweep_time_step",
+        CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
         struct selection_config, sweep_time_step),
     CYAML_FIELD_END
 };
@@ -868,7 +869,9 @@ int parse_selection_block(struct selection_config *cfg)
     extern struct event *events;
     if (cfg != NULL) {
         int recurrent = cfg->recurrent_sweep_rate > 0;
-        int linked = cfg->left_rho > 0;
+        /* left_rho: 0 is a sweep right at the left end of the locus,
+         * as -ls tau 0. */
+        int linked = cfg->left_rho != NULL;
         switch (cfg->sweep_mode) {
             case SWEEP_STOCHASTIC:
                 sweepMode = 's';
@@ -956,20 +959,20 @@ int parse_selection_block(struct selection_config *cfg)
                 "must be >= 0\n", cfg->recurrent_sweep_rate);
             return EXIT_FAILURE;
         }
-        if (cfg->left_rho < 0) {
+        if (linked && *cfg->left_rho < 0) {
             fprintf(stderr,
                 "Error parsing config: left_rho (%g) must be >= 0\n",
-                cfg->left_rho);
+                *cfg->left_rho);
             return EXIT_FAILURE;
         }
-        if (cfg->sweep_time_step < 0) {
+        if (cfg->sweep_time_step != NULL && *cfg->sweep_time_step <= 0) {
             fprintf(stderr,
                 "Error parsing config: sweep_time_step (%g) must be > 0\n",
-                cfg->sweep_time_step);
+                *cfg->sweep_time_step);
             return EXIT_FAILURE;
         }
-        if (cfg->sweep_time_step > 0) {
-            deltaTMod = cfg->sweep_time_step;
+        if (cfg->sweep_time_step != NULL) {
+            deltaTMod = *cfg->sweep_time_step;
         }
         /* A sweep outside the locus has no position inside it: -ls, -ld,
          * -ln and -L set the sweep site to -1. */
@@ -1036,7 +1039,7 @@ int parse_selection_block(struct selection_config *cfg)
         }
         if (linked) {
             sweepSite = -1.0;
-            leftRho = cfg->left_rho * 2.0;  /* stored as -ls stores it */
+            leftRho = *cfg->left_rho * 2.0;  /* stored as -ls stores it */
             leftRhoFlag = 1;
         }
         ensureEventsCapacity();

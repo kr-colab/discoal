@@ -1881,6 +1881,18 @@ void test_selection_left_rho(void) {
     TEST_ASSERT_EQUAL_INT('s', events[0].type);
 }
 
+/* left_rho: 0 is a sweep at the left end of the locus, as -ls tau 0. */
+void test_selection_left_rho_zero(void) {
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_selection(
+        "  sweep_mode: stochastic\n"
+        "  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0.01\n"
+        "  left_rho: 0\n"));
+    TEST_ASSERT_EQUAL_DOUBLE(-1.0, sweepSite);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, leftRho);
+    TEST_ASSERT_EQUAL_INT(1, leftRhoFlag);
+}
+
 /* recurrent_sweeps_left_of_locus with recurrent_sweep_rate is -L. */
 void test_selection_recurrent_sweeps_left_of_locus(void) {
     TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_selection(
@@ -2025,6 +2037,8 @@ void test_selection_rejects_bad_combinations(void) {
         "  fixation_time_ago: 0.01\n  left_rho: -1\n",
         "  sweep_mode: stochastic\n  selection_coefficient: 100\n"
         "  fixation_time_ago: 0.01\n  sweep_time_step: -1\n",
+        "  sweep_mode: stochastic\n  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0.01\n  sweep_time_step: 0\n",
     };
     for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
         reset_all();
@@ -2626,6 +2640,7 @@ int main(void) {
     RUN_TEST(test_selection_requires_fixation_time_ago_when_not_recurrent);
     RUN_TEST(test_selection_fixation_time_ago_zero);
     RUN_TEST(test_selection_left_rho);
+    RUN_TEST(test_selection_left_rho_zero);
     RUN_TEST(test_selection_recurrent_sweeps_left_of_locus);
     RUN_TEST(test_selection_sweep_time_step);
     RUN_TEST(test_selection_rejects_bad_combinations);
