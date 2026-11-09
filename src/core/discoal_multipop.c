@@ -1391,11 +1391,30 @@ void getParameters(int argc,const char **argv){
 			printf("Error with event specification: you chose 1 or more population size changes with a deterministic sweep. Please us -ws flag instead\n");
 			exit(666);
 		}
-		if(softSweepMode == 1 && partialSweepMode == 1){
-			if(f0 >= partialSweepFinalFreq){
-				printf("Error with event specification: you specified a partial soft sweep but final frequency of partial sweep <= f_0\n");
-				exit(666);
-			}
+	}
+	/* Priors on the sweep's frequencies (-Pf, -Pc, or YAML priors) follow
+	 * the YAML rules. A soft sweep that is partial needs every drawn f0
+	 * below every drawn final frequency. -Pf counts as a soft sweep. */
+	if(priorF0 && !(pF0Low >= 0.0 && pF0Low <= pF0Up && pF0Up < 1.0)){
+		fprintf(stderr, "Error: -Pf %g %g: the bounds must satisfy 0 <= low <= "
+			"high < 1\n", pF0Low, pF0Up);
+		exit(1);
+	}
+	if(priorC && !(pCLow >= 0.0 && pCLow <= pCUp && pCUp < 1.0)){
+		fprintf(stderr, "Error: -Pc %g %g: the bounds must satisfy 0 <= low <= "
+			"high < 1\n", pCLow, pCUp);
+		exit(1);
+	}
+	const int softSweep = softSweepMode || priorF0;
+	if(softSweep && partialSweepMode && trajFileRows == 0){
+		const double maxF0 = priorF0 ? pF0Up : f0;
+		const double minC = priorC ? pCLow : partialSweepFinalFreq;
+		if(maxF0 >= minC){
+			fprintf(stderr, "Error: the initial frequency of a soft sweep (-f, "
+				"-Pf, or YAML initial_frequency; %g) must be below the final "
+				"frequency of a partial sweep (-c, -Pc, or YAML final_frequency; "
+				"%g), for every value of their priors\n", maxF0, minC);
+			exit(1);
 		}
 	}
 	/* Priors that contradict the sweep model, from the CLI or YAML: a
@@ -1417,7 +1436,7 @@ void getParameters(int argc,const char **argv){
 		printf("Error with event specification: you chose leftRho mode but the sweep site is within the locus\n");
 		exit(666);
 	}
-	if(softSweepMode == 1 && recurSweepMode == 1){
+	if(softSweep && recurSweepMode == 1){
 		printf("Error with event specification: currently recurrent soft sweeps are not implemented. this will be a future addition\n");
 		exit(666);
 	}

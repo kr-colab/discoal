@@ -975,7 +975,10 @@ int parse_selection_block(struct selection_config *cfg)
             partialSweepFinalFreq = cfg->final_frequency;
             partialSweepMode = 1;
         }
-        if (softSweepMode && partialSweepMode &&
+        /* Fixed values only: with a prior on final_frequency (parsed
+         * before this block), final_frequency here is 0; getParameters()
+         * checks the priors' bounds. */
+        if (softSweepMode && cfg->final_frequency > 0 &&
             cfg->initial_frequency >= cfg->final_frequency) {
             fprintf(stderr,
                 "Error parsing config: initial_frequency (%g) must be less "
@@ -1204,7 +1207,7 @@ int parse_priors_block(struct priors_config *cfg, int has_selection,
             &priorX, &pXLow, &pXUp},
         {"initial_frequency", cfg->initial_frequency, 1, 0, 1, 0, 1, 0,
             &priorF0, &pF0Low, &pF0Up},
-        {"final_frequency", cfg->final_frequency, 1, 0, 1, 1, 1, 0,
+        {"final_frequency", cfg->final_frequency, 1, 0, 1, 0, 1, 0,
             &priorC, &pCLow, &pCUp},
     };
     for (size_t k = 0; k < sizeof(uniform) / sizeof(uniform[0]); ++k) {

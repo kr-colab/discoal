@@ -237,6 +237,34 @@ run_pass_case "eg_during_partial_sweep" \
 run_pass_case "eg_during_sweep_default_N" \
     20 20 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0 0 2 -d 3 4
 
+# Priors on the sweep's frequencies: 0 <= low <= high < 1, and a soft
+# sweep that is partial needs every f0 below every final frequency.
+run_fail_case "Pc_negative_low" \
+    "the bounds must satisfy 0 <= low <= high < 1" \
+    20 2 1000 -t 5 -r 5 -ws 0 -a 500 -Pc -0.5 0.5
+
+run_fail_case "Pc_high_above_one" \
+    "the bounds must satisfy 0 <= low <= high < 1" \
+    20 2 1000 -t 5 -r 5 -ws 0 -a 500 -Pc 0.5 1.5
+
+run_fail_case "Pf_low_above_high" \
+    "the bounds must satisfy 0 <= low <= high < 1" \
+    20 2 1000 -t 5 -r 5 -ws 0 -a 500 -Pf 0.5 0.4 -c 0.6
+
+run_pass_case "f_with_Pc" \
+    20 2 1000 -t 5 -r 5 -ws 0 -a 500 -f 0.05 -Pc 0.3 0.6 -d 1 2
+
+run_fail_case "f_above_Pc_low" \
+    "must be below the final frequency" \
+    20 2 1000 -t 5 -r 5 -ws 0 -a 500 -f 0.5 -Pc 0.3 0.6
+
+run_pass_case "Pf_with_c" \
+    20 2 1000 -t 5 -r 5 -ws 0 -a 500 -Pf 0.01 0.1 -c 0.5 -d 1 2
+
+run_fail_case "Pf_high_above_c" \
+    "must be below the final frequency" \
+    20 2 1000 -t 5 -r 5 -ws 0 -a 500 -Pf 0.01 0.6 -c 0.5
+
 # A size change of population 0 long after the sweep: the trajectory has
 # ended by then, so the change must not lower the acceptance of every
 # proposed trajectory (the run took longer than a minute).

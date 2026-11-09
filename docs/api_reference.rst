@@ -267,11 +267,13 @@ Prior Distributions
 
 .. option:: -Pf low high
 
-   Uniform prior on f₀
+   Uniform prior on f₀, with ``0 <= low <= high < 1``.
 
 .. option:: -Pc low high
 
-   Uniform prior on partial sweep frequency
+   Uniform prior on partial sweep frequency, with ``0 <= low <= high < 1``
+   and ``high`` above 1/(2N). With a soft sweep (``-f`` or ``-Pf``),
+   every f₀ must be below every final frequency.
 
 .. option:: -Pe1 timeLow timeHigh sizeLow sizeHigh
 
