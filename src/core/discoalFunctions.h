@@ -92,6 +92,8 @@ double sweepPhaseEventsConditionalTrajectory(int *bpArray, double startTime, dou
 		
 double totalTimeInTree();
 
+double recombinationRate(int popn);
+double geneConversionRate(int popn);
 int recombineAtTimePopn(double cTime, int popn);
 void geneConversionAtTimePopn(double cTime, int popn);
 

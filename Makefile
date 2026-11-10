@@ -17,7 +17,7 @@ SRC_RNG = src/rng
 SRC_TSKIT = src/tskit
 
 # Segment pool is now standard
-POOL_SOURCES = $(SRC_CORE)/segmentPool.c
+POOL_SOURCES = $(SRC_CORE)/segmentPool.c $(SRC_CORE)/fenwick.c
 
 # Tskit source files
 TSKIT_SOURCES = extern/tskit/tskit/core.c \
@@ -276,14 +276,14 @@ UNITY_SOURCES = $(UNITY_DIR)/unity.c
 test_node: $(TEST_DIR)/test_node.c $(SRC_CORE)/discoal.h $(TEST_DIR)/test_globals.c $(SRC_CORE)/shapes.h $(SRC_CORE)/shapes.c
 	@mkdir -p build
 	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o build/test_node $(TEST_DIR)/test_node.c $(UNITY_SOURCES) \
-		$(TEST_DIR)/test_globals.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c \
+		$(TEST_DIR)/test_globals.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c $(SRC_CORE)/fenwick.c \
 		$(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/activeSegment.c $(SRC_CORE)/shapes.c $(SRC_TSKIT)/tskitInterface.c \
 		$(TSKIT_SOURCES) -I$(UNITY_DIR) -lm -fcommon
 
 test_event: $(TEST_DIR)/test_event.c $(SRC_CORE)/discoal.h $(SRC_CORE)/discoalFunctions.c $(TEST_DIR)/test_globals.c
 	@mkdir -p build
 	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o build/test_event $(TEST_DIR)/test_event.c $(TEST_DIR)/test_globals.c \
-		$(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c \
+		$(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c $(SRC_CORE)/fenwick.c \
 		$(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/activeSegment.c $(SRC_CORE)/shapes.c \
 		$(SRC_TSKIT)/tskitInterface.c $(TSKIT_SOURCES) $(UNITY_SOURCES) -I$(UNITY_DIR) -lm -fcommon
 
@@ -298,7 +298,7 @@ test_alleleTraj: $(TEST_DIR)/test_alleleTraj.c $(SRC_CORE)/alleleTraj.c $(SRC_CO
 test_node_operations: $(TEST_DIR)/test_node_operations.c $(SRC_CORE)/discoal.h $(TEST_DIR)/test_globals.c $(SRC_CORE)/shapes.h $(SRC_CORE)/shapes.c
 	@mkdir -p build
 	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o build/test_node_operations $(TEST_DIR)/test_node_operations.c $(UNITY_SOURCES) \
-		$(TEST_DIR)/test_globals.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c \
+		$(TEST_DIR)/test_globals.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c $(SRC_CORE)/fenwick.c \
 		$(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/activeSegment.c $(SRC_CORE)/shapes.c $(SRC_TSKIT)/tskitInterface.c \
 		$(TSKIT_SOURCES) -I$(UNITY_DIR) -lm -fcommon
 
@@ -310,6 +310,10 @@ test_ancestry_segment: $(TEST_DIR)/test_ancestry_segment.c $(SRC_CORE)/ancestryS
 	@mkdir -p build
 	$(CC) $(TEST_CFLAGS) -o build/test_ancestry_segment $(TEST_DIR)/test_ancestry_segment.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
+test_fenwick: $(TEST_DIR)/test_fenwick.c $(SRC_CORE)/fenwick.c $(SRC_CORE)/fenwick.h
+	@mkdir -p build
+	$(CC) $(TEST_CFLAGS) -o build/test_fenwick $(TEST_DIR)/test_fenwick.c $(SRC_CORE)/fenwick.c $(UNITY_SOURCES) -I$(UNITY_DIR)
+
 test_active_segment: $(TEST_DIR)/test_active_segment.c $(SRC_CORE)/activeSegment.c $(SRC_CORE)/activeSegment.h $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c
 	@mkdir -p build
 	$(CC) $(TEST_CFLAGS) -o build/test_active_segment $(TEST_DIR)/test_active_segment.c $(SRC_CORE)/activeSegment.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
@@ -317,7 +321,7 @@ test_active_segment: $(TEST_DIR)/test_active_segment.c $(SRC_CORE)/activeSegment
 test_trajectory: $(TEST_DIR)/test_trajectory.c $(SRC_CORE)/discoal.h $(TEST_DIR)/test_globals.c $(SRC_CORE)/shapes.h $(SRC_CORE)/shapes.c
 	@mkdir -p build
 	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o build/test_trajectory $(TEST_DIR)/test_trajectory.c $(UNITY_SOURCES) \
-		$(TEST_DIR)/test_globals.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c \
+		$(TEST_DIR)/test_globals.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c $(SRC_CORE)/fenwick.c \
 		$(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/activeSegment.c $(SRC_CORE)/shapes.c $(SRC_TSKIT)/tskitInterface.c \
 		$(TSKIT_SOURCES) -I$(UNITY_DIR) -lm -fcommon
 
@@ -325,7 +329,7 @@ test_config_interface: demes-c $(TEST_DIR)/test_config_interface.c $(SRC_CORE)/c
 	@mkdir -p build
 	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -DUNITY_INCLUDE_DOUBLE -o build/test_config_interface $(TEST_DIR)/test_config_interface.c $(SRC_CORE)/configInterface.c \
 		$(SRC_CORE)/demesInterface.c $(TEST_DIR)/test_globals.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/ancestrySegment.c \
-		$(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c $(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c \
+		$(SRC_CORE)/ancestrySegmentAVL.c $(SRC_CORE)/segmentPool.c $(SRC_CORE)/fenwick.c $(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c \
 		$(SRC_CORE)/activeSegment.c $(SRC_CORE)/shapes.c $(SRC_TSKIT)/tskitInterface.c $(TSKIT_SOURCES) \
 		$(UNITY_SOURCES) -I$(UNITY_DIR) $(EXTERN_LIB) -lm -fcommon
 
@@ -333,7 +337,7 @@ test_config_interface: demes-c $(TEST_DIR)/test_config_interface.c $(SRC_CORE)/c
 
 
 # Run individual unit tests
-run_tests: test_node test_event test_shapes test_alleleTraj test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_config_interface
+run_tests: test_node test_event test_shapes test_alleleTraj test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_config_interface test_fenwick
 	@echo "=== Running Unit Tests ==="
 	./build/test_node
 	./build/test_event
@@ -345,6 +349,7 @@ run_tests: test_node test_event test_shapes test_alleleTraj test_node_operations
 	./build/test_active_segment
 	./build/test_trajectory
 	./build/test_config_interface
+	./build/test_fenwick
 	@echo "=== All Unit Tests Passed ==="
 
 

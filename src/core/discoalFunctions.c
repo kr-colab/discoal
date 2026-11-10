@@ -66,6 +66,8 @@ void addBreakPoint(int bp) {
 	breakNumber += 1;
 }
 
+static int64_t sweepClassWeight(int popn, int sp);
+
 // Population list management functions for O(1) node selection
 
 void initializePopLists() {
@@ -73,6 +75,9 @@ void initializePopLists() {
 		popLists[p].nodes = NULL;
 		popLists[p].count = 0;
 		popLists[p].capacity = 0;
+		/* The globals start zeroed, and cleanupPopLists() frees the
+		 * weights of the previous replicate, so this frees nothing live. */
+		fenwickFree(&popLists[p].weights);
 	}
 }
 
@@ -84,7 +89,18 @@ void cleanupPopLists() {
 			popLists[p].count = 0;
 			popLists[p].capacity = 0;
 		}
+		fenwickFree(&popLists[p].weights);
 	}
+}
+
+/* The recombination weight of a lineage: the number of breakpoint
+ * positions x with lLim < x <= rLim, inside its span of material without
+ * an MRCA. As in Hudson's model (ms "links", msprime's recombination
+ * mass), a breakpoint anywhere in the span splits the lineage, also in a
+ * gap between its chunks whose sites have found their MRCA. */
+static int64_t lineageWeight(const rootedNode *node) {
+	if (node->nancSites <= 0 || node->rLim <= node->lLim) return 0;
+	return (int64_t) node->rLim - node->lLim;
 }
 
 void addNodeToPopList(rootedNode *node, int popn) {
@@ -106,6 +122,7 @@ void addNodeToPopList(rootedNode *node, int popn) {
 	
 	node->popListIndex = list->count;
 	list->nodes[list->count++] = node;
+	fenwickSet(&list->weights, node->popListIndex, lineageWeight(node));
 }
 
 void removeNodeFromPopList(rootedNode *node) {
@@ -117,11 +134,13 @@ void removeNodeFromPopList(rootedNode *node) {
 	
 	if (index < 0 || index >= list->count) return;
 	
-	// Swap with last element
+	// Swap with last element (and its weight)
 	if (index < list->count - 1) {
 		list->nodes[index] = list->nodes[list->count - 1];
 		list->nodes[index]->popListIndex = index;
+		fenwickSet(&list->weights, index, fenwickGet(&list->weights, list->count - 1));
 	}
+	fenwickSet(&list->weights, list->count - 1, 0);
 	
 	list->count--;
 	node->popListIndex = -1;
@@ -1072,6 +1091,10 @@ void updateAncestryStatsFromTree(rootedNode *node) {
 		}
 		seg = seg->next;
 	}
+	/* A lineage already in a population list (its span has changed). */
+	if (node->popListIndex >= 0 && node->population >= 0 && node->population < MAXPOPS)
+		fenwickSet(&popLists[node->population].weights, node->popListIndex,
+			lineageWeight(node));
 }
 
 /*updateActiveMaterial- does bookkeeping on the material that has found it's MRCA-- added for efficiency */
@@ -1145,26 +1168,42 @@ int isCoalNode(rootedNode *aNode){
 		return(0);
 }
 
+/* Rates of recombination and gene conversion in a population: per lineage,
+ * rho / 2 (gamma / 2) over the locus, times the share of positions that
+ * fall in the lineage's span: the total weight over nSites breakpoint
+ * positions (nSites + 1 tract starts). */
+double recombinationRate(int popn){
+	return rho * 0.5 * (double) fenwickTotal(&popLists[popn].weights) / nSites;
+}
+
+double geneConversionRate(int popn){
+	return my_gamma * 0.5 * (double) fenwickTotal(&popLists[popn].weights) / (nSites + 1);
+}
+
+/* A lineage of population popn and a position in its span, drawn with
+ * probability proportional to the lineage's weight: one uniform position
+ * over all the population's weights gives both. Returns NULL if no lineage
+ * has a span. */
+static rootedNode *drawLineageAndPosition(int popn, int *position){
+	Fenwick *w = &popLists[popn].weights;
+	int64_t total = fenwickTotal(w);
+	if (total <= 0) return NULL;
+	int64_t at = (int64_t) (ranf() * (double) total);
+	if (at >= total) at = total - 1;
+	int64_t offset;
+	rootedNode *node = popLists[popn].nodes[fenwickFind(w, at, &offset)];
+	*position = node->lLim + 1 + (int) offset;
+	return node;
+}
+
 int recombineAtTimePopn(double cTime, int popn){
 	rootedNode *aNode, *lParent, *rParent;
-	int i;
 	int xOver;
 	
-	aNode = pickNodePopn(popn);
-//	printf("recombine\n");
-	xOver = ignuin(0,nSites-1);
-//	printf("xo: %d test1: %d test2: %d\n",xOver,siteBetweenChunks(aNode, xOver),isActive(xOver) );
-//	printNode(aNode);
-//	for(i=0;i<nSites;i++)printf("%d",activeMaterial[i]);
-//	printf("\n");
-//	printf("there xover: %d t1: %d t2: %d\n",xOver,siteBetweenChunks(aNode, xOver),isActive(xOver));
-		
-	if (siteBetweenChunks(aNode, xOver) == 1 &&  isActive(xOver) == 1  ){
-		// Early exit if no ancestral material
-		if(aNode->nancSites == 0 || aNode->lLim > aNode->rLim) {
-			return xOver;
-		}
-		
+	/* The breakpoint is in the lineage's span, so both parents get
+	 * material without an MRCA. */
+	aNode = drawLineageAndPosition(popn, &xOver);
+	if (aNode != NULL){
 		removeNode(aNode); 
 		lParent = newRootedNode(cTime,popn);
 		rParent = newRootedNode(cTime,popn);
@@ -1246,20 +1285,13 @@ static int drawTractLength(void){
 
 void geneConversionAtTimePopn(double cTime, int popn){
 	rootedNode *aNode, *lParent, *rParent;
-	int i;
 	int xOver;
 	int tractL;
 	
-	aNode = pickNodePopn(popn);
-//	printf("GC\n",aNode);
-	xOver = ignuin(0,nSites);
-	tractL = drawTractLength();
-//	printf("xo: %d test1: %d tractL: %d gcMean: %d\n",xOver,siteBetweenChunks(aNode, xOver),tractL,gcMean );
-//	printNode(aNode);
-//	for(i=0;i<nSites;i++)printf("%d",activeMaterial[i]);
-//	printf("\n");
-		
-	if (siteBetweenChunks(aNode, xOver) == 1 &&  isActive(xOver) == 1  ){
+	/* The tract starts in the lineage's span (drawn by weight). */
+	aNode = drawLineageAndPosition(popn, &xOver);
+	if (aNode != NULL){
+		tractL = drawTractLength();
 		removeNode(aNode); 
 		lParent = newRootedNode(cTime,popn);
 		rParent = newRootedNode(cTime,popn);
@@ -1721,8 +1753,8 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 		//printf("currPopSize[0]: %d currPopSize[1]: %d alleleNumber: %d totNodeNumber: %d activeSites: %d cTime: %f\n",popnSizes[0],popnSizes[1],alleleNumber,totNodeNumber, activeSites, cTime);
 		for(i=0;i<npops;i++){
 			cRate[i] = pairCoalRate(popnSizes[i], sizeAt(i, currentTime));
-			rRate[i] = rho * popnSizes[i] * 0.5;// * ((float)activeSites/nSites);
-			gcRate[i] = my_gamma * popnSizes[i] * 0.5 ;
+			rRate[i] = recombinationRate(i);
+			gcRate[i] = geneConversionRate(i);
 
 			for(j=0;j<npops;j++) mRate[i]+=migAt(i, j, currentTime);
 			mRate[i] *= popnSizes[i] * MIG_LINEAGE_WEIGHT;
@@ -2505,6 +2537,10 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 		//rejection algorithm of Braverman et al. 1995
 		eventRand = ranf();
 		eventProb = 1.0;
+		/* The recombination weights of the two classes change only at
+		 * events, not while waiting for one. */
+		const double weightB = (double) sweepClassWeight(0, 1);
+		const double weightb = (double) sweepClassWeight(0, 0);
 		//wait for something
 		while(eventProb > eventRand && x > xEnd && (cTime+ttau) < endTime ){
 			ttau += tIncOrig;
@@ -2529,10 +2565,10 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 			//first 4 events are probs of events in population 0
 			pCoalB = ((sweepPopnSizes[1] * (sweepPopnSizes[1] - 1) ) * 0.5)/x*tIncOrig / size0;
 			pCoalb = ((sweepPopnSizes[0] * (sweepPopnSizes[0] - 1) ) * 0.5)/(1-x)*tIncOrig / size0;
-			pRecB = rho * sweepPopnSizes[1]*0.5 *tIncOrig; // / sizeRatio[0];
-			pRecb = rho * sweepPopnSizes[0]*0.5 *tIncOrig;// / sizeRatio[0];
-			pGCB = my_gamma * sweepPopnSizes[1]*0.5 *tIncOrig;// / sizeRatio[0];
-			pGCb = my_gamma * sweepPopnSizes[0]*0.5 *tIncOrig;/// sizeRatio[0];
+			pRecB = rho * 0.5 * weightB / nSites * tIncOrig;
+			pRecb = rho * 0.5 * weightb / nSites * tIncOrig;
+			pGCB = my_gamma * 0.5 * weightB / (nSites + 1) * tIncOrig;
+			pGCb = my_gamma * 0.5 * weightb / (nSites + 1) * tIncOrig;
 			pRecurMut = (uA * sweepPopnSizes[1]*0.5 *tIncOrig)/x;///sizeRatio[0];
 			if (sweepSite < 0.0){
 				pLeftRecB = leftRho * sweepPopnSizes[1]*0.5 * tIncOrig * (1-x);
@@ -2550,8 +2586,8 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 			//printf("currPopSize[0]: %d currPopSize[1]: %d\n",popnSizes[0],popnSizes[1]);
 			for(i=1;i<npops;i++){
 				cRate[i] = pairCoalRate(popnSizes[i], sizeAt(i, cTime + ttau)) * tIncOrig;
-				rRate[i] = rho * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
-				gcRate[i] = my_gamma * popnSizes[i] * 0.5 * tIncOrig;// / sizeRatio[i];
+				rRate[i] = recombinationRate(i) * tIncOrig;
+				gcRate[i] = geneConversionRate(i) * tIncOrig;
 				totCRate += cRate[i];
 				totRRate += rRate[i];
 				totGCRate += gcRate[i];
@@ -2700,8 +2736,8 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 	//	printf("currPopSize[0]: %d currPopSize[1]: %d alleleNumber: %d totNodeNumber: %d activeSites: %d cTime: %f\n",popnSizes[0],popnSizes[1],alleleNumber,totNodeNumber, activeSites, cTime);
 		for(i=0;i<npops;i++){
 			cRate[i] = pairCoalRate(popnSizes[i], sizeAt(i, cTime));
-			rRate[i] = rho * popnSizes[i] * 0.5;// * ((float)activeSites/nSites);
-			gcRate[i] = my_gamma * popnSizes[i] * 0.5 ;
+			rRate[i] = recombinationRate(i);
+			gcRate[i] = geneConversionRate(i);
 			
 			for(j=0;j<npops;j++) mRate[i]+=migAt(i, j, cTime);
 			mRate[i] *= popnSizes[i] * MIG_LINEAGE_WEIGHT;
@@ -2807,6 +2843,37 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 an individual drawn from a popn and assigns parental
 	popn based on sweep site and frequency of popn / 
 	beneficial mutation */
+/* The total recombination weight of the lineages of population popn in
+ * sweep class sp (lineageWeight()). */
+static int64_t sweepClassWeight(int popn, int sp){
+	int64_t w = 0;
+	PopulationNodeList *list = &popLists[popn];
+	for (int k = 0; k < list->count; k++)
+		if (list->nodes[k]->sweepPopn == sp) w += fenwickGet(&list->weights, k);
+	return w;
+}
+
+/* As drawLineageAndPosition(), among the lineages of sweep class sp: one
+ * scan of the population's list (the sweep phase picks lineages by class
+ * in O(n) per event). */
+static rootedNode *drawSweepLineageAndPosition(int popn, int sp, int *position){
+	PopulationNodeList *list = &popLists[popn];
+	int64_t total = sweepClassWeight(popn, sp);
+	if (total <= 0) return NULL;
+	int64_t at = (int64_t) (ranf() * (double) total);
+	if (at >= total) at = total - 1;
+	for (int k = 0; k < list->count; k++) {
+		if (list->nodes[k]->sweepPopn != sp) continue;
+		int64_t w = fenwickGet(&list->weights, k);
+		if (at < w) {
+			*position = list->nodes[k]->lLim + 1 + (int) at;
+			return list->nodes[k];
+		}
+		at -= w;
+	}
+	return NULL;
+}
+
 int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, double popnFreq){
 	rootedNode *aNode, *lParent, *rParent;
 	int i;
@@ -2814,15 +2881,9 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 	double r;
 
 
-		aNode = pickNodePopnSweep(popn, sp);
-	//	printf("picked: %p\n",aNode);
-		xOver = ignuin(0,nSites-1);
-	//	printf("xo: %d test1: %d test2: %d\n",xOver,siteBetweenChunks(aNode, xOver),isActive(xOver) );
-	//	printNode(aNode);
-	//	for(i=0;i<nSites;i++)printf("%d",activeMaterial[i]);
-	//	printf("\n");
-
-		if (siteBetweenChunks(aNode, xOver) == 1 &&  isActive(xOver) == 1  ){
+		/* The breakpoint is in the lineage's span (drawn by weight). */
+		aNode = drawSweepLineageAndPosition(popn, sp, &xOver);
+		if (aNode != NULL){
 			removeNode(aNode); 
 			lParent = newRootedNode(cTime,popn);
 			rParent = newRootedNode(cTime,popn);
@@ -2928,17 +2989,10 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 	double r;
 
 
-	aNode = pickNodePopnSweep(popn, sp);
-	//	printf("picked: %p\n",aNode);
-	xOver = ignuin(0,nSites);
-	tractL = drawTractLength();
-
-	//	printf("xo: %d test1: %d test2: %d\n",xOver,siteBetweenChunks(aNode, xOver),isActive(xOver) );
-	//	printNode(aNode);
-	//	for(i=0;i<nSites;i++)printf("%d",activeMaterial[i]);
-	//	printf("\n");
-
-	if (siteBetweenChunks(aNode, xOver) == 1 &&  isActive(xOver) == 1  ){
+	/* The tract starts in the lineage's span (drawn by weight). */
+	aNode = drawSweepLineageAndPosition(popn, sp, &xOver);
+	if (aNode != NULL){
+		tractL = drawTractLength();
 		removeNode(aNode); 
 		lParent = newRootedNode(cTime,popn);
 		rParent = newRootedNode(cTime,popn);
