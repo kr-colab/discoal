@@ -189,6 +189,8 @@ int parse_output_block(struct output_config*);
 int parse_priors_block(struct priors_config*, int has_selection,
                        unsigned num_demes, const struct demographic_events*);
 int apply_yaml_config(struct discoal_config*);
+int uniformBoundsOk(double low, double high, double lo, double hi,
+                    int open_lo, int open_hi);
 int load_yaml_config(const char*, struct discoal_config**);
 
 

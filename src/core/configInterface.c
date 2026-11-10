@@ -975,7 +975,10 @@ int parse_selection_block(struct selection_config *cfg)
             partialSweepFinalFreq = cfg->final_frequency;
             partialSweepMode = 1;
         }
-        if (softSweepMode && partialSweepMode &&
+        /* Fixed values only: with a prior on final_frequency (parsed
+         * before this block), final_frequency here is 0; getParameters()
+         * checks the priors' bounds. */
+        if (softSweepMode && cfg->final_frequency > 0 &&
             cfg->initial_frequency >= cfg->final_frequency) {
             fprintf(stderr,
                 "Error parsing config: initial_frequency (%g) must be less "
@@ -1160,11 +1163,18 @@ struct uniform_prior_spec {
     double *low, *high;
 };
 
+/* A uniform prior's bounds: low <= high, both inside [lo, hi], with lo or
+ * hi excluded if open_lo or open_hi. Also used for the -P flags. */
+int uniformBoundsOk(double low, double high, double lo, double hi,
+                    int open_lo, int open_hi) {
+    int lo_ok = open_lo ? low > lo : low >= lo;
+    int hi_ok = open_hi ? high < hi : high <= hi;
+    return lo_ok && hi_ok && low <= high;
+}
+
 static int apply_uniform_prior(const struct uniform_prior_spec *u) {
     const struct uniform_prior *p = u->prior;
-    int lo_ok = u->open_lo ? p->low > u->lo : p->low >= u->lo;
-    int hi_ok = u->open_hi ? p->high < u->hi : p->high <= u->hi;
-    if (!(lo_ok && hi_ok && p->low <= p->high)) {
+    if (!uniformBoundsOk(p->low, p->high, u->lo, u->hi, u->open_lo, u->open_hi)) {
         fprintf(stderr,
             "Error parsing config: priors.%s must satisfy %g %s low <= high "
             "%s %g (got low %g, high %g)\n", u->name,
@@ -1204,7 +1214,7 @@ int parse_priors_block(struct priors_config *cfg, int has_selection,
             &priorX, &pXLow, &pXUp},
         {"initial_frequency", cfg->initial_frequency, 1, 0, 1, 0, 1, 0,
             &priorF0, &pF0Low, &pF0Up},
-        {"final_frequency", cfg->final_frequency, 1, 0, 1, 1, 1, 0,
+        {"final_frequency", cfg->final_frequency, 1, 0, 1, 0, 1, 0,
             &priorC, &pCLow, &pCUp},
     };
     for (size_t k = 0; k < sizeof(uniform) / sizeof(uniform[0]); ++k) {

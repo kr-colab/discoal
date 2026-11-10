@@ -19,6 +19,8 @@ set -u
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 DISCOAL=${DISCOAL:-$REPO_ROOT/build/discoal}
+# A case that runs longer than this fails, so a hang cannot stall CI.
+CASE_TIMEOUT=${CASE_TIMEOUT:-60}
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -33,9 +35,10 @@ FAIL_NAMES=()
 run_pass_case() {
     local name=$1; shift
     local out rc
-    out=$("$DISCOAL" "$@" 2>&1)
+    out=$(timeout "$CASE_TIMEOUT" "$DISCOAL" "$@" 2>&1)
     rc=$?
     if [ "$rc" -ne 0 ]; then
+        [ "$rc" -eq 124 ] && rc="124, timed out after ${CASE_TIMEOUT} s"
         echo -e "${RED}FAIL${NC} $name (expected exit 0, got $rc)"
         echo "  last stderr line: $(printf '%s\n' "$out" | tail -1)"
         FAIL_NAMES+=("$name"); FAIL=$((FAIL + 1)); return
@@ -51,7 +54,7 @@ run_pass_case() {
 run_fail_case() {
     local name=$1 expect=$2; shift 2
     local out rc
-    out=$("$DISCOAL" "$@" 2>&1)
+    out=$(timeout "$CASE_TIMEOUT" "$DISCOAL" "$@" 2>&1)
     rc=$?
     if [ "$rc" -eq 0 ]; then
         echo -e "${RED}FAIL${NC} $name (expected non-zero exit, got 0)"
@@ -222,17 +225,132 @@ run_pass_case "en_other_population_during_sweep" \
 run_pass_case "en_other_population_recurrent_sweeps" \
     20 5 10000 -N 10000 -t 1 -r 10 -p 2 10 10 -m 0 1 1 -m 1 0 1 -R 50 -a 500 -c 0.3 -en 0.001 1 0.00015 -d 1 2
 
-# With growth (-eg) the trajectory's end follows N, so it can end before
-# the sampler's fixed end frequency; the sweep then ends with the
-# trajectory.
-run_pass_case "eg_during_sweep" \
-    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0 0 200 -d 1 2
+# Sweeps are not modeled under growth: population 0 may not grow (-eg,
+# -el, -eG, -eL) at or after the earliest start of a sweep, and no
+# population may grow with recurrent sweeps.
+run_fail_case "eg_during_sweep" \
+    "not modeled under growth" \
+    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0 0 200
 
-run_pass_case "eg_during_partial_sweep" \
-    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -c 0.001 -eg 0 0 200 -d 1 2
+run_fail_case "eg_during_partial_sweep" \
+    "not modeled under growth" \
+    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -c 0.001 -eg 0 0 200
 
-run_pass_case "eg_during_sweep_default_N" \
-    20 20 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0 0 2 -d 3 4
+run_fail_case "eg_starting_after_sweep_start" \
+    "not modeled under growth" \
+    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0.05 0 2
+
+run_fail_case "el_during_sweep" \
+    "not modeled under growth" \
+    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -el 0 0 2
+
+run_fail_case "eG_during_sweep" \
+    "not modeled under growth" \
+    20 5 10000 -N 10000 -t 1 -r 10 -p 2 10 10 -m 0 1 1 -m 1 0 1 -ws 0.01 -a 500 -eG 0 2
+
+run_fail_case "Pu_reaching_into_growth" \
+    "not modeled under growth" \
+    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0 0 5 -en 0.005 0 1 -Pu 0.001 0.02
+
+run_fail_case "Pe1_may_end_growth_after_sweep_start" \
+    "not modeled under growth" \
+    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0 0 5 -Pe1 0.004 0.03 0.5 2
+
+run_fail_case "R_with_growth_in_population_1" \
+    "not modeled under growth" \
+    20 5 10000 -N 10000 -t 1 -r 10 -p 2 10 10 -m 0 1 1 -m 1 0 1 -R 2 -a 500 -eg 0 1 2
+
+# A size change with a prior on its time ends growth only if it surely
+# comes after the growth starts and surely before the sweep.
+run_fail_case "Pe1_may_come_before_growth" \
+    "not modeled under growth" \
+    10 3 1000 -N 10000 -t 5 -r 5 -a 200 -ws 0.05 -eg 0.01 0 30 -Pe1 0.001 0.0101 0.5 1
+
+run_pass_case "Pe1_ends_growth_before_sweep" \
+    10 3 1000 -N 10000 -t 5 -r 5 -a 200 -ws 0.05 -eg 0.01 0 30 -Pe1 0.02 0.04 0.5 1 -d 1 2
+
+# An -en at the sweep's time ends growth before the sweep only if it is
+# given before the sweep (events at one time apply in command-line order).
+run_fail_case "en_at_sweep_time_after_sweep" \
+    "not modeled under growth" \
+    10 2 1000 -N 10000 -t 5 -r 5 -a 200 -ws 0.05 -eg 0.01 0 30 -en 0.05 0 1
+
+run_pass_case "en_at_sweep_time_before_sweep" \
+    10 2 1000 -N 10000 -t 5 -r 5 -a 200 -eg 0.01 0 30 -en 0.05 0 1 -ws 0.05 -d 1 2
+
+# The earliest of two sweeps counts; with -Pu, only its low bound.
+run_fail_case "growth_in_first_of_two_sweeps" \
+    "not modeled under growth" \
+    10 2 1000 -N 10000 -t 5 -r 5 -a 200 -ws 0.01 -ws 0.05 -eg 0.03 0 5 -en 0.04 0 1
+
+run_pass_case "Pu_after_growth" \
+    10 2 1000 -N 10000 -t 5 -r 5 -a 200 -ws 0.01 -Pu 0.05 0.08 -eg 0.02 0 5 -en 0.03 0 1 -d 1 2
+
+# A trajectory from a file (-S) does not use the acceptance step, and its
+# sampler follows the size at each step, so growth is allowed with it.
+run_pass_case "S_with_growth" \
+    20 2 10000 -t 1 -r 10 -N 10000 -S "$REPO_ROOT/config_examples/trajectory_example.traj" -eg 0 0 1 -d 1 2
+
+run_pass_case "growth_ending_before_sweep" \
+    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0 0 5 -en 0.005 0 1 -d 1 2
+
+run_pass_case "growth_in_population_1_with_sweep" \
+    20 5 10000 -N 10000 -t 1 -r 10 -p 2 10 10 -m 0 1 1 -m 1 0 1 -ws 0.01 -a 500 -eg 0 1 2 -d 1 2
+
+# Priors on the sweep's frequencies: 0 <= low <= high < 1, and a soft
+# sweep that is partial needs every f0 below every final frequency.
+run_fail_case "Pc_negative_low" \
+    "the bounds must satisfy 0 <= low <= high < 1" \
+    20 2 1000 -t 5 -r 5 -ws 0 -a 500 -Pc -0.5 0.5
+
+run_fail_case "Pc_high_above_one" \
+    "the bounds must satisfy 0 <= low <= high < 1" \
+    20 2 1000 -t 5 -r 5 -ws 0 -a 500 -Pc 0.5 1.5
+
+run_fail_case "Pf_low_above_high" \
+    "the bounds must satisfy 0 <= low <= high < 1" \
+    20 2 1000 -t 5 -r 5 -ws 0 -a 500 -Pf 0.5 0.4 -c 0.6
+
+run_pass_case "f_with_Pc" \
+    20 2 1000 -t 5 -r 5 -ws 0 -a 500 -f 0.05 -Pc 0.3 0.6 -d 1 2
+
+run_fail_case "f_above_Pc_low" \
+    "must be below the final frequency" \
+    20 2 1000 -t 5 -r 5 -ws 0 -a 500 -f 0.5 -Pc 0.3 0.6
+
+run_pass_case "Pf_with_c" \
+    20 2 1000 -t 5 -r 5 -ws 0 -a 500 -Pf 0.01 0.1 -c 0.5 -d 1 2
+
+run_fail_case "Pf_high_above_c" \
+    "must be below the final frequency" \
+    20 2 1000 -t 5 -r 5 -ws 0 -a 500 -Pf 0.01 0.6 -c 0.5
+
+# A size change of population 0 long after the sweep: the trajectory has
+# ended by then, so the change must not lower the acceptance of every
+# proposed trajectory (the run took longer than a minute).
+run_pass_case "en_long_after_sweep" \
+    20 2 10000 -t 1 -r 10 -ws 0.01 -a 500 -en 1.0 0 0.00001 -d 1 2
+
+# Recurrent soft sweeps are not implemented; -Pf makes a sweep soft too.
+run_fail_case "R_with_Pf" \
+    "recurrent soft sweeps" \
+    20 2 1000 -t 5 -r 5 -R 1 -a 500 -Pf 0.01 0.1
+
+# A sweep needs at least one individual in population 0; every size of
+# population 0 (an -en, or the low bound of a size prior) is checked.
+run_fail_case "sweep_in_population_below_one" \
+    "at least one individual" \
+    20 2 1000 -t 5 -r 5 -en 0 0 0.0000001 -ws 0 -a 500
+
+run_fail_case "sweep_with_size_prior_below_one" \
+    "at least one individual" \
+    10 5 1000 -N 10000 -t 5 -r 5 -a 200 -Pe1 0.01 0.02 0.000001 0.001 -ws 0.05
+
+# Exponential growth over a long time: one lineage is left in each
+# population, and while they wait to migrate the size underflows to 0.
+# Coalescence must then still happen (at once).
+run_pass_case "eG_size_underflow_two_populations" \
+    20 5 10000 -t 1 -r 10 -p 2 10 10 -m 0 1 0.1 -m 1 0 0.1 -eG 0 200 -d 3 6
 
 echo
 echo -e "${BLUE}=== Summary ===${NC}"

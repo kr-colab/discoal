@@ -396,6 +396,24 @@ void test_drawWaitingTimeSize_returns_negative_for_k_lt_2(void) {
     TEST_ASSERT_TRUE(drawWaitingTimeSize(0, 0.0, 1.0, 0) < 0.0);
 }
 
+/* With exponential growth over a long time the size underflows to 0;
+ * coalescence is then immediate, but the waiting time must still move the
+ * time forward (a time <= 0 means "no event" to the caller). */
+void test_drawWaitingTimeSize_size_underflow(void) {
+    popShape[0].type = SHAPE_EXPONENTIAL;
+    popShape[0].anchor_value = 1.0;
+    popShape[0].rate_param = 100.0;
+    popShape[0].anchor_time = 0.0;
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, sizeAt(0, 10.0));
+    double T = drawWaitingTimeSize(0, 10.0, 1.0, 2);
+    TEST_ASSERT_TRUE(T > 0.0);
+    TEST_ASSERT_TRUE(10.0 + T > 10.0);
+    TEST_ASSERT_TRUE(T < 1e-12);
+    popShape[0].type = SHAPE_CONSTANT;
+    popShape[0].anchor_value = 1.0;
+    popShape[0].rate_param = 0.0;
+}
+
 void test_drawWaitingTimeSize_linear_zero_crossing(void) {
     /* gamma = 0.5 (forward growth => backward decline):
      * N(t) = 1 - 0.5 t hits zero at t=2. H(2) = +inf, so any finite xi maps to T<2. */
@@ -840,6 +858,7 @@ int main(void) {
     RUN_TEST(test_drawWaitingTimeSize_exponential_inverts);
     RUN_TEST(test_drawWaitingTimeSize_linear_inverts);
     RUN_TEST(test_drawWaitingTimeSize_returns_negative_for_k_lt_2);
+    RUN_TEST(test_drawWaitingTimeSize_size_underflow);
     RUN_TEST(test_drawWaitingTimeSize_linear_zero_crossing);
     RUN_TEST(test_drawWaitingTimeMig_constant_inverts);
     RUN_TEST(test_drawWaitingTimeMig_exponential_round_trip);

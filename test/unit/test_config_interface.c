@@ -1973,6 +1973,37 @@ void test_selection_trajectory_file(void) {
     unlink(path);
 }
 
+/* A soft sweep (initial_frequency) with a prior on final_frequency: the
+ * selection block must not compare initial_frequency with the unset
+ * final_frequency (0); getParameters() checks the prior's bounds. A low
+ * bound of 0 is allowed, as with -Pc. */
+void test_priors_final_frequency_with_soft_sweep(void) {
+    const char *yaml =
+        BASE_YAML
+        "selection:\n"
+        "  sweep_mode: stochastic\n"
+        "  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0.01\n"
+        "  initial_frequency: 0.05\n"
+        "priors:\n"
+        "  final_frequency: {low: 0.3, high: 0.6}\n";
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    TEST_ASSERT_EQUAL_INT(1, priorC);
+    TEST_ASSERT_EQUAL_INT(1, partialSweepMode);
+
+    reset_all();
+    const char *zero =
+        BASE_YAML
+        "selection:\n"
+        "  sweep_mode: stochastic\n"
+        "  selection_coefficient: 100\n"
+        "  fixation_time_ago: 0.01\n"
+        "priors:\n"
+        "  final_frequency: {low: 0, high: 0.6}\n";
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(zero));
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, pCLow);
+}
+
 /* Each prior sets the globals its -P flag sets; times are converted to
  * internal units, as for -Pu and -Pe1. */
 void test_priors_set_globals(void) {
@@ -2702,6 +2733,7 @@ int main(void) {
     RUN_TEST(test_selection_recurrent_sweeps_left_of_locus);
     RUN_TEST(test_selection_sweep_time_step);
     RUN_TEST(test_selection_trajectory_file);
+    RUN_TEST(test_priors_final_frequency_with_soft_sweep);
     RUN_TEST(test_selection_rejects_bad_combinations);
     RUN_TEST(test_priors_set_globals);
     RUN_TEST(test_priors_recombination_exponential);

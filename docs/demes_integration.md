@@ -22,7 +22,11 @@ events:
 ### Supported
 - Multiple populations with specified sizes
 - Population size changes (instantaneous)
-- Exponential growth epochs (translated to discoal `-eg` events)
+- Exponential growth epochs (translated to discoal `-eg` events). As
+  with `-eg`, a sweep cannot overlap an exponential epoch of the first
+  deme (population 0), and recurrent sweeps cannot be combined with any
+  exponential epoch; see "Combining with Demography" in
+  `docs/selection.rst`.
 - Population splits and mergers
 - Symmetric and asymmetric migration, including multi-window
   piecewise-constant migration matrices

@@ -1,0 +1,21 @@
+# A soft sweep that is partial needs every drawn initial frequency below
+# every drawn final frequency: here initial_frequency (0.5) is above the
+# low bound of the prior on final_frequency (0.3).
+# Should error out with:
+#   "must be below the final frequency of a partial sweep"
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+selection:
+  sweep_mode: stochastic
+  selection_coefficient: 100
+  fixation_time_ago: 0.01
+  initial_frequency: 0.5
+priors:
+  final_frequency: {low: 0.3, high: 0.6}

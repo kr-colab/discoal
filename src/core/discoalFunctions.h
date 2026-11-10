@@ -121,6 +121,7 @@ void sampleSweepTrajectory(int currentEventNumber, double *sizeRatio,
 	double f0, double currentTime);
 int setSweepTrajectoryFile(const char *path);
 void buildSweepTrajectoryFromFile(void);
+double sweepStartFreq(double t);
 
 int findRootAtSite(float site);
 int hasMaterialHere(rootedNode *aNode, float site);

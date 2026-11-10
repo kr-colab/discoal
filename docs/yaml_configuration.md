@@ -261,8 +261,11 @@ Notes:
 
 - Uniform priors draw from `[low, high]`, and need `low <= high`
   inside the parameter's range (rates `>= 0`, `sweep_position` in
-  `[0, 1]`, `initial_frequency` in `[0, 1)`, `final_frequency`
-  inside `(0, 1)`).
+  `[0, 1]`, `initial_frequency` and `final_frequency` in `[0, 1)`).
+  The high bound of `final_frequency` must be above 1/(2N); a draw
+  below one copy gives a sweep that ends at once. With a soft sweep
+  that is partial, every possible initial frequency must be below every
+  possible final frequency.
 - `recombination_rate_exponential` draws rho from an exponential
   distribution with the given mean and sets a draw above `upper` to
   `upper` (a cap, not a truncation), as `-Pre`. It cannot be combined

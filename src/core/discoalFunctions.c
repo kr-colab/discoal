@@ -1883,6 +1883,13 @@ static double trajectoryEnd(int fromStandingVariation, double N){
 	return fromStandingVariation ? 0.0 : 1.0/(2.*N);
 }
 
+/* Whether the current sweep is from standing variation (f0 above one copy
+ * at the sweep's start). proposeTrajectory() decides it once per sweep, and
+ * the sweep sampler reads it, so a size change between the sampler's calls
+ * cannot turn a soft sweep into a hard one, which would end the sweep
+ * before its trajectory does. */
+static int sweepFromStandingVariation = 0;
+
 /* A partial sweep starts (going back in time) with its lineages in
  * population 0 split into the two sweep classes. The selected allele is
  * then at partialSweepFinalFreq, carried by the beneficial class. Add a
@@ -1949,6 +1956,22 @@ static void startSweep(double sweepSite){
 		recordPartialSweepSite(sweepSite);
 }
 
+/* The selected allele's frequency at the start of a sweep (going back in
+ * time): one copy short of fixation in population 0 at time t, or the
+ * final frequency of a partial sweep if that is lower. The size is
+ * sizeAt(0, t), since currentSize is not updated for growth. */
+double sweepStartFreq(double t){
+	if (floor(EFFECTIVE_POPN_SIZE * sizeAt(0, t)) < 1.0) {
+		fprintf(stderr, "Error: population 0 has fewer than one individual "
+			"(N x size = %g) at the start of a sweep (time %g in 4N0 "
+			"generations)\n", EFFECTIVE_POPN_SIZE * sizeAt(0, t),
+			t / USER_TO_INTERNAL_TIME);
+		exit(1);
+	}
+	const double nearlyFixed = 1.0 - (1.0 / (2.0 * EFFECTIVE_POPN_SIZE * sizeAt(0, t)));
+	return partialSweepMode ? MIN(partialSweepFinalFreq, nearlyFixed) : nearlyFixed;
+}
+
 /* The -S trajectory, built by buildSweepTrajectoryFromFile(); NULL
  * without -S. */
 static float *fileTrajectory = NULL;
@@ -1965,6 +1988,7 @@ void sampleSweepTrajectory(int currentEventNumber, double *sizeRatio,
 	/* -S: the trajectory from the file, built once. It is not a mapped
 	 * file, so trajectoryFd stays -1 and nothing unmaps it. */
 	if (fileTrajectory != NULL) {
+		sweepFromStandingVariation = 0;  /* the file ends at the origin */
 		currentTrajectory = fileTrajectory;
 		currentTrajectoryStep = 0;
 		totalTrajectorySteps = fileTrajectorySteps;
@@ -2149,11 +2173,14 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 	
 	tIncOrig = 1.0 / (deltaTMod * EFFECTIVE_POPN_SIZE);
 	j=0;
-	N = (double) floor(N_0 * sizeRatio[0]);
-	Nmax = currentSizeRatio = sizeRatio[0];
+	/* Population 0's size at the sweep's start (sizeRatio[0] is not
+	 * updated for growth). */
+	Nmax = currentSizeRatio = sizeAt(0, currentTime);
+	N = (double) floor(N_0 * currentSizeRatio);
 	x = initialFreq;
 	minF = f0;
 	const int fromStandingVariation = (f0 > 1.0/(2.*N));
+	sweepFromStandingVariation = fromStandingVariation;
 	insweepphase = 1;
 	ttau=0.0;
 	//go through each event until last one
@@ -2253,6 +2280,9 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			}
 			j++;
 		}
+		/* The trajectory has ended: later events are not part of it, and a
+		 * later size change must not set its acceptance probability. */
+		if (x <= trajectoryEnd(fromStandingVariation, N)) break;
 	}
 	
 	// Flush any remaining data in buffer
@@ -2308,7 +2338,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	pCoalB = pCoalb = pRecB = pRecb = totRate = pRecurMut = pLeftRecB = pLeftRecb = totGCRate = totCRate = totRRate = 0;
 	sweepPopTotRate = pGCB = pGCb = 0;
 
-	N = (double) floor(N * sizeRatio[0]);
+	N = (double) floor(N * sizeAt(0, cTime));
 	ttau = 0.0;
 	x = initialFreq;
 	minF = f0;
@@ -2332,8 +2362,10 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	insweepphase = 1;
 	
 	//go for epoch time, sweep freq, or root
-	/* N is fixed in this loop, so the end of the trajectory is too. */
-	const double xEnd = trajectoryEnd(f0 > 1.0/(2.*N), N);
+	/* The sweep ends at trajectoryEnd() for population 0's size at each
+	 * step, as in proposeTrajectory(), so the two end on the same step. */
+	const int fromStandingVariation = sweepFromStandingVariation;
+	double xEnd = trajectoryEnd(fromStandingVariation, N);
 	/* Ancient samples of population 0 that join later keep the sweep going
 	 * even when fewer than two present-day lineages are left in it, or none
 	 * in the beneficial class: they must see the sweep when they join. */
@@ -2347,23 +2379,26 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 		while(eventProb > eventRand && x > xEnd && (cTime+ttau) < endTime ){
 			ttau += tIncOrig;
 
-			/* The trajectory ended: the sweep ends at its last step. The
-			 * trajectory's own end test follows N through size changes
-			 * (-en, -eg), so it can end above the fixed xEnd of this loop. */
+			/* The trajectory ended: the sweep ends at its last step. xEnd
+			 * follows N as the trajectory's end test does, but the time here
+			 * restarts after each event and can round differently, so this
+			 * guards against reading past the trajectory. */
 			if (currentTrajectoryStep >= totalTrajectorySteps) {
 				ttau -= tIncOrig;
 				trajectoryDone = 1;
 				break;
 			}
 		x = currentTrajectory[currentTrajectoryStep++];
+		const double size0 = sizeAt(0, cTime + ttau);
+		xEnd = trajectoryEnd(fromStandingVariation, floor(EFFECTIVE_POPN_SIZE * size0));
 		/* The origin of an allele from standing variation: no rates at
 		 * frequency 0. (A sweep from a new mutation ends above 0.) */
 		if (x <= 0.0) break;
 
 			//calculate event probs
 			//first 4 events are probs of events in population 0
-			pCoalB = ((sweepPopnSizes[1] * (sweepPopnSizes[1] - 1) ) * 0.5)/x*tIncOrig / sizeAt(0, cTime + ttau);
-			pCoalb = ((sweepPopnSizes[0] * (sweepPopnSizes[0] - 1) ) * 0.5)/(1-x)*tIncOrig / sizeAt(0, cTime + ttau);
+			pCoalB = ((sweepPopnSizes[1] * (sweepPopnSizes[1] - 1) ) * 0.5)/x*tIncOrig / size0;
+			pCoalb = ((sweepPopnSizes[0] * (sweepPopnSizes[0] - 1) ) * 0.5)/(1-x)*tIncOrig / size0;
 			pRecB = rho * sweepPopnSizes[1]*0.5 *tIncOrig; // / sizeRatio[0];
 			pRecb = rho * sweepPopnSizes[0]*0.5 *tIncOrig;// / sizeRatio[0];
 			pGCB = my_gamma * sweepPopnSizes[1]*0.5 *tIncOrig;// / sizeRatio[0];
@@ -2613,12 +2648,7 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 							else{
 								curSweepSite = ranf();
 							}
-							if(partialSweepMode==1){
-								initFreq=MIN(partialSweepFinalFreq,1.0-(1.0/(2*sizeRatio[0]*EFFECTIVE_POPN_SIZE)));
-							}
-							else{
-								initFreq=1.0-(1.0/(2*sizeRatio[0]*EFFECTIVE_POPN_SIZE));
-							}
+							initFreq = sweepStartFreq(cTime);
 							sampleSweepTrajectory(currentEventNumber, sizeRatio, sweepMode,
 								initFreq, finalFreq, alpha, f0, cTime);
 							cTime= sweepPhaseEventsConditionalTrajectory(bpArray, cTime, endTime, curSweepSite,\

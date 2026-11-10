@@ -111,6 +111,23 @@ Selection can be combined with population size changes:
      -en 0.02 0 10.0 \
      -en 0.1 0 1.0
 
+Sweeps work with instantaneous size changes (``-en``), but not with
+continuous growth. The sweep's trajectory is drawn by rejection with a
+ratio of sizes that follows only ``-en`` events, and between recurrent
+sweeps coalescence is drawn at constant rates. So discoal stops with an
+error if:
+
+* population 0 grows or shrinks continuously (``-eg``, ``-el``, ``-eG``,
+  ``-eL``, or an exponential epoch of a demes model) at or after the
+  earliest possible start of a sweep, going back in time (with ``-Pu``,
+  its low bound); or
+* any population grows, with recurrent sweeps (``-R``, ``-L``).
+
+Growth of population 0 that ends (with an ``-en``) before the sweep
+starts, and growth of other populations with a single sweep, are
+allowed. To model a sweep during growth, approximate the growth with
+steps of ``-en``.
+
 Advanced Options
 ----------------
 

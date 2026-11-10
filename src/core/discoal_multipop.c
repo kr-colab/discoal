@@ -361,12 +361,7 @@ int main(int argc, const char * argv[]){
 				case 's':
 				assert(activeSweepFlag == 0);
 				currentTime = events[j].time;
-				if (partialSweepMode == 1){
-					currentFreq = MIN(partialSweepFinalFreq,1.0 - (1.0 / (2.0 * N * currentSize[0])));
-				}
-				else{
-					currentFreq = 1.0 - (1.0 / (2.0 * N * currentSize[0]));
-				}
+				currentFreq = sweepStartFreq(currentTime);
 			//	printf("event%d currentTime: %f nextTime: %f popnSize: %f\n",j,currentTime,nextTime,currentSize);
 
 				sampleSweepTrajectory(currentEventNumber, currentSize, sweepMode,
@@ -1389,11 +1384,30 @@ void getParameters(int argc,const char **argv){
 			printf("Error with event specification: you chose 1 or more population size changes with a deterministic sweep. Please us -ws flag instead\n");
 			exit(666);
 		}
-		if(softSweepMode == 1 && partialSweepMode == 1){
-			if(f0 >= partialSweepFinalFreq){
-				printf("Error with event specification: you specified a partial soft sweep but final frequency of partial sweep <= f_0\n");
-				exit(666);
-			}
+	}
+	/* Priors on the sweep's frequencies (-Pf, -Pc, or YAML priors) follow
+	 * the YAML rules. A soft sweep that is partial needs every drawn f0
+	 * below every drawn final frequency. -Pf counts as a soft sweep. */
+	if(priorF0 && !uniformBoundsOk(pF0Low, pF0Up, 0.0, 1.0, 0, 1)){
+		fprintf(stderr, "Error: -Pf %g %g: the bounds must satisfy 0 <= low <= "
+			"high < 1\n", pF0Low, pF0Up);
+		exit(1);
+	}
+	if(priorC && !uniformBoundsOk(pCLow, pCUp, 0.0, 1.0, 0, 1)){
+		fprintf(stderr, "Error: -Pc %g %g: the bounds must satisfy 0 <= low <= "
+			"high < 1\n", pCLow, pCUp);
+		exit(1);
+	}
+	const int softSweep = softSweepMode || priorF0;
+	if(softSweep && partialSweepMode && trajFileRows == 0){
+		const double maxF0 = priorF0 ? pF0Up : f0;
+		const double minC = priorC ? pCLow : partialSweepFinalFreq;
+		if(maxF0 >= minC){
+			fprintf(stderr, "Error: the initial frequency of a soft sweep (-f, "
+				"-Pf, or YAML initial_frequency; %g) must be below the final "
+				"frequency of a partial sweep (-c, -Pc, or YAML final_frequency; "
+				"%g), for every value of their priors\n", maxF0, minC);
+			exit(1);
 		}
 	}
 	/* Priors that contradict the sweep model, from the CLI or YAML: a
@@ -1415,9 +1429,103 @@ void getParameters(int argc,const char **argv){
 		printf("Error with event specification: you chose leftRho mode but the sweep site is within the locus\n");
 		exit(666);
 	}
-	if(softSweepMode == 1 && recurSweepMode == 1){
-		printf("Error with event specification: currently recurrent soft sweeps are not implemented. this will be a future addition\n");
-		exit(666);
+	if(softSweep && recurSweepMode == 1){
+		fprintf(stderr, "Error: recurrent soft sweeps (-R or -L with -f or "
+			"-Pf) are not implemented\n");
+		exit(1);
+	}
+	/* Sweep trajectories are not modeled under growth: proposeTrajectory()
+	 * accepts a trajectory by a ratio of sizes that follows only size
+	 * changes (-en). So population 0 may not grow or shrink continuously
+	 * (-eg, -el, -eG, -eL, or an exponential epoch of a demes model) at or
+	 * after the earliest start of a sweep, going back in time. Growth in
+	 * other populations, and growth of population 0 that surely ends before
+	 * the sweep, are allowed. Recurrent sweeps draw coalescence in every
+	 * population at constant rates between sweeps, so with them no
+	 * population may grow at any time. A trajectory read from a file (-S)
+	 * does not use that ratio, and its sampler follows the size at each
+	 * step, so -S is not restricted. The events are sorted here, with ties
+	 * in command-line order. */
+	if((selCheck && trajFileRows == 0) || recurSweepMode){
+		int growthAtSweep = 0;
+		int sweepIndex = -1;
+		double sweepStart = 0.0;
+		for(i = 0; i < eventNumber; i++){
+			if(events[i].type == 's' && sweepIndex < 0){
+				sweepIndex = i;  /* the earliest sweep */
+				sweepStart = events[i].time;
+			}
+			if(recurSweepMode && (events[i].type == 'g' || events[i].type == 'l') &&
+			   events[i].popnSize != 0.0)
+				growthAtSweep = 1;
+		}
+		if(priorTau) sweepStart = pTauLow;
+		for(i = 0; !recurSweepMode && i < eventNumber; i++){
+			if(events[i].popID != 0 || (events[i].type != 'g' && events[i].type != 'l') ||
+			   events[i].popnSize == 0.0)
+				continue;
+			/* Growth of population 0 from events[i]: it must start before
+			 * the sweep and surely end before it, with a later size change
+			 * of population 0 (an -en, or growth at rate 0). */
+			const double tg = events[i].time;
+			if(tg > sweepStart || (tg == sweepStart && !priorTau && i > sweepIndex)){
+				growthAtSweep = 1;
+				break;
+			}
+			int ended = 0;
+			for(j = i + 1; j < eventNumber && !ended; j++){
+				if(events[j].popID != 0) continue;
+				const char type = events[j].type;
+				if(!(type == 'n' || ((type == 'g' || type == 'l') && events[j].popnSize == 0.0)))
+					continue;
+				/* A size change with a prior on its time can fall anywhere
+				 * in [timeLow, timeHigh]. */
+				double lo = events[j].time, hi = events[j].time;
+				if(type == 'n' && events[j].priorSlot > 0){
+					lo = priorSizeChanges[events[j].priorSlot - 1].timeLow;
+					hi = priorSizeChanges[events[j].priorSlot - 1].timeHigh;
+				}
+				const int afterGrowth = (lo > tg) || (lo == tg && lo == hi);
+				const int beforeSweep = priorTau ? (hi <= sweepStart)
+					: (hi < sweepStart || (hi == sweepStart && lo == hi && j < sweepIndex));
+				ended = afterGrowth && beforeSweep;
+			}
+			if(!ended){
+				growthAtSweep = 1;
+				break;
+			}
+		}
+		if(growthAtSweep){
+			fprintf(stderr, "Error: population 0 grows or shrinks (-eg, -el, "
+				"-eG, -eL, or an exponential demes epoch) at or after the start "
+				"of a sweep, or a population grows with recurrent sweeps (-R, -L); "
+				"sweeps are not modeled under growth. Use size changes (-en) "
+				"instead\n");
+			exit(1);
+		}
+	}
+	/* A sweep needs at least one individual in population 0 at its start.
+	 * Without growth at the sweep, the size there is one of population 0's
+	 * sizes (its present size, an -en, or the low bound of a size prior), so
+	 * check them all now rather than during the run. A size of 0 is not a
+	 * population (the present size before it is set, or a deme that does
+	 * not exist then). */
+	if(selCheck || recurSweepMode){
+		double smallest = INFINITY;
+		if(currentSize[0] > 0.0) smallest = currentSize[0];
+		for(i = 0; i < eventNumber; i++){
+			if(events[i].popID != 0 || events[i].type != 'n') continue;
+			double size = events[i].popnSize;
+			if(events[i].priorSlot > 0)
+				size = priorSizeChanges[events[i].priorSlot - 1].sizeLow;
+			if(size > 0.0 && size < smallest) smallest = size;
+		}
+		if(isfinite(smallest) && floor(EFFECTIVE_POPN_SIZE * smallest) < 1.0){
+			fprintf(stderr, "Error: with a sweep, population 0 must have at "
+				"least one individual at every size (N x size = %g; N from -N)\n",
+				EFFECTIVE_POPN_SIZE * smallest);
+			exit(1);
+		}
 	}
 	/* A partial sweep that ends below one copy of the allele has no
 	 * trajectory: the sweep ends when the frequency is 1/(2N). A prior
