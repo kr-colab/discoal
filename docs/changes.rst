@@ -36,3 +36,7 @@ Tract lengths are geometric, with the mean that you give to ``-g`` or
 a mean of 0, for example ``-g 10 0``, and then drew tract lengths that
 were not numbers. discoal 2.0 stops with an error if the gene conversion
 rate is above 0 and the mean tract length is below 1.
+
+With a mean of 1, discoal 1.x drew tracts of 0 sites, so gene conversion
+had no effect. In discoal 2.0 every tract then has 1 site, so the output
+of such a run changes.

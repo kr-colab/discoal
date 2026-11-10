@@ -450,7 +450,7 @@ run_fail_case "sample_size_above_limit" \
     70000 1 1000 -t 5
 
 run_fail_case "num_sites_above_maxsites" \
-    "the number of sites (2e+08) must be <= 100000000" \
+    "the number of sites (200000000) must be <= 100000000" \
     20 1 200000000 -t 5
 
 run_fail_case "a_negative" \

@@ -1,6 +1,6 @@
 # More sites than MAXSITES (10^8), the same limit as on the command line.
 # Rejected with:
-#   "Error: the number of sites (2e+09) must be <= 100000000"
+#   "Error: the number of sites (2000000000) must be <= 100000000"
 
 simulation:
   sample_size: 10

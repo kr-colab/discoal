@@ -16,10 +16,6 @@
 #include <unistd.h>
 #include <assert.h>
 #include <limits.h>
-
-/* The value of a macro as a string literal, e.g. for an error message. */
-#define STRINGIFY_(x) #x
-#define STRINGIFY(x) STRINGIFY_(x)
 #include "ranlib.h"
 #include "discoal.h"
 #include "discoalFunctions.h"
@@ -28,6 +24,10 @@
 #include "tskitInterface.h"
 #include <tskit/tables.h>
 #include "version.h"
+
+/* The value of a macro as a string literal, e.g. for an error message. */
+#define STRINGIFY_(x) #x
+#define STRINGIFY(x) STRINGIFY_(x)
 #include "segmentPool.h"
 #include "demesInterface.h"
 #include "configInterface.h"
@@ -1319,12 +1319,11 @@ void getParameters(int argc,const char **argv){
 			{!priorRho && !(rho >= 0.0), "-r", rho, ">= 0"},
 			{!(my_gamma >= 0.0), "-g (rate)", my_gamma, ">= 0"},
 			{!(gammaCoRatio >= 0.0), "-gr (ratio)", gammaCoRatio, ">= 0"},
-			{gcMean < 0, "-g or -gr (tract length)", (double)gcMean, ">= 0"},
-			/* The tract length is geometric with mean gcMean; a mean
-			 * below 1 has no such distribution (the draw is NaN). */
-			{(my_gamma > 0.0 || gammaCoRatio > 0.0) && gcMean < 1,
+			/* The tract length is geometric on 1, 2, ... with mean gcMean,
+			 * so a mean below 1 has no such distribution. */
+			{gcMean < 0 || ((my_gamma > 0.0 || gammaCoRatio > 0.0) && gcMean < 1),
 				"the -g or -gr tract length (YAML gene_conversion_tract_length)",
-				(double)gcMean, ">= 1 when the gene conversion rate is above 0"},
+				(double)gcMean, ">= 1 when the gene conversion rate is above 0, and >= 0"},
 			/* Ancestry counts are uint16_t. */
 			{sampleSize > 65535, "the sample size", (double)sampleSize, "<= 65535"},
 			{nSites > MAXSITES, "the number of sites", (double)nSites,
@@ -1348,7 +1347,7 @@ void getParameters(int argc,const char **argv){
 		};
 		for(size_t k = 0; k < sizeof(fixed) / sizeof(fixed[0]); k++){
 			if(fixed[k].bad){
-				fprintf(stderr, "Error: %s (%g) must be %s\n", fixed[k].what,
+				fprintf(stderr, "Error: %s (%.10g) must be %s\n", fixed[k].what,
 					fixed[k].value, fixed[k].rule);
 				exit(1);
 			}
