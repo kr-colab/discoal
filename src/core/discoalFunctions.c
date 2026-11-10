@@ -2633,7 +2633,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 			else if (r < (sum += pGCB) / sweepPopTotRate)
 				geneConversionAtTimePopnSweep(eventTime, 0, 1, sweepSite, x);
 			else if (r < (sum += pGCb) / sweepPopTotRate)
-				geneConversionAtTimePopnSweep(eventTime, 0, 0, sweepSite, x);
+				geneConversionAtTimePopnSweep(eventTime, 0, 0, sweepSite, 1.0 - x);
 			else if (r < (sum += pLeftRecb) / sweepPopTotRate)
 				recombineToLeftPopnSweep(0, 0, x);
 			else if (r < (sum += pLeftRecB) / sweepPopTotRate)
