@@ -88,8 +88,10 @@ static void expandPool(size_t min_segments_needed) {
     g_pool.num_blocks++;
     g_pool.total_segments += new_block_size;
     
-    // Expand free list capacity if needed
-    size_t required_free_capacity = g_pool.free_count + new_block_size;
+    /* The free list must have a place for every segment of the pool, not
+     * only for the segments free now: any segment can be freed back to it,
+     * and resetSegmentPool() puts all of them in it. */
+    size_t required_free_capacity = g_pool.total_segments;
     if (required_free_capacity > g_pool.free_capacity) {
         size_t new_free_capacity = required_free_capacity * 2;
         AncestrySegment **new_free_list = realloc(g_pool.free_list,
