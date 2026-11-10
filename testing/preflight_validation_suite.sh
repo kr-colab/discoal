@@ -273,10 +273,10 @@ run_pass_case "en_other_population_recurrent_sweeps" \
 
 # A soft sweep (-f) under many size changes of population 0: the model of
 # issue #30, cut to its size changes before time 1.0. Its trajectory below
-# f0 could fail to end, and the run stopped with "trajectory too bigly"
-# (for this seed, at the third replicate). It must run.
+# f0 could fail to end, and the run stopped with "trajectory too bigly".
+# It must run. With 8 replicates, the bug shows for most seeds.
 run_pass_case "soft_sweep_many_size_changes" \
-    10 3 1000 -t 1 -r 1 -ws 0 -a 800 -f 0.1 -x 0.5 \
+    10 8 1000 -t 1 -r 1 -ws 0 -a 800 -f 0.1 -x 0.5 \
     -en 0.0005124 0 1 -en 0.000605 0 1 \
     -en 0.0007144 0 1 -en 0.0008435 0 1.003 \
     -en 0.0009961 0 1.013 -en 0.001176 0 1.039 \
