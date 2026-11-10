@@ -37,8 +37,7 @@ parameters:
 	 -g conversionRate tractLengthMean (gene conversion)
 	 -gr conversionToCrossoverRatio tractLengthMean (gene conversion where initiation rate = rho*conversionToCrossoverRatio)
 	 -p npops sampleSize1 sampleSize2 etc.
-	 -D demesFile.yaml (load demographic model from demes format file)
-	 -Y configFile.yaml (load parameters from YAML configuration file)
+	 -Y configFile.yaml (load parameters from a YAML configuration file; a demes model goes in demography.demes_filename)
 	 -en time popnID size (changes size of popnID)
 	 -eg time popnID alpha (sets popnID to exponential growth at rate alpha per 4N0 generations, as in ms; positive alpha = past was smaller)
 	 -eG time alpha (-eg applied to all populations)
