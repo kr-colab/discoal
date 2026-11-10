@@ -1,0 +1,17 @@
+# Recurrent sweeps inside the locus at a given position. Valid alone; with
+# -L on the command line (a sweep outside the locus) the position is
+# rejected, as testing/preflight_validation_suite.sh checks.
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 5
+  recombination_rate: 5
+selection:
+  sweep_mode: stochastic
+  selection_coefficient: 500
+  recurrent_sweep_rate: 1.0
+  sweep_position: 0.2

@@ -37,6 +37,7 @@
 int locusNumber;
 int leftRhoFlag=0;
 int recurrentLeftOfLocus=0;
+int sweepPositionGiven=0;
 double *currentSize;
 long seed1, seed2;
 double nextTime, currentFreq;
@@ -736,7 +737,6 @@ static double parseDoubleArg(int argc, const char **argv, int *args, const char 
 void getParameters(int argc,const char **argv){
 	int args;
 	int i,j;
-	int xGiven = 0;  /* -x on the command line */
 	double migR;
 	int selCheck,nChangeCheck;
 	int yaml_config_loaded = 0;
@@ -773,6 +773,7 @@ void getParameters(int argc,const char **argv){
 	deltaTMod = 40;
 	recurSweepMode = 0;
 	recurrentLeftOfLocus = 0;
+	sweepPositionGiven = 0;
 	trajFileRows = 0;
 	partialSweepMode = 0;
 	softSweepMode = 0;
@@ -980,7 +981,7 @@ void getParameters(int argc,const char **argv){
 			break;
 			case 'x' :
 			sweepSite = parseDoubleArg(argc, argv, &args, "-x");
-			xGiven = 1;
+			sweepPositionGiven = 1;
 			break;
 			case 'M' :
 			if(npops==1){
@@ -1477,13 +1478,14 @@ void getParameters(int argc,const char **argv){
 	}
 	/* Options that contradict the sweep model, from the CLI or YAML: a
 	 * drawn position puts the sweep inside the locus, and a drawn tau needs
-	 * a single sweep. YAML rejects sweep_position with a sweep outside the
-	 * locus itself; on the command line, -x is rejected with one whatever
-	 * its value. */
+	 * a single sweep. A sweep position (-x or YAML sweep_position) is
+	 * rejected with a sweep outside the locus whatever its value, also when
+	 * one comes from the command line and the other from YAML. */
 	if(priorX && sweepOutsideLocus){
 		fprintf(stderr, "Error: a prior on the sweep position (-Px, or YAML "
 			"priors.sweep_position) cannot be combined with a sweep outside "
-			"the locus (-ls, -ld, -ln, -L)\n");
+			"the locus (-ls, -ld, -ln, -L, or YAML left_rho or "
+			"recurrent_sweeps_left_of_locus)\n");
 		exit(1);
 	}
 	if(priorTau && recurSweepMode){
@@ -1492,9 +1494,10 @@ void getParameters(int argc,const char **argv){
 			"sweeps (-R, -L)\n");
 		exit(1);
 	}
-	if(sweepOutsideLocus && xGiven){
-		fprintf(stderr, "Error: -x cannot be combined with a sweep outside "
-			"the locus (-ls, -ld, -ln, -L)\n");
+	if(sweepOutsideLocus && sweepPositionGiven){
+		fprintf(stderr, "Error: -x (or YAML sweep_position) cannot be combined "
+			"with a sweep outside the locus (-ls, -ld, -ln, -L, or YAML left_rho "
+			"or recurrent_sweeps_left_of_locus)\n");
 		exit(1);
 	}
 	if(softSweep && recurSweepMode == 1){

@@ -242,6 +242,9 @@ extern int leftRhoFlag;   /* -ls/-ld/-ln; defined in discoal_multipop.c */
 /* -L (or YAML recurrent_sweeps_left_of_locus): recurrent sweeps outside the
  * locus; defined in discoal_multipop.c. */
 extern int recurrentLeftOfLocus;
+/* A sweep position was given (-x, or YAML sweep_position); defined in
+ * discoal_multipop.c. */
+extern int sweepPositionGiven;
 
 
 int hidePartialSNP;
