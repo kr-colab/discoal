@@ -347,8 +347,7 @@ run_fail_case "sweep_with_size_prior_below_one" \
     10 5 1000 -N 10000 -t 5 -r 5 -a 200 -Pe1 0.01 0.02 0.000001 0.001 -ws 0.05
 
 # Priors (-P flags) and fixed values follow the rules of their YAML
-# fields; a negative rate could hang the run (-Pr, -g), and values outside
-# their range ran without a message.
+# fields; a negative rate could hang the run (-Pr, -g, -R).
 run_fail_case "Pt_negative_low" \
     "the bounds must satisfy 0 <= low <= high" \
     20 2 1000 -t 5 -r 5 -Pt -5 5
@@ -420,6 +419,22 @@ run_fail_case "ws_negative_time" \
 run_fail_case "ls_negative_leftRho" \
     "(leftRho) (-5) must be >= 0" \
     20 2 1000 -t 5 -r 5 -ls 0.01 -5 -a 500
+
+run_fail_case "R_negative_rate" \
+    "-R or -L (rate) (-1) must be > 0" \
+    20 2 1000 -t 5 -r 5 -R -1 -a 500
+
+run_fail_case "ea_proportion_above_one" \
+    "-ea (proportion) (1.5) must be in [0, 1]" \
+    20 2 1000 -t 5 -r 5 -p 3 10 5 5 -ea 0.1 0 1 2 1.5 -ed 0.5 1 0 -ed 0.6 2 0
+
+run_fail_case "p_negative_sample_size" \
+    "a -p sample size (-5) must be >= 0" \
+    20 2 1000 -t 5 -r 5 -p 2 25 -5 -ed 0.5 1 0
+
+run_fail_case "p_sample_sizes_do_not_add_up" \
+    "the sum of the -p sample sizes (15) must be equal to the sample size" \
+    20 2 1000 -t 5 -r 5 -p 2 10 5 -ed 0.5 1 0
 
 run_pass_case "priors_inside_their_ranges" \
     20 2 1000 -t 5 -r 5 -ws 0.01 -a 500 -Pt 0 10 -Pr 0 20 -Pa 100 1000 -Pu 0 0.05 -PuA 0 0.01 -Px 0 1 -d 1 2

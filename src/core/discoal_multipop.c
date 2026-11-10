@@ -1277,11 +1277,6 @@ void getParameters(int argc,const char **argv){
 			sweepMode = 's';
 			sweepSite = -1.0;
 			recurSweepRate = atof(argv[++args]);
-            if (recurSweepRate <= 0)
-            {
-                fprintf(stderr,"recurSweepRate must be > 0\n");
-                exit(0);
-            }
 			break;
 			case 'c' :
 			partialSweepMode = 1;
@@ -1385,42 +1380,12 @@ void getParameters(int argc,const char **argv){
 			exit(666);
 		}
 	}
-	/* Uniform priors (the -P flags, or YAML priors) follow the YAML rules:
-	 * low <= high, inside the parameter's range. -Pu is checked in 4N0
-	 * generations, as given. A soft sweep that is partial needs every drawn
-	 * f0 below every drawn final frequency; -Pf counts as a soft sweep. */
+	/* Priors (the -P flags, or YAML priors) follow the ranges of their YAML
+	 * fields. A soft sweep that is partial needs every drawn f0 below every
+	 * drawn final frequency; -Pf counts as a soft sweep. */
 	{
-		const struct {
-			int on;
-			const char *flag;
-			double low, high, lo, hi;
-			int open_hi;
-		} uniformPriors[] = {
-			{priorTheta, "-Pt", pThetaLow, pThetaUp, 0.0, INFINITY, 0},
-			{priorRho == 1, "-Pr", pRhoLow, pRhoUp, 0.0, INFINITY, 0},
-			{priorAlpha, "-Pa", pAlphaLow, pAlphaUp, 0.0, INFINITY, 0},
-			{priorTau, "-Pu", pTauLow / USER_TO_INTERNAL_TIME,
-				pTauUp / USER_TO_INTERNAL_TIME, 0.0, INFINITY, 0},
-			{priorUA, "-PuA", pUALow, pUAUp, 0.0, INFINITY, 0},
-			{priorX, "-Px", pXLow, pXUp, 0.0, 1.0, 0},
-			{priorF0, "-Pf", pF0Low, pF0Up, 0.0, 1.0, 1},
-			{priorC, "-Pc", pCLow, pCUp, 0.0, 1.0, 1},
-		};
-		for(i = 0; i < (int)(sizeof(uniformPriors) / sizeof(uniformPriors[0])); i++){
-			const double lo = uniformPriors[i].lo, hi = uniformPriors[i].hi;
-			if(uniformPriors[i].on &&
-			   !uniformBoundsOk(uniformPriors[i].low, uniformPriors[i].high,
-			                    lo, hi, 0, uniformPriors[i].open_hi)){
-				char upper[32] = "";
-				if(isfinite(hi))
-					snprintf(upper, sizeof(upper), " %s %g",
-						uniformPriors[i].open_hi ? "<" : "<=", hi);
-				fprintf(stderr, "Error: %s %g %g: the bounds must satisfy %g <= low "
-					"<= high%s\n", uniformPriors[i].flag, uniformPriors[i].low,
-					uniformPriors[i].high, lo, upper);
-				exit(1);
-			}
-		}
+		if(checkUniformPriorBounds() != 0)
+			exit(1);
 		/* -Pre mean upper: an exponential prior on rho, capped at upper. */
 		if(priorRho == 2 && !(pRhoMean > 0.0 && pRhoUp > 0.0)){
 			fprintf(stderr, "Error: -Pre %g %g: the mean and the upper bound must "
@@ -1429,13 +1394,25 @@ void getParameters(int argc,const char **argv){
 		}
 	}
 	/* Fixed values, with the rules of their YAML fields. A negative rate
-	 * could make a run hang (-r, -g), and values outside their range ran
-	 * without a message. A sweep position of -1 means a sweep outside the
-	 * locus (-ls, -ld, -ln, -L). */
+	 * could make a run hang (-r, -g, -R). A sweep position of -1 means a
+	 * sweep outside the locus (-ls, -ld, -ln, -L). */
 	{
-		double tauMin = 0.0;
-		for(i = 0; i < eventNumber; i++)
+		double tauMin = 0.0, admixBad = 0.0;
+		int admixOut = 0, sampleSum = 0, sampleNegative = 0, sampleBad = 0;
+		for(i = 0; i < eventNumber; i++){
 			if(events[i].type == 's' && events[i].time < tauMin) tauMin = events[i].time;
+			if(events[i].type == 'a' && !(events[i].admixProp >= 0.0 && events[i].admixProp <= 1.0)){
+				admixOut = 1;
+				admixBad = events[i].admixProp;
+			}
+		}
+		for(i = 0; i < npops; i++){
+			sampleSum += sampleSizes[i];
+			if(sampleSizes[i] < 0){
+				sampleNegative = 1;
+				sampleBad = sampleSizes[i];
+			}
+		}
 		const struct { int bad; const char *what; double value; const char *rule; } fixed[] = {
 			{theta < 0.0, "-t", theta, ">= 0"},
 			{rho < 0.0, "-r", rho, ">= 0"},
@@ -1452,11 +1429,17 @@ void getParameters(int argc,const char **argv){
 				tauMin / USER_TO_INTERNAL_TIME, ">= 0"},
 			{!(deltaTMod > 0.0), "-i", deltaTMod, "> 0"},
 			{EFFECTIVE_POPN_SIZE < 1, "-N", (double)EFFECTIVE_POPN_SIZE, ">= 1"},
+			{recurSweepMode && !(recurSweepRate > 0.0), "-R or -L (rate)",
+				recurSweepRate, "> 0"},
+			{admixOut, "-ea (proportion)", admixBad, "in [0, 1]"},
+			{sampleNegative, "a -p sample size", (double)sampleBad, ">= 0"},
+			{npops > 1 && sampleSum != sampleSize, "the sum of the -p sample sizes",
+				(double)sampleSum, "equal to the sample size"},
 		};
-		for(i = 0; i < (int)(sizeof(fixed) / sizeof(fixed[0])); i++){
-			if(fixed[i].bad){
-				fprintf(stderr, "Error: %s (%g) must be %s\n", fixed[i].what,
-					fixed[i].value, fixed[i].rule);
+		for(size_t k = 0; k < sizeof(fixed) / sizeof(fixed[0]); k++){
+			if(fixed[k].bad){
+				fprintf(stderr, "Error: %s (%g) must be %s\n", fixed[k].what,
+					fixed[k].value, fixed[k].rule);
 				exit(1);
 			}
 		}
