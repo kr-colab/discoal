@@ -152,6 +152,13 @@ run_fail_case "en_negative_size" \
     "size must be strictly positive" \
     5 1 100 -t 5 -en 0.1 0 -0.5
 
+# The last interval has no end, so a linear decline back in time with no
+# later event reaches size zero; it must be rejected, not run with a
+# negative size.
+run_fail_case "el_zero_crossing_in_last_interval" \
+    "drives population 1 size to zero" \
+    4 2 100 -t 2 -p 2 2 2 -M 1 -el 0.0 1 10
+
 run_fail_case "el_positive_gamma_zero_crossing_before_next_event" \
     "drives population 0 size to zero" \
     5 1 100 -t 5 -el 0.05 0 5.0 -en 1.0 0 1.0
@@ -319,7 +326,7 @@ run_fail_case "eg_starting_after_sweep_start" \
 
 run_fail_case "el_during_sweep" \
     "not modeled under growth" \
-    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -el 0 0 2
+    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -el 0 0 -2
 
 run_fail_case "eG_during_sweep" \
     "not modeled under growth" \
