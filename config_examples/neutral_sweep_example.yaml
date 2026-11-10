@@ -2,8 +2,8 @@
 # fixation 0.05 x 4N generations ago. A null model for the sweeps of
 # hard_sweep_example.yaml. selection_coefficient must be 0 here; on the
 # command line, -wn ignores -a. N = 10^4: a neutral fixation takes about
-# 4N generations, and its trajectory is drawn one generation at a time,
-# so a smaller N makes the run fast.
+# 4N generations, and its trajectory is drawn in steps of 1/20
+# generation, so a smaller N makes the run fast.
 # Equivalent to: discoal 20 2 50000 -t 20 -r 20 -wn 0.05 -x 0.5 -N 10000 -d 2003 3003
 
 simulation:

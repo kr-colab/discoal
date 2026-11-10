@@ -1,5 +1,3 @@
-TODO this is out of date
-
 # YAML Configuration Examples
 
 This directory contains example YAML configuration files for discoal.
@@ -25,6 +23,7 @@ This directory contains example YAML configuration files for discoal.
 - `recurrent_linked_sweeps_example.yaml` - Recurrent sweeps to the left of the locus (-L)
 - `priors_example.yaml` - Parameter values drawn for each replicate (-P flags)
 - `trajectory_file_example.yaml` - A partial sweep with its trajectory read from `trajectory_example.traj` (-S)
+- `tree_sequence_example.yaml` - Tree sequence output (-ts)
 
 ## Running Examples
 
@@ -32,14 +31,16 @@ To run any example:
 
 ```bash
 # From the discoal root directory
-./discoal -Y config_examples/basic_example.yaml
+./build/discoal -Y config_examples/basic_example.yaml
 
-# With additional command line options
-./discoal -Y config_examples/sweep_example.yaml -T
-
-# Using demes with population specification
-./discoal -Y config_examples/demes_example.yaml -p 2 50 50
+# Command line options after the file override its values
+./build/discoal -Y config_examples/sweep_example.yaml -d 1 2
 ```
+
+Each example starts with a line `# Equivalent to: discoal ...`, the
+same simulation on the command line. `testing/yaml_validation_suite.sh`
+runs both forms of every example and checks that the outputs are
+identical.
 
 ## Creating Your Own Configuration
 
