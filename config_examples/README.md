@@ -7,8 +7,15 @@ This directory contains example YAML configuration files for discoal.
 ## Basic Examples
 
 - `basic_example.yaml` - Simple simulation with mutation and recombination
-- `sweep_example.yaml` - Selective sweep simulation
-- `demographic_example.yaml` - Population size changes and gene conversion
+- `sweep_example.yaml` - A soft (-f), partial (-c) sweep
+- `hard_sweep_example.yaml` - A hard sweep from one new mutation (-ws)
+- `deterministic_sweep_example.yaml` - The same sweep with a deterministic trajectory (-wd)
+- `neutral_sweep_example.yaml` - A neutral fixation, a null model for sweeps (-wn)
+- `recurrent_mutation_sweep_example.yaml` - A soft sweep from recurrent beneficial mutation (-uA)
+- `recurrent_sweeps_example.yaml` - Recurrent sweeps in the locus (-R)
+- `gene_conversion_example.yaml` - Gene conversion at a set rate (-g)
+- `gene_conversion_ratio_example.yaml` - Gene conversion relative to crossing over (-gr)
+- `demographic_example.yaml` - Three populations with migration, size changes and splits
 - `demes_example.yaml` - Using an external demes file for demography
 - `migration_change_example.yaml` - Migration rates that change over time
 - `ancient_samples_example.yaml` - Ancient samples in two populations

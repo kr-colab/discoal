@@ -1,0 +1,21 @@
+# Recurrent hitchhiking: stochastic sweeps at random positions in the
+# locus, at rate 2 per 2N individuals per generation, each with
+# alpha = 2Ns = 500. There is no fixation_time_ago: the sweep times are
+# random. For sweeps to the left of the locus, see
+# recurrent_linked_sweeps_example.yaml.
+# Equivalent to: discoal 20 2 10000 -t 10 -r 10 -R 2 -a 500 -d 2005 3005
+
+simulation:
+  sample_size: 20
+  num_replicates: 2
+  num_sites: 10000
+  seed: [2005, 3005]
+
+genetics:
+  mutation_rate: 10.0
+  recombination_rate: 10.0
+
+selection:
+  sweep_mode: "stochastic"
+  selection_coefficient: 500
+  recurrent_sweep_rate: 2.0
