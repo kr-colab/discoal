@@ -48,19 +48,16 @@ void usage();
 void cleanup_and_exit(int sig);
 void initializeTrajectoryVariables(double N);
 
-// Remove the sweep trajectory file, if any. Registered with atexit, so
-// every exit path (error exits included) removes it.
+// Unmap and close the sweep trajectory, if any. Its file is anonymous
+// (tmpfile), so closing it, or the end of the process, removes it.
 static void removeTrajectoryFile(void) {
 	if (trajectoryFd != -1) {
 		if (currentTrajectory && currentTrajectory != MAP_FAILED) {
 			munmap(currentTrajectory, trajectoryFileSize);
 		}
 		close(trajectoryFd);
-		if (trajectoryFilename[0] != '\0') {
-			unlink(trajectoryFilename);
-		}
 		trajectoryFd = -1;
-		trajectoryFilename[0] = '\0';
+		currentTrajectory = NULL;
 	}
 }
 
@@ -136,7 +133,6 @@ int main(int argc, const char * argv[]){
         totalSimCount = 0;
 	trajectoryCapacity = TRAJSTEPSTART;
 	trajectoryFd = -1;  // Initialize to invalid
-	trajectoryFilename[0] = '\0';  // Empty filename
 	currentTrajectory = NULL;  // Will be mmap'd when needed
 	
 	// Initialize global trajectory generator (lazy approach)
@@ -570,20 +566,8 @@ int main(int argc, const char * argv[]){
 		// Cleanup is now done at the beginning of each replicate to prevent overwrites
 		// No cleanup needed here between replicates
 		
-		// Clean up trajectory after each simulation
-		if (trajectoryFd != -1) {
-			// fprintf(stderr, "Cleaning up trajectory\n");
-			if (currentTrajectory && currentTrajectory != MAP_FAILED) {
-				munmap(currentTrajectory, trajectoryFileSize);
-			}
-			close(trajectoryFd);
-			if (trajectoryFilename[0] != '\0') {
-				unlink(trajectoryFilename);
-			}
-			trajectoryFd = -1;
-			trajectoryFilename[0] = '\0';
-			currentTrajectory = NULL;
-		}
+		// Release the trajectory after each replicate
+		removeTrajectoryFile();
 		
 		// Finalize and write tskit tree sequence for this replicate
 		if (tskitOutputMode) {
@@ -638,16 +622,7 @@ int main(int argc, const char * argv[]){
 		//         totalSimCount + 1, i, totalSimCount, sampleNumber);
                 totalSimCount += 1;
 	}
-	// Clean up any remaining trajectory storage
-	if (trajectoryFd != -1) {
-		if (currentTrajectory && currentTrajectory != MAP_FAILED) {
-			munmap(currentTrajectory, trajectoryFileSize);
-		}
-		close(trajectoryFd);
-		if (trajectoryFilename[0] != '\0') {
-			unlink(trajectoryFilename);
-		}
-	}
+	removeTrajectoryFile();
 	
 	// tskit finalization now handled per-replicate
 	
