@@ -141,7 +141,7 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential make
-        pip install msprime demes numpy
+        pip install msprime demes numpy scipy
 
     - name: Build discoal
       run: make discoal
@@ -163,6 +163,12 @@ jobs:
 
     - name: Check recurrent sweeps
       run: python testing/recurrent_sweep_check.py
+
+    # Random command-line demographic models (sizes, growth, migration,
+    # admixture, merges, ancient samples, recombination) against msprime.
+    # Fixed seeds, so the result does not change from run to run.
+    - name: Fuzz test against msprime
+      run: python testing/fuzz_msprime_check.py --models 150 --reps 500 --workers 4
 
   memory-check:
     runs-on: ubuntu-latest
