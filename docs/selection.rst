@@ -132,6 +132,10 @@ starts, and growth of other populations with a single sweep, are
 allowed. To model a sweep during growth, approximate the growth with
 steps of ``-en``.
 
+During a sweep no migration happens (see the limitations in
+:doc:`population_structure`); outside sweeps, migration and its changes
+apply as usual, also between recurrent sweeps.
+
 Advanced Options
 ----------------
 

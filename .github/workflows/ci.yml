@@ -156,6 +156,9 @@ jobs:
     - name: Check sweep trajectory files
       run: python testing/trajectory_file_check.py
 
+    - name: Check recurrent sweeps
+      run: python testing/recurrent_sweep_check.py
+
   memory-check:
     runs-on: ubuntu-latest
     name: Memory Leak Check

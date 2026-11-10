@@ -403,7 +403,6 @@ static int add_provenance(void) {
     extern double sweepSite;     // Sweep position
     extern char sweepMode;       // Type of sweep
     extern int activeSweepFlag;  // Whether sweep is active
-    extern double migMat[MAXPOPS][MAXPOPS];  // Migration matrix
     
     // Get tskit version
     char tskit_version[32] = "C-API";  // tskit C API doesn't expose version easily

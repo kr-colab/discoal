@@ -199,7 +199,7 @@ double pThetaUp, pThetaLow,pRhoMean,pRhoUp,pRhoLow,pAlphaUp,pAlphaLow,pTauUp,pTa
 struct priorSizeChange { double timeLow, timeHigh, sizeLow, sizeHigh; };
 struct priorSizeChange priorSizeChanges[MAX_PRIOR_SIZE_CHANGES];
 int numPriorSizeChanges;
-double migMat[MAXPOPS][MAXPOPS], migMatConst[MAXPOPS][MAXPOPS];
+double migMatConst[MAXPOPS][MAXPOPS];
 extern double *currentSize;
 double currentSizeConst[MAXPOPS];  /* snapshot of initial currentSize; restored per replicate */
 Shape popShape[MAXPOPS];
