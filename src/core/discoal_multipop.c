@@ -36,6 +36,8 @@
 
 int locusNumber;
 int leftRhoFlag=0;
+int recurrentLeftOfLocus=0;
+int sweepPositionGiven=0;
 double *currentSize;
 long seed1, seed2;
 double nextTime, currentFreq;
@@ -770,6 +772,8 @@ void getParameters(int argc,const char **argv){
 	migFlag = 0;
 	deltaTMod = 40;
 	recurSweepMode = 0;
+	recurrentLeftOfLocus = 0;
+	sweepPositionGiven = 0;
 	trajFileRows = 0;
 	partialSweepMode = 0;
 	softSweepMode = 0;
@@ -977,6 +981,7 @@ void getParameters(int argc,const char **argv){
 			break;
 			case 'x' :
 			sweepSite = parseDoubleArg(argc, argv, &args, "-x");
+			sweepPositionGiven = 1;
 			break;
 			case 'M' :
 			if(npops==1){
@@ -1274,6 +1279,7 @@ void getParameters(int argc,const char **argv){
 			break;
 			case 'L' :
 			recurSweepMode = 1;
+			recurrentLeftOfLocus = 1;
 			sweepMode = 's';
 			sweepSite = -1.0;
 			recurSweepRate = atof(argv[++args]);
@@ -1323,6 +1329,10 @@ void getParameters(int argc,const char **argv){
 		exit(1);
 	}
 
+	/* A sweep outside the locus is set by its options (-ls, -ld, -ln, -L, or
+	 * their YAML fields), not by the value of sweepSite, which the code
+	 * sets to -1 for it: a user -x value could be -1 too. */
+	const int sweepOutsideLocus = leftRhoFlag || recurrentLeftOfLocus;
 	/* Priors (the -P flags, or YAML priors) follow the ranges of their YAML
 	 * fields. A soft sweep that is partial needs every drawn f0 below every
 	 * drawn final frequency; -Pf counts as a soft sweep. */
@@ -1337,8 +1347,8 @@ void getParameters(int argc,const char **argv){
 		}
 	}
 	/* Fixed values, with the rules of their YAML fields. A negative rate
-	 * could make a run hang (-r, -g, -R). A sweep position of -1 means a
-	 * sweep outside the locus (-ls, -ld, -ln, -L). A value that a prior
+	 * could make a run hang (-r, -g, -R). A sweep outside the locus (-ls,
+	 * -ld, -ln, -L) has no position in it (sweepSite -1). A value that a prior
 	 * replaces (-t with -Pt, and so on) is not used, so it is not checked.
 	 * Each test is written so that NaN fails it. */
 	{
@@ -1375,7 +1385,7 @@ void getParameters(int argc,const char **argv){
 			{!priorAlpha && !(alpha >= 0.0), "-a", alpha, ">= 0"},
 			{!priorUA && !(uA >= 0.0), "-uA", uA, ">= 0"},
 			{!(leftRho >= 0.0), "-ls, -ld or -ln (leftRho)", leftRho / 2.0, ">= 0"},
-			{!priorX && sweepSite != -1.0 && !(sweepSite >= 0.0 && sweepSite <= 1.0),
+			{!priorX && !sweepOutsideLocus && !(sweepSite >= 0.0 && sweepSite <= 1.0),
 				"-x", sweepSite, "in [0, 1]"},
 			{!priorF0 && !(f0 >= 0.0 && f0 < 1.0), "-f", f0, "in [0, 1)"},
 			{tauBad, "a sweep time (-ws, -wd, -wn, -ls, -ld, -ln)",
@@ -1466,13 +1476,16 @@ void getParameters(int argc,const char **argv){
 			exit(1);
 		}
 	}
-	/* Priors that contradict the sweep model, from the CLI or YAML: a
-	 * drawn position puts the sweep inside the locus, and a drawn tau
-	 * needs a single sweep. */
-	if(priorX && sweepSite < 0.0){
+	/* Options that contradict the sweep model, from the CLI or YAML: a
+	 * drawn position puts the sweep inside the locus, and a drawn tau needs
+	 * a single sweep. A sweep position (-x or YAML sweep_position) is
+	 * rejected with a sweep outside the locus whatever its value, also when
+	 * one comes from the command line and the other from YAML. */
+	if(priorX && sweepOutsideLocus){
 		fprintf(stderr, "Error: a prior on the sweep position (-Px, or YAML "
 			"priors.sweep_position) cannot be combined with a sweep outside "
-			"the locus (-ls, -ld, -ln, -L)\n");
+			"the locus (-ls, -ld, -ln, -L, or YAML left_rho or "
+			"recurrent_sweeps_left_of_locus)\n");
 		exit(1);
 	}
 	if(priorTau && recurSweepMode){
@@ -1481,9 +1494,11 @@ void getParameters(int argc,const char **argv){
 			"sweeps (-R, -L)\n");
 		exit(1);
 	}
-	if(leftRhoFlag && sweepSite >= 0.0){
-		printf("Error with event specification: you chose leftRho mode but the sweep site is within the locus\n");
-		exit(666);
+	if(sweepOutsideLocus && sweepPositionGiven){
+		fprintf(stderr, "Error: -x (or YAML sweep_position) cannot be combined "
+			"with a sweep outside the locus (-ls, -ld, -ln, -L, or YAML left_rho "
+			"or recurrent_sweeps_left_of_locus)\n");
+		exit(1);
 	}
 	if(softSweep && recurSweepMode == 1){
 		fprintf(stderr, "Error: recurrent soft sweeps (-R or -L with -f or "

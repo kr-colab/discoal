@@ -945,6 +945,7 @@ int parse_selection_block(struct selection_config *cfg)
                 return EXIT_FAILURE;
             }
             sweepSite = *cfg->sweep_position;
+            sweepPositionGiven = 1;
         }
         if (cfg->fixation_time_ago != NULL) {
             if (*cfg->fixation_time_ago < 0) {
@@ -1059,6 +1060,7 @@ int parse_selection_block(struct selection_config *cfg)
             recurSweepMode = 1;
             if (cfg->recurrent_sweeps_left_of_locus) {
                 sweepSite = -1.0;
+                recurrentLeftOfLocus = 1;
             }
             return EXIT_SUCCESS;
         }

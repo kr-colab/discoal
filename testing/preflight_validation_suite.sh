@@ -176,6 +176,32 @@ run_fail_case "Px_with_sweep_outside_locus" \
     "cannot be combined with a sweep outside the locus" \
     20 2 1000 -t 5 -ls 0.01 10 -a 100 -Px 0.4 0.6
 
+# The sweep is outside the locus only with -ls, -ld, -ln or -L, not
+# because of the value of -x: with -Px, -x is a placeholder.
+run_pass_case "x_placeholder_with_Px" \
+    20 2 1000 -t 5 -r 5 -ws 0.01 -a 500 -x -1 -Px 0 1 -d 1 2
+
+run_fail_case "x_minus_one_without_sweep_outside_locus" \
+    "-x (-1) must be in [0, 1]" \
+    20 2 1000 -t 5 -r 5 -R 2 -a 500 -x -1
+
+run_fail_case "Px_with_L" \
+    "cannot be combined with a sweep outside the locus" \
+    20 2 1000 -t 5 -r 5 -L 1 -a 500 -Px 0 1
+
+run_fail_case "x_inside_locus_with_L" \
+    "cannot be combined with a sweep outside the locus" \
+    20 2 1000 -t 5 -r 5 -L 1 -a 500 -x 0.3
+
+# A YAML sweep_position with -L from the command line.
+run_fail_case "yaml_position_with_cli_L" \
+    "YAML sweep_position) cannot be combined with a sweep outside the locus" \
+    -Y "$REPO_ROOT/testing/debug_yaml/recurrent_sweeps_with_position.yaml" -L 1
+
+run_fail_case "x_negative_with_ls" \
+    "cannot be combined with a sweep outside the locus" \
+    20 2 1000 -t 5 -r 5 -ls 0.01 10 -a 500 -x -0.5
+
 run_fail_case "Pu_with_recurrent_sweeps" \
     "needs a single sweep, not recurrent sweeps" \
     20 2 1000 -t 5 -R 0.1 -a 100 -Pu 0 0.1

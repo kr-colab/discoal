@@ -24,6 +24,8 @@ int eventsCapacity = 0;
 
 /* Defined in discoal_multipop.c, which the unit tests do not link. */
 int leftRhoFlag = 0;
+int recurrentLeftOfLocus = 0;
+int sweepPositionGiven = 0;
 
 // Stub implementation of ensureEventsCapacity for testing
 void ensureEventsCapacity() {
@@ -93,6 +95,8 @@ void reset_config_globals(void) {
     gcMean = 0;
     trajFileRows = 0;
     leftRhoFlag = 0;
+    recurrentLeftOfLocus = 0;
+    sweepPositionGiven = 0;
     leftRho = 0;
     deltaTMod = 0;
     priorTheta = priorRho = priorAlpha = priorTau = priorX = priorF0 = 0;
