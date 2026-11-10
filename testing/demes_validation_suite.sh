@@ -1,17 +1,13 @@
 #!/bin/bash
 
-# NOTE: This suite drives discoal via the CLI `-D <demes_file>` flag, which
-# has been temporarily disabled (see kr-colab/discoal#75). The original
-# body is preserved below so it can be restored easily once either CLI `-D`
-# returns or the suite is ported to the YAML (`-Y`) demes flow. Until then
-# it fails fast so CI cannot silently skip it.
-echo "Error: testing/demes_validation_suite.sh is out of date." >&2
-echo "  The CLI -D flag is currently disabled; this suite needs to be" >&2
-echo "  restored once -D returns, or ported to the YAML (-Y) demes flow." >&2
-exit 1
-
 # Demes validation test suite for discoal
-# Tests various demographic models specified in demes format
+# Tests various demographic models specified in demes format: each must be
+# accepted, or rejected where marked. The models go through a YAML config
+# (-Y with demography.demes_filename), written by demes_run.
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+DISCOAL=${DISCOAL:-$SCRIPT_DIR/../build/discoal}
+source "$SCRIPT_DIR/demes_run.sh"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -20,17 +16,15 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Create temporary directory for test files
-TEST_DIR="demes_validation_$(date +%Y%m%d_%H%M%S)"
+# Test files go in a temporary directory, removed on exit.
+TEST_DIR=$(mktemp -d -t demes_validation.XXXXXX)
+trap 'rm -rf "$TEST_DIR"' EXIT
 mkdir -p $TEST_DIR/demes_files
 
 echo "=== DISCOAL DEMES VALIDATION SUITE ==="
 echo "Creating test files in $TEST_DIR/"
 echo
-echo "IMPORTANT NOTES:"
-echo "1. Current implementation requires -p flag even for single population models"
-echo "   This should be improved in future versions"
-echo "2. The -D flag must come BEFORE the -p flag in the command line"
-echo "3. When time_units='generations', generation_time must be 1 (demes spec requirement)"
+echo "Note: when time_units is 'generations', generation_time must be 1 (demes spec)."
 echo
 
 # Counter for tests
@@ -46,14 +40,9 @@ run_test() {
     
     echo -n "Testing $test_name... "
     
-    # Parse the arguments to separate basic args from -p flag
-    local basic_args=$(echo "$discoal_args" | sed 's/-p.*//')
-    local p_flag=$(echo "$discoal_args" | grep -o -- '-p.*' || echo "")
+    local cmd="demes_run $demes_file $discoal_args"
     
-    # Construct command with -D before -p
-    local cmd="../build/discoal $basic_args -D $demes_file $p_flag"
-    
-    if OUTPUT=$($cmd 2>&1); then
+    if OUTPUT=$(demes_run "$demes_file" $discoal_args 2>&1); then
         if [ "$expect_fail" = "true" ]; then
             echo -e "${RED}FAILED${NC} (expected to fail but succeeded)"
             ((FAILED++))
@@ -148,7 +137,7 @@ EOF
 
 run_test "Population split" \
     "$TEST_DIR/demes_files/pop_split.yaml" \
-    "20 1 1000 -t 10 -p 2 10 10" \
+    "20 1 1000 -t 10 -p 3 0 10 10" \
     false
 
 # Test 5: Size change event
@@ -208,10 +197,15 @@ cat > $TEST_DIR/demes_files/admixture.yaml << EOF
 time_units: generations
 generation_time: 1
 demes:
+- name: anc
+  epochs:
+  - {end_time: 1000, start_size: 10000}
 - name: src1
+  ancestors: [anc]
   epochs:
   - {end_time: 500, start_size: 10000}
 - name: src2
+  ancestors: [anc]
   epochs:
   - {end_time: 500, start_size: 15000}
 - name: admixed
@@ -224,7 +218,7 @@ EOF
 
 run_test "Admixture model" \
     "$TEST_DIR/demes_files/admixture.yaml" \
-    "20 1 1000 -t 10 -p 1 20" \
+    "20 1 1000 -t 10 -p 4 0 0 0 20" \
     false
 
 # Test 8: Pulse migration (admixture)
@@ -249,8 +243,9 @@ run_test "Pulse migration" \
     "20 1 1000 -t 10 -p 2 10 10" \
     false
 
-# Test 9: Exponential growth (should fail)
-cat > $TEST_DIR/demes_files/exp_growth.yaml << EOF
+# Test 9: A size change in an epoch of infinite length is not a valid
+# demes model (should fail)
+cat > $TEST_DIR/demes_files/infinite_epoch_growth.yaml << EOF
 time_units: generations
 generation_time: 1
 demes:
@@ -259,10 +254,26 @@ demes:
   - {end_time: 0, start_size: 1000, end_size: 10000, size_function: exponential}
 EOF
 
-run_test "Exponential growth (should fail)" \
-    "$TEST_DIR/demes_files/exp_growth.yaml" \
+run_test "Size change in an infinite epoch (should fail)" \
+    "$TEST_DIR/demes_files/infinite_epoch_growth.yaml" \
     "20 1 1000 -t 10" \
     true
+
+# Test 9b: Exponential growth in a finite epoch
+cat > $TEST_DIR/demes_files/exp_growth.yaml << EOF
+time_units: generations
+generation_time: 1
+demes:
+- name: pop0
+  epochs:
+  - {end_time: 2000, start_size: 1000}
+  - {end_time: 0, start_size: 1000, end_size: 10000, size_function: exponential}
+EOF
+
+run_test "Exponential growth" \
+    "$TEST_DIR/demes_files/exp_growth.yaml" \
+    "20 1 1000 -t 10" \
+    false
 
 # Test 10: Selfing rate (should fail)
 cat > $TEST_DIR/demes_files/selfing.yaml << EOF
@@ -333,7 +344,7 @@ EOF
 
 run_test "Sequential population splits" \
     "$TEST_DIR/demes_files/sequential_splits.yaml" \
-    "30 1 1000 -t 10 -p 3 10 10 10" \
+    "30 1 1000 -t 10 -p 5 0 0 10 10 10" \
     false
 
 # Test 13: Island model (all populations connected)

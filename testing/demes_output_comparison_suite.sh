@@ -1,30 +1,18 @@
 #!/bin/bash
 
-# NOTE: This suite drives discoal via the CLI `-D <demes_file>` flag, which
-# has been temporarily disabled (see kr-colab/discoal#75). The original
-# body is preserved below so it can be restored easily once either CLI `-D`
-# returns or the suite is ported to the YAML (`-Y`) demes flow. Until then
-# it fails fast so CI cannot silently skip it.
-echo "Error: testing/demes_output_comparison_suite.sh is out of date." >&2
-echo "  The CLI -D flag is currently disabled; this suite needs to be" >&2
-echo "  restored once -D returns, or ported to the YAML (-Y) demes flow." >&2
-exit 1
-
 # Demes output comparison test suite
 # Tests that demographic models loaded via demes files produce identical results
 # to the same models specified via command line arguments
 
-# IMPORTANT NOTE ON TIME CONVERSIONS:
-# Discoal has a confusing time scaling convention:
-# - Command line times are specified in units of 2N generations
-# - Internally, times are stored in units of 4N generations
-# - Command line parser multiplies times by 2.0 (e.g., -en 0.05 becomes 0.1 internally)
-# - Demes times are in generations, so we convert: generations / (2N) to get internal units
-# 
-# Example: 200,000 generations with N=1,000,000
-# - Demes: 200,000 generations
-# - Internal: 200,000 / (2 * 1,000,000) = 0.1
-# - Command line equivalent: 0.1 / 2 = 0.05 (because parser will multiply by 2)
+# Time units: command-line times are in units of 4N0 generations, and
+# demes times in generations, so a demes time of g generations is the
+# command-line time g / (4 N0). N0 is the present-day size of the first
+# deme. The demes models go through a YAML config (-Y with
+# demography.demes_filename), written by demes_run.
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+DISCOAL=${DISCOAL:-$SCRIPT_DIR/../build/discoal}
+source "$SCRIPT_DIR/demes_run.sh"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -32,7 +20,9 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-TEST_DIR="demes_comparison_$(date +%Y%m%d_%H%M%S)"
+# Test files go in a temporary directory, removed on exit.
+TEST_DIR=$(mktemp -d -t demes_comparison.XXXXXX)
+trap 'rm -rf "$TEST_DIR"' EXIT
 mkdir -p "$TEST_DIR/demes_files"
 mkdir -p "$TEST_DIR/outputs"
 
@@ -135,8 +125,8 @@ EOF
 
 compare_outputs "single_pop_constant" \
     "$TEST_DIR/demes_files/single_pop_constant.yaml" \
-    "../build/discoal $NSAMP $NREPS $NSITES -t $THETA -r $RHO -D $TEST_DIR/demes_files/single_pop_constant.yaml -p 1 $NSAMP -d $SEED1 $SEED2" \
-    "../build/discoal $NSAMP $NREPS $NSITES -t $THETA -r $RHO -d $SEED1 $SEED2"
+    "demes_run $TEST_DIR/demes_files/single_pop_constant.yaml $NSAMP $NREPS $NSITES -t $THETA -r $RHO -p 1 $NSAMP -d $SEED1 $SEED2" \
+    "$DISCOAL $NSAMP $NREPS $NSITES -t $THETA -r $RHO -d $SEED1 $SEED2"
 
 # Test 2: Population size change
 # For this to work, we need the same effective population size trajectory
@@ -157,8 +147,8 @@ EOF
 # Relative ancient size: 2000000/1000000 = 2.0
 compare_outputs "size_change" \
     "$TEST_DIR/demes_files/size_change.yaml" \
-    "../build/discoal $NSAMP $NREPS $NSITES -t $THETA -r $RHO -D $TEST_DIR/demes_files/size_change.yaml -p 1 $NSAMP -d $SEED1 $SEED2" \
-    "../build/discoal $NSAMP $NREPS $NSITES -t $THETA -r $RHO -en 0.01 0 2.0 -d $SEED1 $SEED2"
+    "demes_run $TEST_DIR/demes_files/size_change.yaml $NSAMP $NREPS $NSITES -t $THETA -r $RHO -p 1 $NSAMP -d $SEED1 $SEED2" \
+    "$DISCOAL $NSAMP $NREPS $NSITES -t $THETA -r $RHO -en 0.01 0 2.0 -d $SEED1 $SEED2"
 
 # Test 3: Two populations with migration
 cat > "$TEST_DIR/demes_files/two_pop_migration.yaml" << EOF
@@ -178,8 +168,8 @@ EOF
 # Migration rate: 1e-6 * 4 * 1000000 = 4.0
 compare_outputs "two_pop_migration" \
     "$TEST_DIR/demes_files/two_pop_migration.yaml" \
-    "../build/discoal $NSAMP $NREPS $NSITES -t $THETA -r $RHO -D $TEST_DIR/demes_files/two_pop_migration.yaml -p 2 10 10 -d $SEED1 $SEED2" \
-    "../build/discoal $NSAMP $NREPS $NSITES -t $THETA -r $RHO -p 2 10 10 -M 4.0 -d $SEED1 $SEED2"
+    "demes_run $TEST_DIR/demes_files/two_pop_migration.yaml $NSAMP $NREPS $NSITES -t $THETA -r $RHO -p 2 10 10 -d $SEED1 $SEED2" \
+    "$DISCOAL $NSAMP $NREPS $NSITES -t $THETA -r $RHO -p 2 10 10 -M 4.0 -d $SEED1 $SEED2"
 
 # Test 4: Population join (modeled as pulse in demes)
 # The command line -ed 0.05 1 0 means at time 0.05, all lineages from pop1 move to pop0
@@ -248,12 +238,11 @@ EOF
 
 # The demes model: deme0 has size 2M until 200k gen ago, then 1M; deme1 splits at 200k gen ago
 # The command line: at time 0.05, pop1 joins pop0, and pop0 size changes to 2.0
-# Time conversion: 200,000 generations → 0.1 internal units → 0.05 command line units
-# (200,000 / (2*N) = 0.1 internal, divided by 2 for command line = 0.05)
+# Time conversion: 200,000 generations / (4 N0) = 0.05 command-line units
 compare_outputs "pop_split_corrected" \
     "$TEST_DIR/demes_files/pop_split_corrected.yaml" \
-    "../build/discoal $NSAMP $NREPS $NSITES -t $THETA -r $RHO -D $TEST_DIR/demes_files/pop_split_corrected.yaml -p 2 10 10 -d $SEED1 $SEED2" \
-    "../build/discoal $NSAMP $NREPS $NSITES -t $THETA -r $RHO -p 2 10 10 -ed 0.05 1 0 -en 0.05 0 2.0 -d $SEED1 $SEED2"
+    "demes_run $TEST_DIR/demes_files/pop_split_corrected.yaml $NSAMP $NREPS $NSITES -t $THETA -r $RHO -p 2 10 10 -d $SEED1 $SEED2" \
+    "$DISCOAL $NSAMP $NREPS $NSITES -t $THETA -r $RHO -p 2 10 10 -ed 0.05 1 0 -en 0.05 0 2.0 -d $SEED1 $SEED2"
 
 # Test 5: Asymmetric migration
 cat > "$TEST_DIR/demes_files/asymmetric_migration.yaml" << EOF
@@ -271,12 +260,14 @@ migrations:
 - {source: pop1, dest: pop0, rate: 1e-6}
 EOF
 
-# Rate from 0->1: 2e-6 * 4 * 1000000 = 8.0
-# Rate from 1->0: 1e-6 * 4 * 1000000 = 4.0
+# A demes migration from source to dest is forward in time, so lineages
+# move from dest to source going back, which is -m dest source:
+# pop0 -> pop1 at 2e-6 is -m 1 0 8.0 (2e-6 * 4 * 1000000), and
+# pop1 -> pop0 at 1e-6 is -m 0 1 4.0.
 compare_outputs "asymmetric_migration" \
     "$TEST_DIR/demes_files/asymmetric_migration.yaml" \
-    "../build/discoal $NSAMP $NREPS $NSITES -t $THETA -r $RHO -D $TEST_DIR/demes_files/asymmetric_migration.yaml -p 2 10 10 -d $SEED1 $SEED2" \
-    "../build/discoal $NSAMP $NREPS $NSITES -t $THETA -r $RHO -p 2 10 10 -m 0 1 8.0 -m 1 0 4.0 -d $SEED1 $SEED2"
+    "demes_run $TEST_DIR/demes_files/asymmetric_migration.yaml $NSAMP $NREPS $NSITES -t $THETA -r $RHO -p 2 10 10 -d $SEED1 $SEED2" \
+    "$DISCOAL $NSAMP $NREPS $NSITES -t $THETA -r $RHO -p 2 10 10 -m 1 0 8.0 -m 0 1 4.0 -d $SEED1 $SEED2"
 
 # Summary
 echo "=== TEST SUMMARY ==="
