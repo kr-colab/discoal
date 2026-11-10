@@ -37,28 +37,29 @@ run_test() {
     local demes_file=$2
     local discoal_args=$3
     local expect_fail=$4
-    
+    local expected_error=$5   # with expect_fail: a part of the error message
+
     echo -n "Testing $test_name... "
-    
-    if OUTPUT=$(demes_run "$demes_file" $discoal_args 2>&1); then
-        if [ "$expect_fail" = "true" ]; then
-            echo -e "${RED}FAILED${NC} (expected to fail but succeeded)"
-            ((FAILED++))
-        else
-            echo -e "${GREEN}PASSED${NC}"
-            ((PASSED++))
-        fi
-    else
-        if [ "$expect_fail" = "true" ]; then
+    local status=0
+    OUTPUT=$(demes_run "$demes_file" $discoal_args 2>&1) || status=1
+
+    if [ "$expect_fail" = "true" ]; then
+        if [ $status -ne 0 ] && printf '%s\n' "$OUTPUT" | grep -qF -- "$expected_error"; then
             echo -e "${GREEN}PASSED${NC} (correctly rejected)"
             ((PASSED++))
         else
-            echo -e "${RED}FAILED${NC}"
-            echo "  Command: demes_run $demes_file $discoal_args"
-            echo "  Error output:"
-            echo "$OUTPUT" | grep -E "(Error:|line|unknown)" | head -5
+            echo -e "${RED}FAILED${NC} (expected a rejection with: $expected_error)"
+            printf '%s\n' "$OUTPUT" | grep -E "Error" | head -3
             ((FAILED++))
         fi
+    elif [ $status -eq 0 ]; then
+        echo -e "${GREEN}PASSED${NC}"
+        ((PASSED++))
+    else
+        echo -e "${RED}FAILED${NC}"
+        echo "  Command: demes_run $demes_file $discoal_args"
+        printf '%s\n' "$OUTPUT" | grep -E "(Error:|line|unknown)" | head -5
+        ((FAILED++))
     fi
 }
 
@@ -113,7 +114,8 @@ EOF
 run_test "Two isolated populations (should fail)" \
     "$TEST_DIR/demes_files/two_pop_isolated.yaml" \
     "20 1 1000 -t 10 -p 2 10 10" \
-    true
+    true \
+    "no migration, merger or pulse events"
 
 # Test 4: Population split
 cat > $TEST_DIR/demes_files/pop_split.yaml << EOF
@@ -255,7 +257,8 @@ EOF
 run_test "Size change in an infinite epoch (should fail)" \
     "$TEST_DIR/demes_files/infinite_epoch_growth.yaml" \
     "20 1 1000 -t 10" \
-    true
+    true \
+    "Invalid value in YAML"
 
 # Test 9b: Exponential growth in a finite epoch
 cat > $TEST_DIR/demes_files/exp_growth.yaml << EOF
@@ -286,7 +289,8 @@ EOF
 run_test "Selfing rate (should fail)" \
     "$TEST_DIR/demes_files/selfing.yaml" \
     "20 1 1000 -t 10" \
-    true
+    true \
+    "Selfing and cloning are not supported"
 
 # Test 11: Complex migration changes
 cat > $TEST_DIR/demes_files/migration_changes.yaml << EOF
