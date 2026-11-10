@@ -1,0 +1,18 @@
+# Gene conversion at the population rate gamma = 10 for the whole locus,
+# scaled as rho is: 4N times the rate per generation at which a
+# conversion tract starts in the locus. The tract lengths are geometric,
+# with mean 200 sites. For a rate set relative to the
+# crossover rate, see gene_conversion_ratio_example.yaml.
+# Equivalent to: discoal 20 2 10000 -t 10 -r 10 -g 10 200 -d 2006 3006
+
+simulation:
+  sample_size: 20
+  num_replicates: 2
+  num_sites: 10000
+  seed: [2006, 3006]
+
+genetics:
+  mutation_rate: 10.0
+  recombination_rate: 10.0
+  gene_conversion_rate: 10.0
+  gene_conversion_tract_length: 200

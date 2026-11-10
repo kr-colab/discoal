@@ -1,0 +1,16 @@
+# Gene conversion set relative to crossing over: the gene conversion rate
+# is rho x crossover_ratio = 10 x 0.5 = 5, with tracts of mean length 200
+# sites. Set either crossover_ratio or gene_conversion_rate, not both.
+# Equivalent to: discoal 20 2 10000 -t 10 -r 10 -gr 0.5 200 -d 2007 3007
+
+simulation:
+  sample_size: 20
+  num_replicates: 2
+  num_sites: 10000
+  seed: [2007, 3007]
+
+genetics:
+  mutation_rate: 10.0
+  recombination_rate: 10.0
+  crossover_ratio: 0.5
+  gene_conversion_tract_length: 200

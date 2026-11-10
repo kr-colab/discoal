@@ -1,0 +1,22 @@
+# A soft sweep from recurrent mutation: during the sweep, the beneficial
+# allele also arises again by new mutation (rate 0.5), so the sample can
+# descend from more than one origin of it (here, both replicates do). Compare hard_sweep_example.yaml and, for a
+# soft sweep from standing variation, sweep_example.yaml.
+# Equivalent to: discoal 20 2 50000 -t 20 -r 20 -ws 0.05 -a 200 -x 0.5 -uA 0.5 -d 2004 3004
+
+simulation:
+  sample_size: 20
+  num_replicates: 2
+  num_sites: 50000
+  seed: [2004, 3004]
+
+genetics:
+  mutation_rate: 20.0
+  recombination_rate: 20.0
+
+selection:
+  sweep_mode: "stochastic"
+  selection_coefficient: 200
+  sweep_position: 0.5
+  fixation_time_ago: 0.05
+  beneficial_mutation_rate: 0.5

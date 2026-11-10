@@ -1,6 +1,7 @@
 # Simulates a soft selective sweep halfway along the contig that ended at
-# frequency 0.9 some time ago.
-# Equivalent to: discoal 15 10 50000 -t 20.0 -r 15.0 -ws 1.0 -a 10.0 -x 0.5 -f 0.1 -c 0.9 -d 42 54321
+# frequency 0.9, 0.1 x 4N generations ago. The selected site is not in
+# the output (hide_partial_snp).
+# Equivalent to: discoal 15 10 50000 -t 20.0 -r 15.0 -ws 0.1 -a 10.0 -x 0.5 -f 0.1 -c 0.9 -h -d 42 54321
 
 simulation:
   sample_size: 15
@@ -16,6 +17,9 @@ selection:
   sweep_mode: "stochastic"
   selection_coefficient: 10.0
   sweep_position: 0.5
-  fixation_time_ago: 1.0
+  fixation_time_ago: 0.1
   initial_frequency: 1.0e-1
   final_frequency: 0.9
+
+output:
+  hide_partial_snp: true
