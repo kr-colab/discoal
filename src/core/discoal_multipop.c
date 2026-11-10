@@ -1652,7 +1652,7 @@ void usage(){
 	fprintf(stderr,"\t -g conversionRate tractLengthMean (gene conversion)\n");
 	fprintf(stderr,"\t -gr conversionToCrossoverRatio tractLengthMean (gene conversion where initiation rate = rho*conversionToCrossoverRatio)\n");
 	fprintf(stderr,"\t -p npops sampleSize1 sampleSize2 etc.\n");
-	fprintf(stderr,"\t -D demesFile.yaml (load demographic model from demes format file)\n");
+	fprintf(stderr,"\t -Y configFile.yaml (load parameters from a YAML configuration file; a demes model goes in demography.demes_filename)\n");
 	fprintf(stderr,"\t -en time popnID size (changes size of popnID)\n");
 	fprintf(stderr,"\t -eg time popnID alpha (sets popnID to exponential growth at rate alpha per 4N0 generations, as in ms; positive alpha = past was smaller)\n");
 	fprintf(stderr,"\t -eG time alpha (-eg applied to all populations)\n");

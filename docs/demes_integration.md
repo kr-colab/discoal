@@ -4,18 +4,20 @@ Discoal supports the [demes](https://popsim-consortium.github.io/demes-spec/) sp
 
 ## Usage
 
-To use a demes file with discoal:
-
-```bash
-discoal <sample_size> <num_replicates> <sequence_length> -D model.yaml [other options]
-```
-
-Or within a YAML configuration file:
+Give the demes file in `demography.demes_filename` of a YAML
+configuration file, and the samples per deme in
+`demography.deme_sample_size` (see "Sample Size Specification" below):
 
 ```yaml
-events:
-  demes_file: model.yaml
+demography:
+  deme_sample_size: [10, 5, 5]
+  demes_filename: "model.yaml"
 ```
+
+Then run `discoal -Y config.yaml`. A relative `demes_filename` is
+relative to the directory that discoal runs in.
+`config_examples/demes_example.yaml` is a complete example, with its
+demes file and the equivalent command line.
 
 ## Supported Demes Features
 
@@ -162,15 +164,24 @@ migrations:
 
 ## Combining Demes with Other Parameters
 
-When using a demes file, you can still specify other evolutionary parameters:
+The other parameters go in the same YAML file. For example, for a
+selective sweep in the first deme (population 0), add a `selection`
+block (see `docs/yaml_configuration.md`):
 
-```bash
-# Add mutation and recombination to a demes model
-discoal 100 1000 50000 -D model.yaml -t 20 -r 15
-
-# Add selection to a demes model
-discoal 100 1000 50000 -D model.yaml -t 20 -r 15 -ws 0.01 -a 100 -x 0.5
+```yaml
+selection:
+  sweep_mode: "stochastic"
+  selection_coefficient: 100
+  fixation_time_ago: 0.01
 ```
+
+Command-line options also apply. A value option (for example `-t`, `-r`,
+`-a`, `-x`, `-N` or `-d`) replaces the YAML value, so
+`discoal -Y config.yaml -t 40` uses theta = 40; but a YAML prior on the
+same parameter takes precedence over it. An event option (for example
+`-en` or `-em`) adds an event to the model. A sweep option (`-ws` and
+the others) cannot be combined with a YAML `selection` block that has a
+sweep, because a run has at most one single sweep.
 
 ## Sample Size Specification
 

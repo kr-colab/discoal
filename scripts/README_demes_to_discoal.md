@@ -77,13 +77,22 @@ The tool follows the same conversion rules as the demes integration in discoal:
 
 You can verify the conversion by comparing outputs:
 
+For a simple model (two demes, no extinct demes, the same present-day
+size for both, and `--N0` set to the present-day size of the first
+deme), the two runs below give identical output. Run them in bash, so
+that `$DISCOAL_CMD` splits into words. For other models the script's
+command line can differ from discoal's own import (for example in the
+reference size, other present-day sizes, and splits from an extinct
+deme), so compare summary statistics instead.
+
 ```bash
-# Run with demes file
-discoal 20 5 10000 -t 10 -r 5 -D model.yaml -p 2 10 10 -d 123 456
+# Run with the demes file, through a -Y config (config.yaml) with
+# sample_size 20, num_replicates 5, num_sites 10000, mutation_rate 10,
+# recombination_rate 5, and
+# demography: {deme_sample_size: [10, 10], demes_filename: model.yaml}
+discoal -Y config.yaml -d 123 456
 
 # Run with converted command line
-DISCOAL_CMD=$(python scripts/demes_to_discoal.py model.yaml --samples 10 10)
+DISCOAL_CMD=$(python scripts/demes_to_discoal.py model.yaml --samples 10 10 --N0 <N0>)
 discoal 20 5 10000 -t 10 -r 5 $DISCOAL_CMD -d 123 456
 ```
-
-Both should produce identical results.
