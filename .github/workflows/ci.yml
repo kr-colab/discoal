@@ -119,6 +119,11 @@ jobs:
     - name: Run preflight validation suite
       run: bash testing/preflight_validation_suite.sh
 
+    - name: Run demes model suites
+      run: |
+        bash testing/demes_validation_suite.sh
+        bash testing/demes_output_comparison_suite.sh
+
   units-convention:
     runs-on: ubuntu-latest
     name: Unit Conventions vs msprime

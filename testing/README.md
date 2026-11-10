@@ -40,7 +40,8 @@ This builds `niceStats` from the msUtils library and creates a symlink in the pr
 | `focused_validation_suite.sh` | Quick regression testing of core features | 3-5 min |
 | `nicestats_comparison_suite.sh` | Statistical comparison of summary statistics | 5-15 min |
 | `msprime_comparison_suite.sh` | Statistical comparison with msprime simulator | 5-10 min |
-| `demes_validation_suite.sh` | Demes format demographic model validation | 5 min |
+| `demes_validation_suite.sh` | Demes models through a YAML config (`-Y`): each is accepted or, where marked, rejected (in CI) | under 1 s |
+| `demes_output_comparison_suite.sh` | Demes models through `-Y` give output identical to the equivalent command line (in CI) | under 1 s |
 | `yaml_validation_suite.sh` | YAML configuration file validation | 2 min |
 | `yaml_parser_suite.sh` | YAML parser regression suite (walks `testing/debug_yaml/`) | < 5 sec |
 | `units_convention_check.py` | Checks the units of times, growth rates, and migration rates against msprime (needs msprime and demes) | under 1 min |
