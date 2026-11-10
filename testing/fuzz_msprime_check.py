@@ -31,6 +31,7 @@ import concurrent.futures
 import glob
 import itertools
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -45,6 +46,7 @@ DISCOAL = os.path.join(REPO, "build", "discoal")
 N0 = 10000
 L = 1000
 ALPHA = 0.001
+TIME_LIMIT = 600   # seconds per model, discoal and msprime together
 
 
 def draw_model(seed):
@@ -52,7 +54,7 @@ def draw_model(seed):
     replicates and sites) and a function that builds the msprime
     Demography and sample sets. Times are in 4N0 generations."""
     rng = np.random.default_rng(seed)
-    npops = int(rng.choice([1, 2, 3], p=[0.25, 0.4, 0.35]))
+    npops = int(rng.choice([1, 2, 3], p=[0.2, 0.35, 0.45]))
     n_present = [int(rng.integers(2, 7)) for _ in range(npops)]
     sizes = [float(np.exp(rng.uniform(np.log(0.2), np.log(5.0))))
              for _ in range(npops)]
@@ -62,10 +64,18 @@ def draw_model(seed):
     # populations) or a merge; the last population (0) never ends.
     end = {0: np.inf}
     admix = None
-    if npops == 3 and rng.random() < 0.5:
+    if npops == 3 and rng.random() < 0.7:
         t_admix = float(rng.uniform(0.3, 0.9))
-        admix = (t_admix, 2, 0, 1, float(rng.uniform(0.1, 0.9)))
-        end[2] = t_admix
+        dau = int(rng.integers(1, 3))
+        f1, f2 = [p for p in range(3) if p != dau]
+        if rng.random() < 0.5:
+            f1, f2 = f2, f1
+        # A proportion far from 1/2, so that a swap of the founders shows.
+        prop = float(rng.uniform(0.05, 0.25))
+        if rng.random() < 0.5:
+            prop = 1 - prop
+        admix = (t_admix, dau, f1, f2, prop)
+        end[dau] = t_admix
     merge_times = sorted(rng.uniform(1.0, 2.0, size=npops - 1))
     merges = []
     alive = [p for p in range(npops) if p == 0 or p not in end]
@@ -92,10 +102,13 @@ def draw_model(seed):
                 lambda d, t=t, p=p, s=s: d.add_population_parameters_change(
                     time=t * 4 * N0, initial_size=s * N0, growth_rate=0,
                     population=p))
-        if rng.random() < 0.4:
-            t1 = float(rng.uniform(0.0, min(end[p], 1.0) * 0.6))
-            t2 = float(rng.uniform(t1 + 0.05, min(end[p], 1.0)))
-            a = float(rng.uniform(-5.0, 5.0))
+        if rng.random() < 0.5:
+            # Growth that starts early, while lineages remain, and changes
+            # the size by a factor of e^1.5 to e^3 either way, so that a
+            # wrong rate or sign changes the statistics.
+            t1 = float(rng.uniform(0.0, 0.1))
+            t2 = float(rng.uniform(t1 + 0.05, min(end[p], 0.6)))
+            a = float(rng.choice([-1, 1]) * rng.uniform(1.5, 3.0) / (t2 - t1))
             s = float(np.exp(rng.uniform(np.log(0.2), np.log(5.0))))
             add(t1, ["-eg", f"{t1!r}", str(p), f"{a!r}"],
                 lambda d, t=t1, p=p, a=a: d.add_population_parameters_change(
@@ -216,10 +229,18 @@ def run_model(job):
     discoal/msprime mean ratios) or None, error text)."""
     seed, reps, discoal = job
     m = draw_model(seed)
+    signal.signal(signal.SIGALRM, timed_out)
+    signal.alarm(TIME_LIMIT)
     try:
         return compare(seed, reps, discoal, m)
-    except (RuntimeError, subprocess.TimeoutExpired) as e:
-        return seed, m["args"], None, str(e)[-300:]
+    except Exception as e:  # one failing model must not stop the run
+        return seed, m["args"], None, f"{type(e).__name__}: {e}"[-300:]
+    finally:
+        signal.alarm(0)
+
+
+def timed_out(signum, frame):
+    raise TimeoutError(f"model took more than {TIME_LIMIT} s")
 
 
 def compare(seed, reps, discoal, m):
