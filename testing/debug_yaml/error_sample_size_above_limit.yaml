@@ -1,0 +1,12 @@
+# A sample above 65535 (ancestry counts are 16-bit), the same limit as on
+# the command line. Rejected with:
+#   "Error: the sample size (70000) must be <= 65535"
+
+simulation:
+  sample_size: 70000
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 5
+  recombination_rate: 5

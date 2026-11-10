@@ -1166,6 +1166,18 @@ int recombineAtTimePopn(double cTime, int popn){
 	return 666;
 }
 
+/* A gene conversion tract length: geometric on 1, 2, 3, ... with mean
+ * gcMean. With a mean of 1 every tract is one site; the inversion formula
+ * gives 0 there (log(1 - 1) is -inf), so the length is at least 1. The
+ * uniform is drawn in every case, so that the random number stream does
+ * not depend on the mean. */
+static int drawTractLength(void){
+	double u = genunf(0,1);
+	if (gcMean <= 1) return 1;
+	int length = (int) ceil(log(u)/log(1.0-(1.0/gcMean)));
+	return length < 1 ? 1 : length;
+}
+
 void geneConversionAtTimePopn(double cTime, int popn){
 	rootedNode *aNode, *lParent, *rParent;
 	int i;
@@ -1175,7 +1187,7 @@ void geneConversionAtTimePopn(double cTime, int popn){
 	aNode = pickNodePopn(popn);
 //	printf("GC\n",aNode);
 	xOver = ignuin(0,nSites);
-	tractL = (int) ceil(log(genunf(0,1))/log(1.0-(1.0/gcMean)));
+	tractL = drawTractLength();
 //	printf("xo: %d test1: %d tractL: %d gcMean: %d\n",xOver,siteBetweenChunks(aNode, xOver),tractL,gcMean );
 //	printNode(aNode);
 //	for(i=0;i<nSites;i++)printf("%d",activeMaterial[i]);
@@ -2776,7 +2788,7 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 	aNode = pickNodePopnSweep(popn, sp);
 	//	printf("picked: %p\n",aNode);
 	xOver = ignuin(0,nSites);
-	tractL = (int) ceil(log(genunf(0,1))/log(1.0-(1.0/gcMean)));
+	tractL = drawTractLength();
 
 	//	printf("xo: %d test1: %d test2: %d\n",xOver,siteBetweenChunks(aNode, xOver),isActive(xOver) );
 	//	printNode(aNode);
