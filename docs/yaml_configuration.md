@@ -7,15 +7,21 @@ the command line.
 
 ```bash
 discoal -Y config.yaml
-discoal -Y config.yaml -d 1 2      # options after the file change its values
+discoal -Y config.yaml -d 1 2      # the seeds 1 2, not those of the file
 ```
 
 - With `-Y`, the positional arguments (sample size, replicates, sites)
   come from the file. discoal stops with an error if you also give them
   on the command line.
-- Options after the file are applied after it, as on the command line.
-  For example, `-t 0` sets the mutation rate to 0, and `-d 1 2` sets the
-  seeds.
+- Other command-line options, before or after `-Y`, apply after the
+  file:
+  - an option that sets a value (for example `-t`, `-r`, `-d`, `-N`)
+    replaces the value of the file;
+  - an event option (for example `-en`, `-em`, `-A`) adds an event to
+    the events of the file;
+  - `-m i j rate` sets one entry of the migration matrix;
+  - `-p` replaces `deme_sample_size`. The sum must still be equal to
+    `sample_size`.
 - `config_examples/` has examples that run. Each one starts with a line
   `# Equivalent to: discoal ...`, which is the same run on the command
   line. `config_examples/all_options.yaml` lists every field, but it
@@ -105,10 +111,9 @@ block, with `deme_sample_size: [n]`.
 - `deme_sample_size` has one entry for each population (at most 121).
   Each entry must be `>= 0`, and the sum must be equal to
   `simulation.sample_size`.
-- `effective_population_size` is N, as `-N` sets it. N gives the
-  number of individuals in a sweep, so it changes only runs with a
-  sweep. It must be an integer. 0 is the same as no value, and gives
-  the default, 10^6.
+- `effective_population_size` is N, as `-N` sets it. Only sweeps use
+  N. It must be an integer. 0 is the same as no value, and gives the
+  default, 10^6.
 
 ### Migration
 
@@ -143,18 +148,24 @@ is required.
   `-ea time population source_1 source_2 proportion`. Backward in
   time, each lineage of `population` moves to `source_1` with
   probability `proportion`, and to `source_2` if not. All migration
-  into and out of `population` then stops, as for a split. The three
-  populations must be different, the two sources must not have ended,
-  a population can have one admixture only, `time` must be `> 0`, and
-  `proportion` must be in `[0, 1]`:
+  into and out of `population` then stops, as for a split. A
+  command-line `-ea` alone keeps the migration rates, as in ms. Rules:
+  - the three populations must be different;
+  - the two sources must not have ended;
+  - a population can have one admixture only;
+  - `time` must be `> 0`;
+  - `proportion` must be in `[0, 1]`.
+
+  For example:
 
   ```yaml
       admixtures:
         - {time: 0.1, population: 0, source_1: 1, source_2: 2, proportion: 0.3}
   ```
 
-- A migration rate change or an ancient sample of a population at or
-  after the time at which a split or an admixture ends it is an error.
+- A split or an admixture ends a population. At that time and after
+  it, a migration rate change or an ancient sample of that population
+  is an error.
 
 ### Ancient samples
 
@@ -182,7 +193,7 @@ the same time take effect in this order:
    migration changes that end the population's migration;
 5. size changes drawn from priors;
 6. the sweep;
-7. events from options after the file.
+7. events from command-line options.
 
 In each list, the order is the file order. On the command line, events
 at the same time take effect in the order of the options. To get the
@@ -216,16 +227,17 @@ selection:
 - A single sweep needs `fixation_time_ago`, or a prior on it.
   `fixation_time_ago: 0` is a sweep that ends at the present (`-ws 0`).
 - A run has one single sweep at most. With a single sweep in the file,
-  a sweep option after the file (`-ws`, `-wd`, `-wn`, `-ls`, `-ld`,
-  `-ln`, `-S`) is an error.
+  a sweep option on the command line (`-ws`, `-wd`, `-wn`, `-ls`,
+  `-ld`, `-ln`, `-S`, `-R`, `-L`) is an error.
 - `left_rho` puts the selected site outside the locus, to its left, at
   `4Nr = 2 x left_rho`. This is `-ls tau left_rho` (or `-ld`, `-ln`),
   with the same factor of 2. `left_rho: 0` puts the site at the left end
   of the locus. Do not give `sweep_position` with `left_rho`.
 - With `sweep_mode: "trajectory_file"`, give `trajectory_file:
   "path"` (`-S`). The file gives the times (in 4N generations) and
-  frequencies of the sweep; see `-S` in `docs/api_reference.rst`. A
-  relative path is relative to the directory in which discoal runs.
+  frequencies of the sweep; see `-S` in `docs/api_reference.rst`. If
+  the first frequency is below 1, the sweep is partial. A relative
+  path is relative to the directory in which discoal runs.
   The file gives the sweep's time and strength, so
   `selection_coefficient`, `fixation_time_ago`, `initial_frequency`,
   `final_frequency`, `left_rho`, the recurrent sweep fields, and priors
@@ -263,8 +275,8 @@ selection:
   `fixation_time_ago` must be `>= 0`, and `sweep_time_step` `> 0`.
 - The rules of the command line also apply. For example:
   - a deterministic sweep with a population size change is an error;
-  - population 0 must have at least one individual (N x size) during a
-    sweep;
+  - with a sweep, each size of population 0, at any time, must be at
+    least one individual (N x size >= 1);
   - population 0 must not grow or shrink continuously during a sweep
     (see `docs/selection.rst`).
 
@@ -309,7 +321,9 @@ priors:
   `[size_low, size_high]`. `-Pe1` and `-Pe2` are the first two entries,
   for population 0. You can give up to 64 entries. The bounds must be
   `0 <= time_low <= time_high` and `0 < size_low <= size_high`.
-  discoal stops if a drawn value makes a population size go to 0.
+  With a linear size change (`-el`), a drawn value can make a
+  population size go to 0 before the change ends. discoal then stops
+  with an error.
 
 ## output
 
@@ -327,7 +341,8 @@ output:
   output. With one replicate, the file name is
   `tree_sequence_filename`. With more, discoal puts `_repN` before the
   last `.` of the name, for replicates N = 1, 2, ...: `out.trees`
-  gives `out_rep1.trees`, `out_rep2.trees`, ...
+  gives `out_rep1.trees`, `out_rep2.trees`, ... A name with no `.`
+  gets `_repN` at its end.
 - `tree_sequence_filename` without `output_type: "tree_sequence"` is
   an error.
 - `unsimplified_tree_sequence: true` writes the full ancestral
@@ -358,9 +373,11 @@ demography:
   demes_filename: "config_examples/demes_example.demes.yaml"
 ```
 
-- A demes file gives the demography. discoal uses as N the present-day
-  size of the first deme that exists at time 0, and converts the
-  rates to 4Nm. See `docs/demes_integration.md`.
+- A demes file gives the demography. To convert its times, sizes and
+  rates, discoal uses as N the present-day size of the first deme that
+  exists at time 0. See `docs/demes_integration.md`.
+- This N converts the demes file only. A sweep uses
+  `effective_population_size`. With a sweep, set it to the same value.
 - `deme_sample_size` follows the order of the demes in the file,
   extinct demes included.
 - With a demes file, do not give `migration_matrix`.
