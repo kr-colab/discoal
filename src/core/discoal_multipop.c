@@ -1323,6 +1323,72 @@ void getParameters(int argc,const char **argv){
 		exit(1);
 	}
 
+	/* Priors (the -P flags, or YAML priors) follow the ranges of their YAML
+	 * fields. A soft sweep that is partial needs every drawn f0 below every
+	 * drawn final frequency; -Pf counts as a soft sweep. */
+	{
+		if(checkUniformPriorBounds() != 0)
+			exit(1);
+		/* -Pre mean upper: an exponential prior on rho, capped at upper. */
+		if(priorRho == 2 && !(pRhoMean > 0.0 && pRhoUp > 0.0)){
+			fprintf(stderr, "Error: -Pre %g %g: the mean and the upper bound must "
+				"be > 0\n", pRhoMean, pRhoUp);
+			exit(1);
+		}
+	}
+	/* Fixed values, with the rules of their YAML fields. A negative rate
+	 * could make a run hang (-r, -g, -R). A sweep position of -1 means a
+	 * sweep outside the locus (-ls, -ld, -ln, -L). A value that a prior
+	 * replaces (-t with -Pt, and so on) is not used, so it is not checked.
+	 * Each test is written so that NaN fails it. */
+	{
+		double tauMin = 0.0, admixBad = 0.0;
+		int admixOut = 0, sampleSum = 0, sampleNegative = 0, sampleBad = 0;
+		for(i = 0; i < eventNumber; i++){
+			if(events[i].type == 's' && !(events[i].time >= tauMin)) tauMin = events[i].time;
+			if(events[i].type == 'a' && !(events[i].admixProp >= 0.0 && events[i].admixProp <= 1.0)){
+				admixOut = 1;
+				admixBad = events[i].admixProp;
+			}
+		}
+		for(i = 0; i < npops; i++){
+			sampleSum += sampleSizes[i];
+			if(sampleSizes[i] < 0){
+				sampleNegative = 1;
+				sampleBad = sampleSizes[i];
+			}
+		}
+		const struct { int bad; const char *what; double value; const char *rule; } fixed[] = {
+			{!priorTheta && !(theta >= 0.0), "-t", theta, ">= 0"},
+			{!priorRho && !(rho >= 0.0), "-r", rho, ">= 0"},
+			{!(my_gamma >= 0.0), "-g (rate)", my_gamma, ">= 0"},
+			{!(gammaCoRatio >= 0.0), "-gr (ratio)", gammaCoRatio, ">= 0"},
+			{gcMean < 0, "-g or -gr (tract length)", (double)gcMean, ">= 0"},
+			{!priorAlpha && !(alpha >= 0.0), "-a", alpha, ">= 0"},
+			{!priorUA && !(uA >= 0.0), "-uA", uA, ">= 0"},
+			{!(leftRho >= 0.0), "-ls, -ld or -ln (leftRho)", leftRho / 2.0, ">= 0"},
+			{!priorX && sweepSite != -1.0 && !(sweepSite >= 0.0 && sweepSite <= 1.0),
+				"-x", sweepSite, "in [0, 1]"},
+			{!priorF0 && !(f0 >= 0.0 && f0 < 1.0), "-f", f0, "in [0, 1)"},
+			{!priorTau && !(tauMin >= 0.0), "a sweep time (-ws, -wd, -wn, -ls, -ld, -ln)",
+				tauMin / USER_TO_INTERNAL_TIME, ">= 0"},
+			{!(deltaTMod > 0.0), "-i", deltaTMod, "> 0"},
+			{EFFECTIVE_POPN_SIZE < 1, "-N", (double)EFFECTIVE_POPN_SIZE, ">= 1"},
+			{recurSweepMode && !(recurSweepRate > 0.0), "-R or -L (rate)",
+				recurSweepRate, "> 0"},
+			{admixOut, "-ea (proportion)", admixBad, "in [0, 1]"},
+			{sampleNegative, "a -p sample size", (double)sampleBad, ">= 0"},
+			{sampleSum != sampleSize, "the sum of the -p sample sizes",
+				(double)sampleSum, "equal to the sample size"},
+		};
+		for(size_t k = 0; k < sizeof(fixed) / sizeof(fixed[0]); k++){
+			if(fixed[k].bad){
+				fprintf(stderr, "Error: %s (%g) must be %s\n", fixed[k].what,
+					fixed[k].value, fixed[k].rule);
+				exit(1);
+			}
+		}
+	}
 	/* Ancient samples are taken from a population's sample count, so the
 	 * ancient samples of one population must not outnumber its samples.
 	 * initialize() relies on this when it makes sample nodes ancient. A
@@ -1378,70 +1444,6 @@ void getParameters(int argc,const char **argv){
 		if(nChangeCheck > 1 && sweepMode=='d'){
 			printf("Error with event specification: you chose 1 or more population size changes with a deterministic sweep. Please us -ws flag instead\n");
 			exit(666);
-		}
-	}
-	/* Priors (the -P flags, or YAML priors) follow the ranges of their YAML
-	 * fields. A soft sweep that is partial needs every drawn f0 below every
-	 * drawn final frequency; -Pf counts as a soft sweep. */
-	{
-		if(checkUniformPriorBounds() != 0)
-			exit(1);
-		/* -Pre mean upper: an exponential prior on rho, capped at upper. */
-		if(priorRho == 2 && !(pRhoMean > 0.0 && pRhoUp > 0.0)){
-			fprintf(stderr, "Error: -Pre %g %g: the mean and the upper bound must "
-				"be > 0\n", pRhoMean, pRhoUp);
-			exit(1);
-		}
-	}
-	/* Fixed values, with the rules of their YAML fields. A negative rate
-	 * could make a run hang (-r, -g, -R). A sweep position of -1 means a
-	 * sweep outside the locus (-ls, -ld, -ln, -L). */
-	{
-		double tauMin = 0.0, admixBad = 0.0;
-		int admixOut = 0, sampleSum = 0, sampleNegative = 0, sampleBad = 0;
-		for(i = 0; i < eventNumber; i++){
-			if(events[i].type == 's' && events[i].time < tauMin) tauMin = events[i].time;
-			if(events[i].type == 'a' && !(events[i].admixProp >= 0.0 && events[i].admixProp <= 1.0)){
-				admixOut = 1;
-				admixBad = events[i].admixProp;
-			}
-		}
-		for(i = 0; i < npops; i++){
-			sampleSum += sampleSizes[i];
-			if(sampleSizes[i] < 0){
-				sampleNegative = 1;
-				sampleBad = sampleSizes[i];
-			}
-		}
-		const struct { int bad; const char *what; double value; const char *rule; } fixed[] = {
-			{theta < 0.0, "-t", theta, ">= 0"},
-			{rho < 0.0, "-r", rho, ">= 0"},
-			{my_gamma < 0.0, "-g (rate)", my_gamma, ">= 0"},
-			{gammaCoRatio < 0.0, "-gr (ratio)", gammaCoRatio, ">= 0"},
-			{gcMean < 0, "-g or -gr (tract length)", (double)gcMean, ">= 0"},
-			{alpha < 0.0, "-a", alpha, ">= 0"},
-			{uA < 0.0, "-uA", uA, ">= 0"},
-			{leftRho < 0.0, "-ls, -ld or -ln (leftRho)", leftRho / 2.0, ">= 0"},
-			{sweepSite != -1.0 && (sweepSite < 0.0 || sweepSite > 1.0), "-x",
-				sweepSite, "in [0, 1]"},
-			{f0 < 0.0 || f0 >= 1.0, "-f", f0, "in [0, 1)"},
-			{tauMin < 0.0, "a sweep time (-ws, -wd, -wn, -ls, -ld, -ln)",
-				tauMin / USER_TO_INTERNAL_TIME, ">= 0"},
-			{!(deltaTMod > 0.0), "-i", deltaTMod, "> 0"},
-			{EFFECTIVE_POPN_SIZE < 1, "-N", (double)EFFECTIVE_POPN_SIZE, ">= 1"},
-			{recurSweepMode && !(recurSweepRate > 0.0), "-R or -L (rate)",
-				recurSweepRate, "> 0"},
-			{admixOut, "-ea (proportion)", admixBad, "in [0, 1]"},
-			{sampleNegative, "a -p sample size", (double)sampleBad, ">= 0"},
-			{npops > 1 && sampleSum != sampleSize, "the sum of the -p sample sizes",
-				(double)sampleSum, "equal to the sample size"},
-		};
-		for(size_t k = 0; k < sizeof(fixed) / sizeof(fixed[0]); k++){
-			if(fixed[k].bad){
-				fprintf(stderr, "Error: %s (%g) must be %s\n", fixed[k].what,
-					fixed[k].value, fixed[k].rule);
-				exit(1);
-			}
 		}
 	}
 	const int softSweep = softSweepMode || priorF0;

@@ -74,7 +74,10 @@ static void appendSplitChain(event **events, int *eventNumber, int *eventsCapaci
         event *e = appendEvent(events, eventNumber, eventsCapacity, time, 'a', popID);
         e->popID2 = target;
         e->popID3 = popID;
-        e->admixProp = props[j] / remaining;
+        /* The share of what remains: at most 1 (rounding can give
+         * 1.0000000000000002 when the proportions add up to 1), and 0 when
+         * nothing remains (0/0). */
+        e->admixProp = remaining > 0.0 ? fmin(1.0, props[j] / remaining) : 0.0;
         remaining -= props[j];
     }
 }

@@ -436,6 +436,18 @@ run_fail_case "p_sample_sizes_do_not_add_up" \
     "the sum of the -p sample sizes (15) must be equal to the sample size" \
     20 2 1000 -t 5 -r 5 -p 2 10 5 -ed 0.5 1 0
 
+run_fail_case "p_one_population_wrong_size" \
+    "the sum of the -p sample sizes (10) must be equal to the sample size" \
+    20 1 1000 -t 5 -r 5 -p 1 10
+
+run_fail_case "x_nan" \
+    "-x (nan) must be in [0, 1]" \
+    20 2 1000 -t 5 -r 5 -ws 0.01 -a 500 -x nan
+
+# A fixed value that a prior replaces is not used, so it is not checked.
+run_pass_case "placeholders_replaced_by_priors" \
+    20 2 1000 -t -1 -r -1 -ws -1 -a -1 -Pt 1 10 -Pr 0 5 -Pu 0 0.1 -Pa 100 1000 -d 1 2
+
 run_pass_case "priors_inside_their_ranges" \
     20 2 1000 -t 5 -r 5 -ws 0.01 -a 500 -Pt 0 10 -Pr 0 20 -Pa 100 1000 -Pu 0 0.05 -PuA 0 0.01 -Px 0 1 -d 1 2
 
