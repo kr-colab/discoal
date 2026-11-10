@@ -200,7 +200,10 @@ selection:
 `-wn`). A single sweep needs `fixation_time_ago` (or a prior on it,
 see "priors"); `fixation_time_ago: 0` is a sweep that ends at the
 present, as `-ws 0`. For recurrent hitchhiking, set
-`recurrent_sweep_rate` instead and omit `fixation_time_ago`.
+`recurrent_sweep_rate` instead and omit `fixation_time_ago`. A run has
+at most one single sweep, so a YAML single sweep cannot be combined with
+a sweep option on the command line (`-ws`, `-wd`, `-wn`, `-ls`, `-ld`,
+`-ln`, `-S`).
 
 - `left_rho` puts the selected site outside the locus, at genetic
   distance `4Nr = 2 x left_rho` to its left (that is, `left_rho` is

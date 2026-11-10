@@ -5,8 +5,9 @@
 # changes size, at a time uniform on [0.1, 0.5], to a size uniform on
 # [0.2, 2.0]. Times are in units of 4N generations.
 # With a prior on fixation_time_ago, the selection block needs no
-# fixation_time_ago; on the command line -Pu still needs -ws, whose value
-# is replaced by the draw.
+# fixation_time_ago, and a -ws on the command line would be a second sweep.
+# On the command line alone, -Pu still needs -ws, whose value is replaced
+# by the draw.
 # Equivalent to: discoal 20 2 10000 -t 10 -r 10 -ws 0 -a 1000 -x 0.5 -Pt 5 15 -Pre 10 50 -Pa 500 2000 -Pu 0 0.05 -Px 0.4 0.6 -Pe1 0.1 0.5 0.2 2.0 -d 12345 10102
 
 simulation:

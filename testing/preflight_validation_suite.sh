@@ -202,6 +202,19 @@ run_fail_case "x_negative_with_ls" \
     "cannot be combined with a sweep outside the locus" \
     20 2 1000 -t 5 -r 5 -ls 0.01 10 -a 500 -x -0.5
 
+# One single sweep at most: the sweep sampler follows one sweep at a time.
+run_fail_case "two_ws" \
+    "only one single sweep can be given" \
+    20 5 1000 -t 5 -r 5 -ws 0.01 -ws 0.012 -a 500
+
+run_fail_case "ws_and_ls" \
+    "only one single sweep can be given" \
+    20 5 1000 -t 5 -r 5 -ws 0.01 -ls 0.05 5 -a 500
+
+run_fail_case "yaml_sweep_and_cli_ws" \
+    "only one single sweep can be given" \
+    -Y "$REPO_ROOT/testing/debug_yaml/sweep_with_tau.yaml" -ws 0.05
+
 run_fail_case "Pu_with_recurrent_sweeps" \
     "needs a single sweep, not recurrent sweeps" \
     20 2 1000 -t 5 -R 0.1 -a 100 -Pu 0 0.1
@@ -304,11 +317,7 @@ run_fail_case "en_at_sweep_time_after_sweep" \
 run_pass_case "en_at_sweep_time_before_sweep" \
     10 2 1000 -N 10000 -t 5 -r 5 -a 200 -eg 0.01 0 30 -en 0.05 0 1 -ws 0.05 -d 1 2
 
-# The earliest of two sweeps counts; with -Pu, only its low bound.
-run_fail_case "growth_in_first_of_two_sweeps" \
-    "not modeled under growth" \
-    10 2 1000 -N 10000 -t 5 -r 5 -a 200 -ws 0.01 -ws 0.05 -eg 0.03 0 5 -en 0.04 0 1
-
+# With -Pu, only its low bound counts as the sweep's start.
 run_pass_case "Pu_after_growth" \
     10 2 1000 -N 10000 -t 5 -r 5 -a 200 -ws 0.01 -Pu 0.05 0.08 -eg 0.02 0 5 -en 0.03 0 1 -d 1 2
 

@@ -166,6 +166,10 @@ Selection Options
    
    * tau: Time since fixation (4N₀ generations)
 
+   A run has at most one single sweep (``-ws``, ``-wd``, ``-wn``, ``-ls``,
+   ``-ld``, ``-ln`` or ``-S``); for many sweeps, use recurrent sweeps
+   (``-R``, ``-L``).
+
 .. option:: -wd tau
 
    Deterministic selective sweep

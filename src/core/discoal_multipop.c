@@ -738,7 +738,7 @@ void getParameters(int argc,const char **argv){
 	int args;
 	int i,j;
 	double migR;
-	int selCheck,nChangeCheck;
+	int nChangeCheck;
 	int yaml_config_loaded = 0;
 	
 	// Initialize all variables first (before any YAML or command line processing)
@@ -1441,20 +1441,29 @@ void getParameters(int argc,const char **argv){
 	}
 
 	//make sure events are kosher
-	selCheck = 0;
 	nChangeCheck=0;
-	int sweepEvents = 0;
+	/* The single sweep, if any: its event index and its start time. */
+	int sweepEvents = 0, sweepIndex = -1;
+	double sweepStart = 0.0;
 	for(i=0;i<eventNumber;i++){
-		//printf("event %d: type is %c\n", i, events[i].type);
 	 		if(events[i].type == 's'){
-				selCheck = 1;
 				sweepEvents++;
+				sweepIndex = i;
+				sweepStart = events[i].time;
 	 		}
 			if(events[i].type == 'n'){
 				nChangeCheck += 1;
 	 		}
 	}
-	if(selCheck == 1){
+	/* The sweep sampler follows one sweep at a time; recurrent sweeps (-R,
+	 * -L) give many. */
+	if(sweepEvents > 1){
+		fprintf(stderr, "Error: only one single sweep can be given (-ws, -wd, "
+			"-wn, -ls, -ld, -ln, -S, or a single sweep in a YAML selection "
+			"block); for many sweeps use recurrent sweeps (-R, -L)\n");
+		exit(1);
+	}
+	if(sweepEvents > 0){
 		if(recurSweepMode == 1){
 			printf("Error with event specification: a single sweep event has been found but recurrentSweep mode has been specified\n");
 			exit(666);
@@ -1509,27 +1518,20 @@ void getParameters(int argc,const char **argv){
 	 * accepts a trajectory by a ratio of sizes that follows only size
 	 * changes (-en). So population 0 may not grow or shrink continuously
 	 * (-eg, -el, -eG, -eL, or an exponential epoch of a demes model) at or
-	 * after the earliest start of a sweep, going back in time. Growth in
-	 * other populations, and growth of population 0 that surely ends before
-	 * the sweep, are allowed. Recurrent sweeps draw coalescence in every
+	 * after the earliest start of the sweep (with -Pu, its low bound), going
+	 * back in time. Growth in other populations, and growth of population 0
+	 * that surely ends before the sweep, are allowed. Recurrent sweeps draw coalescence in every
 	 * population at constant rates between sweeps, so with them no
 	 * population may grow at any time. A trajectory read from a file (-S)
 	 * does not use that ratio, and its sampler follows the size at each
 	 * step, so -S is not restricted. The events are sorted here, with ties
 	 * in command-line order. */
-	if((selCheck && trajFileRows == 0) || recurSweepMode){
+	if((sweepEvents > 0 && trajFileRows == 0) || recurSweepMode){
 		int growthAtSweep = 0;
-		int sweepIndex = -1;
-		double sweepStart = 0.0;
-		for(i = 0; i < eventNumber; i++){
-			if(events[i].type == 's' && sweepIndex < 0){
-				sweepIndex = i;  /* the earliest sweep */
-				sweepStart = events[i].time;
-			}
-			if(recurSweepMode && (events[i].type == 'g' || events[i].type == 'l') &&
+		for(i = 0; recurSweepMode && i < eventNumber; i++)
+			if((events[i].type == 'g' || events[i].type == 'l') &&
 			   events[i].popnSize != 0.0)
 				growthAtSweep = 1;
-		}
 		if(priorTau) sweepStart = pTauLow;
 		for(i = 0; !recurSweepMode && i < eventNumber; i++){
 			if(events[i].popID != 0 || (events[i].type != 'g' && events[i].type != 'l') ||
@@ -1581,7 +1583,7 @@ void getParameters(int argc,const char **argv){
 	 * check them all now rather than during the run. A size of 0 is not a
 	 * population (the present size before it is set, or a deme that does
 	 * not exist then). */
-	if(selCheck || recurSweepMode){
+	if(sweepEvents > 0 || recurSweepMode){
 		double smallest = INFINITY;
 		if(currentSize[0] > 0.0) smallest = currentSize[0];
 		for(i = 0; i < eventNumber; i++){
@@ -1616,13 +1618,12 @@ void getParameters(int argc,const char **argv){
 	 * lineage carries the allele with that probability, and its carriers
 	 * carry the selected SNP. */
 	if(trajFileRows > 0){
-		if(sweepEvents > 1 || recurSweepMode || leftRhoFlag || softSweepMode ||
-		   partialSweepMode || alpha != 0.0 || priorAlpha || priorTau ||
-		   priorF0 || priorC){
+		if(recurSweepMode || softSweepMode || partialSweepMode || alpha != 0.0 ||
+		   priorAlpha || priorTau || priorF0 || priorC){
 			fprintf(stderr, "Error: a trajectory file (-S, or YAML sweep_mode "
 				"'trajectory_file') gives the sweep's time and frequencies; it "
-				"cannot be combined with -ws, -wd, -wn, -ls, -ld, -ln, -R, -L, "
-				"-a, -f, -c, -Pa, -Pu, -Pf or -Pc\n");
+				"cannot be combined with -R, -L, -a, -f, -c, -Pa, -Pu, -Pf or "
+				"-Pc\n");
 			exit(1);
 		}
 		if(trajFilePoints[0].freq < 1.0){
@@ -1684,7 +1685,7 @@ void usage(){
 	fprintf(stderr,"\t -Pr low high (prior on rho)\n");
         fprintf(stderr,"\t -Pre mean upperBound (prior on rho -- exponentially distributed but truncated at an upper bound)\n");
 	fprintf(stderr,"\t -Pa low high (prior on alpha)\n");
-	fprintf(stderr,"\t -Pu low high (prior on tau; sweep models only; still must use \"-ws tau\" and \"tau\" will be ignored)\n");
+	fprintf(stderr,"\t -Pu low high (prior on tau; sweep models only; still must use \"-ws tau\" (or a YAML sweep, not both) and \"tau\" will be ignored)\n");
 	fprintf(stderr,"\t -PuA low high (prior on uA; sweep models only)\n");
 	fprintf(stderr,"\t -Px low high (prior on sweepSite; sweep models only)\n");
 	fprintf(stderr,"\t -Pf low high (prior on F0; sweep models only)\n");
