@@ -322,14 +322,19 @@ AncestrySegment* mergeAncestryTrees(AncestrySegment *leftTree, AncestrySegment *
  *    node, which newParentNode(ctx) makes at the first such interval, and
  *    an edge from it to each child's node over the interval (addEdge).
  * So a common-ancestor event of lineages whose material does not overlap
- * adds nothing to the tree sequence. */
+ * adds nothing to the tree sequence.
+ * An overlap whose count reaches fullCount (all samples) has found its
+ * MRCA here, and only here: onFixed(start, end) reports each such run of
+ * sites once, so the caller can update the sites still active without
+ * walking the parent's other segments. */
 AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
         AncestrySegment *rightTree, tsk_id_t (*newParentNode)(void *ctx),
         void (*addEdge)(tsk_id_t parent, tsk_id_t child, double left, double right),
-        void *ctx) {
+        void *ctx, int fullCount, void (*onFixed)(int start, int end)) {
     AncestrySegment *result = NULL, *tail = NULL;
     AncestrySegment *l = leftTree, *r = rightTree;
     tsk_id_t parent = TSK_NULL;
+    int fixedStart = -1, fixedEnd = -1;  // a run of newly fixed sites
     int pos = INT_MAX;
     if (l) pos = l->start;
     if (r && r->start < pos) pos = r->start;
@@ -355,6 +360,15 @@ AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
                                lc->count + rc->count, parent);
             addEdge(parent, lc->tskit_node_id, pos, nextPos);
             addEdge(parent, rc->tskit_node_id, pos, nextPos);
+            if (lc->count + rc->count == fullCount) {
+                if (fixedEnd == pos) {
+                    fixedEnd = nextPos;
+                } else {
+                    if (fixedStart >= 0) onFixed(fixedStart, fixedEnd);
+                    fixedStart = pos;
+                    fixedEnd = nextPos;
+                }
+            }
         } else if (lc || rc) {
             AncestrySegment *c = lc ? lc : rc;
             addSegmentToResult(&result, &tail, pos, nextPos, c->count,
@@ -365,6 +379,8 @@ AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
         while (l && l->end <= pos) l = l->next;
         while (r && r->end <= pos) r = r->next;
     }
+
+    if (fixedStart >= 0) onFixed(fixedStart, fixedEnd);
 
     /* An AVL tree for fast lookups, as mergeAncestryTrees() builds. */
     if (result && result->next && result->next->next) {

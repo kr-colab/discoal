@@ -36,7 +36,7 @@ AncestrySegment* mergeAncestryTrees(AncestrySegment *left, AncestrySegment *righ
 AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
         AncestrySegment *rightTree, tsk_id_t (*newParentNode)(void *ctx),
         void (*addEdge)(tsk_id_t parent, tsk_id_t child, double left, double right),
-        void *ctx);
+        void *ctx, int fullCount, void (*onFixed)(int start, int end));
 AncestrySegment* splitLeft(AncestrySegment *root, int breakpoint);
 AncestrySegment* splitRight(AncestrySegment *root, int breakpoint);
 

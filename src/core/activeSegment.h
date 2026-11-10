@@ -1,7 +1,6 @@
 #ifndef __ACTIVE_SEGMENT_H__
 #define __ACTIVE_SEGMENT_H__
 
-#include <stdint.h>
 #include "ancestrySegment.h"
 #include "ancestrySegmentAVL.h"
 
@@ -15,14 +14,13 @@ typedef struct ActiveSegment {
 // Main structure for tracking active material
 typedef struct {
     ActiveSegment *segments;  // Linked list of active segments
-    void *avlTree;           // AVL tree for O(log n) lookups (when needed)
+    void *avlTree;           // Unused; NULL
     int totalActive;         // Total count of active sites
-    /* One bit per site, set while the site is active: an O(1) lookup, and
-     * a removal of sites that are no longer active costs a scan of words,
-     * not of the list. NULL if the structure was built by hand (tests);
-     * the list is then used. */
-    uint64_t *bits;
-    int nSites;
+    /* The list as sorted arrays of starts and ends, for binary search in
+     * isActiveSite(). Rebuilt from the list when a lookup finds it stale
+     * (lookupStale), as every change of the list sets it. */
+    int *lookupStart, *lookupEnd;
+    int lookupCount, lookupCapacity, lookupStale;
 } ActiveMaterial;
 
 // Core operations
