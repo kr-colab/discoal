@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [master, demes]
 
+permissions:
+  contents: read
+
 jobs:
   unit-tests:
     runs-on: ${{ matrix.os }}
@@ -169,6 +172,57 @@ jobs:
     # Fixed seeds, so the result does not change from run to run.
     - name: Fuzz test against msprime
       run: python testing/fuzz_msprime_check.py --models 150 --reps 500 --workers 4
+
+  parity-subset:
+    runs-on: ubuntu-latest
+    name: Parity with msprime on demes models (core and random)
+    timeout-minutes: 60
+    env:
+      # The demes specification commit whose examples and test cases are
+      # drawn from; the same one as in the weekly full run.
+      DEMES_SPEC_COMMIT: ea38d43
+      # Models where earlier bugs showed: pulses, multi-ancestor
+      # admixture, migration direction, migration under growth, extinct
+      # demes, epoch boundaries, ancient samples.
+      CORE_MODELS: >-
+        HomSap/AmericanAdmixture_4B18,HomSap/AncientEurasia_9K19,PanTro/BonoboGhost_4K19,GorGor/GorillaGhost_5P23,CanFam/EarlyWolfAdmixture_6F14,HomSap/Zigzag_1S14,PonAbe/TwoSpecies_2L11,AnaPla/MallardBlackDuck_2L19,HomSap/OutOfAfricaArchaicAdmixture_5R19,examples/jacobs_papuans.yaml+ancient
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential make
+        pip install stdpopsim msprime demes tskit numpy scipy
+
+    - name: Build discoal
+      run: make discoal
+
+    - name: Get the demes specification
+      run: |
+        git clone -q https://github.com/popsim-consortium/demes-spec
+        git -C demes-spec checkout -q "$DEMES_SPEC_COMMIT"
+
+    # The core models always run. The random models change with each
+    # commit, so that over many PRs every model is run; the seed comes
+    # from the commit, so a failure can be repeated with the command
+    # printed below.
+    - name: Compare discoal with msprime
+      run: |
+        SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+        SEED=$((16#${SHA:0:8}))
+        CMD="python testing/stdpopsim_parity.py --reps 500 --generic 20 --seed 1 --demes-dir demes-spec/examples --demes-dir demes-spec/test-cases/valid --models $CORE_MODELS --sample 80 --sample-seed $SEED --workers 4 --no-cache"
+        echo "To repeat this run (demes-spec at $DEMES_SPEC_COMMIT; the draw depends on these package versions):"
+        pip freeze | grep -iE '^(stdpopsim|msprime|demes|numpy|tskit)=='
+        echo "$CMD"
+        $CMD
 
   memory-check:
     runs-on: ubuntu-latest
