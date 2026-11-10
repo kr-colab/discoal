@@ -22,6 +22,10 @@ discoal -Y config.yaml -d 1 2      # the seeds 1 2, not those of the file
   - `-m i j rate` sets one entry of the migration matrix;
   - `-p` replaces `deme_sample_size`. The sum must still be equal to
     `sample_size`.
+  - With a demes file, options that change the demography or the
+    samples (`-p`, `-A`, `-m`, `-M`, all `-e` options, `-Pe1`, `-Pe2`)
+    are errors. The demes file gives the demography, and
+    `deme_sample_size` and `ancient_samples` the samples.
 - `config_examples/` has examples that run. Each one starts with a line
   `# Equivalent to: discoal ...`, which is the same run on the command
   line. `config_examples/all_options.yaml` lists every field, but it
@@ -383,6 +387,9 @@ demography:
 - With a demes file, do not give `migration_matrix`.
   `demographic_events` can contain only `ancient_samples`. For these:
   - `time` is in 4N generations, with the N above;
+  - a sample is taken after the events of the demes file at the same
+    time, as in msprime: a pulse into the deme at that time does not
+    move the sample;
   - the deme must exist at that time, from its end time (included) to
     its start time (not included);
   - a deme that does not exist at time 0 can have samples if all of

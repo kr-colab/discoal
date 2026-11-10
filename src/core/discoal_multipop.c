@@ -38,6 +38,7 @@ int locusNumber;
 int leftRhoFlag=0;
 int recurrentLeftOfLocus=0;
 int sweepPositionGiven=0;
+int demesModelLoaded=0;
 double *currentSize;
 long seed1, seed2;
 double nextTime, currentFreq;
@@ -720,6 +721,7 @@ void getParameters(int argc,const char **argv){
 	recurSweepMode = 0;
 	recurrentLeftOfLocus = 0;
 	sweepPositionGiven = 0;
+	demesModelLoaded = 0;
 	trajFileRows = 0;
 	partialSweepMode = 0;
 	softSweepMode = 0;
@@ -845,6 +847,22 @@ void getParameters(int argc,const char **argv){
 		// Check for empty option after '-'
 		if (argv[args][1] == '\0') {
 			fprintf(stderr, "Error: Empty option '-'\n");
+			exit(1);
+		}
+
+		/* A demes model gives the demography, and the YAML its samples,
+		 * checked against the demes' lifetimes (as the YAML allows only
+		 * ancient_samples with demes_filename). Options that change the
+		 * demography or the samples would bypass these checks. */
+		if (demesModelLoaded &&
+		    (strcmp(argv[args], "-p") == 0 || strcmp(argv[args], "-A") == 0 ||
+		     strcmp(argv[args], "-m") == 0 || strcmp(argv[args], "-M") == 0 ||
+		     strcmp(argv[args], "-Pe1") == 0 || strcmp(argv[args], "-Pe2") == 0 ||
+		     argv[args][1] == 'e')) {
+			fprintf(stderr, "Error: %s cannot be used with a demes model "
+				"(demography.demes_filename): the demes file gives the "
+				"demography, and demography.deme_sample_size and "
+				"demographic_events.ancient_samples the samples\n", argv[args]);
 			exit(1);
 		}
 

@@ -26,6 +26,7 @@ int eventsCapacity = 0;
 int leftRhoFlag = 0;
 int recurrentLeftOfLocus = 0;
 int sweepPositionGiven = 0;
+int demesModelLoaded = 0;
 
 // Stub implementation of ensureEventsCapacity for testing
 void ensureEventsCapacity() {
@@ -97,6 +98,7 @@ void reset_config_globals(void) {
     leftRhoFlag = 0;
     recurrentLeftOfLocus = 0;
     sweepPositionGiven = 0;
+    demesModelLoaded = 0;
     leftRho = 0;
     deltaTMod = 0;
     priorTheta = priorRho = priorAlpha = priorTau = priorX = priorF0 = 0;

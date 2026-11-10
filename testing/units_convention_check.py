@@ -416,6 +416,24 @@ migrations:
 """
 
 
+# An ancient sample of C taken at the time of a pulse that moves all of
+# C's lineages into A (backward in time). msprime takes the sample after
+# the pulse, so the sample stays in C, and so must discoal.
+DEMES_SAMPLE_AT_PULSE = """time_units: generations
+demes:
+  - name: ANC
+    epochs: [{start_size: 10000, end_time: 20000}]
+  - name: C
+    ancestors: [ANC]
+    epochs: [{start_size: 10000}]
+  - name: A
+    ancestors: [ANC]
+    epochs: [{start_size: 1000}]
+pulses:
+  - {sources: [A], dest: C, time: 500, proportions: [1.0]}
+"""
+
+
 def demes_case(tmp, name, samples, text=None, path=None, ancient=()):
     """A case that loads a demes model, given as YAML text or a file path,
     and compares it with msprime's Demography.from_demes. `ancient` lists
@@ -581,6 +599,9 @@ def cases(tmp):
         demes_case(tmp, "demes ancient samples, one from an extinct deme",
                    {"A": 12, "X": 8}, DEMES_EXTINCT_GHOST,
                    ancient=[("X", 8, 3000), ("A", 4, 1000)]),
+        demes_case(tmp, "demes ancient sample at the time of a pulse",
+                   {"C": 8, "A": 4}, DEMES_SAMPLE_AT_PULSE,
+                   ancient=[("C", 4, 500)]),
         demes_case(tmp, "demes splits, sizes, migration windows",
                    {"A": 10, "B": 5, "C": 5},
                    path=os.path.join(REPO, "config_examples",

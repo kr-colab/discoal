@@ -545,6 +545,31 @@ int parse_genetics_block(struct genetics_config *cfg)
     return EXIT_SUCCESS;
 }
 
+/* Put the ancient samples ('A' events) after all other events, keeping
+ * the order within each group. The event list is later sorted by time
+ * with a stable sort, so a sample then comes after the other events at its
+ * time, as in msprime (and in its Demography.from_demes): a pulse into a
+ * deme at a sample's time moves the deme's lineages before the sample is
+ * taken. The YAML ancient samples are added before the demes file is
+ * loaded, because the importer checks them against the demes' lifetimes. */
+static void moveAncientSamplesLast(void)
+{
+    extern int eventNumber;
+    extern struct event *events;
+    struct event *ordered = malloc(sizeof(struct event) * eventNumber);
+    if (ordered == NULL) {
+        fprintf(stderr, "Error: out of memory\n");
+        exit(1);
+    }
+    int n = 0;
+    for (int pass = 0; pass < 2; pass++)
+        for (int k = 0; k < eventNumber; k++)
+            if ((events[k].type == 'A') == (pass == 1))
+                ordered[n++] = events[k];
+    memcpy(events, ordered, sizeof(struct event) * eventNumber);
+    free(ordered);
+}
+
 int parse_demography_block(struct demography_config *cfg)
 {
     extern int sampleSize;
@@ -855,6 +880,8 @@ int parse_demography_block(struct demography_config *cfg)
                     cfg->demes_filename);
                 return EXIT_FAILURE;
             }
+            demesModelLoaded = 1;
+            moveAncientSamplesLast();
             VERBOSE_LOG(
                 "Loaded %d populations and %d events from demes file '%s' "
                 "(via YAML config)\n", npops, eventNumber - 1, 
