@@ -73,7 +73,8 @@ specification test cases use sizes of 0.1 to 1); see rescale().
 Usage:
     python testing/stdpopsim_parity.py [--reps 1000] [--samples 10]
         [--workers 24] [--generic 20] [--seed 1] [--demes-dir DIR ...]
-        [--rho 0] [--sites 1000] [--models LABEL,...] [--timeout 600]
+        [--rho 0] [--sites 1000] [--models LABEL,...]
+        [--sample K --sample-seed S] [--timeout 600]
         [--cache-dir DIR | --no-cache] [--tsv out.tsv] [--jobs-tsv jobs.tsv]
 
 Each simulation's statistics are cached (default testing/.parity_cache), so
@@ -622,6 +623,12 @@ def main():
     ap.add_argument("--models", default="",
                     help="comma-separated model labels (as printed) to run; "
                          "default all")
+    ap.add_argument("--sample", type=int, default=0,
+                    help="also run K models drawn at random from the "
+                         "others (with --models), or from all")
+    ap.add_argument("--sample-seed", type=int, default=0,
+                    help="seed for --sample; the same seed draws the same "
+                         "models")
     ap.add_argument("--rho", type=float, default=0.0,
                     help="recombination: 4 N_max r L over the whole locus, "
                          "N_max the largest deme size in each model")
@@ -662,6 +669,18 @@ def main():
     specs += [(kind, label + "+ancient", payload, True)
               for kind, label, payload in others]
     wanted = set(filter(None, args.models.split(",")))
+    unknown = wanted - {label for _, label, _, _ in specs}
+    if unknown:
+        sys.exit(f"unknown model labels: {', '.join(sorted(unknown))}")
+    if args.sample > 0:
+        rest = [label for _, label, _, _ in specs if label not in wanted]
+        drawn = np.random.default_rng(args.sample_seed).choice(
+            len(rest), size=min(args.sample, len(rest)), replace=False)
+        sample = sorted(rest[i] for i in drawn)
+        print(f"Random sample of {len(sample)} models (--sample "
+              f"{args.sample} --sample-seed {args.sample_seed}): "
+              f"{', '.join(sample)}\n", flush=True)
+        wanted |= set(sample)
     jobs = [(kind, label, payload, ancient, args.reps, args.samples,
              1000 + 10 * i, args.timeout, args.rho, args.sites, cache_dir,
              discoal_id)
