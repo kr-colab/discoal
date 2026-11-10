@@ -168,7 +168,7 @@ jobs:
     # admixture, merges, ancient samples, recombination) against msprime.
     # Fixed seeds, so the result does not change from run to run.
     - name: Fuzz test against msprime
-      run: python testing/fuzz_msprime_check.py --models 40 --reps 500 --workers 4
+      run: python testing/fuzz_msprime_check.py --models 150 --reps 500 --workers 4
 
   memory-check:
     runs-on: ubuntu-latest
