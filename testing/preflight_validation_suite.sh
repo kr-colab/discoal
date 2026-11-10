@@ -440,6 +440,10 @@ run_fail_case "p_one_population_wrong_size" \
     "the sum of the -p sample sizes (10) must be equal to the sample size" \
     20 1 1000 -t 5 -r 5 -p 1 10
 
+run_fail_case "ws_nan_with_Pu" \
+    "a sweep time (-ws, -wd, -wn, -ls, -ld, -ln) (nan) must be >= 0" \
+    20 2 1000 -t 5 -r 5 -ws nan -a 500 -Pu 0.05 0.1
+
 run_fail_case "x_nan" \
     "-x (nan) must be in [0, 1]" \
     20 2 1000 -t 5 -r 5 -ws 0.01 -a 500 -x nan

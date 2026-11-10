@@ -1342,10 +1342,18 @@ void getParameters(int argc,const char **argv){
 	 * replaces (-t with -Pt, and so on) is not used, so it is not checked.
 	 * Each test is written so that NaN fails it. */
 	{
-		double tauMin = 0.0, admixBad = 0.0;
+		/* A sweep time must be >= 0; with -Pu the time is replaced by a draw,
+		 * but a NaN time still breaks the sorting of the events, so NaN is
+		 * rejected either way. */
+		double tauBadValue = 0.0, admixBad = 0.0;
+		int tauBad = 0;
 		int admixOut = 0, sampleSum = 0, sampleNegative = 0, sampleBad = 0;
 		for(i = 0; i < eventNumber; i++){
-			if(events[i].type == 's' && !(events[i].time >= tauMin)) tauMin = events[i].time;
+			if(events[i].type == 's' && (isnan(events[i].time) ||
+			   (!priorTau && events[i].time < 0.0))){
+				tauBad = 1;
+				tauBadValue = events[i].time;
+			}
 			if(events[i].type == 'a' && !(events[i].admixProp >= 0.0 && events[i].admixProp <= 1.0)){
 				admixOut = 1;
 				admixBad = events[i].admixProp;
@@ -1370,8 +1378,8 @@ void getParameters(int argc,const char **argv){
 			{!priorX && sweepSite != -1.0 && !(sweepSite >= 0.0 && sweepSite <= 1.0),
 				"-x", sweepSite, "in [0, 1]"},
 			{!priorF0 && !(f0 >= 0.0 && f0 < 1.0), "-f", f0, "in [0, 1)"},
-			{!priorTau && !(tauMin >= 0.0), "a sweep time (-ws, -wd, -wn, -ls, -ld, -ln)",
-				tauMin / USER_TO_INTERNAL_TIME, ">= 0"},
+			{tauBad, "a sweep time (-ws, -wd, -wn, -ls, -ld, -ln)",
+				tauBadValue / USER_TO_INTERNAL_TIME, ">= 0"},
 			{!(deltaTMod > 0.0), "-i", deltaTMod, "> 0"},
 			{EFFECTIVE_POPN_SIZE < 1, "-N", (double)EFFECTIVE_POPN_SIZE, ">= 1"},
 			{recurSweepMode && !(recurSweepRate > 0.0), "-R or -L (rate)",
