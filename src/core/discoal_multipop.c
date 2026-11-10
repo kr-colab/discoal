@@ -36,6 +36,7 @@
 
 int locusNumber;
 int leftRhoFlag=0;
+int recurrentLeftOfLocus=0;
 double *currentSize;
 long seed1, seed2;
 double nextTime, currentFreq;
@@ -770,6 +771,7 @@ void getParameters(int argc,const char **argv){
 	migFlag = 0;
 	deltaTMod = 40;
 	recurSweepMode = 0;
+	recurrentLeftOfLocus = 0;
 	trajFileRows = 0;
 	partialSweepMode = 0;
 	softSweepMode = 0;
@@ -1274,6 +1276,7 @@ void getParameters(int argc,const char **argv){
 			break;
 			case 'L' :
 			recurSweepMode = 1;
+			recurrentLeftOfLocus = 1;
 			sweepMode = 's';
 			sweepSite = -1.0;
 			recurSweepRate = atof(argv[++args]);
@@ -1337,14 +1340,15 @@ void getParameters(int argc,const char **argv){
 		}
 	}
 	/* Fixed values, with the rules of their YAML fields. A negative rate
-	 * could make a run hang (-r, -g, -R). A sweep position of -1 means a
-	 * sweep outside the locus (-ls, -ld, -ln, -L). A value that a prior
+	 * could make a run hang (-r, -g, -R). A sweep outside the locus (-ls,
+	 * -ld, -ln, -L) has no position in it (sweepSite -1). A value that a prior
 	 * replaces (-t with -Pt, and so on) is not used, so it is not checked.
 	 * Each test is written so that NaN fails it. */
 	{
 		/* A sweep time must be >= 0; with -Pu the time is replaced by a draw,
 		 * but a NaN time still breaks the sorting of the events, so NaN is
 		 * rejected either way. */
+		const int sweepOutsideLocus = leftRhoFlag || recurrentLeftOfLocus;
 		double tauBadValue = 0.0, admixBad = 0.0;
 		int tauBad = 0;
 		int admixOut = 0, sampleSum = 0, sampleNegative = 0, sampleBad = 0;
@@ -1375,7 +1379,7 @@ void getParameters(int argc,const char **argv){
 			{!priorAlpha && !(alpha >= 0.0), "-a", alpha, ">= 0"},
 			{!priorUA && !(uA >= 0.0), "-uA", uA, ">= 0"},
 			{!(leftRho >= 0.0), "-ls, -ld or -ln (leftRho)", leftRho / 2.0, ">= 0"},
-			{!priorX && sweepSite != -1.0 && !(sweepSite >= 0.0 && sweepSite <= 1.0),
+			{!priorX && !sweepOutsideLocus && !(sweepSite >= 0.0 && sweepSite <= 1.0),
 				"-x", sweepSite, "in [0, 1]"},
 			{!priorF0 && !(f0 >= 0.0 && f0 < 1.0), "-f", f0, "in [0, 1)"},
 			{tauBad, "a sweep time (-ws, -wd, -wn, -ls, -ld, -ln)",
@@ -1469,7 +1473,9 @@ void getParameters(int argc,const char **argv){
 	/* Priors that contradict the sweep model, from the CLI or YAML: a
 	 * drawn position puts the sweep inside the locus, and a drawn tau
 	 * needs a single sweep. */
-	if(priorX && sweepSite < 0.0){
+	/* A sweep outside the locus is set by its options, not by the value
+	 * of sweepSite: with -Px, -x is a placeholder that may be anything. */
+	if(priorX && (leftRhoFlag || recurrentLeftOfLocus)){
 		fprintf(stderr, "Error: a prior on the sweep position (-Px, or YAML "
 			"priors.sweep_position) cannot be combined with a sweep outside "
 			"the locus (-ls, -ld, -ln, -L)\n");
@@ -1481,9 +1487,10 @@ void getParameters(int argc,const char **argv){
 			"sweeps (-R, -L)\n");
 		exit(1);
 	}
-	if(leftRhoFlag && sweepSite >= 0.0){
-		printf("Error with event specification: you chose leftRho mode but the sweep site is within the locus\n");
-		exit(666);
+	if((leftRhoFlag || recurrentLeftOfLocus) && !priorX && sweepSite >= 0.0){
+		fprintf(stderr, "Error: -x (%g) cannot be combined with a sweep outside "
+			"the locus (-ls, -ld, -ln, -L)\n", sweepSite);
+		exit(1);
 	}
 	if(softSweep && recurSweepMode == 1){
 		fprintf(stderr, "Error: recurrent soft sweeps (-R or -L with -f or "

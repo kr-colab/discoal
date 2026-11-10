@@ -239,6 +239,9 @@ double partialSweepFinalFreq;
 
 double deltaTMod;
 extern int leftRhoFlag;   /* -ls/-ld/-ln; defined in discoal_multipop.c */
+/* -L (or YAML recurrent_sweeps_left_of_locus): recurrent sweeps outside the
+ * locus; defined in discoal_multipop.c. */
+extern int recurrentLeftOfLocus;
 
 
 int hidePartialSNP;

@@ -69,7 +69,7 @@ extern double tDiv;
 extern double migMatConst[MAXPOPS][MAXPOPS];
 extern char sweepMode;
 extern double leftRho, deltaTMod;
-extern int leftRhoFlag;
+extern int leftRhoFlag, recurrentLeftOfLocus;
 extern int priorTheta, priorRho, priorAlpha, priorTau, priorX, priorF0, priorUA,
     priorC, numPriorSizeChanges;
 extern double pThetaUp, pThetaLow, pRhoMean, pRhoUp, pRhoLow, pAlphaUp,
@@ -1902,6 +1902,7 @@ void test_selection_recurrent_sweeps_left_of_locus(void) {
         "  recurrent_sweeps_left_of_locus: true\n"));
     TEST_ASSERT_EQUAL_INT(1, recurSweepMode);
     TEST_ASSERT_EQUAL_DOUBLE(-1.0, sweepSite);
+    TEST_ASSERT_EQUAL_INT(1, recurrentLeftOfLocus);
     TEST_ASSERT_EQUAL_INT(0, eventNumber);
 }
 

@@ -1058,7 +1058,9 @@ int parse_selection_block(struct selection_config *cfg)
             recurSweepRate = cfg->recurrent_sweep_rate;
             recurSweepMode = 1;
             if (cfg->recurrent_sweeps_left_of_locus) {
+                extern int recurrentLeftOfLocus;
                 sweepSite = -1.0;
+                recurrentLeftOfLocus = 1;
             }
             return EXIT_SUCCESS;
         }
