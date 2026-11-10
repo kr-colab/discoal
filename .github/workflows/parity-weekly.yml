@@ -1,0 +1,71 @@
+name: Parity with msprime (weekly)
+
+# The full comparison of discoal with msprime on demes models: every
+# stdpopsim catalog model, 20 random instances of each generic model, and
+# the examples and valid test cases of the demes specification, each also
+# with ancient samples. Every Monday, and on demand from the Actions tab
+# ("Run workflow"). It tests the demes branch; GitHub runs schedules on the
+# default branch's workflow file, which checks out demes.
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+env:
+  DEMES_SPEC_COMMIT: ea38d43
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: no recombination
+            args: --reps 1000
+          # With recombination discoal and msprime are several times
+          # slower, so fewer replicates keep the run within the time limit.
+          - name: recombination
+            args: --reps 500 --rho 100 --sites 10000
+    name: Full parity (${{ matrix.name }})
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: demes
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential make
+        pip install stdpopsim msprime demes tskit numpy scipy
+
+    - name: Build discoal
+      run: make discoal
+
+    - name: Get the demes specification
+      run: |
+        git clone -q https://github.com/popsim-consortium/demes-spec
+        git -C demes-spec checkout -q "$DEMES_SPEC_COMMIT"
+
+    - name: Compare discoal with msprime
+      run: |
+        python testing/stdpopsim_parity.py ${{ matrix.args }} \
+          --generic 20 --seed 1 \
+          --demes-dir demes-spec/examples \
+          --demes-dir demes-spec/test-cases/valid \
+          --workers 4 --timeout 1200 --no-cache --tsv parity.tsv
+
+    - name: Keep the per-test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: parity-${{ matrix.name }}
+        path: parity.tsv
