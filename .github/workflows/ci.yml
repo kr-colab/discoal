@@ -208,3 +208,9 @@ jobs:
         echo "=== Checking memory leaks with recombination ==="
         valgrind --leak-check=full --errors-for-leak-kinds=definite --error-exitcode=1 \
           ./build/discoal 10 1 100 -t 10 -r 10 > /dev/null
+
+    - name: Check memory errors in the segment pool
+      run: |
+        echo "=== Checking the segment pool through several expansions ==="
+        make test_ancestry_segment
+        valgrind --error-exitcode=1 ./build/test_ancestry_segment > /dev/null

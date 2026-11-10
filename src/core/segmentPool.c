@@ -88,10 +88,11 @@ static void expandPool(size_t min_segments_needed) {
     g_pool.num_blocks++;
     g_pool.total_segments += new_block_size;
     
-    // Expand free list capacity if needed
-    size_t required_free_capacity = g_pool.free_count + new_block_size;
-    if (required_free_capacity > g_pool.free_capacity) {
-        size_t new_free_capacity = required_free_capacity * 2;
+    /* The free list must have a place for every segment of the pool, not
+     * only for the segments free now: any segment can be freed back to it,
+     * and resetSegmentPool() puts all of them in it. */
+    if (g_pool.total_segments > g_pool.free_capacity) {
+        size_t new_free_capacity = g_pool.total_segments;
         AncestrySegment **new_free_list = realloc(g_pool.free_list,
                                                   new_free_capacity * sizeof(AncestrySegment*));
         if (!new_free_list) {
@@ -131,13 +132,9 @@ void initSegmentPool(size_t initial_size) {
         exit(1);
     }
     
-    // Initialize free list
-    g_pool.free_capacity = initial_size * 2;
-    g_pool.free_list = calloc(g_pool.free_capacity, sizeof(AncestrySegment*));
-    if (!g_pool.free_list) {
-        fprintf(stderr, "Failed to allocate free list\n");
-        exit(1);
-    }
+    // The free list is sized by expandPool(), to hold every segment
+    g_pool.free_list = NULL;
+    g_pool.free_capacity = 0;
     
     g_pool.initialized = 1;
     

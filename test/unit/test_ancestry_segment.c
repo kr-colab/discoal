@@ -1,5 +1,6 @@
 #include "unity.h"
 #include "ancestrySegment.h"
+#include "segmentPool.h"
 #include <stdlib.h>
 
 // Test fixtures
@@ -212,6 +213,41 @@ void test_split_edge_cases(void) {
     TEST_ASSERT_NULL(rightOut);  // Nothing to the right of 60 when segment is [10,50)
 }
 
+/* Free every segment and reset the pool after it has expanded: the free
+ * list must hold every segment of the pool, not only those free when it
+ * last grew. A pool started at 1000 segments (the size discoal uses for
+ * small models) holds 20000, then 60000 after one more expansion; 50000
+ * segments reach that expansion. Run under valgrind or AddressSanitizer,
+ * a write past the end of the free list is reported. */
+void test_segment_pool_free_list_holds_every_segment(void) {
+    enum { COUNT = 50000 };
+    AncestrySegment **segs = malloc(COUNT * sizeof(AncestrySegment *));
+    TEST_ASSERT_NOT_NULL(segs);
+    destroySegmentPool();
+    initSegmentPool(1000);
+    PoolStats before = getPoolStatistics();
+    for (int i = 0; i < COUNT; i++) {
+        segs[i] = allocSegmentFromPool();
+        TEST_ASSERT_NOT_NULL(segs[i]);
+    }
+    PoolStats grown = getPoolStatistics();
+    TEST_ASSERT_EQUAL(before.expansions + 1, grown.expansions);
+    TEST_ASSERT_TRUE(grown.pool_capacity > COUNT);
+    for (int i = 0; i < COUNT; i++)
+        freeSegmentToPool(segs[i]);
+    resetSegmentPool();
+    PoolStats after = getPoolStatistics();
+    TEST_ASSERT_EQUAL(0, after.current_in_use);
+    /* Every segment can be allocated again. */
+    for (int i = 0; i < COUNT; i++)
+        segs[i] = allocSegmentFromPool();
+    for (int i = 0; i < COUNT; i++)
+        freeSegmentToPool(segs[i]);
+    free(segs);
+    destroySegmentPool();
+}
+
+
 #ifndef TEST_RUNNER_MODE
 int main(void) {
     UNITY_BEGIN();
@@ -229,6 +265,7 @@ int main(void) {
     RUN_TEST(test_splitLeft_basic);
     RUN_TEST(test_splitRight_basic);
     RUN_TEST(test_split_edge_cases);
+    RUN_TEST(test_segment_pool_free_list_holds_every_segment);
     
     return UNITY_END();
 }
