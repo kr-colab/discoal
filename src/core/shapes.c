@@ -440,7 +440,9 @@ int validateShapeTrajectories(struct event *events, int eventNumber) {
             }
         }
 
-        if (t == 'p') { merged[p] = 1; continue; }
+        /* A merge ('p') or an admixture ('a') moves every lineage out of
+         * the population, so its size no longer matters. */
+        if (t == 'p' || t == 'a') { merged[p] = 1; continue; }
         if (t != 'n' && t != 'g' && t != 'l') continue;
 
         double size_at_event = sizeFromShape(&state[p], e->time);

@@ -159,6 +159,11 @@ run_fail_case "el_zero_crossing_in_last_interval" \
     "drives population 1 size to zero" \
     4 2 100 -t 2 -p 2 2 2 -M 1 -el 0.0 1 10
 
+# An admixture moves every lineage out of the admixed population, so its
+# size after the admixture does not matter.
+run_pass_case "el_in_population_ended_by_admixture" \
+    6 5 100 -t 2 -p 3 2 2 2 -el 0 2 1 -ea 0.1 2 0 1 0.5 -ed 1.0 1 0
+
 run_fail_case "el_positive_gamma_zero_crossing_before_next_event" \
     "drives population 0 size to zero" \
     5 1 100 -t 5 -el 0.05 0 5.0 -en 1.0 0 1.0
