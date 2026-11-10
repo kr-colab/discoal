@@ -19,7 +19,6 @@ genetics:
 
 demography:
   deme_sample_size: [10, 5, 5]
-  effective_population_size: 1.0
   migration_matrix:
     - row: [0.0, 1.0e-1, 1.0e-1]
     - row: [1.0e-1, 0.0, 1.0e-1]
