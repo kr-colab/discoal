@@ -296,7 +296,9 @@ void initialize(){
 
 
 	breakNumber = 0;
-	// Initialize segment-based active material (all sites start as active)
+	// Initialize segment-based active material (all sites start as active);
+	// free the previous replicate's first (the global starts zeroed)
+	freeActiveMaterial(&activeMaterialSegments);
 	initializeActiveMaterial(&activeMaterialSegments, nSites);
 	
 	//set initial counts

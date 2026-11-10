@@ -38,6 +38,37 @@ void initializeActiveMaterial(ActiveMaterial *am, int nSites) {
     am->segments = newActiveSegment(0, nSites);
     am->avlTree = NULL;
     am->totalActive = nSites;
+    am->nSites = nSites;
+    size_t words = ((size_t)nSites + 63) / 64;
+    am->bits = malloc(words * sizeof(uint64_t));
+    if (!am->bits) {
+        fprintf(stderr, "Memory allocation failed for active sites\n");
+        exit(1);
+    }
+    memset(am->bits, 0xff, words * sizeof(uint64_t));
+    if (nSites % 64)  // no bits for sites beyond the last one
+        am->bits[words - 1] = (UINT64_C(1) << (nSites % 64)) - 1;
+}
+
+/* The mask of the bits of word w that fall in [start, end). */
+static uint64_t wordMask(int w, int start, int end) {
+    int lo = start > w * 64 ? start - w * 64 : 0;
+    int hi = end < (w + 1) * 64 ? end - w * 64 : 64;
+    uint64_t upper = hi == 64 ? ~UINT64_C(0) : (UINT64_C(1) << hi) - 1;
+    return upper & ~((UINT64_C(1) << lo) - 1);
+}
+
+/* Whether any site in [start, end) is active (bitset). */
+static int anyActive(ActiveMaterial *am, int start, int end) {
+    for (int w = start / 64; w <= (end - 1) / 64; w++)
+        if (am->bits[w] & wordMask(w, start, end)) return 1;
+    return 0;
+}
+
+/* Clear the bits of [start, end). */
+static void clearActive(ActiveMaterial *am, int start, int end) {
+    for (int w = start / 64; w <= (end - 1) / 64; w++)
+        am->bits[w] &= ~wordMask(w, start, end);
 }
 
 // Free all memory associated with active material
@@ -46,6 +77,8 @@ void freeActiveMaterial(ActiveMaterial *am) {
     
     freeSegmentList(am->segments);
     am->segments = NULL;
+    free(am->bits);
+    am->bits = NULL;
     
     if (am->avlTree) {
         freeAVLTree((AVLTree*)am->avlTree);
@@ -58,6 +91,10 @@ void freeActiveMaterial(ActiveMaterial *am) {
 // Check if a site is active - uses AVL tree if available
 int isActiveSite(ActiveMaterial *am, int site) {
     if (!am || !am->segments) return 0;
+    if (am->bits) {
+        if (site < 0 || site >= am->nSites) return 0;
+        return (am->bits[site / 64] >> (site % 64)) & 1;
+    }
     
     // Use AVL tree for fast lookup if available
     if (am->avlTree) {
@@ -106,6 +143,15 @@ ActiveSegment* coalesceActiveSegments(ActiveSegment *head) {
 // Remove a fixed region from the active segments
 void removeFixedRegion(ActiveMaterial *am, int start, int end) {
     if (!am || !am->segments || start >= end) return;
+    /* A region whose sites are all inactive already (it was removed
+     * before: a lineage keeps its segments that reached the MRCA) needs
+     * no change. */
+    if (am->bits) {
+        if (start < 0) start = 0;
+        if (end > am->nSites) end = am->nSites;
+        if (start >= end || !anyActive(am, start, end)) return;
+        clearActive(am, start, end);
+    }
     
     ActiveSegment *prev = NULL;
     ActiveSegment *current = am->segments;
@@ -187,6 +233,11 @@ void updateActiveMaterialFromAncestry(ActiveMaterial *am, AncestrySegment *ances
         }
         seg = seg->next;
     }
+
+    /* With the bitset, nothing more is needed: a removal only shrinks or
+     * splits list segments, so it never leaves two of them adjacent, and
+     * lookups use the bits, not an AVL tree. */
+    if (am->bits) return;
     
     // Coalesce adjacent segments
     am->segments = coalesceActiveSegments(am->segments);
