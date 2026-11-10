@@ -21,7 +21,11 @@ discoal -Y config.yaml -d 1 2      # the seeds 1 2, not those of the file
     the events of the file;
   - `-m i j rate` sets one entry of the migration matrix;
   - `-p` replaces `deme_sample_size`. The sum must still be equal to
-    `sample_size`. With a demes file, `-p` is an error.
+    `sample_size`.
+  - With a demes file, options that change the demography or the
+    samples (`-p`, `-A`, `-m`, `-M`, all `-e` options, `-Pe1`, `-Pe2`)
+    are errors. The demes file gives the demography, and
+    `deme_sample_size` and `ancient_samples` the samples.
 - `config_examples/` has examples that run. Each one starts with a line
   `# Equivalent to: discoal ...`, which is the same run on the command
   line. `config_examples/all_options.yaml` lists every field, but it

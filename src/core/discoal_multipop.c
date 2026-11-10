@@ -850,6 +850,22 @@ void getParameters(int argc,const char **argv){
 			exit(1);
 		}
 
+		/* A demes model gives the demography, and the YAML its samples,
+		 * checked against the demes' lifetimes (as the YAML allows only
+		 * ancient_samples with demes_filename). Options that change the
+		 * demography or the samples would bypass these checks. */
+		if (demesModelLoaded &&
+		    (strcmp(argv[args], "-p") == 0 || strcmp(argv[args], "-A") == 0 ||
+		     strcmp(argv[args], "-m") == 0 || strcmp(argv[args], "-M") == 0 ||
+		     strcmp(argv[args], "-Pe1") == 0 || strcmp(argv[args], "-Pe2") == 0 ||
+		     argv[args][1] == 'e')) {
+			fprintf(stderr, "Error: %s cannot be used with a demes model "
+				"(demography.demes_filename): the demes file gives the "
+				"demography, and demography.deme_sample_size and "
+				"demographic_events.ancient_samples the samples\n", argv[args]);
+			exit(1);
+		}
+
 		switch(argv[args][1]){
 			case 'F' :
 			if (!tskitOutputMode) {
@@ -954,14 +970,6 @@ void getParameters(int argc,const char **argv){
 				migFlag = 1;
 			break;
 			case 'p' :
-			/* A demes model gives the populations, and deme_sample_size
-			 * their samples, checked against the demes' lifetimes. */
-			if (demesModelLoaded) {
-				fprintf(stderr, "Error: -p cannot be used with a demes model "
-					"(demography.demes_filename); its samples are "
-					"demography.deme_sample_size\n");
-				exit(1);
-			}
 			npops = parseIntArg(argc, argv, &args, "-p");
 			if(npops > MAXPOPS){
 				fprintf(stderr,"Error: too many populations defined. Current maximum number = %d. Change MAXPOPS define in discoal.h and recompile... if you dare\n",MAXPOPS);

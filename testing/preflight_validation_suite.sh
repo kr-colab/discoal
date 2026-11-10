@@ -218,11 +218,20 @@ run_fail_case "ws_and_ls" \
     "only one single sweep can be given" \
     20 5 1000 -t 5 -r 5 -ws 0.01 -ls 0.05 5 -a 500
 
-# A demes model gives the populations and deme_sample_size their samples,
-# checked against the demes' lifetimes; -p would replace them unchecked.
+# A demes model gives the demography and the YAML its samples, checked
+# against the demes' lifetimes; options that change either would bypass
+# these checks.
 run_fail_case "demes_model_with_cli_p" \
     "-p cannot be used with a demes model" \
     -Y "$REPO_ROOT/config_examples/demes_example.yaml" -p 2 10 10
+
+run_fail_case "demes_model_with_cli_A" \
+    "-A cannot be used with a demes model" \
+    -Y "$REPO_ROOT/config_examples/demes_example.yaml" -A 2 1 0.5
+
+run_fail_case "demes_model_with_cli_ed" \
+    "-ed cannot be used with a demes model" \
+    -Y "$REPO_ROOT/config_examples/demes_example.yaml" -ed 0.1 1 0
 
 run_fail_case "yaml_sweep_and_cli_ws" \
     "only one single sweep can be given" \
