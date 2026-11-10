@@ -2566,7 +2566,7 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 			rRate[i] = rho * popnSizes[i] * 0.5;// * ((float)activeSites/nSites);
 			gcRate[i] = my_gamma * popnSizes[i] * 0.5 ;
 			
-			for(j=0;j<npops;j++) mRate[i]+=migMat[i][j];
+			for(j=0;j<npops;j++) mRate[i]+=migAt(i, j, cTime);
 			mRate[i] *= popnSizes[i] * MIG_LINEAGE_WEIGHT;
 			totCRate += cRate[i];
 			totRRate += rRate[i];
@@ -2616,12 +2616,12 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 						while(eSum/totMRate < r2) eSum += mRate[++i];
 						//printf("outer totMRate: %f eSum: %f i:%d\n",totMRate,eSum,i);
 						//pick dest popn
-						eSum = migMat[i][0]* popnSizes[i] * MIG_LINEAGE_WEIGHT;
+						eSum = migAt(i, 0, cTime) * popnSizes[i] * MIG_LINEAGE_WEIGHT;
 						//printf("outer eSumNew:%f mRate[%d]:%f\n",eSum,i,mRate[i]);
 						r2 = ranf();
 						while(eSum/mRate[i] < r2){
 						//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
-							eSum += migMat[i][++j] * popnSizes[i] * MIG_LINEAGE_WEIGHT;
+							eSum += migAt(i, ++j, cTime) * popnSizes[i] * MIG_LINEAGE_WEIGHT;
 						//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
 							
 						} 
