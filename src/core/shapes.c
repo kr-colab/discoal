@@ -440,7 +440,9 @@ int validateShapeTrajectories(struct event *events, int eventNumber) {
             }
         }
 
-        if (t == 'p') { merged[p] = 1; continue; }
+        /* A merge ('p') or an admixture ('a') moves every lineage out of
+         * the population, so its size no longer matters. */
+        if (t == 'p' || t == 'a') { merged[p] = 1; continue; }
         if (t != 'n' && t != 'g' && t != 'l') continue;
 
         double size_at_event = sizeFromShape(&state[p], e->time);
@@ -475,6 +477,22 @@ int validateShapeTrajectories(struct event *events, int eventNumber) {
             state[p].rate_param = e->popnSize;  /* gamma */
             state[p].anchor_time = e->time;
         }
+    }
+    /* The last interval has no end: a linear change that shrinks a
+     * population back in time, with no later event, reaches zero. */
+    for (int p = 0; p < MAXPOPS; p++) {
+        if (merged[p] || state[p].type != SHAPE_LINEAR ||
+            !(state[p].rate_param > 0.0))
+            continue;
+        double t_cross = state[p].anchor_time +
+                         state[p].anchor_value / state[p].rate_param;
+        fprintf(stderr,
+            "Error: linear-growth trajectory drives population %d size to zero "
+            "at internal time %g, and no later event changes it. Adjust the "
+            "linear rate or add a size change (-en) before that time.\n",
+            p, t_cross);
+        free(migState);
+        return -1;
     }
     free(migState);
     return 0;

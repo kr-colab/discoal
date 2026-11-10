@@ -56,3 +56,12 @@ past, it does not.
 A sweep whose trajectories are almost never accepted (a size drop by a
 factor of about 10^6) now stops with an error, and does not run for
 ever.
+
+A linear size change must not reach zero in the last interval
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+With ``-el`` or ``-eL`` and a positive gamma, the population gets smaller
+back in time. If no later event changes its size, it reaches zero, and
+lineages that are still in it coalesced at once. discoal 2.0 stops with
+an error for such a model, for example ``-el 0 0 0.5`` alone. Add a size
+change (``-en``) before the time at which the size reaches zero.

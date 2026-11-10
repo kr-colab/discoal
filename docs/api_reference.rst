@@ -86,7 +86,8 @@ Demographic Options
    * popID: Population ID (0-indexed)
    * gamma: Change in relative size (size / N₀) per 4N₀ generations.
      Positive gamma means the past was smaller. discoal stops with an
-     error if the size reaches zero before the next event.
+     error if the size reaches zero before the next event, or at any time
+     when no later event changes it.
 
 .. option:: -eL time gamma
 
