@@ -271,6 +271,37 @@ run_pass_case "en_other_population_during_sweep" \
 run_pass_case "en_other_population_recurrent_sweeps" \
     20 5 10000 -N 10000 -t 1 -r 10 -p 2 10 10 -m 0 1 1 -m 1 0 1 -R 50 -a 500 -c 0.3 -en 0.001 1 0.00015 -d 1 2
 
+# A soft sweep (-f) under many size changes of population 0: the model of
+# issue #30, cut to its size changes before time 1.0. Its trajectory below
+# f0 could fail to end, and the run stopped with "trajectory too bigly"
+# (for this seed, at the third replicate). It must run.
+run_pass_case "soft_sweep_many_size_changes" \
+    10 3 1000 -t 1 -r 1 -ws 0 -a 800 -f 0.1 -x 0.5 \
+    -en 0.0005124 0 1 -en 0.000605 0 1 \
+    -en 0.0007144 0 1 -en 0.0008435 0 1.003 \
+    -en 0.0009961 0 1.013 -en 0.001176 0 1.039 \
+    -en 0.001389 0 1.086 -en 0.00164 0 1.163 \
+    -en 0.001936 0 1.288 -en 0.002286 0 1.488 \
+    -en 0.0027 0 1.77 -en 0.003188 0 2.122 \
+    -en 0.003764 0 2.525 -en 0.004445 0 2.971 \
+    -en 0.005249 0 3.457 -en 0.006198 0 3.981 \
+    -en 0.007318 0 4.538 -en 0.008641 0 5.12 \
+    -en 0.0102 0 5.721 -en 0.01205 0 6.332 \
+    -en 0.01423 0 6.944 -en 0.0168 0 7.547 \
+    -en 0.01984 0 8.13 -en 0.02342 0 8.685 \
+    -en 0.02766 0 9.202 -en 0.03266 0 9.673 \
+    -en 0.03856 0 10.09 -en 0.04554 0 10.45 \
+    -en 0.05377 0 10.74 -en 0.06349 0 10.97 \
+    -en 0.07497 0 11.13 -en 0.08852 0 11.21 \
+    -en 0.1045 0 11.23 -en 0.1234 0 11.19 \
+    -en 0.1457 0 11.08 -en 0.1721 0 10.92 \
+    -en 0.2032 0 10.71 -en 0.2399 0 10.45 \
+    -en 0.2833 0 10.15 -en 0.3346 0 9.817 \
+    -en 0.395 0 9.459 -en 0.4665 0 9.08 \
+    -en 0.5508 0 8.686 -en 0.6504 0 8.284 \
+    -en 0.768 0 7.877 -en 0.9068 0 7.471 \
+    -d 2 99
+
 # Sweeps are not modeled under growth: population 0 may not grow (-eg,
 # -el, -eG, -eL) at or after the earliest start of a sweep, and no
 # population may grow with recurrent sweeps.
