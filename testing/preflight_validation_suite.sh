@@ -260,6 +260,37 @@ run_fail_case "R_with_growth_in_population_1" \
     "not modeled under growth" \
     20 5 10000 -N 10000 -t 1 -r 10 -p 2 10 10 -m 0 1 1 -m 1 0 1 -R 2 -a 500 -eg 0 1 2
 
+# A size change with a prior on its time ends growth only if it surely
+# comes after the growth starts and surely before the sweep.
+run_fail_case "Pe1_may_come_before_growth" \
+    "not modeled under growth" \
+    10 3 1000 -N 10000 -t 5 -r 5 -a 200 -ws 0.05 -eg 0.01 0 30 -Pe1 0.001 0.0101 0.5 1
+
+run_pass_case "Pe1_ends_growth_before_sweep" \
+    10 3 1000 -N 10000 -t 5 -r 5 -a 200 -ws 0.05 -eg 0.01 0 30 -Pe1 0.02 0.04 0.5 1 -d 1 2
+
+# An -en at the sweep's time ends growth before the sweep only if it is
+# given before the sweep (events at one time apply in command-line order).
+run_fail_case "en_at_sweep_time_after_sweep" \
+    "not modeled under growth" \
+    10 2 1000 -N 10000 -t 5 -r 5 -a 200 -ws 0.05 -eg 0.01 0 30 -en 0.05 0 1
+
+run_pass_case "en_at_sweep_time_before_sweep" \
+    10 2 1000 -N 10000 -t 5 -r 5 -a 200 -eg 0.01 0 30 -en 0.05 0 1 -ws 0.05 -d 1 2
+
+# The earliest of two sweeps counts; with -Pu, only its low bound.
+run_fail_case "growth_in_first_of_two_sweeps" \
+    "not modeled under growth" \
+    10 2 1000 -N 10000 -t 5 -r 5 -a 200 -ws 0.01 -ws 0.05 -eg 0.03 0 5 -en 0.04 0 1
+
+run_pass_case "Pu_after_growth" \
+    10 2 1000 -N 10000 -t 5 -r 5 -a 200 -ws 0.01 -Pu 0.05 0.08 -eg 0.02 0 5 -en 0.03 0 1 -d 1 2
+
+# A trajectory from a file (-S) does not use the acceptance step, and its
+# sampler follows the size at each step, so growth is allowed with it.
+run_pass_case "S_with_growth" \
+    20 2 10000 -t 1 -r 10 -N 10000 -S "$REPO_ROOT/config_examples/trajectory_example.traj" -eg 0 0 1 -d 1 2
+
 run_pass_case "growth_ending_before_sweep" \
     20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0 0 5 -en 0.005 0 1 -d 1 2
 
@@ -298,17 +329,22 @@ run_fail_case "Pf_high_above_c" \
 # ended by then, so the change must not lower the acceptance of every
 # proposed trajectory (the run took longer than a minute).
 run_pass_case "en_long_after_sweep" \
-    20 2 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -en 1.0 0 0.00001 -d 1 2
+    20 2 10000 -t 1 -r 10 -ws 0.01 -a 500 -en 1.0 0 0.00001 -d 1 2
 
 # Recurrent soft sweeps are not implemented; -Pf makes a sweep soft too.
 run_fail_case "R_with_Pf" \
     "recurrent soft sweeps" \
     20 2 1000 -t 5 -r 5 -R 1 -a 500 -Pf 0.01 0.1
 
-# A sweep needs at least one individual in population 0 at its start.
+# A sweep needs at least one individual in population 0; every size of
+# population 0 (an -en, or the low bound of a size prior) is checked.
 run_fail_case "sweep_in_population_below_one" \
-    "fewer than one individual" \
+    "at least one individual" \
     20 2 1000 -t 5 -r 5 -en 0 0 0.0000001 -ws 0 -a 500
+
+run_fail_case "sweep_with_size_prior_below_one" \
+    "at least one individual" \
+    10 5 1000 -N 10000 -t 5 -r 5 -a 200 -Pe1 0.01 0.02 0.000001 0.001 -ws 0.05
 
 # Exponential growth over a long time: one lineage is left in each
 # population, and while they wait to migrate the size underflows to 0.

@@ -1439,45 +1439,91 @@ void getParameters(int argc,const char **argv){
 	 * changes (-en). So population 0 may not grow or shrink continuously
 	 * (-eg, -el, -eG, -eL, or an exponential epoch of a demes model) at or
 	 * after the earliest start of a sweep, going back in time. Growth in
-	 * other populations, and growth of population 0 that ends before the
-	 * sweep, are allowed. Recurrent sweeps draw coalescence in every
+	 * other populations, and growth of population 0 that surely ends before
+	 * the sweep, are allowed. Recurrent sweeps draw coalescence in every
 	 * population at constant rates between sweeps, so with them no
-	 * population may grow at any time. */
-	if(selCheck || recurSweepMode){
+	 * population may grow at any time. A trajectory read from a file (-S)
+	 * does not use that ratio, and its sampler follows the size at each
+	 * step, so -S is not restricted. The events are sorted here, with ties
+	 * in command-line order. */
+	if((selCheck && trajFileRows == 0) || recurSweepMode){
+		int growthAtSweep = 0;
+		int sweepIndex = -1;
 		double sweepStart = 0.0;
-		if(!recurSweepMode){
-			for(i = 0; i < eventNumber; i++)
-				if(events[i].type == 's') sweepStart = events[i].time;
-			if(priorTau && pTauLow < sweepStart) sweepStart = pTauLow;
-		}
-		int growthAtSweep = 0, lastIsGrowth = 0;
-		double lastTime = -1.0;
 		for(i = 0; i < eventNumber; i++){
-			const char type = events[i].type;
-			if(type != 'n' && type != 'g' && type != 'l')
-				continue;
-			if(recurSweepMode && type != 'n' && events[i].popnSize != 0.0)
+			if(events[i].type == 's' && sweepIndex < 0){
+				sweepIndex = i;  /* the earliest sweep */
+				sweepStart = events[i].time;
+			}
+			if(recurSweepMode && (events[i].type == 'g' || events[i].type == 'l') &&
+			   events[i].popnSize != 0.0)
 				growthAtSweep = 1;
-			if(events[i].popID != 0)
+		}
+		if(priorTau) sweepStart = pTauLow;
+		for(i = 0; !recurSweepMode && i < eventNumber; i++){
+			if(events[i].popID != 0 || (events[i].type != 'g' && events[i].type != 'l') ||
+			   events[i].popnSize == 0.0)
 				continue;
-			const int growth = (type != 'n' && events[i].popnSize != 0.0);
-			/* A size change with a prior on its time ends growth no
-			 * earlier than its latest possible time. */
-			double t = events[i].time;
-			if(type == 'n' && events[i].priorSlot > 0)
-				t = priorSizeChanges[events[i].priorSlot - 1].timeHigh;
-			if(growth && t > sweepStart) growthAtSweep = 1;
-			if(t <= sweepStart && t >= lastTime){
-				lastTime = t;
-				lastIsGrowth = growth;
+			/* Growth of population 0 from events[i]: it must start before
+			 * the sweep and surely end before it, with a later size change
+			 * of population 0 (an -en, or growth at rate 0). */
+			const double tg = events[i].time;
+			if(tg > sweepStart || (tg == sweepStart && !priorTau && i > sweepIndex)){
+				growthAtSweep = 1;
+				break;
+			}
+			int ended = 0;
+			for(j = i + 1; j < eventNumber && !ended; j++){
+				if(events[j].popID != 0) continue;
+				const char type = events[j].type;
+				if(!(type == 'n' || ((type == 'g' || type == 'l') && events[j].popnSize == 0.0)))
+					continue;
+				/* A size change with a prior on its time can fall anywhere
+				 * in [timeLow, timeHigh]. */
+				double lo = events[j].time, hi = events[j].time;
+				if(type == 'n' && events[j].priorSlot > 0){
+					lo = priorSizeChanges[events[j].priorSlot - 1].timeLow;
+					hi = priorSizeChanges[events[j].priorSlot - 1].timeHigh;
+				}
+				const int afterGrowth = (lo > tg) || (lo == tg && lo == hi);
+				const int beforeSweep = priorTau ? (hi <= sweepStart)
+					: (hi < sweepStart || (hi == sweepStart && lo == hi && j < sweepIndex));
+				ended = afterGrowth && beforeSweep;
+			}
+			if(!ended){
+				growthAtSweep = 1;
+				break;
 			}
 		}
-		if(growthAtSweep || lastIsGrowth){
+		if(growthAtSweep){
 			fprintf(stderr, "Error: population 0 grows or shrinks (-eg, -el, "
 				"-eG, -eL, or an exponential demes epoch) at or after the start "
 				"of a sweep, or a population grows with recurrent sweeps (-R, -L); "
 				"sweeps are not modeled under growth. Use size changes (-en) "
 				"instead\n");
+			exit(1);
+		}
+	}
+	/* A sweep needs at least one individual in population 0 at its start.
+	 * Without growth at the sweep, the size there is one of population 0's
+	 * sizes (its present size, an -en, or the low bound of a size prior), so
+	 * check them all now rather than during the run. A size of 0 is not a
+	 * population (the present size before it is set, or a deme that does
+	 * not exist then). */
+	if(selCheck || recurSweepMode){
+		double smallest = INFINITY;
+		if(currentSize[0] > 0.0) smallest = currentSize[0];
+		for(i = 0; i < eventNumber; i++){
+			if(events[i].popID != 0 || events[i].type != 'n') continue;
+			double size = events[i].popnSize;
+			if(events[i].priorSlot > 0)
+				size = priorSizeChanges[events[i].priorSlot - 1].sizeLow;
+			if(size > 0.0 && size < smallest) smallest = size;
+		}
+		if(isfinite(smallest) && floor(EFFECTIVE_POPN_SIZE * smallest) < 1.0){
+			fprintf(stderr, "Error: with a sweep, population 0 must have at "
+				"least one individual at every size (N x size = %g; N from -N)\n",
+				EFFECTIVE_POPN_SIZE * smallest);
 			exit(1);
 		}
 	}
