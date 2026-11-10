@@ -1,0 +1,14 @@
+# A gene conversion rate with no gene_conversion_tract_length (default 0):
+# tract lengths are geometric with this mean, which must be at least 1.
+# Rejected with:
+#   "Error: the -g or -gr tract length (YAML gene_conversion_tract_length) (0) must be >= 1 when the gene conversion rate is above 0"
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 5
+  recombination_rate: 5
+  gene_conversion_rate: 10

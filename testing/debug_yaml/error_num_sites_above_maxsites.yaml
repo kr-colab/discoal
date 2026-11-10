@@ -1,0 +1,12 @@
+# More sites than MAXSITES (10^8), the same limit as on the command line.
+# Rejected with:
+#   "Error: the number of sites (2e+09) must be <= 100000000"
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 2000000000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 5
+  recombination_rate: 5

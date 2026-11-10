@@ -16,6 +16,10 @@
 #include <unistd.h>
 #include <assert.h>
 #include <limits.h>
+
+/* The value of a macro as a string literal, e.g. for an error message. */
+#define STRINGIFY_(x) #x
+#define STRINGIFY(x) STRINGIFY_(x)
 #include "ranlib.h"
 #include "discoal.h"
 #include "discoalFunctions.h"
@@ -806,16 +810,8 @@ void getParameters(int argc,const char **argv){
 
 	if (!yaml_config_loaded) {
 		sampleSize = atoi(argv[1]);
-		if(sampleSize > 65535){
-			printf("Error: sampleSize > 65535. This exceeds the maximum supported by uint16_t ancestry counts.\n");
-			exit(666);
-		}
 		sampleNumber = atoi(argv[2]);
 		nSites = atoi(argv[3]);
-		if(nSites>MAXSITES){
-			printf("Error: number of sites set higher than current compilation limit. Please reduce the number of sites or change the MAXSITES define and recompile\n");
-			exit(666);
-		}
 		args = 4;
 
 		popnSizes[0]=sampleSize;
@@ -1324,6 +1320,15 @@ void getParameters(int argc,const char **argv){
 			{!(my_gamma >= 0.0), "-g (rate)", my_gamma, ">= 0"},
 			{!(gammaCoRatio >= 0.0), "-gr (ratio)", gammaCoRatio, ">= 0"},
 			{gcMean < 0, "-g or -gr (tract length)", (double)gcMean, ">= 0"},
+			/* The tract length is geometric with mean gcMean; a mean
+			 * below 1 has no such distribution (the draw is NaN). */
+			{(my_gamma > 0.0 || gammaCoRatio > 0.0) && gcMean < 1,
+				"the -g or -gr tract length (YAML gene_conversion_tract_length)",
+				(double)gcMean, ">= 1 when the gene conversion rate is above 0"},
+			/* Ancestry counts are uint16_t. */
+			{sampleSize > 65535, "the sample size", (double)sampleSize, "<= 65535"},
+			{nSites > MAXSITES, "the number of sites", (double)nSites,
+				"<= " STRINGIFY(MAXSITES) " (MAXSITES, set at compile time)"},
 			{!priorAlpha && !(alpha >= 0.0), "-a", alpha, ">= 0"},
 			{!priorUA && !(uA >= 0.0), "-uA", uA, ">= 0"},
 			{!(leftRho >= 0.0), "-ls, -ld or -ln (leftRho)", leftRho / 2.0, ">= 0"},

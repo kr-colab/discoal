@@ -434,6 +434,25 @@ run_fail_case "g_negative_rate" \
     "-g (rate) (-1) must be >= 0" \
     20 2 1000 -t 5 -r 5 -g -1 100
 
+run_fail_case "g_zero_tract_length" \
+    "tract length (YAML gene_conversion_tract_length) (0) must be >= 1" \
+    20 2 1000 -t 5 -r 5 -g 10 0
+
+run_fail_case "gr_zero_tract_length" \
+    "tract length (YAML gene_conversion_tract_length) (0) must be >= 1" \
+    20 2 1000 -t 5 -r 5 -gr 0.5 0
+
+run_pass_case "g_zero_rate_zero_tract_length" \
+    20 2 1000 -t 5 -r 5 -g 0 0
+
+run_fail_case "sample_size_above_limit" \
+    "the sample size (70000) must be <= 65535" \
+    70000 1 1000 -t 5
+
+run_fail_case "num_sites_above_maxsites" \
+    "the number of sites (2e+08) must be <= 100000000" \
+    20 1 200000000 -t 5
+
 run_fail_case "a_negative" \
     "-a (-100) must be >= 0" \
     20 2 1000 -t 5 -r 5 -ws 0.01 -a -100
