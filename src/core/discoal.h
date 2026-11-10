@@ -225,8 +225,7 @@ long int currentTrajectoryStep, totalTrajectorySteps;
 int freedNodeCount;
 
 // Memory-mapped trajectory support
-char trajectoryFilename[256];  // Current trajectory file
-int trajectoryFd;              // File descriptor for mmap
+int trajectoryFd;              // Anonymous file of the mapped trajectory; -1 if none
 size_t trajectoryFileSize;     // Size of mmap'd region
 
 struct event *events;          /* Dynamic array of demographic events */

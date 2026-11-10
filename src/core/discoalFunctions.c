@@ -7,10 +7,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
 #include "ancestryWrapper.h"
 #include "activeSegment.h"
-#include <time.h>
 #include "discoal.h"
 #include "discoalFunctions.h"
 #include "ranlib.h"
@@ -1816,25 +1814,26 @@ void ensureTrajectoryCapacity(long int requiredSize) {
 }
 
 
-// Function to mmap an accepted trajectory file
-void mmapAcceptedTrajectory(const char *filename, long int numSteps) {
-	// Clean up any previous trajectory
+/* Unmap and close the mapped sweep trajectory, if any. Its file is
+ * anonymous (tmpfile), so closing it, or the end of the process however it
+ * ends, removes it. */
+void releaseTrajectory(void) {
 	if (trajectoryFd != -1) {
 		if (currentTrajectory && currentTrajectory != MAP_FAILED) {
 			munmap(currentTrajectory, trajectoryFileSize);
 		}
 		close(trajectoryFd);
 		trajectoryFd = -1;
+		currentTrajectory = NULL;
 	}
-	
-	// Open the trajectory file
-	trajectoryFd = open(filename, O_RDONLY);
-	if (trajectoryFd == -1) {
-		perror("Failed to open trajectory file for mmap");
-		exit(1);
-	}
-	
-	// Calculate file size
+}
+
+/* Map an accepted trajectory for the sweep sampler. fd is an open file of
+ * numSteps floats (an anonymous file from proposeTrajectory()); this takes
+ * it over, and releases the trajectory mapped before. */
+void mmapAcceptedTrajectory(int fd, long int numSteps) {
+	releaseTrajectory();
+	trajectoryFd = fd;
 	trajectoryFileSize = numSteps * sizeof(float);
 	/* A trajectory with no steps (the sweep ends at once) has nothing to
 	 * read, and mmap cannot map zero bytes. */
@@ -1842,21 +1841,11 @@ void mmapAcceptedTrajectory(const char *filename, long int numSteps) {
 		currentTrajectory = NULL;
 		return;
 	}
-	
-	// Memory map the file
-	currentTrajectory = (float *)mmap(NULL, trajectoryFileSize, PROT_READ, 
+	currentTrajectory = (float *)mmap(NULL, trajectoryFileSize, PROT_READ,
 	                                  MAP_PRIVATE, trajectoryFd, 0);
 	if (currentTrajectory == MAP_FAILED) {
 		perror("Failed to mmap trajectory file");
-		close(trajectoryFd);
 		exit(1);
-	}
-}
-
-// Function to clean up rejected trajectory files
-void cleanupRejectedTrajectory(const char *filename) {
-	if (filename && filename[0] != '\0') {
-		unlink(filename);
 	}
 }
 
@@ -1964,11 +1953,13 @@ double sweepStartFreq(double t){
 static float *fileTrajectory = NULL;
 static long int fileTrajectorySteps = 0;
 
+/* The file of the last proposed trajectory, not yet accepted; -1 if none. */
+static int proposedFd = -1;
+
 /* Draw a sweep trajectory by rejection sampling: propose trajectories
- * until one is accepted, deleting the file of each rejected one. Then map
- * the accepted one for the sweep samplers and delete the file of the
- * trajectory that was mapped before (the previous sweep, with recurrent
- * sweeps). The arguments are those of proposeTrajectory(). */
+ * until one is accepted, then map the accepted one for the sweep samplers
+ * (which also releases the trajectory of the previous sweep, with
+ * recurrent sweeps). The arguments are those of proposeTrajectory(). */
 void sampleSweepTrajectory(int currentEventNumber, double *sizeRatio,
 	char sweepMode, double initialFreq, double *finalFreq, double alpha,
 	double f0, double currentTime){
@@ -1981,19 +1972,15 @@ void sampleSweepTrajectory(int currentEventNumber, double *sizeRatio,
 		totalTrajectorySteps = fileTrajectorySteps;
 		return;
 	}
-	char previousMapped[256] = "";
-	if (trajectoryFd != -1)
-		strcpy(previousMapped, trajectoryFilename);
+	/* Each proposal closes the one before it, so a rejected one is gone. */
 	double probAccept = proposeTrajectory(currentEventNumber, currentTrajectory,
 		sizeRatio, sweepMode, initialFreq, finalFreq, alpha, f0, currentTime);
 	while (ranf() > probAccept) {
-		cleanupRejectedTrajectory(trajectoryFilename);
 		probAccept = proposeTrajectory(currentEventNumber, currentTrajectory,
 			sizeRatio, sweepMode, initialFreq, finalFreq, alpha, f0, currentTime);
 	}
-	mmapAcceptedTrajectory(trajectoryFilename, totalTrajectorySteps);
-	if (strcmp(previousMapped, trajectoryFilename) != 0)
-		cleanupRejectedTrajectory(previousMapped);
+	mmapAcceptedTrajectory(proposedFd, totalTrajectorySteps);
+	proposedFd = -1;
 }
 
 /* -S: read a sweep trajectory from a text file with one point per line:
@@ -2143,12 +2130,15 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 	Shape saved_popShape[MAXPOPS];
 	memcpy(saved_popShape, popShape, sizeof(saved_popShape));
 
-	// For sweep simulations, write directly to a temporary file
-	char tempFilename[256];
-	snprintf(tempFilename, sizeof(tempFilename), "/tmp/discoal_traj_%d_%ld_%d.tmp", 
-	         getpid(), time(NULL), rand());
-	
-	FILE *trajFile = fopen(tempFilename, "wb");
+	/* The trajectory goes to an anonymous temporary file (tmpfile): it has
+	 * no name in the file system, so it disappears when it is closed or the
+	 * process ends, however it ends. The previous proposal, not accepted,
+	 * is closed here. */
+	if (proposedFd != -1) {
+		close(proposedFd);
+		proposedFd = -1;
+	}
+	FILE *trajFile = tmpfile();
 	if (!trajFile) {
 		perror("Failed to create trajectory file");
 		exit(1);
@@ -2254,7 +2244,6 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			if (j >= 500000000) {  // Match legacy limit
 				fprintf(stderr, "trajectory too bigly. step= %ld. killing myself gently\n", j);
 				fclose(trajFile);
-				unlink(tempFilename);
 				exit(1);
 			}
 			
@@ -2276,10 +2265,16 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 	if (bufferPos > 0) {
 		fwrite(writeBuffer, sizeof(float), bufferPos, trajFile);
 	}
+	/* Keep the file open for mapping (a second descriptor keeps it alive
+	 * after the stream is closed). A write error (a full disk) stops the
+	 * run here: a short file would fail later, when it is read through
+	 * the mapping. */
+	if (fflush(trajFile) != 0 || ferror(trajFile)
+	    || (proposedFd = dup(fileno(trajFile))) == -1) {
+		perror("Failed to write trajectory file");
+		exit(1);
+	}
 	fclose(trajFile);
-	
-	// Store the filename and trajectory length globally
-	strncpy(trajectoryFilename, tempFilename, sizeof(trajectoryFilename) - 1);
 	currentTrajectoryStep = 0;
 	totalTrajectorySteps = j;
 	

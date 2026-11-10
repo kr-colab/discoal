@@ -15,11 +15,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <assert.h>
-#include <signal.h>
-#include <sys/mman.h>
-#include <fcntl.h>
 #include <limits.h>
-#include <errno.h>
 #include "ranlib.h"
 #include "discoal.h"
 #include "discoalFunctions.h"
@@ -45,30 +41,7 @@ double nextTime, currentFreq;
 
 void getParameters(int argc,const char **argv);
 void usage();
-void cleanup_and_exit(int sig);
 void initializeTrajectoryVariables(double N);
-
-// Remove the sweep trajectory file, if any. Registered with atexit, so
-// every exit path (error exits included) removes it.
-static void removeTrajectoryFile(void) {
-	if (trajectoryFd != -1) {
-		if (currentTrajectory && currentTrajectory != MAP_FAILED) {
-			munmap(currentTrajectory, trajectoryFileSize);
-		}
-		close(trajectoryFd);
-		if (trajectoryFilename[0] != '\0') {
-			unlink(trajectoryFilename);
-		}
-		trajectoryFd = -1;
-		trajectoryFilename[0] = '\0';
-	}
-}
-
-// Signal handler for cleanup
-void cleanup_and_exit(int sig) {
-	removeTrajectoryFile();
-	exit(sig);
-}
 
 // Initialize all trajectory-related variables
 void initializeTrajectoryVariables(double N) {
@@ -111,7 +84,6 @@ int main(int argc, const char * argv[]){
 	int lastBreak;
 	
 	getParameters(argc,argv);
-	atexit(removeTrajectoryFile);
 	/* Snapshot for per-replicate restore in initialize(); see currentSizeConst. */
 	for (i = 0; i < MAXPOPS; i++) currentSizeConst[i] = currentSize[i];
 	double N = EFFECTIVE_POPN_SIZE; // effective population size
@@ -122,11 +94,6 @@ int main(int argc, const char * argv[]){
 	if (tskitOutputMode) {
 		tskit_store_command_line(argc, argv);
 	}
-	
-	// Register signal handlers for cleanup
-	signal(SIGINT, cleanup_and_exit);
-	signal(SIGTERM, cleanup_and_exit);
-	signal(SIGSEGV, cleanup_and_exit);
 
 	//Hudson style header
 	for(i=0;i<argc;i++)printf("%s ",argv[i]);
@@ -136,7 +103,6 @@ int main(int argc, const char * argv[]){
         totalSimCount = 0;
 	trajectoryCapacity = TRAJSTEPSTART;
 	trajectoryFd = -1;  // Initialize to invalid
-	trajectoryFilename[0] = '\0';  // Empty filename
 	currentTrajectory = NULL;  // Will be mmap'd when needed
 	
 	// Initialize global trajectory generator (lazy approach)
@@ -570,20 +536,7 @@ int main(int argc, const char * argv[]){
 		// Cleanup is now done at the beginning of each replicate to prevent overwrites
 		// No cleanup needed here between replicates
 		
-		// Clean up trajectory after each simulation
-		if (trajectoryFd != -1) {
-			// fprintf(stderr, "Cleaning up trajectory\n");
-			if (currentTrajectory && currentTrajectory != MAP_FAILED) {
-				munmap(currentTrajectory, trajectoryFileSize);
-			}
-			close(trajectoryFd);
-			if (trajectoryFilename[0] != '\0') {
-				unlink(trajectoryFilename);
-			}
-			trajectoryFd = -1;
-			trajectoryFilename[0] = '\0';
-			currentTrajectory = NULL;
-		}
+		releaseTrajectory();
 		
 		// Finalize and write tskit tree sequence for this replicate
 		if (tskitOutputMode) {
@@ -637,16 +590,6 @@ int main(int argc, const char * argv[]){
 		// fprintf(stderr, "Debug: Completed replicate %d (i=%d, totalSimCount=%d, sampleNumber=%d)\n", 
 		//         totalSimCount + 1, i, totalSimCount, sampleNumber);
                 totalSimCount += 1;
-	}
-	// Clean up any remaining trajectory storage
-	if (trajectoryFd != -1) {
-		if (currentTrajectory && currentTrajectory != MAP_FAILED) {
-			munmap(currentTrajectory, trajectoryFileSize);
-		}
-		close(trajectoryFd);
-		if (trajectoryFilename[0] != '\0') {
-			unlink(trajectoryFilename);
-		}
 	}
 	
 	// tskit finalization now handled per-replicate

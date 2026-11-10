@@ -72,8 +72,8 @@ void recurrentMutAtTime(double cTime,int srcPopn, int sp);
 void ensureTrajectoryCapacity(long int requiredSize);
 
 // Memory-mapped trajectory functions
-void mmapAcceptedTrajectory(const char *filename, long int numSteps);
-void cleanupRejectedTrajectory(const char *filename);
+void releaseTrajectory(void);
+void mmapAcceptedTrajectory(int fd, long int numSteps);
 void initializeNodeArrays();
 void ensureNodesCapacity(int requiredSize);
 void ensureAllNodesCapacity(int requiredSize);
