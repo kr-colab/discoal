@@ -31,8 +31,8 @@ For a quick reference, typing `./discoal` will bring up a verbose usage statemen
 ```
 $ ./discoal
 usage: discoal sampleSize numReplicates nSites -ws tau
-parameters:
-	 -t theta
+parameters: 
+	 -t theta 
 	 -r rho (=zero if not specified)
 	 -g conversionRate tractLengthMean (gene conversion)
 	 -gr conversionToCrossoverRatio tractLengthMean (gene conversion where initiation rate = rho*conversionToCrossoverRatio)
@@ -59,6 +59,7 @@ parameters:
 	 -x sweepSite (0-1)
 	 -c partialSweepFinalFrequency (partial sweeps)
 	 -i dt (sweep time increment scalar; default 40 -> 1/40N)
+	 -S file (sweep trajectory from a file: lines of time (4N0 generations, increasing) and allele frequency, ending at frequency 0)
 	 -M migRate (sets all rates to migRate)
 	 -m popnID1 popnID2 migRate (sets migRate from popnID1 to popnID2)
 	 -A sampleSize popnID time (ancient sample from popnID at specified time)
@@ -66,7 +67,7 @@ parameters:
 	 -Pr low high (prior on rho)
 	 -Pre mean upperBound (prior on rho -- exponentially distributed but truncated at an upper bound)
 	 -Pa low high (prior on alpha)
-	 -Pu low high (prior on tau; sweep models only; still must use "-ws tau" and "tau" will be ignored)
+	 -Pu low high (prior on tau; sweep models only; still must use "-ws tau" (or a YAML sweep, not both) and "tau" will be ignored)
 	 -PuA low high (prior on uA; sweep models only)
 	 -Px low high (prior on sweepSite; sweep models only)
 	 -Pf low high (prior on F0; sweep models only)
@@ -77,7 +78,8 @@ parameters:
 	 -L rhhRate (recurrent hitch hiking mode to the side of locus; leftRho is ~Unif(0,4Ns); rhh is rate per 2N individuals / generation)
 	 -h (hide selected SNP in partial sweep mode)
 	 -v (verbose: print progress and demes conversion details to stderr)
-	 -T (tree output mode)
+	 -ts filename (tree sequence output mode - saves to tskit file)
+	 -F (full ARG mode - record all edges including recombination; use with -ts)
 	 -d seed1 seed2 (set random number generator seeds)
 ```
 

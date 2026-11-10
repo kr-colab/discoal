@@ -175,8 +175,13 @@ selection:
   fixation_time_ago: 0.01
 ```
 
-Command-line options after `-Y` replace the YAML values; for example,
-`discoal -Y config.yaml -t 40` uses theta = 40.
+Command-line options also apply. A value option (for example `-t`, `-r`,
+`-a`, `-x`, `-N` or `-d`) replaces the YAML value, so
+`discoal -Y config.yaml -t 40` uses theta = 40; but a YAML prior on the
+same parameter takes precedence over it. An event option (for example
+`-en` or `-em`) adds an event to the model. A sweep option (`-ws` and
+the others) cannot be combined with a YAML `selection` block that has a
+sweep, because a run has at most one single sweep.
 
 ## Sample Size Specification
 
