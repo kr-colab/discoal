@@ -49,9 +49,9 @@ size of population 0 at the allele's origin. discoal 1.x divided this
 size by the largest size along each trajectory only. When population 0
 was larger further in the past, a trajectory with a recent origin never
 reached that size, so it was accepted too often. discoal 2.0 divides by
-the largest size that any trajectory of the run has reached. The output
-of such models changes; when population 0 was not larger in the past,
-it does not.
+the largest size of population 0 at any time an origin can fall in. The
+output of such models changes; when population 0 was not larger in the
+past, it does not.
 
 A sweep whose trajectories are almost never accepted (a size drop by a
 factor of about 10^6) now stops with an error, and does not run for
