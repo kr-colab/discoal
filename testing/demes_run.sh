@@ -26,10 +26,12 @@ demes_run() {
     done
     [ -n "$sizes" ] || sizes=$nsamp
     local config="$demes.config.yaml"
+    # A single-quoted YAML string, so any path works ('' is a quote).
+    local quoted=${demes//\'/\'\'}
     cat > "$config" <<CONFIG
 simulation: {sample_size: $nsamp, num_replicates: $nreps, num_sites: $nsites}
 genetics: {mutation_rate: 0, recombination_rate: 0}
-demography: {deme_sample_size: [$sizes], demes_filename: "$demes"}
+demography: {deme_sample_size: [$sizes], demes_filename: '$quoted'}
 CONFIG
     "$DISCOAL" -Y "$config" "${rest[@]}"
 }

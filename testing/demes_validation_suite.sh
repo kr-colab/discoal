@@ -19,7 +19,7 @@ NC='\033[0m' # No Color
 # Test files go in a temporary directory, removed on exit.
 TEST_DIR=$(mktemp -d -t demes_validation.XXXXXX)
 trap 'rm -rf "$TEST_DIR"' EXIT
-mkdir -p $TEST_DIR/demes_files
+mkdir -p "$TEST_DIR/demes_files"
 
 echo "=== DISCOAL DEMES VALIDATION SUITE ==="
 echo "Creating test files in $TEST_DIR/"
@@ -64,7 +64,7 @@ run_test() {
 }
 
 # Test 1: Single population, constant size
-cat > $TEST_DIR/demes_files/single_pop_constant.yaml << EOF
+cat > "$TEST_DIR/demes_files/single_pop_constant.yaml" << EOF
 time_units: generations
 generation_time: 1
 demes:
@@ -79,7 +79,7 @@ run_test "Single population constant size" \
     false
 
 # Test 2: Two populations with migration
-cat > $TEST_DIR/demes_files/two_pop_migration.yaml << EOF
+cat > "$TEST_DIR/demes_files/two_pop_migration.yaml" << EOF
 time_units: generations
 generation_time: 1
 demes:
@@ -99,7 +99,7 @@ run_test "Two populations with migration" \
     false
 
 # Test 3: Two populations without migration (should fail)
-cat > $TEST_DIR/demes_files/two_pop_isolated.yaml << EOF
+cat > "$TEST_DIR/demes_files/two_pop_isolated.yaml" << EOF
 time_units: generations
 generation_time: 1
 demes:
@@ -118,7 +118,7 @@ run_test "Two isolated populations (should fail)" \
     "no migration, merger or pulse events"
 
 # Test 4: Population split
-cat > $TEST_DIR/demes_files/pop_split.yaml << EOF
+cat > "$TEST_DIR/demes_files/pop_split.yaml" << EOF
 time_units: generations
 generation_time: 1
 demes:
@@ -141,7 +141,7 @@ run_test "Population split" \
     false
 
 # Test 5: Size change event
-cat > $TEST_DIR/demes_files/size_change.yaml << EOF
+cat > "$TEST_DIR/demes_files/size_change.yaml" << EOF
 time_units: generations
 generation_time: 1
 demes:
@@ -157,7 +157,7 @@ run_test "Population size change" \
     false
 
 # Test 6: Complex three population model (like Out-of-Africa)
-cat > $TEST_DIR/demes_files/three_pop_ooa.yaml << EOF
+cat > "$TEST_DIR/demes_files/three_pop_ooa.yaml" << EOF
 time_units: years
 generation_time: 25
 demes:
@@ -193,7 +193,7 @@ run_test "Three population Out-of-Africa model" \
     false
 
 # Test 7: Admixture event
-cat > $TEST_DIR/demes_files/admixture.yaml << EOF
+cat > "$TEST_DIR/demes_files/admixture.yaml" << EOF
 time_units: generations
 generation_time: 1
 demes:
@@ -222,7 +222,7 @@ run_test "Admixture model" \
     false
 
 # Test 8: Pulse migration (admixture)
-cat > $TEST_DIR/demes_files/pulse_migration.yaml << EOF
+cat > "$TEST_DIR/demes_files/pulse_migration.yaml" << EOF
 time_units: generations
 generation_time: 1
 demes:
@@ -245,7 +245,7 @@ run_test "Pulse migration" \
 
 # Test 9: A size change in an epoch of infinite length is not a valid
 # demes model (should fail)
-cat > $TEST_DIR/demes_files/infinite_epoch_growth.yaml << EOF
+cat > "$TEST_DIR/demes_files/infinite_epoch_growth.yaml" << EOF
 time_units: generations
 generation_time: 1
 demes:
@@ -258,10 +258,10 @@ run_test "Size change in an infinite epoch (should fail)" \
     "$TEST_DIR/demes_files/infinite_epoch_growth.yaml" \
     "20 1 1000 -t 10" \
     true \
-    "Invalid value in YAML"
+    "size must be constant in the first epoch"
 
 # Test 9b: Exponential growth in a finite epoch
-cat > $TEST_DIR/demes_files/exp_growth.yaml << EOF
+cat > "$TEST_DIR/demes_files/exp_growth.yaml" << EOF
 time_units: generations
 generation_time: 1
 demes:
@@ -277,7 +277,7 @@ run_test "Exponential growth" \
     false
 
 # Test 10: Selfing rate (should fail)
-cat > $TEST_DIR/demes_files/selfing.yaml << EOF
+cat > "$TEST_DIR/demes_files/selfing.yaml" << EOF
 time_units: generations
 generation_time: 1
 demes:
@@ -293,7 +293,7 @@ run_test "Selfing rate (should fail)" \
     "Selfing and cloning are not supported"
 
 # Test 11: Complex migration changes
-cat > $TEST_DIR/demes_files/migration_changes.yaml << EOF
+cat > "$TEST_DIR/demes_files/migration_changes.yaml" << EOF
 time_units: generations
 generation_time: 1
 demes:
@@ -315,7 +315,7 @@ run_test "Time-varying migration rates" \
     false
 
 # Test 12: Multiple sequential splits
-cat > $TEST_DIR/demes_files/sequential_splits.yaml << EOF
+cat > "$TEST_DIR/demes_files/sequential_splits.yaml" << EOF
 time_units: generations
 generation_time: 1
 demes:
@@ -350,7 +350,7 @@ run_test "Sequential population splits" \
     false
 
 # Test 13: Island model (all populations connected)
-cat > $TEST_DIR/demes_files/island_model.yaml << EOF
+cat > "$TEST_DIR/demes_files/island_model.yaml" << EOF
 time_units: generations
 generation_time: 1
 demes:
@@ -381,7 +381,7 @@ run_test "Four population island model" \
     false
 
 # Test 14: Asymmetric migration
-cat > $TEST_DIR/demes_files/asymmetric_migration.yaml << EOF
+cat > "$TEST_DIR/demes_files/asymmetric_migration.yaml" << EOF
 time_units: generations
 generation_time: 1
 demes:
@@ -402,7 +402,7 @@ run_test "Asymmetric migration" \
     false
 
 # Test 15: Complex pulse admixture
-cat > $TEST_DIR/demes_files/complex_pulses.yaml << EOF
+cat > "$TEST_DIR/demes_files/complex_pulses.yaml" << EOF
 time_units: generations
 generation_time: 1
 demes:

@@ -88,8 +88,6 @@ THETA=10
 RHO=5
 
 # Test 1: Single population, constant size
-# The trick here is that discoal's default EFFECTIVE_POPN_SIZE = 1000000
-# So for demes to match, we need to use that same size
 cat > "$TEST_DIR/demes_files/single_pop_constant.yaml" << EOF
 time_units: generations
 generation_time: 1
@@ -190,6 +188,49 @@ EOF
 compare_outputs "asymmetric_migration" \
     "demes_run $TEST_DIR/demes_files/asymmetric_migration.yaml $NSAMP $NREPS $NSITES -t $THETA -r $RHO -p 2 10 10 -d $SEED1 $SEED2" \
     "$DISCOAL $NSAMP $NREPS $NSITES -t $THETA -r $RHO -p 2 10 10 -m 1 0 8.0 -m 0 1 4.0 -d $SEED1 $SEED2"
+
+# Test 6: A reference size other than discoal's default N (10^6), so that
+# a wrong reference size would show. N0 = 10^4, the present-day size of
+# deme0: 2000 generations = 2000 / (4 N0) = 0.05; deme1 has size 0.5 N0;
+# migration deme0 -> deme1 at 1e-4 per generation is -m 1 0 4.0.
+cat > "$TEST_DIR/demes_files/reference_size.yaml" << EOF
+time_units: generations
+generation_time: 1
+demes:
+- name: deme0
+  epochs:
+  - {end_time: 2000, start_size: 20000}
+  - {end_time: 0, start_size: 10000}
+- name: deme1
+  ancestors: [deme0]
+  start_time: 2000
+  epochs:
+  - {end_time: 0, start_size: 5000}
+migrations:
+- {source: deme0, dest: deme1, rate: 1e-4}
+EOF
+
+compare_outputs "reference_size" \
+    "demes_run $TEST_DIR/demes_files/reference_size.yaml $NSAMP $NREPS $NSITES -t $THETA -r $RHO -p 2 10 10 -d $SEED1 $SEED2" \
+    "$DISCOAL $NSAMP $NREPS $NSITES -t $THETA -r $RHO -p 2 10 10 -en 0 1 0.5 -m 1 0 4.0 -ed 0.05 1 0 -en 0.05 0 2.0 -d $SEED1 $SEED2"
+
+# Test 7: Exponential growth. N0 = 10^4; the size grows from 1000 to
+# 10000 over the last 2000 generations, a rate of ln(10) / 2000 per
+# generation, which is -eg alpha with alpha = ln(10) / 2000 * 4 N0
+# = 46.051701859880914; before that the size is 0.1 N0, from time 2000 / (4 N0) = 0.05.
+cat > "$TEST_DIR/demes_files/exponential_growth.yaml" << EOF
+time_units: generations
+generation_time: 1
+demes:
+- name: pop0
+  epochs:
+  - {end_time: 2000, start_size: 1000}
+  - {end_time: 0, start_size: 1000, end_size: 10000, size_function: exponential}
+EOF
+
+compare_outputs "exponential_growth" \
+    "demes_run $TEST_DIR/demes_files/exponential_growth.yaml $NSAMP $NREPS $NSITES -t $THETA -r $RHO -d $SEED1 $SEED2" \
+    "$DISCOAL $NSAMP $NREPS $NSITES -t $THETA -r $RHO -eg 0 0 46.051701859880914 -en 0.05 0 0.1 -d $SEED1 $SEED2"
 
 # Summary
 echo "=== TEST SUMMARY ==="
