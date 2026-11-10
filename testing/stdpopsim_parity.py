@@ -672,6 +672,7 @@ def main():
     unknown = wanted - {label for _, label, _, _ in specs}
     if unknown:
         sys.exit(f"unknown model labels: {', '.join(sorted(unknown))}")
+    named = set(wanted)
     if args.sample > 0:
         rest = [label for _, label, _, _ in specs if label not in wanted]
         drawn = np.random.default_rng(args.sample_seed).choice(
@@ -774,7 +775,17 @@ def main():
     print(f"\n{tested - len(bad)} of {tested} tested models pass; "
           f"{len(rejected)} tests reject; {len(errors)} models error; "
           f"{len(skipped)} skipped.")
-    sys.exit(0 if not bad else 1)
+    # A model named with --models was chosen to be tested: if it is
+    # skipped (for example after an msprime upgrade), the run has not
+    # tested what it was meant to, and fails.
+    skipped_named = sorted(res["model"] for res in skipped
+                           if res["model"] in named)
+    if skipped_named:
+        print(f"Models named with --models but skipped: "
+              f"{', '.join(skipped_named)}")
+    if tested == 0:
+        print("No model was tested.")
+    sys.exit(0 if not bad and not skipped_named and tested > 0 else 1)
 
 
 if __name__ == "__main__":

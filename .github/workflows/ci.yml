@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [master, demes]
 
+permissions:
+  contents: read
+
 jobs:
   unit-tests:
     runs-on: ${{ matrix.os }}
@@ -216,7 +219,9 @@ jobs:
         SHA="${{ github.event.pull_request.head.sha || github.sha }}"
         SEED=$((16#${SHA:0:8}))
         CMD="python testing/stdpopsim_parity.py --reps 500 --generic 20 --seed 1 --demes-dir demes-spec/examples --demes-dir demes-spec/test-cases/valid --models $CORE_MODELS --sample 80 --sample-seed $SEED --workers 4 --no-cache"
-        echo "To repeat this run (demes-spec at $DEMES_SPEC_COMMIT): $CMD"
+        echo "To repeat this run (demes-spec at $DEMES_SPEC_COMMIT; the draw depends on these package versions):"
+        pip freeze | grep -iE '^(stdpopsim|msprime|demes|numpy|tskit)=='
+        echo "$CMD"
         $CMD
 
   memory-check:
