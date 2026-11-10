@@ -6,6 +6,10 @@ discoal can simulate various types of natural selection, including hard sweeps, 
 Types of Sweeps
 ---------------
 
+A run has at most one single sweep (``-ws``, ``-wd``, ``-wn``, ``-ls``,
+``-ld``, ``-ln`` or ``-S``, or a single sweep in a YAML file); for many
+sweeps, use recurrent sweeps (``-R``, ``-L``).
+
 Hard Sweeps
 ^^^^^^^^^^^
 

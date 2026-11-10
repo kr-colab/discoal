@@ -1459,8 +1459,8 @@ void getParameters(int argc,const char **argv){
 	 * -L) give many. */
 	if(sweepEvents > 1){
 		fprintf(stderr, "Error: only one single sweep can be given (-ws, -wd, "
-			"-wn, -ls, -ld, -ln, -S, or YAML fixation_time_ago or "
-			"trajectory_file); for many sweeps use recurrent sweeps (-R, -L)\n");
+			"-wn, -ls, -ld, -ln, -S, or a single sweep in a YAML selection "
+			"block); for many sweeps use recurrent sweeps (-R, -L)\n");
 		exit(1);
 	}
 	if(sweepEvents > 0){
@@ -1685,7 +1685,7 @@ void usage(){
 	fprintf(stderr,"\t -Pr low high (prior on rho)\n");
         fprintf(stderr,"\t -Pre mean upperBound (prior on rho -- exponentially distributed but truncated at an upper bound)\n");
 	fprintf(stderr,"\t -Pa low high (prior on alpha)\n");
-	fprintf(stderr,"\t -Pu low high (prior on tau; sweep models only; still must use \"-ws tau\" and \"tau\" will be ignored)\n");
+	fprintf(stderr,"\t -Pu low high (prior on tau; sweep models only; still must use \"-ws tau\" (or a YAML sweep, not both) and \"tau\" will be ignored)\n");
 	fprintf(stderr,"\t -PuA low high (prior on uA; sweep models only)\n");
 	fprintf(stderr,"\t -Px low high (prior on sweepSite; sweep models only)\n");
 	fprintf(stderr,"\t -Pf low high (prior on F0; sweep models only)\n");
