@@ -1454,6 +1454,15 @@ void getParameters(int argc,const char **argv){
 				nChangeCheck += 1;
 	 		}
 	}
+	/* The sweep sampler follows one sweep at a time: a second single sweep
+	 * that starts before the first has ended aborted the run. More than one
+	 * is rejected; recurrent sweeps (-R, -L) give many. */
+	if(sweepEvents > 1){
+		fprintf(stderr, "Error: only one single sweep can be given (-ws, -wd, "
+			"-wn, -ls, -ld, -ln, -S, or YAML fixation_time_ago or "
+			"trajectory_file); for many sweeps use recurrent sweeps (-R, -L)\n");
+		exit(1);
+	}
 	if(selCheck == 1){
 		if(recurSweepMode == 1){
 			printf("Error with event specification: a single sweep event has been found but recurrentSweep mode has been specified\n");
@@ -1616,7 +1625,7 @@ void getParameters(int argc,const char **argv){
 	 * lineage carries the allele with that probability, and its carriers
 	 * carry the selected SNP. */
 	if(trajFileRows > 0){
-		if(sweepEvents > 1 || recurSweepMode || leftRhoFlag || softSweepMode ||
+		if(recurSweepMode || leftRhoFlag || softSweepMode ||
 		   partialSweepMode || alpha != 0.0 || priorAlpha || priorTau ||
 		   priorF0 || priorC){
 			fprintf(stderr, "Error: a trajectory file (-S, or YAML sweep_mode "
