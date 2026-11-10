@@ -11,6 +11,9 @@ on:
     - cron: "0 6 * * 1"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   DEMES_SPEC_COMMIT: ea38d43
 
