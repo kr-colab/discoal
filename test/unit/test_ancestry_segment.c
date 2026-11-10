@@ -213,13 +213,12 @@ void test_split_edge_cases(void) {
     TEST_ASSERT_NULL(rightOut);  // Nothing to the right of 60 when segment is [10,50)
 }
 
-/* Start a pool of 1000 segments (the size discoal uses for small
- * models), allocate enough segments for one more expansion, free them
- * all, and reset the pool: the free list must hold every segment. With a
- * free list sized to the free segments only, this second expansion (pool
- * 60000, free list 40000) left it too small, and the frees and the reset
- * wrote past its end (valgrind and AddressSanitizer report such writes);
- * a third expansion made it large enough again. */
+/* Free every segment and reset the pool after it has expanded: the free
+ * list must hold every segment of the pool, not only those free when it
+ * last grew. A pool started at 1000 segments (the size discoal uses for
+ * small models) holds 20000, then 60000 after one more expansion; 50000
+ * segments reach that expansion. Run under valgrind or AddressSanitizer,
+ * a write past the end of the free list is reported. */
 void test_segment_pool_free_list_holds_every_segment(void) {
     enum { COUNT = 50000 };
     AncestrySegment **segs = malloc(COUNT * sizeof(AncestrySegment *));
@@ -239,7 +238,7 @@ void test_segment_pool_free_list_holds_every_segment(void) {
     resetSegmentPool();
     PoolStats after = getPoolStatistics();
     TEST_ASSERT_EQUAL(0, after.current_in_use);
-    /* Every segment can be allocated again, each one once. */
+    /* Every segment can be allocated again. */
     for (int i = 0; i < COUNT; i++)
         segs[i] = allocSegmentFromPool();
     for (int i = 0; i < COUNT; i++)
