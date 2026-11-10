@@ -40,8 +40,6 @@ run_test() {
     
     echo -n "Testing $test_name... "
     
-    local cmd="demes_run $demes_file $discoal_args"
-    
     if OUTPUT=$(demes_run "$demes_file" $discoal_args 2>&1); then
         if [ "$expect_fail" = "true" ]; then
             echo -e "${RED}FAILED${NC} (expected to fail but succeeded)"
@@ -56,7 +54,7 @@ run_test() {
             ((PASSED++))
         else
             echo -e "${RED}FAILED${NC}"
-            echo "  Command: $cmd"
+            echo "  Command: demes_run $demes_file $discoal_args"
             echo "  Error output:"
             echo "$OUTPUT" | grep -E "(Error:|line|unknown)" | head -5
             ((FAILED++))
