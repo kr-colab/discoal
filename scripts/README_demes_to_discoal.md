@@ -78,8 +78,10 @@ The tool follows the same conversion rules as the demes integration in discoal:
 You can verify the conversion by comparing outputs:
 
 ```bash
-# Run with demes file
-discoal 20 5 10000 -t 10 -r 5 -D model.yaml -p 2 10 10 -d 123 456
+# Run with the demes file, through a -Y config (config.yaml) with
+# sample_size 20, num_sites 10000, mutation_rate 10, recombination_rate 5,
+# and demography: {deme_sample_size: [10, 10], demes_filename: model.yaml}
+discoal -Y config.yaml -d 123 456
 
 # Run with converted command line
 DISCOAL_CMD=$(python scripts/demes_to_discoal.py model.yaml --samples 10 10)

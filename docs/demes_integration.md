@@ -4,33 +4,20 @@ Discoal supports the [demes](https://popsim-consortium.github.io/demes-spec/) sp
 
 ## Usage
 
-A demes file is given in a YAML configuration file (`-Y`), with
-`demography.demes_filename` and the number of samples from each deme in
-`demography.deme_sample_size`:
+Give the demes file in `demography.demes_filename` of a YAML
+configuration file, and the samples per deme in
+`demography.deme_sample_size` (see "Sample Size Specification" below):
 
 ```yaml
-simulation:
-  sample_size: 20
-  num_replicates: 10
-  num_sites: 50000
-
-genetics:
-  mutation_rate: 20.0
-  recombination_rate: 15.0
-
 demography:
   deme_sample_size: [10, 5, 5]
   demes_filename: "model.yaml"
 ```
 
-```bash
-discoal -Y config.yaml
-```
-
-A relative `demes_filename` is relative to the directory that discoal
-runs in. `config_examples/demes_example.yaml` is a complete example,
-with its demes file and the equivalent command line. (The `-D` flag of
-earlier versions is no longer supported.)
+Then run `discoal -Y config.yaml`. A relative `demes_filename` is
+relative to the directory that discoal runs in.
+`config_examples/demes_example.yaml` is a complete example, with its
+demes file and the equivalent command line.
 
 ## Supported Demes Features
 
@@ -177,27 +164,19 @@ migrations:
 
 ## Combining Demes with Other Parameters
 
-With a demes file, the other parameters go in the same YAML file, for
-example a selective sweep in the first deme (population 0):
+The other parameters go in the same YAML file. For example, for a
+selective sweep in the first deme (population 0), add a `selection`
+block (see `docs/yaml_configuration.md`):
 
 ```yaml
-genetics:
-  mutation_rate: 20.0
-  recombination_rate: 15.0
-
-demography:
-  deme_sample_size: [10, 5, 5]
-  demes_filename: "model.yaml"
-
 selection:
   sweep_mode: "stochastic"
   selection_coefficient: 100
-  sweep_position: 0.5
   fixation_time_ago: 0.01
 ```
 
-Command-line options given after `-Y` also apply, for example
-`discoal -Y config.yaml -ws 0.01 -a 100`.
+Command-line options after `-Y` replace the YAML values; for example,
+`discoal -Y config.yaml -t 40` uses theta = 40.
 
 ## Sample Size Specification
 
