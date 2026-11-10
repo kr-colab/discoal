@@ -7,7 +7,7 @@ This directory contains example YAML configuration files for discoal.
 ## Basic Examples
 
 - `basic_example.yaml` - Simple simulation with mutation and recombination
-- `sweep_example.yaml` - A soft (-f), partial (-c) sweep
+- `sweep_example.yaml` - A soft (-f), partial (-c) sweep, with the selected site hidden (-h)
 - `hard_sweep_example.yaml` - A hard sweep from one new mutation (-ws)
 - `deterministic_sweep_example.yaml` - The same sweep with a deterministic trajectory (-wd)
 - `neutral_sweep_example.yaml` - A neutral fixation, a null model for sweeps (-wn)

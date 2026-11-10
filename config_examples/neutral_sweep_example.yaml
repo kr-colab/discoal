@@ -1,8 +1,10 @@
 # A neutral fixation: an allele with no advantage that drifted to
 # fixation 0.05 x 4N generations ago. A null model for the sweeps of
 # hard_sweep_example.yaml. selection_coefficient must be 0 here; on the
-# command line, -wn ignores -a.
-# Equivalent to: discoal 20 2 50000 -t 20 -r 20 -wn 0.05 -x 0.5 -d 2003 3003
+# command line, -wn ignores -a. N = 10^4: a neutral fixation takes about
+# 4N generations, and its trajectory is drawn one generation at a time,
+# so a smaller N makes the run fast.
+# Equivalent to: discoal 20 2 50000 -t 20 -r 20 -wn 0.05 -x 0.5 -N 10000 -d 2003 3003
 
 simulation:
   sample_size: 20
@@ -13,6 +15,10 @@ simulation:
 genetics:
   mutation_rate: 20.0
   recombination_rate: 20.0
+
+demography:
+  deme_sample_size: [20]
+  effective_population_size: 10000
 
 selection:
   sweep_mode: "neutral"
