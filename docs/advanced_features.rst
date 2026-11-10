@@ -50,6 +50,14 @@ Most parameters support uniform priors specified with ``-P`` flags:
    # Variable mutation and selection parameters
    ./discoal 20 1000 10000 -Pt 5 50 -Pa 100 2000 -ws 0.01 -x 0.5
 
+Each prior needs ``low <= high`` inside the parameter's range, as the
+YAML priors do: ``-Pt``, ``-Pr``, ``-Pa``, ``-Pu`` and ``-PuA`` need
+``0 <= low``; ``-Px`` needs ``high <= 1``; ``-Pf`` and ``-Pc`` need
+``high < 1``. ``-Pre`` needs a mean and an upper bound above 0.
+discoal stops with an error otherwise. The fixed values follow the same
+rules (``-t``, ``-r``, ``-g``, ``-a``, ``-uA`` and the sweep time
+``>= 0``, ``-x`` in [0, 1], ``-f`` in [0, 1), ``-i`` above 0).
+
 Exponential Prior
 ^^^^^^^^^^^^^^^^^
 

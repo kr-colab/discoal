@@ -1152,40 +1152,91 @@ int parse_output_block(struct output_config *cfg)
 /* One uniform prior of the priors block and the globals its -P flag sets.
  * The bounds must satisfy lo <= low <= high <= hi, with strict
  * inequalities where open_lo / open_hi is set. */
-struct uniform_prior_spec {
-    const char *name;
-    const struct uniform_prior *prior;   /* NULL if not given */
+/* The range of each uniform prior: its YAML field, its command-line flag,
+ * and the globals it sets. low <= high must lie inside [lo, hi], with lo or
+ * hi excluded if open_lo or open_hi. Both the YAML priors and the -P flags
+ * are checked against this table. */
+struct prior_range {
+    const char *name, *flag;
     int needs_selection;
     double lo, hi;
     int open_lo, open_hi;
     int is_time;                         /* convert to internal units */
-    int *flag;
+    int *on;
     double *low, *high;
 };
+static const struct prior_range prior_ranges[] = {
+    {"mutation_rate", "-Pt", 0, 0, INFINITY, 0, 0, 0,
+        &priorTheta, &pThetaLow, &pThetaUp},
+    {"recombination_rate", "-Pr", 0, 0, INFINITY, 0, 0, 0,
+        &priorRho, &pRhoLow, &pRhoUp},
+    {"selection_coefficient", "-Pa", 1, 0, INFINITY, 0, 0, 0,
+        &priorAlpha, &pAlphaLow, &pAlphaUp},
+    {"fixation_time_ago", "-Pu", 1, 0, INFINITY, 0, 0, 1,
+        &priorTau, &pTauLow, &pTauUp},
+    {"beneficial_mutation_rate", "-PuA", 1, 0, INFINITY, 0, 0, 0,
+        &priorUA, &pUALow, &pUAUp},
+    {"sweep_position", "-Px", 1, 0, 1, 0, 0, 0,
+        &priorX, &pXLow, &pXUp},
+    {"initial_frequency", "-Pf", 1, 0, 1, 0, 1, 0,
+        &priorF0, &pF0Low, &pF0Up},
+    {"final_frequency", "-Pc", 1, 0, 1, 0, 1, 0,
+        &priorC, &pCLow, &pCUp},
+};
+#define N_PRIOR_RANGES (sizeof(prior_ranges) / sizeof(prior_ranges[0]))
 
-/* A uniform prior's bounds: low <= high, both inside [lo, hi], with lo or
- * hi excluded if open_lo or open_hi. Also used for the -P flags. */
-int uniformBoundsOk(double low, double high, double lo, double hi,
-                    int open_lo, int open_hi) {
-    int lo_ok = open_lo ? low > lo : low >= lo;
-    int hi_ok = open_hi ? high < hi : high <= hi;
+static int uniformBoundsOk(const struct prior_range *r, double low, double high) {
+    int lo_ok = r->open_lo ? low > r->lo : low >= r->lo;
+    int hi_ok = r->open_hi ? high < r->hi : high <= r->hi;
     return lo_ok && hi_ok && low <= high;
 }
 
-static int apply_uniform_prior(const struct uniform_prior_spec *u) {
-    const struct uniform_prior *p = u->prior;
-    if (!uniformBoundsOk(p->low, p->high, u->lo, u->hi, u->open_lo, u->open_hi)) {
+/* "lo <= low <= high <= hi", with < for an open end and no upper part for
+ * an infinite hi. */
+static void describeRange(const struct prior_range *r, char *out, size_t n) {
+    int k = snprintf(out, n, "%g %s low <= high", r->lo, r->open_lo ? "<" : "<=");
+    if (isfinite(r->hi) && k > 0 && (size_t)k < n)
+        snprintf(out + k, n - k, " %s %g", r->open_hi ? "<" : "<=", r->hi);
+}
+
+static int apply_uniform_prior(const struct prior_range *u,
+                               const struct uniform_prior *p) {
+    if (!uniformBoundsOk(u, p->low, p->high)) {
+        char range[64];
+        describeRange(u, range, sizeof(range));
         fprintf(stderr,
-            "Error parsing config: priors.%s must satisfy %g %s low <= high "
-            "%s %g (got low %g, high %g)\n", u->name,
-            u->lo, u->open_lo ? "<" : "<=", u->open_hi ? "<" : "<=", u->hi,
-            p->low, p->high);
+            "Error parsing config: priors.%s must satisfy %s (got low %g, "
+            "high %g)\n", u->name, range, p->low, p->high);
         return EXIT_FAILURE;
     }
-    *u->flag = 1;
+    *u->on = 1;
     *u->low = u->is_time ? userTimeToInternal(p->low) : p->low;
     *u->high = u->is_time ? userTimeToInternal(p->high) : p->high;
     return EXIT_SUCCESS;
+}
+
+/* Check every uniform prior that is set, by a -P flag or by YAML, against
+ * prior_ranges. Times are checked in 4N0 generations, as given. Returns 0,
+ * or -1 after printing an error that names the flag. (-Pre sets priorRho to
+ * 2 and is checked by the caller.) */
+int checkUniformPriorBounds(void) {
+    for (size_t k = 0; k < N_PRIOR_RANGES; ++k) {
+        const struct prior_range *r = &prior_ranges[k];
+        if (*r->on != 1) continue;
+        double low = *r->low, high = *r->high;
+        if (r->is_time) {
+            low /= USER_TO_INTERNAL_TIME;
+            high /= USER_TO_INTERNAL_TIME;
+        }
+        if (!uniformBoundsOk(r, low, high)) {
+            char range[64];
+            describeRange(r, range, sizeof(range));
+            fprintf(stderr, "Error: %s %g %g: the bounds must satisfy %s\n",
+                    r->flag, low, high, range);
+            return -1;
+        }
+    }
+    return 0;
 }
 
 /* The priors block, as the -P flags: each entry sets the same globals as
@@ -1198,34 +1249,23 @@ int parse_priors_block(struct priors_config *cfg, int has_selection,
     if (cfg == NULL) {
         return EXIT_SUCCESS;
     }
-    const double inf = INFINITY;
-    const struct uniform_prior_spec uniform[] = {
-        {"mutation_rate", cfg->mutation_rate, 0, 0, inf, 0, 0, 0,
-            &priorTheta, &pThetaLow, &pThetaUp},
-        {"recombination_rate", cfg->recombination_rate, 0, 0, inf, 0, 0, 0,
-            &priorRho, &pRhoLow, &pRhoUp},
-        {"selection_coefficient", cfg->selection_coefficient, 1, 0, inf, 0, 0, 0,
-            &priorAlpha, &pAlphaLow, &pAlphaUp},
-        {"fixation_time_ago", cfg->fixation_time_ago, 1, 0, inf, 0, 0, 1,
-            &priorTau, &pTauLow, &pTauUp},
-        {"beneficial_mutation_rate", cfg->beneficial_mutation_rate, 1, 0, inf,
-            0, 0, 0, &priorUA, &pUALow, &pUAUp},
-        {"sweep_position", cfg->sweep_position, 1, 0, 1, 0, 0, 0,
-            &priorX, &pXLow, &pXUp},
-        {"initial_frequency", cfg->initial_frequency, 1, 0, 1, 0, 1, 0,
-            &priorF0, &pF0Low, &pF0Up},
-        {"final_frequency", cfg->final_frequency, 1, 0, 1, 0, 1, 0,
-            &priorC, &pCLow, &pCUp},
+    /* In the order of prior_ranges. */
+    const struct uniform_prior *given[] = {
+        cfg->mutation_rate, cfg->recombination_rate, cfg->selection_coefficient,
+        cfg->fixation_time_ago, cfg->beneficial_mutation_rate,
+        cfg->sweep_position, cfg->initial_frequency, cfg->final_frequency,
     };
-    for (size_t k = 0; k < sizeof(uniform) / sizeof(uniform[0]); ++k) {
-        if (uniform[k].prior == NULL) continue;
-        if (uniform[k].needs_selection && !has_selection) {
+    _Static_assert(sizeof(given) / sizeof(given[0]) == N_PRIOR_RANGES,
+                   "given[] must match prior_ranges[]");
+    for (size_t k = 0; k < N_PRIOR_RANGES; ++k) {
+        if (given[k] == NULL) continue;
+        if (prior_ranges[k].needs_selection && !has_selection) {
             fprintf(stderr,
                 "Error parsing config: priors.%s needs a selection block\n",
-                uniform[k].name);
+                prior_ranges[k].name);
             return EXIT_FAILURE;
         }
-        if (apply_uniform_prior(&uniform[k]) != EXIT_SUCCESS)
+        if (apply_uniform_prior(&prior_ranges[k], given[k]) != EXIT_SUCCESS)
             return EXIT_FAILURE;
     }
     /* A prior on the final frequency makes the sweep partial, as -Pc. */

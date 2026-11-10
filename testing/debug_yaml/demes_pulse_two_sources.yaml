@@ -1,0 +1,16 @@
+# A demes pulse from two sources whose proportions add up to 1 (0.32 and
+# 0.68). The importer turns it into admixture events with the share of
+# what remains, 0.68 / 0.68, which rounding can make slightly above 1; it
+# must still be accepted as a proportion in [0, 1].
+
+simulation:
+  sample_size: 6
+  num_replicates: 2
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 5
+  recombination_rate: 5
+demography:
+  deme_sample_size: [2, 2, 2]
+  demes_filename: "testing/debug_yaml/pulse_two_sources.demes.yml"

@@ -1,0 +1,21 @@
+description: A pulse from two sources whose proportions add up to 1
+time_units: generations
+demes:
+  - name: A
+    epochs:
+      - start_size: 10000
+  - name: B
+    ancestors: [A]
+    start_time: 5000
+    epochs:
+      - start_size: 10000
+  - name: C
+    ancestors: [A]
+    start_time: 5000
+    epochs:
+      - start_size: 10000
+pulses:
+  - sources: [B, C]
+    dest: A
+    time: 1000
+    proportions: [0.32, 0.68]
