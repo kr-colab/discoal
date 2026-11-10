@@ -65,3 +65,31 @@ back in time. If no later event changes its size, it reaches zero, and
 lineages that are still in it coalesced at once. discoal 2.0 stops with
 an error for such a model, for example ``-el 0 0 0.5`` alone. Add a size
 change (``-en``) before the time at which the size reaches zero.
+
+Recombination splits a lineage anywhere in its span
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A lineage carries chunks of material whose sites have not found their
+most recent common ancestor (MRCA), with gaps between them. In Hudson's
+model, as in ms and msprime, a breakpoint anywhere between the first and
+the last of these sites splits the lineage. discoal 1.x did not split a
+lineage at a breakpoint in a gap whose sites had found their MRCA. Thus
+two distant sites stayed linked for too long: the probability that they
+have the same MRCA was 2 to 4 times that of msprime. discoal 2.0 splits
+the lineage at any breakpoint in its span, and agrees with msprime. The
+output of every run with recombination (``-r``) changes.
+
+Gene conversion (``-g``, ``-gr``) now starts a tract at any site in the
+lineage's span, also in such a gap. The gene conversion model does not
+change otherwise: a tract starts inside the span, and a tract that
+starts to the left of the lineage's first site is not modeled.
+
+Gene conversion in the wild-type class during a sweep
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When gene conversion splits a lineage during a sweep, the parent that
+does not get the sweep site is a random draw from the population: it
+joins the lineage's class with that class's frequency. For a lineage in
+the wild-type class, discoal 1.x used the frequency of the beneficial
+allele instead. This gave too little diversity at the flanks of a sweep.
+The output of sweeps with gene conversion changes.

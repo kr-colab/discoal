@@ -167,6 +167,11 @@ jobs:
     - name: Check recurrent sweeps
       run: python testing/recurrent_sweep_check.py
 
+    # Gene conversion with tracts longer than the locus must match
+    # crossover, in the neutral phase and in a sweep.
+    - name: Check gene conversion against crossover
+      run: python testing/gc_crossover_check.py --workers 4
+
     # Random command-line demographic models (sizes, growth, migration,
     # admixture, merges, ancient samples, recombination) against msprime.
     # Fixed seeds, so the result does not change from run to run.
