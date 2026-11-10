@@ -1434,6 +1434,53 @@ void getParameters(int argc,const char **argv){
 			"-Pf) are not implemented\n");
 		exit(1);
 	}
+	/* Sweep trajectories are not modeled under growth: proposeTrajectory()
+	 * accepts a trajectory by a ratio of sizes that follows only size
+	 * changes (-en). So population 0 may not grow or shrink continuously
+	 * (-eg, -el, -eG, -eL, or an exponential epoch of a demes model) at or
+	 * after the earliest start of a sweep, going back in time. Growth in
+	 * other populations, and growth of population 0 that ends before the
+	 * sweep, are allowed. Recurrent sweeps draw coalescence in every
+	 * population at constant rates between sweeps, so with them no
+	 * population may grow at any time. */
+	if(selCheck || recurSweepMode){
+		double sweepStart = 0.0;
+		if(!recurSweepMode){
+			for(i = 0; i < eventNumber; i++)
+				if(events[i].type == 's') sweepStart = events[i].time;
+			if(priorTau && pTauLow < sweepStart) sweepStart = pTauLow;
+		}
+		int growthAtSweep = 0, lastIsGrowth = 0;
+		double lastTime = -1.0;
+		for(i = 0; i < eventNumber; i++){
+			const char type = events[i].type;
+			if(type != 'n' && type != 'g' && type != 'l')
+				continue;
+			if(recurSweepMode && type != 'n' && events[i].popnSize != 0.0)
+				growthAtSweep = 1;
+			if(events[i].popID != 0)
+				continue;
+			const int growth = (type != 'n' && events[i].popnSize != 0.0);
+			/* A size change with a prior on its time ends growth no
+			 * earlier than its latest possible time. */
+			double t = events[i].time;
+			if(type == 'n' && events[i].priorSlot > 0)
+				t = priorSizeChanges[events[i].priorSlot - 1].timeHigh;
+			if(growth && t > sweepStart) growthAtSweep = 1;
+			if(t <= sweepStart && t >= lastTime){
+				lastTime = t;
+				lastIsGrowth = growth;
+			}
+		}
+		if(growthAtSweep || lastIsGrowth){
+			fprintf(stderr, "Error: population 0 grows or shrinks (-eg, -el, "
+				"-eG, -eL, or an exponential demes epoch) at or after the start "
+				"of a sweep, or a population grows with recurrent sweeps (-R, -L); "
+				"sweeps are not modeled under growth. Use size changes (-en) "
+				"instead\n");
+			exit(1);
+		}
+	}
 	/* A partial sweep that ends below one copy of the allele has no
 	 * trajectory: the sweep ends when the frequency is 1/(2N). A prior
 	 * needs only its high bound above that; a draw below one copy gives a

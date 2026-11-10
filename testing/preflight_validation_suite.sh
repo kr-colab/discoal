@@ -225,17 +225,46 @@ run_pass_case "en_other_population_during_sweep" \
 run_pass_case "en_other_population_recurrent_sweeps" \
     20 5 10000 -N 10000 -t 1 -r 10 -p 2 10 10 -m 0 1 1 -m 1 0 1 -R 50 -a 500 -c 0.3 -en 0.001 1 0.00015 -d 1 2
 
-# With growth (-eg) the trajectory's end follows N, so it can end before
-# the sampler's fixed end frequency; the sweep then ends with the
-# trajectory.
-run_pass_case "eg_during_sweep" \
-    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0 0 200 -d 1 2
+# Sweeps are not modeled under growth: population 0 may not grow (-eg,
+# -el, -eG, -eL) at or after the earliest start of a sweep, and no
+# population may grow with recurrent sweeps.
+run_fail_case "eg_during_sweep" \
+    "not modeled under growth" \
+    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0 0 200
 
-run_pass_case "eg_during_partial_sweep" \
-    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -c 0.001 -eg 0 0 200 -d 1 2
+run_fail_case "eg_during_partial_sweep" \
+    "not modeled under growth" \
+    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -c 0.001 -eg 0 0 200
 
-run_pass_case "eg_during_sweep_default_N" \
-    20 20 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0 0 2 -d 3 4
+run_fail_case "eg_starting_after_sweep_start" \
+    "not modeled under growth" \
+    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0.05 0 2
+
+run_fail_case "el_during_sweep" \
+    "not modeled under growth" \
+    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -el 0 0 2
+
+run_fail_case "eG_during_sweep" \
+    "not modeled under growth" \
+    20 5 10000 -N 10000 -t 1 -r 10 -p 2 10 10 -m 0 1 1 -m 1 0 1 -ws 0.01 -a 500 -eG 0 2
+
+run_fail_case "Pu_reaching_into_growth" \
+    "not modeled under growth" \
+    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0 0 5 -en 0.005 0 1 -Pu 0.001 0.02
+
+run_fail_case "Pe1_may_end_growth_after_sweep_start" \
+    "not modeled under growth" \
+    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0 0 5 -Pe1 0.004 0.03 0.5 2
+
+run_fail_case "R_with_growth_in_population_1" \
+    "not modeled under growth" \
+    20 5 10000 -N 10000 -t 1 -r 10 -p 2 10 10 -m 0 1 1 -m 1 0 1 -R 2 -a 500 -eg 0 1 2
+
+run_pass_case "growth_ending_before_sweep" \
+    20 5 10000 -N 10000 -t 1 -r 10 -ws 0.01 -a 500 -eg 0 0 5 -en 0.005 0 1 -d 1 2
+
+run_pass_case "growth_in_population_1_with_sweep" \
+    20 5 10000 -N 10000 -t 1 -r 10 -p 2 10 10 -m 0 1 1 -m 1 0 1 -ws 0.01 -a 500 -eg 0 1 2 -d 1 2
 
 # Priors on the sweep's frequencies: 0 <= low <= high < 1, and a soft
 # sweep that is partial needs every f0 below every final frequency.
@@ -281,11 +310,11 @@ run_fail_case "sweep_in_population_below_one" \
     "fewer than one individual" \
     20 2 1000 -t 5 -r 5 -en 0 0 0.0000001 -ws 0 -a 500
 
-# Exponential growth over a long time: after the sweep one lineage is left
-# in each population, and while they wait to migrate the size underflows to
-# 0. Coalescence must then still happen (at once).
+# Exponential growth over a long time: one lineage is left in each
+# population, and while they wait to migrate the size underflows to 0.
+# Coalescence must then still happen (at once).
 run_pass_case "eG_size_underflow_two_populations" \
-    20 5 10000 -N 10000 -t 1 -r 10 -p 2 10 10 -m 0 1 1 -m 1 0 1 -ws 0.01 -a 500 -eG 0 200 -d 3 6
+    20 5 10000 -t 1 -r 10 -p 2 10 10 -m 0 1 0.1 -m 1 0 0.1 -eG 0 200 -d 3 6
 
 echo
 echo -e "${BLUE}=== Summary ===${NC}"

@@ -68,6 +68,11 @@ Demographic Options
    ``-en`` stops growth, so ``-eg t ... -en t ...`` ends with no growth,
    and ``-en t ... -eg t ...`` grows from the new size.
 
+   Sweeps are not modeled under growth: growth of population 0 at or after
+   the start of a sweep, or of any population with recurrent sweeps, is an
+   error (see :doc:`selection`). This also holds for ``-el``, ``-eG`` and
+   ``-eL``.
+
 .. option:: -eG time alpha
 
    Same as ``-eg`` for every population.
