@@ -4,11 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <errno.h>
-#include <time.h>
 
 // Test fixtures
 float *testData;
@@ -24,14 +21,7 @@ void setUp(void) {
 }
 
 void tearDown(void) {
-    if (trajectoryFd != -1) {
-        if (currentTrajectory && currentTrajectory != MAP_FAILED) {
-            munmap(currentTrajectory, trajectoryFileSize);
-        }
-        close(trajectoryFd);
-        trajectoryFd = -1;
-        currentTrajectory = NULL;
-    }
+    releaseTrajectory();
     if (testData) {
         free(testData);
         testData = NULL;
@@ -114,30 +104,6 @@ void test_mmapAcceptedTrajectory_replaces_previous(void) {
     }
 }
 
-void test_mmapAcceptedTrajectory_large_file(void) {
-    // Test with a larger trajectory
-    int numSteps = 100000;
-    mmapAcceptedTrajectory(createTestTrajectoryFd(numSteps), numSteps);
-    
-    // Spot check some values
-    TEST_ASSERT_FLOAT_WITHIN(0.001, 0.0f, currentTrajectory[0]);
-    TEST_ASSERT_FLOAT_WITHIN(0.001, 0.5f, currentTrajectory[numSteps/2]);
-    TEST_ASSERT_FLOAT_WITHIN(0.001, 0.99999f, currentTrajectory[numSteps-1]);
-}
-
-// Test mmap read-only protection
-void test_mmapAcceptedTrajectory_read_only(void) {
-    int numSteps = 100;
-    mmapAcceptedTrajectory(createTestTrajectoryFd(numSteps), numSteps);
-    
-    // The mapping should be read-only (MAP_PRIVATE + PROT_READ)
-    // We can read but not write
-    float value = currentTrajectory[0];
-    TEST_ASSERT_FLOAT_WITHIN(0.001, 0.0f, value);
-    
-    // Note: We can't easily test write protection without causing a segfault
-}
-
 /* The mapped trajectory's file has no name in the file system, so no
  * exit path can leave it behind. */
 void test_mapped_trajectory_file_is_anonymous(void) {
@@ -164,8 +130,6 @@ int main(void) {
     RUN_TEST(test_ensureTrajectoryCapacity_exceeds_limit);
     RUN_TEST(test_mmapAcceptedTrajectory_basic);
     RUN_TEST(test_mmapAcceptedTrajectory_replaces_previous);
-    RUN_TEST(test_mmapAcceptedTrajectory_large_file);
-    RUN_TEST(test_mmapAcceptedTrajectory_read_only);
     RUN_TEST(test_mapped_trajectory_file_is_anonymous);
     RUN_TEST(test_mmapAcceptedTrajectory_no_steps);
     

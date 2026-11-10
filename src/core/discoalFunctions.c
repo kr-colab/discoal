@@ -7,10 +7,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
 #include "ancestryWrapper.h"
 #include "activeSegment.h"
-#include <time.h>
 #include "discoal.h"
 #include "discoalFunctions.h"
 #include "ranlib.h"
@@ -1816,16 +1814,25 @@ void ensureTrajectoryCapacity(long int requiredSize) {
 }
 
 
-/* Map an accepted trajectory for the sweep sampler. fd is an open file of
- * numSteps floats (an anonymous file from proposeTrajectory()); this takes
- * it over, and unmaps and closes the trajectory mapped before. */
-void mmapAcceptedTrajectory(int fd, long int numSteps) {
+/* Unmap and close the mapped sweep trajectory, if any. Its file is
+ * anonymous (tmpfile), so closing it, or the end of the process however it
+ * ends, removes it. */
+void releaseTrajectory(void) {
 	if (trajectoryFd != -1) {
 		if (currentTrajectory && currentTrajectory != MAP_FAILED) {
 			munmap(currentTrajectory, trajectoryFileSize);
 		}
 		close(trajectoryFd);
+		trajectoryFd = -1;
+		currentTrajectory = NULL;
 	}
+}
+
+/* Map an accepted trajectory for the sweep sampler. fd is an open file of
+ * numSteps floats (an anonymous file from proposeTrajectory()); this takes
+ * it over, and releases the trajectory mapped before. */
+void mmapAcceptedTrajectory(int fd, long int numSteps) {
+	releaseTrajectory();
 	trajectoryFd = fd;
 	trajectoryFileSize = numSteps * sizeof(float);
 	/* A trajectory with no steps (the sweep ends at once) has nothing to
