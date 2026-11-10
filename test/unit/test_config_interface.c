@@ -1459,7 +1459,9 @@ static const char *ancient_with_demes_fmt =
  * Ancient samples may be combined with a demes file. Here all samples of
  * the extinct deme X (index 2 in file order) are ancient, taken at 0.5
  * (4N units), while X exists. The 'A' event keeps its population index
- * and has the time in internal units; the demes events follow it.
+ * and has the time in internal units. It comes after the demes events, so
+ * that after the stable sort by time it follows the events at its time,
+ * as in msprime.
  */
 void test_demography_ancient_samples_with_demes_file(void) {
     copy_fixture_to_workdir("extinct_deme.yaml");
@@ -1468,10 +1470,13 @@ void test_demography_ancient_samples_with_demes_file(void) {
     TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
     TEST_ASSERT_EQUAL_INT(3, npops);
     TEST_ASSERT_TRUE(eventNumber > 1);
-    TEST_ASSERT_EQUAL_INT('A', events[0].type);
-    TEST_ASSERT_EQUAL_INT(2, events[0].popID);
-    TEST_ASSERT_EQUAL_INT(2, events[0].lineageNumber);
-    TEST_ASSERT_EQUAL_DOUBLE(1.0, events[0].time);
+    struct event *last = &events[eventNumber - 1];
+    TEST_ASSERT_EQUAL_INT('A', last->type);
+    TEST_ASSERT_EQUAL_INT(2, last->popID);
+    TEST_ASSERT_EQUAL_INT(2, last->lineageNumber);
+    TEST_ASSERT_EQUAL_DOUBLE(1.0, last->time);
+    for (int k = 0; k < eventNumber - 1; k++)
+        TEST_ASSERT_NOT_EQUAL_INT('A', events[k].type);
 }
 
 /*

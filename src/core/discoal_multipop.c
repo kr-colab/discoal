@@ -38,6 +38,7 @@ int locusNumber;
 int leftRhoFlag=0;
 int recurrentLeftOfLocus=0;
 int sweepPositionGiven=0;
+int demesModelLoaded=0;
 double *currentSize;
 long seed1, seed2;
 double nextTime, currentFreq;
@@ -720,6 +721,7 @@ void getParameters(int argc,const char **argv){
 	recurSweepMode = 0;
 	recurrentLeftOfLocus = 0;
 	sweepPositionGiven = 0;
+	demesModelLoaded = 0;
 	trajFileRows = 0;
 	partialSweepMode = 0;
 	softSweepMode = 0;
@@ -952,6 +954,14 @@ void getParameters(int argc,const char **argv){
 				migFlag = 1;
 			break;
 			case 'p' :
+			/* A demes model gives the populations, and deme_sample_size
+			 * their samples, checked against the demes' lifetimes. */
+			if (demesModelLoaded) {
+				fprintf(stderr, "Error: -p cannot be used with a demes model "
+					"(demography.demes_filename); its samples are "
+					"demography.deme_sample_size\n");
+				exit(1);
+			}
 			npops = parseIntArg(argc, argv, &args, "-p");
 			if(npops > MAXPOPS){
 				fprintf(stderr,"Error: too many populations defined. Current maximum number = %d. Change MAXPOPS define in discoal.h and recompile... if you dare\n",MAXPOPS);

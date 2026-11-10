@@ -244,6 +244,7 @@ extern int recurrentLeftOfLocus;
 /* A sweep position was given (-x, or YAML sweep_position); defined in
  * discoal_multipop.c. */
 extern int sweepPositionGiven;
+extern int demesModelLoaded;     /* the populations come from a demes file (-Y with demes_filename) */
 
 
 int hidePartialSNP;
