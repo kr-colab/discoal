@@ -1460,9 +1460,9 @@ void getParameters(int argc,const char **argv){
 			"-Pf) are not implemented\n");
 		exit(1);
 	}
-	/* Sweep trajectories are not modeled under growth: proposeTrajectory()
-	 * accepts a trajectory by a ratio of sizes that follows only size
-	 * changes (-en). So population 0 may not grow or shrink continuously
+	/* Sweep trajectories are not modeled under growth: a trajectory is
+	 * drawn, and accepted (sampleSweepTrajectory()), with sizes that follow
+	 * only size changes (-en). So population 0 may not grow or shrink continuously
 	 * (-eg, -el, -eG, -eL, or an exponential epoch of a demes model) at or
 	 * after the earliest start of the sweep (with -Pu, its low bound), going
 	 * back in time. Growth in other populations, and growth of population 0

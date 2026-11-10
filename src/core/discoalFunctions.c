@@ -1968,10 +1968,47 @@ static long int fileTrajectorySteps = 0;
 /* The file of the last proposed trajectory, not yet accepted; -1 if none. */
 static int proposedFd = -1;
 
+/* Proposals for one sweep before discoal stops: at this point the
+ * acceptance probability is so small that the run would take hours. */
+#define MAX_TRAJECTORY_PROPOSALS 1000000L
+
+/* The bound for the acceptance of the trajectories of a sweep that starts
+ * at currentTime (see sampleSweepTrajectory()): the largest size of
+ * population 0, relative to N, at any time an origin can fall in. A
+ * trajectory has at most TRAJSTEPSTART steps of 1/(deltaTMod N) (the
+ * proposal stops with an error after that), so origins are within that
+ * span of the start, and the bound is the larger of the size at the start
+ * and the size changes of population 0 in the span. Population 0 does
+ * not grow continuously at or after a sweep (getParameters() rejects
+ * it), so its size changes only at these events. */
+static double trajectoryAcceptanceBound(double currentTime){
+	double horizon = currentTime +
+		(double) TRAJSTEPSTART / (deltaTMod * EFFECTIVE_POPN_SIZE);
+	double bound = sizeAt(0, currentTime);
+	int i;
+	for (i = 0; i < eventNumber; i++) {
+		if (events[i].type == 'n' && events[i].popID == 0 &&
+		    events[i].time >= currentTime && events[i].time < horizon &&
+		    events[i].popnSize > bound)
+			bound = events[i].popnSize;
+	}
+	return bound;
+}
+
 /* Draw a sweep trajectory by rejection sampling: propose trajectories
  * until one is accepted, then map the accepted one for the sweep samplers
  * (which also releases the trajectory of the previous sweep, with
- * recurrent sweeps). The arguments are those of proposeTrajectory(). */
+ * recurrent sweeps). The arguments are those of proposeTrajectory().
+ *
+ * New beneficial mutations arise at a rate proportional to the size of
+ * population 0, so a trajectory is accepted with probability
+ * N(origin) / bound, with N(origin) the size at the allele's origin. For
+ * exact rejection sampling the bound must be the same for every proposal
+ * and at least N(origin) for every trajectory that can be drawn
+ * (trajectoryAcceptanceBound()). A bound over each trajectory alone would
+ * be too small for a trajectory whose origin is recent, if population 0
+ * was larger further in the past, and would accept such trajectories too
+ * often. */
 void sampleSweepTrajectory(int currentEventNumber, double *sizeRatio,
 	char sweepMode, double initialFreq, double *finalFreq, double alpha,
 	double f0, double currentTime){
@@ -1985,12 +2022,25 @@ void sampleSweepTrajectory(int currentEventNumber, double *sizeRatio,
 		return;
 	}
 	/* Each proposal closes the one before it, so a rejected one is gone. */
-	double probAccept = proposeTrajectory(currentEventNumber, currentTrajectory,
-		sizeRatio, sweepMode, initialFreq, finalFreq, alpha, f0, currentTime);
-	while (ranf() > probAccept) {
-		probAccept = proposeTrajectory(currentEventNumber, currentTrajectory,
-			sizeRatio, sweepMode, initialFreq, finalFreq, alpha, f0, currentTime);
-	}
+	const double bound = trajectoryAcceptanceBound(currentTime);
+	long proposals = 0;
+	double originSize;
+	do {
+		if (++proposals > MAX_TRAJECTORY_PROPOSALS) {
+			fprintf(stderr, "Error: %ld sweep trajectories were proposed and "
+				"none was accepted. A trajectory is accepted with probability "
+				"N(origin) / N(max): the size of population 0 at the allele's "
+				"origin over its largest size (%g x N) at or before the start "
+				"of the sweep. Make the size changes of population 0 during "
+				"and before the sweep smaller.\n",
+				MAX_TRAJECTORY_PROPOSALS, bound);
+			exit(1);
+		}
+		originSize = proposeTrajectory(currentEventNumber, currentTrajectory,
+			sizeRatio, sweepMode, initialFreq, finalFreq, alpha, f0,
+			currentTime);
+		assert(originSize <= bound);
+	} while (ranf() > originSize / bound);
 	mmapAcceptedTrajectory(proposedFd, totalTrajectorySteps);
 	proposedFd = -1;
 }
@@ -2118,14 +2168,16 @@ void buildSweepTrajectoryFromFile(void){
 }
 
 /*proposeTrajectory-- this function creates a sweep trajectory and deals with
-complications like changing population size, or soft sweeps, etc 
-returns the acceptance probability of the trajectory */
+complications like changing population size, or soft sweeps, etc.
+Returns the size of population 0 (relative to N) at the trajectory's end,
+the allele's origin. sampleSweepTrajectory() accepts or rejects the
+trajectory. */
 double proposeTrajectory(int currentEventNumber, float *currentTrajectory, double *sizeRatio, char sweepMode, \
 double initialFreq, double *finalFreq, double alpha, double f0, double currentTime)
 {
 	double tInc, tIncOrig, minF,ttau, N;
 	double N_0 = (double) EFFECTIVE_POPN_SIZE;
-	double Nmax, localNextTime,localCurrentTime, currentSizeRatio;
+	double localNextTime,localCurrentTime, currentSizeRatio;
 	int i, insweepphase;
 	long int j;
 	double x;
@@ -2164,7 +2216,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 	j=0;
 	/* Population 0's size at the sweep's start (sizeRatio[0] is not
 	 * updated for growth). */
-	Nmax = currentSizeRatio = sizeAt(0, currentTime);
+	currentSizeRatio = sizeAt(0, currentTime);
 	N = (double) floor(N_0 * currentSizeRatio);
 	x = initialFreq;
 	minF = f0;
@@ -2189,9 +2241,8 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			/* Only population 0 sweeps: the size of another population
 			 * must not set the trajectory's N, its end or its acceptance. */
 			if(events[i].popID == 0){
-				currentSizeRatio = events[i].popnSize;  /* legacy cache for inner loop */
+				currentSizeRatio = events[i].popnSize;
 				N = floor(N_0 * events[i].popnSize);
-				if(currentSizeRatio > Nmax) Nmax = currentSizeRatio;
 			}
 		}
 		if(events[i].type == 'g'){
@@ -2199,21 +2250,25 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			popShape[events[i].popID].anchor_value = sizeAt(events[i].popID, events[i].time);
 			popShape[events[i].popID].rate_param = events[i].popnSize;
 			popShape[events[i].popID].anchor_time = events[i].time;
-			/* Approximate Nmax tracking under EXP: sample sizeRatio at the
-			 * event time. A future refinement could compute the maximum
-			 * over the interval analytically. */
-			double sr_now = sizeAt(events[i].popID, events[i].time);
-			if(events[i].popID == 0 && sr_now > Nmax) Nmax = sr_now;
 		}
 		if(events[i].type == 'l'){
 			popShape[events[i].popID].type = SHAPE_LINEAR;
 			popShape[events[i].popID].anchor_value = sizeAt(events[i].popID, events[i].time);
 			popShape[events[i].popID].rate_param = events[i].popnSize;
 			popShape[events[i].popID].anchor_time = events[i].time;
-			double sr_now = sizeAt(events[i].popID, events[i].time);
-			if(events[i].popID == 0 && sr_now > Nmax) Nmax = sr_now;
 		}
-		if(minF < 1.0/(2.*N)) minF = 1.0/(2.*N);
+		/* The frequency below which the trajectory is the allele's neutral
+		 * history: f0 for a sweep from standing variation, and one copy,
+		 * 1/(2N) with the N of this epoch, for a new mutation. During the
+		 * sweep phase it follows N in both directions: if N is larger
+		 * further back, the selected allele is still selected down to one
+		 * copy of that larger population. In the neutral phase it is the
+		 * ceiling of the neutral history, which must stay above x: it can
+		 * only go up there. */
+		if (insweepphase)
+			minF = fromStandingVariation ? fmax(f0, 1.0/(2.*N)) : 1.0/(2.*N);
+		else if (minF < 1.0/(2.*N))
+			minF = 1.0/(2.*N);
 		tInc = 1.0 / (deltaTMod * N);
 		//iterate until epoch time or sweep freq
 		while( x > trajectoryEnd(fromStandingVariation, N) && (currentTime+ttau) < localNextTime){
@@ -2253,7 +2308,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			//printf("j: %ld x: %f\n",j,x);
 			
 			// Check trajectory size to prevent runaway
-			if (j >= 500000000) {  // Match legacy limit
+			if (j >= TRAJSTEPSTART) {
 				fprintf(stderr, "trajectory too bigly. step= %ld. killing myself gently\n", j);
 				fclose(trajFile);
 				exit(1);
@@ -2296,7 +2351,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 	/* Restore popShape state — caller expects it unchanged. */
 	memcpy(popShape, saved_popShape, sizeof(saved_popShape));
 
-	return(currentSizeRatio/Nmax);
+	return currentSizeRatio;
 
 }
 

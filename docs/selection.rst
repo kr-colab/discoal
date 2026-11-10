@@ -132,6 +132,17 @@ starts, and growth of other populations with a single sweep, are
 allowed. To model a sweep during growth, approximate the growth with
 steps of ``-en``.
 
+With size changes, a new beneficial mutation arises at a rate
+proportional to the size of population 0. discoal draws the trajectory
+back in time, from the end of the sweep to the allele's origin, and
+accepts it with probability N(origin) / N(max): the size at the origin
+over the largest size of population 0 from the start of the sweep back
+to the longest trajectory that discoal can draw (5 x 10^8 steps of
+1/(40N) x 2N generations, with the default ``-i``). A large drop in
+size, back in time, during or before the sweep makes this probability
+small, and the run slow. discoal stops with an error after 10^6
+rejected trajectories for one sweep.
+
 During a sweep no migration happens (see the limitations in
 :doc:`population_structure`); outside sweeps, migration and its changes
 apply as usual, also between recurrent sweeps.
