@@ -346,6 +346,84 @@ run_fail_case "sweep_with_size_prior_below_one" \
     "at least one individual" \
     10 5 1000 -N 10000 -t 5 -r 5 -a 200 -Pe1 0.01 0.02 0.000001 0.001 -ws 0.05
 
+# Priors (-P flags) and fixed values follow the rules of their YAML
+# fields; a negative rate could hang the run (-Pr, -g), and values outside
+# their range ran without a message.
+run_fail_case "Pt_negative_low" \
+    "the bounds must satisfy 0 <= low <= high" \
+    20 2 1000 -t 5 -r 5 -Pt -5 5
+
+run_fail_case "Pt_low_above_high" \
+    "the bounds must satisfy 0 <= low <= high" \
+    20 2 1000 -t 5 -r 5 -Pt 10 5
+
+run_fail_case "Pr_negative_low" \
+    "the bounds must satisfy 0 <= low <= high" \
+    20 2 1000 -t 5 -r 5 -Pr -5 5
+
+run_fail_case "Pre_negative_mean" \
+    "the mean and the upper bound must be > 0" \
+    20 2 1000 -t 5 -r 5 -Pre -1 5
+
+run_fail_case "Pa_negative_low" \
+    "the bounds must satisfy 0 <= low <= high" \
+    20 2 1000 -t 5 -r 5 -ws 0.01 -a 500 -Pa -100 100
+
+run_fail_case "Pu_negative_low" \
+    "the bounds must satisfy 0 <= low <= high" \
+    20 2 1000 -t 5 -r 5 -ws 0.01 -a 500 -Pu -0.1 0.1
+
+run_fail_case "PuA_negative_low" \
+    "the bounds must satisfy 0 <= low <= high" \
+    20 2 1000 -t 5 -r 5 -ws 0.01 -a 500 -PuA -1 1
+
+run_fail_case "Px_outside_locus" \
+    "the bounds must satisfy 0 <= low <= high <= 1" \
+    20 2 1000 -t 5 -r 5 -ws 0.01 -a 500 -Px -0.5 1.5
+
+run_fail_case "t_negative" \
+    "-t (-5) must be >= 0" \
+    20 2 1000 -t -5 -r 5
+
+run_fail_case "r_negative" \
+    "-r (-5) must be >= 0" \
+    20 2 1000 -t 5 -r -5
+
+run_fail_case "g_negative_rate" \
+    "-g (rate) (-1) must be >= 0" \
+    20 2 1000 -t 5 -r 5 -g -1 100
+
+run_fail_case "a_negative" \
+    "-a (-100) must be >= 0" \
+    20 2 1000 -t 5 -r 5 -ws 0.01 -a -100
+
+run_fail_case "x_outside_locus" \
+    "-x (1.5) must be in [0, 1]" \
+    20 2 1000 -t 5 -r 5 -ws 0.01 -a 500 -x 1.5
+
+run_fail_case "f_above_one" \
+    "-f (1.5) must be in [0, 1)" \
+    20 2 1000 -t 5 -r 5 -ws 0.01 -a 500 -f 1.5
+
+run_fail_case "i_zero" \
+    "-i (0) must be > 0" \
+    20 2 1000 -t 5 -r 5 -ws 0.01 -a 500 -i 0
+
+run_fail_case "uA_negative" \
+    "-uA (-1) must be >= 0" \
+    20 2 1000 -t 5 -r 5 -ws 0.01 -a 500 -uA -1
+
+run_fail_case "ws_negative_time" \
+    "a sweep time" \
+    20 2 1000 -t 5 -r 5 -ws -0.1 -a 500
+
+run_fail_case "ls_negative_leftRho" \
+    "(leftRho) (-5) must be >= 0" \
+    20 2 1000 -t 5 -r 5 -ls 0.01 -5 -a 500
+
+run_pass_case "priors_inside_their_ranges" \
+    20 2 1000 -t 5 -r 5 -ws 0.01 -a 500 -Pt 0 10 -Pr 0 20 -Pa 100 1000 -Pu 0 0.05 -PuA 0 0.01 -Px 0 1 -d 1 2
+
 # Exponential growth over a long time: one lineage is left in each
 # population, and while they wait to migrate the size underflows to 0.
 # Coalescence must then still happen (at once).
