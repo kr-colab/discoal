@@ -2259,11 +2259,16 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 		}
 		/* The frequency below which the trajectory is the allele's neutral
 		 * history: f0 for a sweep from standing variation, and one copy,
-		 * 1/(2N) with the N of this epoch, for a new mutation. For a new
-		 * mutation it follows N in both directions: if N is larger further
-		 * back, the selected allele is still selected down to one copy of
-		 * that larger population. */
-		minF = fromStandingVariation ? fmax(f0, 1.0/(2.*N)) : 1.0/(2.*N);
+		 * 1/(2N) with the N of this epoch, for a new mutation. During the
+		 * sweep phase it follows N in both directions: if N is larger
+		 * further back, the selected allele is still selected down to one
+		 * copy of that larger population. In the neutral phase it is the
+		 * ceiling of the neutral history, which must stay above x: it can
+		 * only go up there. */
+		if (insweepphase)
+			minF = fromStandingVariation ? fmax(f0, 1.0/(2.*N)) : 1.0/(2.*N);
+		else if (minF < 1.0/(2.*N))
+			minF = 1.0/(2.*N);
 		tInc = 1.0 / (deltaTMod * N);
 		//iterate until epoch time or sweep freq
 		while( x > trajectoryEnd(fromStandingVariation, N) && (currentTime+ttau) < localNextTime){
