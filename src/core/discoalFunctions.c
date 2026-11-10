@@ -827,11 +827,21 @@ static void freeLineage(rootedNode *node){
 	free(node);
 }
 
+/* Sites whose MRCA a coalescence has just found are no longer active. */
+static void sitesFixed(int start, int end){
+	removeFixedRegion(&activeMaterialSegments, start, end);
+}
+
 /* The parent of a common-ancestor event takes the merged ancestry of its
- * two children (minimal mode); the children are freed. */
+ * two children (minimal mode); the children are freed. The merge reports
+ * the sites that reach their MRCA here, so the active sites are updated
+ * without walking the parent's segments (updateActiveMaterial()), whose
+ * fixed ones were removed when they were fixed. */
 static void coalesceLineagesMinimal(rootedNode *parent, rootedNode *lChild, rootedNode *rChild){
 	parent->ancestryRoot = mergeAncestryTreesCoalescing(lChild->ancestryRoot,
-		rChild->ancestryRoot, coalescenceParentNode, coalescenceEdge, parent);
+		rChild->ancestryRoot, coalescenceParentNode, coalescenceEdge, parent,
+		sampleSize, sitesFixed);
+	activeSites = getActiveSiteCount(&activeMaterialSegments);
 	updateAncestryStatsFromTree(parent);
 	parent->leftChild = parent->rightChild = NULL;
 	freeLineage(lChild);
@@ -871,7 +881,6 @@ void coalesceAtTimePopn(double cTime, int popn){
 	addNode(temp);
 	if (minimalTreeSeq) {
 		coalesceLineagesMinimal(temp, lChild, rChild);
-		updateActiveMaterial(temp);
 		return;
 	}
 	
@@ -1956,13 +1965,20 @@ static double partialSweepSite = -1.0;
 static tsk_id_t partialSweepSiteId = TSK_NULL;
 
 /* Mark a lineage as a carrier of the partial sweep's selected allele: a
- * mutation at the selected site on the tskit node of the lineage's segment
- * there (in minimal mode, the node in which that material last coalesced).
- * The site is created with its first mutation. */
+ * mutation at the selected site. In the full ARG every lineage has its own
+ * tskit node; in minimal mode a lineage may have none, and the material at
+ * the site belongs to the node of the lineage's segment there (the node in
+ * which it last coalesced). The site is created with its first mutation. */
 static void addPartialSweepCarrier(rootedNode *lineage){
-	AncestrySegment *seg = segmentAt(lineage->ancestryRoot,
-		(int) floor(partialSweepSite * nSites));
-	if (seg == NULL || seg->tskit_node_id == TSK_NULL)
+	tsk_id_t node;
+	if (minimalTreeSeq) {
+		AncestrySegment *seg = segmentAt(lineage->ancestryRoot,
+			(int) floor(partialSweepSite * nSites));
+		node = seg ? seg->tskit_node_id : TSK_NULL;
+	} else {
+		node = get_tskit_node_id(lineage);
+	}
+	if (node == TSK_NULL)
 		return;
 	if (partialSweepSiteId == TSK_NULL) {
 		partialSweepSiteId = tskit_add_site(partialSweepSite * nSites, "0");
@@ -1971,7 +1987,7 @@ static void addPartialSweepCarrier(rootedNode *lineage){
 			exit(1);
 		}
 	}
-	if (tskit_add_mutation(partialSweepSiteId, seg->tskit_node_id, "1") < 0) {
+	if (tskit_add_mutation(partialSweepSiteId, node, "1") < 0) {
 		fprintf(stderr, "Error: failed to add the partial sweep mutation\n");
 		exit(1);
 	}
@@ -3033,7 +3049,6 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	addNode(temp);
 	if (minimalTreeSeq) {
 		coalesceLineagesMinimal(temp, lChild, rChild);
-		updateActiveMaterial(temp);
 		return;
 	}
 	
