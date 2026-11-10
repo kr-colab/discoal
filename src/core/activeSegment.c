@@ -38,6 +38,35 @@ void initializeActiveMaterial(ActiveMaterial *am, int nSites) {
     am->segments = newActiveSegment(0, nSites);
     am->avlTree = NULL;
     am->totalActive = nSites;
+    am->lookupStart = am->lookupEnd = NULL;
+    am->lookupCount = am->lookupCapacity = 0;
+    am->lookupStale = 1;
+}
+
+/* Copy the list into the sorted lookup arrays. */
+static void rebuildLookup(ActiveMaterial *am) {
+    int n = 0;
+    for (ActiveSegment *s = am->segments; s; s = s->next) n++;
+    if (n > am->lookupCapacity) {
+        int cap = n * 2;
+        int *st = realloc(am->lookupStart, cap * sizeof(int));
+        int *en = st ? realloc(am->lookupEnd, cap * sizeof(int)) : NULL;
+        if (!st || !en) {
+            fprintf(stderr, "Memory allocation failed for active sites\n");
+            exit(1);
+        }
+        am->lookupStart = st;
+        am->lookupEnd = en;
+        am->lookupCapacity = cap;
+    }
+    n = 0;
+    for (ActiveSegment *s = am->segments; s; s = s->next) {
+        am->lookupStart[n] = s->start;
+        am->lookupEnd[n] = s->end;
+        n++;
+    }
+    am->lookupCount = n;
+    am->lookupStale = 0;
 }
 
 // Free all memory associated with active material
@@ -46,6 +75,11 @@ void freeActiveMaterial(ActiveMaterial *am) {
     
     freeSegmentList(am->segments);
     am->segments = NULL;
+    free(am->lookupStart);
+    free(am->lookupEnd);
+    am->lookupStart = am->lookupEnd = NULL;
+    am->lookupCount = am->lookupCapacity = 0;
+    am->lookupStale = 1;
     
     if (am->avlTree) {
         freeAVLTree((AVLTree*)am->avlTree);
@@ -55,26 +89,22 @@ void freeActiveMaterial(ActiveMaterial *am) {
     am->totalActive = 0;
 }
 
-// Check if a site is active - uses AVL tree if available
+// Check if a site is active: binary search of the sorted lookup arrays
 int isActiveSite(ActiveMaterial *am, int site) {
     if (!am || !am->segments) return 0;
-    
-    // Use AVL tree for fast lookup if available
-    if (am->avlTree) {
-        ActiveSegment *found = (ActiveSegment*)findSegmentContaining((AVLTree*)am->avlTree, site);
-        return found != NULL;
-    }
-    
-    // Linear search through segments
-    ActiveSegment *seg = am->segments;
-    while (seg) {
-        if (site >= seg->start && site < seg->end) {
-            return 1;
+    if (am->lookupStale || !am->lookupStart) rebuildLookup(am);
+    /* The last segment that starts at or before the site. */
+    int lo = 0, hi = am->lookupCount - 1, found = -1;
+    while (lo <= hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (am->lookupStart[mid] <= site) {
+            found = mid;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
         }
-        seg = seg->next;
     }
-    
-    return 0;
+    return found >= 0 && site < am->lookupEnd[found];
 }
 
 // Get total count of active sites
@@ -166,11 +196,7 @@ void removeFixedRegion(ActiveMaterial *am, int start, int end) {
         }
     }
     
-    // Invalidate AVL tree after modifications
-    if (am->avlTree) {
-        freeAVLTree((AVLTree*)am->avlTree);
-        am->avlTree = NULL;
-    }
+    am->lookupStale = 1;
 }
 
 // Update active material based on ancestry segments
@@ -190,34 +216,7 @@ void updateActiveMaterialFromAncestry(ActiveMaterial *am, AncestrySegment *ances
     
     // Coalesce adjacent segments
     am->segments = coalesceActiveSegments(am->segments);
-    
-    // Rebuild AVL tree if we have many segments
-    if (am->avlTree) {
-        freeAVLTree((AVLTree*)am->avlTree);
-        am->avlTree = NULL;
-    }
-    
-    // Count segments and potentially build AVL tree
-    int segmentCount = 0;
-    ActiveSegment *temp = am->segments;
-    while (temp && segmentCount < 10) {
-        segmentCount++;
-        temp = temp->next;
-    }
-    
-    if (segmentCount >= 100) {
-        // Build AVL tree for fast lookups
-        AVLTree *tree = createAVLTree();
-        if (tree) {
-            temp = am->segments;
-            while (temp) {
-                // Insert using the segment pointer as data
-                insertSegment(tree, (AncestrySegment*)temp);
-                temp = temp->next;
-            }
-            am->avlTree = tree;
-        }
-    }
+    am->lookupStale = 1;
 }
 
 // Print active segments for debugging

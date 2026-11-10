@@ -14,8 +14,13 @@ typedef struct ActiveSegment {
 // Main structure for tracking active material
 typedef struct {
     ActiveSegment *segments;  // Linked list of active segments
-    void *avlTree;           // AVL tree for O(log n) lookups (when needed)
+    void *avlTree;           // Unused; NULL
     int totalActive;         // Total count of active sites
+    /* The list as sorted arrays of starts and ends, for binary search in
+     * isActiveSite(). Rebuilt from the list when a lookup finds it stale
+     * (lookupStale), as every change of the list sets it. */
+    int *lookupStart, *lookupEnd;
+    int lookupCount, lookupCapacity, lookupStale;
 } ActiveMaterial;
 
 // Core operations

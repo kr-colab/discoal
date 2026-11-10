@@ -93,6 +93,38 @@ def main():
                f"{mean:.1f}, z={z:+.1f}), variance ratio {ratio:.3f}; every "
                f"carried site at x={x}")
 
+    # A partial sweep that ended in the past, with much recombination:
+    # when the sweep starts, a lineage can be a recombination parent or a
+    # common ancestor whose material at the selected site comes from one
+    # child. The selected allele must still reach every sample below it.
+    # After the sweep the allele drifts neutrally, so its mean count stays
+    # N_SAMPLES * c.
+    out = run([N_SAMPLES, reps, SITES, "-t", 0.0001, "-r", 200, "-ws", 0.05,
+               "-a", 500, "-N", N_SWEEP, "-x", x, "-c", 0.5, "-d", 13, 14])
+    counts = np.array([derived_count_at(r, x) or 0 for r in replicates(out)])
+    z = (counts.mean() - N_SAMPLES * 0.5) / (counts.std() / np.sqrt(len(counts)))
+    report(abs(z) < Z_MAX, f"partial sweep in the past with recombination: "
+                           f"derived count mean {counts.mean():.2f} (expected "
+                           f"{N_SAMPLES * 0.5:.1f}, z={z:+.1f})")
+
+    # The same with the full ARG (-F), where each lineage has its own node.
+    with tempfile.TemporaryDirectory() as tmp:
+        prefix = os.path.join(tmp, "f.trees")
+        run([N_SAMPLES, 500, SITES, "-t", 0.0001, "-r", 200, "-ws", 0.05,
+             "-a", 500, "-N", N_SWEEP, "-x", x, "-c", 0.5, "-d", 13, 14,
+             "-ts", prefix, "-F"])
+        counts = []
+        for k in range(1, 501):
+            ts = tskit.load(os.path.join(tmp, f"f_rep{k}.trees"))
+            counts.append(next((int((v.genotypes > 0).sum())
+                                for v in ts.variants()
+                                if abs(v.site.position - x * SITES) < 1e-6), 0))
+    counts = np.array(counts)
+    z = (counts.mean() - N_SAMPLES * 0.5) / (counts.std() / np.sqrt(len(counts)))
+    report(abs(z) < Z_MAX, f"the same with the full ARG (-F): derived count "
+                           f"mean {counts.mean():.2f} (expected "
+                           f"{N_SAMPLES * 0.5:.1f}, z={z:+.1f})")
+
     out = run([N_SAMPLES, 500, SITES, "-t", 0.0001, "-r", 20, "-ws", 0,
                "-a", 500, "-N", N_SWEEP, "-x", x, "-c", 0.5, "-h", "-d", 11, 12])
     hidden = sum(derived_count_at(r, x) is not None for r in replicates(out))

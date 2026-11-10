@@ -28,10 +28,15 @@ AncestrySegment* shallowCopySegment(AncestrySegment *seg);
 
 // Query operations
 uint16_t getAncestryCount(AncestrySegment *root, int site);
+AncestrySegment* segmentAt(AncestrySegment *root, int site);
 int hasAncestry(AncestrySegment *root, int site);
 
 // Tree operations for coalescence and recombination
 AncestrySegment* mergeAncestryTrees(AncestrySegment *left, AncestrySegment *right, tsk_id_t parent_tskit_node_id);
+AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
+        AncestrySegment *rightTree, tsk_id_t (*newParentNode)(void *ctx),
+        void (*addEdge)(tsk_id_t parent, tsk_id_t child, double left, double right),
+        void *ctx, int fullCount, void (*onFixed)(int start, int end));
 AncestrySegment* splitLeft(AncestrySegment *root, int breakpoint);
 AncestrySegment* splitRight(AncestrySegment *root, int breakpoint);
 

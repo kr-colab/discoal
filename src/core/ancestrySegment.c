@@ -70,23 +70,23 @@ AncestrySegment* copySegmentTree(AncestrySegment *root) {
     return newRoot;
 }
 
-uint16_t getAncestryCount(AncestrySegment *root, int site) {
-    // Use AVL tree for O(log n) lookup if available
+/* The segment of a lineage that covers `site`, or NULL. Uses the AVL tree
+ * for an O(log n) lookup if the list has one. */
+AncestrySegment* segmentAt(AncestrySegment *root, int site) {
     if (root && root->avlTree) {
-        AncestrySegment *found = findSegmentContaining((AVLTree*)root->avlTree, site);
-        return found ? found->count : 0;
+        return findSegmentContaining((AVLTree*)root->avlTree, site);
     }
-    
-    // Fall back to linear search
-    AncestrySegment *current = root;
-    while (current) {
+    for (AncestrySegment *current = root; current; current = current->next) {
         if (site >= current->start && site < current->end) {
-            return current->count;
+            return current;
         }
-        current = current->next;
     }
-    
-    return 0;  // No ancestry at this site
+    return NULL;
+}
+
+uint16_t getAncestryCount(AncestrySegment *root, int site) {
+    AncestrySegment *found = segmentAt(root, site);
+    return found ? found->count : 0;
 }
 
 int hasAncestry(AncestrySegment *root, int site) {
@@ -191,8 +191,10 @@ static void addSegmentToResult(AncestrySegment **result, AncestrySegment **tail,
                                int start, int end, uint16_t count, tsk_id_t parent_tskit_node_id) {
     if (start >= end || count == 0) return;  // Skip empty or zero-count segments
     
-    // Check if we can merge with the previous segment
-    if (*tail && (*tail)->end == start && (*tail)->count == count) {
+    // Extend the previous segment if this one continues it: adjacent, with
+    // the same count and the same tskit node
+    if (*tail && (*tail)->end == start && (*tail)->count == count &&
+        (*tail)->tskit_node_id == parent_tskit_node_id) {
         (*tail)->end = end;  // Extend previous segment
     } else {
         // Create new segment
@@ -308,6 +310,82 @@ AncestrySegment* mergeAncestryTrees(AncestrySegment *leftTree, AncestrySegment *
         }
     }
     
+    return result;
+}
+
+/* Merge the ancestry of two lineages at a common-ancestor event, recording
+ * only what coalesces, as msprime does (msp_merge_two_ancestors):
+ *  - where only one lineage has ancestral material, the parent's segment
+ *    keeps that lineage's tskit node: nothing coalesces there, so no node
+ *    and no edge are needed;
+ *  - where both have material, they coalesce: the parent needs a tskit
+ *    node, which newParentNode(ctx) makes at the first such interval, and
+ *    an edge from it to each child's node over the interval (addEdge).
+ * So a common-ancestor event of lineages whose material does not overlap
+ * adds nothing to the tree sequence.
+ * An overlap whose count reaches fullCount (all samples) has found its
+ * MRCA here, and only here: onFixed(start, end) reports each such run of
+ * sites once, so the caller can update the sites still active without
+ * walking the parent's other segments. */
+AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
+        AncestrySegment *rightTree, tsk_id_t (*newParentNode)(void *ctx),
+        void (*addEdge)(tsk_id_t parent, tsk_id_t child, double left, double right),
+        void *ctx, int fullCount, void (*onFixed)(int start, int end)) {
+    AncestrySegment *result = NULL, *tail = NULL;
+    AncestrySegment *l = leftTree, *r = rightTree;
+    tsk_id_t parent = TSK_NULL;
+    int fixedStart = -1, fixedEnd = -1;  // a run of newly fixed sites
+    int pos = INT_MAX;
+    if (l) pos = l->start;
+    if (r && r->start < pos) pos = r->start;
+
+    while (l || r) {
+        /* The next position where a segment starts or ends. */
+        int nextPos = INT_MAX;
+        if (l) {
+            if (l->start > pos && l->start < nextPos) nextPos = l->start;
+            if (l->end > pos && l->end < nextPos) nextPos = l->end;
+        }
+        if (r) {
+            if (r->start > pos && r->start < nextPos) nextPos = r->start;
+            if (r->end > pos && r->end < nextPos) nextPos = r->end;
+        }
+        if (nextPos == INT_MAX) break;
+
+        AncestrySegment *lc = (l && pos >= l->start && pos < l->end) ? l : NULL;
+        AncestrySegment *rc = (r && pos >= r->start && pos < r->end) ? r : NULL;
+        if (lc && rc) {
+            if (parent == TSK_NULL) parent = newParentNode(ctx);
+            addSegmentToResult(&result, &tail, pos, nextPos,
+                               lc->count + rc->count, parent);
+            addEdge(parent, lc->tskit_node_id, pos, nextPos);
+            addEdge(parent, rc->tskit_node_id, pos, nextPos);
+            if (lc->count + rc->count == fullCount) {
+                if (fixedEnd == pos) {
+                    fixedEnd = nextPos;
+                } else {
+                    if (fixedStart >= 0) onFixed(fixedStart, fixedEnd);
+                    fixedStart = pos;
+                    fixedEnd = nextPos;
+                }
+            }
+        } else if (lc || rc) {
+            AncestrySegment *c = lc ? lc : rc;
+            addSegmentToResult(&result, &tail, pos, nextPos, c->count,
+                               c->tskit_node_id);
+        }
+
+        pos = nextPos;
+        while (l && l->end <= pos) l = l->next;
+        while (r && r->end <= pos) r = r->next;
+    }
+
+    if (fixedStart >= 0) onFixed(fixedStart, fixedEnd);
+
+    /* An AVL tree for fast lookups, as mergeAncestryTrees() builds. */
+    if (result && result->next && result->next->next) {
+        result->avlTree = buildAVLFromList(result);
+    }
     return result;
 }
 

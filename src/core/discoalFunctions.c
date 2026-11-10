@@ -296,7 +296,9 @@ void initialize(){
 
 
 	breakNumber = 0;
-	// Initialize segment-based active material (all sites start as active)
+	// Initialize segment-based active material (all sites start as active);
+	// free the previous replicate's first (the global starts zeroed)
+	freeActiveMaterial(&activeMaterialSegments);
 	initializeActiveMaterial(&activeMaterialSegments, nSites);
 	
 	//set initial counts
@@ -793,6 +795,59 @@ static void recordRecombinationEdges(rootedNode *child, rootedNode *lParent, roo
     }
 }
 
+/* Minimal tree sequence mode records what msprime records: a node and
+ * edges only where two lineages' ancestral material coalesces. Each
+ * segment carries the tskit node of the lineage it belongs to, so a
+ * lineage's node (rootedNode) is not needed once it leaves the active set,
+ * and is freed then. */
+
+/* The tskit node of a coalescence parent, made when its children's
+ * ancestral material first overlaps (mergeAncestryTreesCoalescing). */
+static tsk_id_t coalescenceParentNode(void *ctx){
+	rootedNode *parent = ctx;
+	tsk_id_t id = tskit_add_node(parent->time, parent->population, 0);
+	if (id < 0) {
+		fprintf(stderr, "Error: failed to add a tree sequence node\n");
+		exit(1);
+	}
+	set_tskit_node_id(parent, id);
+	return id;
+}
+
+static void coalescenceEdge(tsk_id_t parent, tsk_id_t child, double left, double right){
+	if (tskit_add_edges(parent, child, left, right) != 0) {
+		fprintf(stderr, "Error: failed to add a tree sequence edge\n");
+		exit(1);
+	}
+}
+
+/* Free a lineage that has left the active set (minimal mode). */
+static void freeLineage(rootedNode *node){
+	if (node->ancestryRoot) freeSegmentTree(node->ancestryRoot);
+	free(node);
+}
+
+/* Sites whose MRCA a coalescence has just found are no longer active. */
+static void sitesFixed(int start, int end){
+	removeFixedRegion(&activeMaterialSegments, start, end);
+}
+
+/* The parent of a common-ancestor event takes the merged ancestry of its
+ * two children (minimal mode); the children are freed. The merge reports
+ * the sites that reach their MRCA here, so the active sites are updated
+ * without walking the parent's segments (updateActiveMaterial()), whose
+ * fixed ones were removed when they were fixed. */
+static void coalesceLineagesMinimal(rootedNode *parent, rootedNode *lChild, rootedNode *rChild){
+	parent->ancestryRoot = mergeAncestryTreesCoalescing(lChild->ancestryRoot,
+		rChild->ancestryRoot, coalescenceParentNode, coalescenceEdge, parent,
+		sampleSize, sitesFixed);
+	activeSites = getActiveSiteCount(&activeMaterialSegments);
+	updateAncestryStatsFromTree(parent);
+	parent->leftChild = parent->rightChild = NULL;
+	freeLineage(lChild);
+	freeLineage(rChild);
+}
+
 void coalesceAtTimePopn(double cTime, int popn){
 	// Check if population has at least 2 nodes for coalescence
 	if (popLists[popn].count < 2) {
@@ -824,6 +879,10 @@ void coalesceAtTimePopn(double cTime, int popn){
 	
 	// Add the parent node to discoal's arrays and tskit BEFORE merging/recording
 	addNode(temp);
+	if (minimalTreeSeq) {
+		coalesceLineagesMinimal(temp, lChild, rChild);
+		return;
+	}
 	
 	// Get tskit IDs for all nodes involved in coalescence  
 	tsk_id_t parent_tsk_id = get_tskit_node_id(temp);
@@ -1148,6 +1207,13 @@ int recombineAtTimePopn(double cTime, int popn){
 		tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
 		
 		recordRecombinationEdges(aNode, lParent, rParent, child_tsk_id, lparent_tsk_id, rparent_tsk_id);
+		if (minimalTreeSeq) {
+			/* The parents now hold the child's segments, with its tskit
+			 * nodes; the child is not needed. */
+			lParent->leftChild = rParent->leftChild = NULL;
+			freeLineage(aNode);
+			return xOver;
+		}
 		
 	//	printf("reco-> lParent: %u rParent:%u child: %u time:%f xover:%d\n",lParent,rParent,aNode,cTime,xOver);
 		
@@ -1242,6 +1308,13 @@ void geneConversionAtTimePopn(double cTime, int popn){
 		tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
 		
 		recordRecombinationEdges(aNode, lParent, rParent, child_tsk_id, lparent_tsk_id, rparent_tsk_id);
+		if (minimalTreeSeq) {
+			/* The parents now hold the child's segments, with its tskit
+			 * nodes; the child is not needed. */
+			lParent->leftChild = rParent->leftChild = NULL;
+			freeLineage(aNode);
+			return;
+		}
 		
 		// Mark that the child node is no longer in active set
 		aNode->inActiveSet = 0;
@@ -1892,12 +1965,20 @@ static double partialSweepSite = -1.0;
 static tsk_id_t partialSweepSiteId = TSK_NULL;
 
 /* Mark a lineage as a carrier of the partial sweep's selected allele: a
- * mutation at the selected site on its recorded tskit node (in minimal
- * mode a recombination parent has none, and its single child holds the
- * material). The site is created with its first mutation. */
+ * mutation at the selected site. In the full ARG every lineage has its own
+ * tskit node; in minimal mode a lineage may have none, and the material at
+ * the site belongs to the node of the lineage's segment there (the node in
+ * which it last coalesced). The site is created with its first mutation. */
 static void addPartialSweepCarrier(rootedNode *lineage){
-	rootedNode *recorded;
-	if (findTrueDescendants(lineage, &recorded, 1) == 0)
+	tsk_id_t node;
+	if (minimalTreeSeq) {
+		AncestrySegment *seg = segmentAt(lineage->ancestryRoot,
+			(int) floor(partialSweepSite * nSites));
+		node = seg ? seg->tskit_node_id : TSK_NULL;
+	} else {
+		node = get_tskit_node_id(lineage);
+	}
+	if (node == TSK_NULL)
 		return;
 	if (partialSweepSiteId == TSK_NULL) {
 		partialSweepSiteId = tskit_add_site(partialSweepSite * nSites, "0");
@@ -1906,7 +1987,7 @@ static void addPartialSweepCarrier(rootedNode *lineage){
 			exit(1);
 		}
 	}
-	if (tskit_add_mutation(partialSweepSiteId, get_tskit_node_id(recorded), "1") < 0) {
+	if (tskit_add_mutation(partialSweepSiteId, node, "1") < 0) {
 		fprintf(stderr, "Error: failed to add the partial sweep mutation\n");
 		exit(1);
 	}
@@ -2802,6 +2883,13 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 			tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
 			
 			recordRecombinationEdges(aNode, lParent, rParent, child_tsk_id, lparent_tsk_id, rparent_tsk_id);
+			if (minimalTreeSeq) {
+				/* The parents now hold the child's segments, with its tskit
+				 * nodes; the child is not needed. */
+				lParent->leftChild = rParent->leftChild = NULL;
+				freeLineage(aNode);
+				return xOver;
+			}
 			
 			// Mark that the child node is no longer in active set
 			aNode->inActiveSet = 0;
@@ -2914,6 +3002,13 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 		tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
 		
 		recordRecombinationEdges(aNode, lParent, rParent, child_tsk_id, lparent_tsk_id, rparent_tsk_id);
+		if (minimalTreeSeq) {
+			/* The parents now hold the child's segments, with its tskit
+			 * nodes; the child is not needed. */
+			lParent->leftChild = rParent->leftChild = NULL;
+			freeLineage(aNode);
+			return;
+		}
 		
 		// Mark that the child node is no longer in active set
 		aNode->inActiveSet = 0;
@@ -2952,6 +3047,10 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	
 	// Add the parent node to discoal's arrays and tskit BEFORE merging/recording
 	addNode(temp);
+	if (minimalTreeSeq) {
+		coalesceLineagesMinimal(temp, lChild, rChild);
+		return;
+	}
 	
 	// Get tskit IDs for all nodes involved in coalescence  
 	tsk_id_t parent_tsk_id = get_tskit_node_id(temp);
@@ -3404,17 +3503,14 @@ void addNode(rootedNode *aNode){
 	nodes[alleleNumber] = aNode;
 	aNode->inActiveSet = 1;  // Mark as being in active set
 	
-	// Record node to tskit (unless in minimal mode and this is a recombination parent)
-	extern int minimalTreeSeq;
-	int isRecombParent = (aNode->leftChild != NULL && aNode->rightChild != NULL && 
-	                      aNode->leftChild == aNode->rightChild);
-	
-	if (!minimalTreeSeq || !isRecombParent) {
-		// Create tskit node for non-recombination nodes or in full mode
+	/* The full ARG records a tskit node for every node. Minimal mode, as
+	 * msprime, records none for recombination parents, and one for a
+	 * coalescence parent only where its children's material overlaps
+	 * (coalesceLineagesMinimal). */
+	if (!minimalTreeSeq) {
 		tsk_id_t tsk_id = tskit_add_node(aNode->time, aNode->population, 0);  // is_sample=0
 		set_tskit_node_id(aNode, tsk_id);
 	} else {
-		// In minimal mode, recombination parents don't get tskit nodes
 		set_tskit_node_id(aNode, TSK_NULL);
 	}
 	
