@@ -316,17 +316,6 @@ void initialize(){
 			fprintf(stderr,"tDiv or migration not set in population split model\n");
 			exit(1);
 		}
-		//initialize migration matrix from migMatConst, which is set by the
-		//CLI parser (-m / -M), the YAML config loader, and the demes
-		//importer's interval-based 'm' event emission for the t=0 active
-		//interval. The runtime needs no event-scanning back-derivation;
-		//time-varying migration is handled by 'm' events firing during
-		//simulation.
-		for(i=0;i<npops;i++){
-			for(j=0;j<npops;j++){
-				migMat[i][j]=migMatConst[i][j];
-			}
-		}
 
 		eventFlag = 0;
 	}
@@ -1707,9 +1696,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 							//printf("outer eSumNew:%f mRate[%d]:%f\n",eSum,i,mRate[i]);
 							r2 = ranf();
 							while(eSum/mRate[i] < r2){
-							//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
 								eSum += migAt(i, ++j, currentTime) * popnSizes[i] * MIG_LINEAGE_WEIGHT;
-							//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
 
 							}
 							migrateAtTime(cTime,i,j);
@@ -2547,6 +2534,13 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 	if(startTime == endTime){
 		return(endTime);
 	}
+	/* The last interval has no end: stop with an error if the lineages can
+	 * never meet, as the neutral sampler does, rather than run for ever. */
+	int finalInterval = (isinf(endTime) && npops > 1 && activeSites > 0);
+	if (finalInterval) {
+		computeMigReach(startTime);
+		requireLineagesCanMeet(startTime);
+	}
 	cTime = 0.0;
 	cTime += startTime;
 	waitTime = 0.0;
@@ -2562,7 +2556,7 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 		}
 	//	printf("currPopSize[0]: %d currPopSize[1]: %d alleleNumber: %d totNodeNumber: %d activeSites: %d cTime: %f\n",popnSizes[0],popnSizes[1],alleleNumber,totNodeNumber, activeSites, cTime);
 		for(i=0;i<npops;i++){
-			cRate[i] = pairCoalRate(popnSizes[i], sizeRatio[i]);
+			cRate[i] = pairCoalRate(popnSizes[i], sizeAt(i, cTime));
 			rRate[i] = rho * popnSizes[i] * 0.5;// * ((float)activeSites/nSites);
 			gcRate[i] = my_gamma * popnSizes[i] * 0.5 ;
 			
@@ -2620,12 +2614,11 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 						//printf("outer eSumNew:%f mRate[%d]:%f\n",eSum,i,mRate[i]);
 						r2 = ranf();
 						while(eSum/mRate[i] < r2){
-						//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
 							eSum += migAt(i, ++j, cTime) * popnSizes[i] * MIG_LINEAGE_WEIGHT;
-						//	printf("eSum: %f mRate[%d]:%f migMat[%d][0]:%f migMat[%d][1]:%f popnSize: %d\n",eSum,i,mRate[i],i,migMat[i][0],i,migMat[i][1], popnSizes[i]);
 							
 						} 
 						migrateAtTime(cTime,i,j);
+						if (finalInterval) requireLineagesCanMeet(cTime);
 					}
 				
 					else{
@@ -3106,8 +3099,6 @@ void mergePopns(int popnSrc, int popnDest){
 	popnSizes[popnSrc] = 0;
 	
 	//set migration rates to zero
-	migMat[popnSrc][popnDest] = 0.0;
-	migMat[popnDest][popnSrc] = 0.0;
 	migShape[popnSrc][popnDest].type = SHAPE_CONSTANT;
 	migShape[popnSrc][popnDest].anchor_value = 0.0;
 	migShape[popnSrc][popnDest].rate_param = 0.0;

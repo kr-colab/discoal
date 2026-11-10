@@ -132,11 +132,9 @@ starts, and growth of other populations with a single sweep, are
 allowed. To model a sweep during growth, approximate the growth with
 steps of ``-en``.
 
-During a sweep (from its start until the selected allele reaches its
-origin, going back in time), discoal draws no migration events, in any
-population. Between sweeps, and outside them, migration and its changes
-(``-em``, ``-eM``, demes migrations) apply as usual, also with recurrent
-sweeps.
+During a sweep no migration happens (see the limitations in
+:doc:`population_structure`); outside sweeps, migration and its changes
+apply as usual, also between recurrent sweeps.
 
 Advanced Options
 ----------------

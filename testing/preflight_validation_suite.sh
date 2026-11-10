@@ -202,6 +202,13 @@ run_fail_case "x_negative_with_ls" \
     "cannot be combined with a sweep outside the locus" \
     20 2 1000 -t 5 -r 5 -ls 0.01 10 -a 500 -x -0.5
 
+# Recurrent sweeps check, as the neutral sampler does, that the lineages
+# can still meet after the last event (here migration from population 2
+# into population 1 strands lineages after population 1 merges).
+run_fail_case "R_lineages_can_never_meet" \
+    "they can never coalesce" \
+    20 2 10000 -t 10 -r 10 -R 0.5 -a 500 -p 3 7 7 6 -M 1 -ed 2 1 0 -ed 3 2 0
+
 # One single sweep at most: the sweep sampler follows one sweep at a time.
 run_fail_case "two_ws" \
     "only one single sweep can be given" \

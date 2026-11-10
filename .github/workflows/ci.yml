@@ -156,8 +156,6 @@ jobs:
     - name: Check sweep trajectory files
       run: python testing/trajectory_file_check.py
 
-    # Checks that recurrent sweeps follow migration changes between sweeps:
-    # at a negligible sweep rate the output equals the neutral output.
     - name: Check recurrent sweeps
       run: python testing/recurrent_sweep_check.py
 

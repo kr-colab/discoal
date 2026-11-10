@@ -126,5 +126,6 @@ Limitations
 .. warning::
    
    * Selection only operates in population 0
-   * During selective sweeps, migration is suspended
-   * Time-varying migration rates are not currently implemented
+   * During selective sweeps, migration is suspended, in every population
+   * Migration rates are constant between events: they change only at
+     events (``-em``, ``-eM``, or a demes model), not continuously

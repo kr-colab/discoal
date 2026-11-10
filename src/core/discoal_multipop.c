@@ -244,7 +244,6 @@ int main(int argc, const char * argv[]){
 				popShape[events[j].popID].rate_param = 0.0;
 				popShape[events[j].popID].anchor_time = events[j].time;
 				//for(i=0;i<npops;i++)
-				//	for(j=0;j<npops;j++) printf("%f\n",migMat[i][j]);
 				if(activeSweepFlag == 0){
 					if(recurSweepMode ==0){
 						currentTime = neutralPhaseGeneralPopNumber(breakPoints, currentTime, nextTime, currentSize);
