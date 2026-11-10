@@ -97,9 +97,6 @@ double geneConversionRate(int popn);
 int recombineAtTimePopn(double cTime, int popn);
 void geneConversionAtTimePopn(double cTime, int popn);
 
-double neutralPhase(int *bpArray,double startTime, double endTime, double sizeRatio);
-double neutralPhaseMig(int *bpArray,double startTime, double endTime, double sizeRatio);
-double neutralPhaseMigExclude(int *bpArray,double startTime, double endTime, double sizeRatio, double selSite, double migScale);
 double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *sizeRatio);
 
 rootedNode *pickNodePopn(int popn);
