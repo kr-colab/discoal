@@ -2266,8 +2266,11 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 		fwrite(writeBuffer, sizeof(float), bufferPos, trajFile);
 	}
 	/* Keep the file open for mapping (a second descriptor keeps it alive
-	 * after the stream is closed). */
-	if (fflush(trajFile) != 0 || (proposedFd = dup(fileno(trajFile))) == -1) {
+	 * after the stream is closed). A write error (a full disk) stops the
+	 * run here: a short file would fail later, when it is read through
+	 * the mapping. */
+	if (fflush(trajFile) != 0 || ferror(trajFile)
+	    || (proposedFd = dup(fileno(trajFile))) == -1) {
 		perror("Failed to write trajectory file");
 		exit(1);
 	}
