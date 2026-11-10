@@ -736,6 +736,7 @@ static double parseDoubleArg(int argc, const char **argv, int *args, const char 
 void getParameters(int argc,const char **argv){
 	int args;
 	int i,j;
+	int xGiven = 0;  /* -x on the command line */
 	double migR;
 	int selCheck,nChangeCheck;
 	int yaml_config_loaded = 0;
@@ -979,6 +980,7 @@ void getParameters(int argc,const char **argv){
 			break;
 			case 'x' :
 			sweepSite = parseDoubleArg(argc, argv, &args, "-x");
+			xGiven = 1;
 			break;
 			case 'M' :
 			if(npops==1){
@@ -1326,6 +1328,10 @@ void getParameters(int argc,const char **argv){
 		exit(1);
 	}
 
+	/* A sweep outside the locus is set by its options (-ls, -ld, -ln, -L, or
+	 * their YAML fields), not by the value of sweepSite, which the code
+	 * sets to -1 for it: a user -x value could be -1 too. */
+	const int sweepOutsideLocus = leftRhoFlag || recurrentLeftOfLocus;
 	/* Priors (the -P flags, or YAML priors) follow the ranges of their YAML
 	 * fields. A soft sweep that is partial needs every drawn f0 below every
 	 * drawn final frequency; -Pf counts as a soft sweep. */
@@ -1348,7 +1354,6 @@ void getParameters(int argc,const char **argv){
 		/* A sweep time must be >= 0; with -Pu the time is replaced by a draw,
 		 * but a NaN time still breaks the sorting of the events, so NaN is
 		 * rejected either way. */
-		const int sweepOutsideLocus = leftRhoFlag || recurrentLeftOfLocus;
 		double tauBadValue = 0.0, admixBad = 0.0;
 		int tauBad = 0;
 		int admixOut = 0, sampleSum = 0, sampleNegative = 0, sampleBad = 0;
@@ -1470,12 +1475,12 @@ void getParameters(int argc,const char **argv){
 			exit(1);
 		}
 	}
-	/* Priors that contradict the sweep model, from the CLI or YAML: a
-	 * drawn position puts the sweep inside the locus, and a drawn tau
-	 * needs a single sweep. */
-	/* A sweep outside the locus is set by its options, not by the value
-	 * of sweepSite: with -Px, -x is a placeholder that may be anything. */
-	if(priorX && (leftRhoFlag || recurrentLeftOfLocus)){
+	/* Options that contradict the sweep model, from the CLI or YAML: a
+	 * drawn position puts the sweep inside the locus, and a drawn tau needs
+	 * a single sweep. YAML rejects sweep_position with a sweep outside the
+	 * locus itself; on the command line, -x is rejected with one whatever
+	 * its value. */
+	if(priorX && sweepOutsideLocus){
 		fprintf(stderr, "Error: a prior on the sweep position (-Px, or YAML "
 			"priors.sweep_position) cannot be combined with a sweep outside "
 			"the locus (-ls, -ld, -ln, -L)\n");
@@ -1487,9 +1492,9 @@ void getParameters(int argc,const char **argv){
 			"sweeps (-R, -L)\n");
 		exit(1);
 	}
-	if((leftRhoFlag || recurrentLeftOfLocus) && !priorX && sweepSite >= 0.0){
-		fprintf(stderr, "Error: -x (%g) cannot be combined with a sweep outside "
-			"the locus (-ls, -ld, -ln, -L)\n", sweepSite);
+	if(sweepOutsideLocus && xGiven){
+		fprintf(stderr, "Error: -x cannot be combined with a sweep outside "
+			"the locus (-ls, -ld, -ln, -L)\n");
 		exit(1);
 	}
 	if(softSweep && recurSweepMode == 1){

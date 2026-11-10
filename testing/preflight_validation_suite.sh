@@ -190,8 +190,12 @@ run_fail_case "Px_with_L" \
     20 2 1000 -t 5 -r 5 -L 1 -a 500 -Px 0 1
 
 run_fail_case "x_inside_locus_with_L" \
-    "-x (0.3) cannot be combined with a sweep outside the locus" \
+    "-x cannot be combined with a sweep outside the locus" \
     20 2 1000 -t 5 -r 5 -L 1 -a 500 -x 0.3
+
+run_fail_case "x_negative_with_ls" \
+    "-x cannot be combined with a sweep outside the locus" \
+    20 2 1000 -t 5 -r 5 -ls 0.01 10 -a 500 -x -0.5
 
 run_fail_case "Pu_with_recurrent_sweeps" \
     "needs a single sweep, not recurrent sweeps" \
