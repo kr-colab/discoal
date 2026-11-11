@@ -3420,6 +3420,97 @@ unsigned int devrand(void) {
 // Muts dynamic memory management functions
 
 /*makeGametesMS-- MS style sample output using tskit genotype matrix */
+/* Print the genotype matrix in ms format: one line per sample, one
+ * character per site. tskit decodes the genotypes site by site, and ms
+ * prints them sample by sample, so they are kept as one byte each
+ * ('0' + genotype) in rows that end in a newline, and each row is written
+ * with one fwrite(): one printf() per genotype took most of the time of
+ * runs with many sites. The sites are decoded in blocks of SITE_BLOCK into
+ * a small buffer, one line per site, and each sample's part of a block is
+ * copied into its row in one piece: a write per genotype into rows far
+ * apart missed the cache at every genotype.
+ * A genotype outside 0..9 (more than one digit, or missing) prints as
+ * printf("%d") does; the rows are then printed that way. Returns 0, or
+ * -1 after an error message. */
+#define SITE_BLOCK 64
+static int printGenotypeRows(tsk_variant_t *variant, tsk_size_t num_samples,
+                             tsk_size_t num_sites) {
+	size_t rowLength = (size_t) num_sites + 1;
+	char *rows = malloc((size_t) num_samples * rowLength);
+	char *block = malloc((size_t) SITE_BLOCK * num_samples);
+	int32_t *wide = NULL;  /* the genotypes as ints, if one is not a digit */
+	int notDigit = 0;
+	if (rows == NULL || block == NULL) {
+		fprintf(stderr, "Error: Failed to allocate genotype matrix\n");
+		free(rows);
+		free(block);
+		return -1;
+	}
+	for (tsk_size_t first = 0; first < num_sites && !notDigit; first += SITE_BLOCK) {
+		tsk_size_t width = num_sites - first < SITE_BLOCK ? num_sites - first : SITE_BLOCK;
+		for (tsk_size_t j = 0; j < width && !notDigit; j++) {
+			int ret = tsk_variant_decode(variant, (tsk_id_t) (first + j), 0);
+			if (ret != 0) {
+				fprintf(stderr, "Error: Failed to decode variant at site %d: %s\n",
+					(int) (first + j), tsk_strerror(ret));
+				free(rows);
+				free(block);
+				return -1;
+			}
+			char *line = block + j * num_samples;
+			for (tsk_size_t i = 0; i < num_samples; i++) {
+				int32_t g = variant->genotypes[i];
+				if (g < 0 || g > 9) {
+					notDigit = 1;
+					break;
+				}
+				line[i] = (char) ('0' + g);
+			}
+		}
+		if (notDigit) break;
+		for (tsk_size_t i = 0; i < num_samples; i++) {
+			char *dest = rows + i * rowLength + first;
+			for (tsk_size_t j = 0; j < width; j++)
+				dest[j] = block[j * num_samples + i];
+		}
+	}
+	free(block);
+	if (notDigit) {
+		/* Decode again, keeping every genotype as an int. */
+		wide = malloc((size_t) num_samples * num_sites * sizeof(int32_t));
+		if (wide == NULL) {
+			fprintf(stderr, "Error: Failed to allocate genotype matrix\n");
+			free(rows);
+			return -1;
+		}
+		for (tsk_id_t site_id = 0; site_id < (tsk_id_t) num_sites; site_id++) {
+			int ret = tsk_variant_decode(variant, site_id, 0);
+			if (ret != 0) {
+				fprintf(stderr, "Error: Failed to decode variant at site %d: %s\n",
+					site_id, tsk_strerror(ret));
+				free(rows);
+				free(wide);
+				return -1;
+			}
+			for (tsk_size_t i = 0; i < num_samples; i++)
+				wide[i * num_sites + site_id] = variant->genotypes[i];
+		}
+	}
+	for (tsk_size_t i = 0; i < num_samples; i++) {
+		if (wide == NULL) {
+			rows[i * rowLength + num_sites] = '\n';
+			fwrite(rows + i * rowLength, 1, rowLength, stdout);
+		} else {
+			for (tsk_size_t j = 0; j < num_sites; j++)
+				printf("%d", wide[i * num_sites + j]);
+			printf("\n");
+		}
+	}
+	free(rows);
+	free(wide);
+	return 0;
+}
+
 void makeGametesMS(int argc, const char *argv[]) {
 	if (tsk_tables == NULL) {
 		fprintf(stderr, "Error: No tskit tables available for output generation\n");
@@ -3480,64 +3571,11 @@ void makeGametesMS(int argc, const char *argv[]) {
 			tsk_treeseq_free(&ts);
 			return;
 		}
-		
-		// Create a matrix to store all genotypes (samples x sites)
-		int32_t **genotype_matrix = malloc(num_samples * sizeof(int32_t*));
-		if (genotype_matrix == NULL) {
-			fprintf(stderr, "Error: Failed to allocate genotype matrix\n");
+		if (printGenotypeRows(&variant, num_samples, num_sites) != 0) {
 			tsk_variant_free(&variant);
 			tsk_treeseq_free(&ts);
 			return;
 		}
-		for (tsk_size_t i = 0; i < num_samples; i++) {
-			genotype_matrix[i] = malloc(num_sites * sizeof(int32_t));
-			if (genotype_matrix[i] == NULL) {
-				fprintf(stderr, "Error: Failed to allocate genotype row\n");
-				// Cleanup already allocated rows
-				for (tsk_size_t j = 0; j < i; j++) {
-					free(genotype_matrix[j]);
-				}
-				free(genotype_matrix);
-				tsk_variant_free(&variant);
-				tsk_treeseq_free(&ts);
-				return;
-			}
-		}
-		
-		// Decode genotypes for each site
-		for (tsk_id_t site_id = 0; site_id < (tsk_id_t)num_sites; site_id++) {
-			ret = tsk_variant_decode(&variant, site_id, 0);
-			if (ret != 0) {
-				fprintf(stderr, "Error: Failed to decode variant at site %d: %s\n", site_id, tsk_strerror(ret));
-				// Cleanup
-				for (tsk_size_t i = 0; i < num_samples; i++) {
-					free(genotype_matrix[i]);
-				}
-				free(genotype_matrix);
-				tsk_variant_free(&variant);
-				tsk_treeseq_free(&ts);
-				return;
-			}
-			
-			// Copy genotypes for this site
-			for (tsk_size_t sample_idx = 0; sample_idx < num_samples; sample_idx++) {
-				genotype_matrix[sample_idx][site_id] = variant.genotypes[sample_idx];
-			}
-		}
-		
-		// Print genotypes in sample order
-		for (tsk_size_t sample_idx = 0; sample_idx < num_samples; sample_idx++) {
-			for (tsk_size_t site_idx = 0; site_idx < num_sites; site_idx++) {
-				printf("%d", genotype_matrix[sample_idx][site_idx]);
-			}
-			printf("\n");
-		}
-		
-		// Cleanup
-		for (tsk_size_t i = 0; i < num_samples; i++) {
-			free(genotype_matrix[i]);
-		}
-		free(genotype_matrix);
 		tsk_variant_free(&variant);
 	} else {
 		printf("\n");
