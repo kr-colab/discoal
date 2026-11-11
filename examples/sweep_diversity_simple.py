@@ -33,7 +33,7 @@ for rep in range(n_replicates):
     # Run discoal
     tree_file = f"temp_sweep_{rep}.trees"
     cmd = [
-        '../discoal', str(n_samples), '1', str(sequence_length),
+        '../build/discoal', str(n_samples), '1', str(sequence_length),
         '-t', str(theta), '-r', str(rho),
         '-ws', str(sweep_time), '-a', str(alpha), '-x', str(sweep_position),
         '-d', str(12345 + rep), str(67890 + rep),
@@ -64,7 +64,10 @@ mean_diversity = np.mean(all_diversities, axis=0)
 window_positions = np.arange(window_size/2, sequence_length, window_size) / 1000  # kb
 
 # Expected diversity
-expected_diversity = theta / (theta + 1) 
+# Branch diversity per site is the mean length of the path between two
+# samples, twice the time to their common ancestor: in discoal's time unit
+# of 2N generations, 2 without a sweep.
+expected_diversity = 2.0
 
 # Plot
 plt.figure(figsize=(10, 6))

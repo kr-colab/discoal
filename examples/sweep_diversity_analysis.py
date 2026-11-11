@@ -7,8 +7,6 @@ This script demonstrates how to:
 2. Output tree sequences in tskit format
 3. Calculate windowed nucleotide diversity across the genome
 4. Plot the average diversity pattern showing the sweep's effect
-
-Author: Generated for discoal examples
 """
 
 import subprocess
@@ -69,7 +67,7 @@ def main():
     parser.add_argument('--length', type=int, default=5000000, help='Sequence length in bp')
     parser.add_argument('--window', type=int, default=5000, help='Window size for diversity calculation')
     parser.add_argument('--cores', type=int, default=4, help='Number of parallel cores to use')
-    parser.add_argument('--discoal', type=str, default='../discoal', help='Path to discoal executable')
+    parser.add_argument('--discoal', type=str, default='../build/discoal', help='Path to discoal executable')
     args = parser.parse_args()
     
     # Simulation parameters
@@ -131,8 +129,11 @@ def main():
     std_diversity = np.std(all_diversities, axis=0)
     sem_diversity = std_diversity / np.sqrt(len(successful_results))
     
-    # Expected diversity without sweep
-    expected_diversity = params['theta'] / (1 + params['theta'])
+    # Expected diversity without a sweep: branch diversity per site is the
+    # mean length of the path between two samples, twice the time to their
+    # common ancestor. In discoal's time unit of 2N generations that time is
+    # 1 in a neutral population of constant size, so the expectation is 2.
+    expected_diversity = 2.0
     
     # Create plot
     plt.figure(figsize=(12, 6))
@@ -162,8 +163,9 @@ def main():
     plt.grid(True, alpha=0.3)
     plt.legend(loc='upper right')
     
-    # Set y-axis limits
-    plt.ylim(0, expected_diversity * 1.2)
+    # The y-axis holds the expected value and the whole confidence band.
+    upper = np.max(mean_diversity + 1.96 * sem_diversity)
+    plt.ylim(0, 1.05 * max(expected_diversity, upper))
     
     # Save plot
     output_file = 'sweep_diversity_pattern.png'
