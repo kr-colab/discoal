@@ -4,6 +4,7 @@
 #ifndef __DISCOAL_GLOBALS__
 #define __DISCOAL_GLOBALS__
 
+#include "fenwick.h"
 #include <stdint.h>
 #include "ancestrySegment.h"
 #include "activeSegment.h"
@@ -127,6 +128,11 @@ typedef struct {
     rootedNode **nodes;      // Array of node pointers
     int count;              // Number of active nodes in this population
     int capacity;           // Current array capacity
+    /* Recombination weight of each lineage, at the lineage's position in
+     * nodes[]: the number of breakpoint positions in its span of material
+     * without an MRCA (lineageWeight()). Recombination and gene conversion
+     * draw a lineage, and a breakpoint in its span, from it. */
+    Fenwick weights;
 } PopulationNodeList;
 
 
