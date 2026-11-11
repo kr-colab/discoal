@@ -53,7 +53,7 @@ AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
         AncestrySegment *rightTree, tsk_id_t (*newParentNode)(void *ctx),
         void (*addEdge)(tsk_id_t parent, tsk_id_t child, double left, double right),
         void *ctx, int fullCount, void (*onFixed)(int start, int end),
-        SegmentSpan *span);
+        const SegmentSpan *lSpan, const SegmentSpan *rSpan, SegmentSpan *span);
 void splitInPlace(AncestrySegment *root, int breakpoint, int fullCount,
                   const SegmentSpan *whole,
                   AncestrySegment **left, AncestrySegment **right,
