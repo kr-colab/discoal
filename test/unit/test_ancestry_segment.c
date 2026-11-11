@@ -348,6 +348,26 @@ static AncestrySegment* randomList(void) {
     return head;
 }
 
+/* The list without its pieces whose sites have found their MRCA
+ * (count == fullCount), which the merge does not keep. A dropped piece
+ * leaves a gap, so no neighbours can be joined across it. */
+static AncestrySegment* withoutFixed(AncestrySegment *list, int fullCount) {
+    AncestrySegment *head = NULL, *tail = NULL;
+    while (list) {
+        AncestrySegment *next = list->next;
+        if (list->count == fullCount) {
+            list->next = NULL;
+            freeSegmentTree(list);
+        } else {
+            list->next = NULL;
+            if (tail) tail->next = list; else head = list;
+            tail = list;
+        }
+        list = next;
+    }
+    return head;
+}
+
 static SegmentSpan spanOf(AncestrySegment *list, int fullCount) {
     SegmentSpan span = {0, 1000, 0};
     for (; list; list = list->next)
@@ -366,8 +386,8 @@ void test_merge_matches_reference(void) {
 
         SegmentSpan wantSpan = {0, 1000, 0}, gotSpan = {0, 1000, 0};
         eventCount = 0;
-        AncestrySegment *want = referenceMerge(l1, r1, logParent, logEdge,
-                                               fullCount, logFixed, &wantSpan);
+        AncestrySegment *want = withoutFixed(referenceMerge(l1, r1, logParent,
+            logEdge, fullCount, logFixed, &wantSpan), fullCount);
         int wantLog[128][4], wantCount = eventCount;
         memcpy(wantLog, eventLog, sizeof wantLog);
 
