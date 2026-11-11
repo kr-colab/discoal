@@ -52,7 +52,7 @@ void test_getActiveSiteCount(void) {
     TEST_ASSERT_EQUAL(100, getActiveSiteCount(&testActiveMaterial));
     
     // Test with empty
-    ActiveMaterial empty = {NULL, NULL, 0};
+    ActiveMaterial empty = {.segments = NULL, .totalActive = 0};
     TEST_ASSERT_EQUAL(0, getActiveSiteCount(&empty));
 }
 

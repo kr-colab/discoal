@@ -65,11 +65,10 @@ typedef struct rootedNode
 	// Node state tracking for safe memory management
 	unsigned char parentsRecorded;  // Bit flags: left parent (bit 0), right parent (bit 1)
 	unsigned char isFullyRecorded;  // 1 when all genealogical info is in tskit
-	unsigned char inActiveSet;      // 1 if still in nodes[]
 	
 	// Population list tracking for O(1) node selection
 	int popListIndex;        // Index in population's node array (-1 if not in list)
-	int nodesIndex;          // Slot in nodes[] (-1 if not in it)
+	int nodesIndex;          // Slot in nodes[]; -1 once it leaves the active set
 }
 rootedNode;
 

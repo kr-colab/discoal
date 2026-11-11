@@ -168,30 +168,6 @@ void test_mergeAncestryTrees_non_overlapping(void) {
     freeSegmentTree(tree2);
 }
 
-// Test splitting operations
-void test_splitLeft_basic(void) {
-    testSegment = newSegment(10, 50, TSK_NULL, NULL, NULL);
-    
-    AncestrySegment* leftTree = splitLeft(testSegment, 30);
-    
-    TEST_ASSERT_NOT_NULL(leftTree);
-    TEST_ASSERT_EQUAL(10, leftTree->start);
-    TEST_ASSERT_EQUAL(30, leftTree->end);  // Half-open interval [10, 30)
-    
-    freeSegmentTree(leftTree);
-}
-
-void test_splitRight_basic(void) {
-    testSegment = newSegment(10, 50, TSK_NULL, NULL, NULL);
-    
-    AncestrySegment* rightTree = splitRight(testSegment, 30);
-    
-    TEST_ASSERT_NOT_NULL(rightTree);
-    TEST_ASSERT_EQUAL(30, rightTree->start);  // Should start at breakpoint
-    TEST_ASSERT_EQUAL(50, rightTree->end);
-    
-    freeSegmentTree(rightTree);
-}
 
 /* A list [0,10) [20,30) [40,50) with counts 1, 2, 3 and tskit nodes 5, 6, 7. */
 static AncestrySegment* threeSegments(void) {
@@ -203,7 +179,24 @@ static AncestrySegment* threeSegments(void) {
     return a;
 }
 
-/* splitInPlace must give the same halves as splitLeft and splitRight. */
+/* The pieces of a list inside [lo, hi), as new segments: the halves that
+ * a split at a breakpoint must give. */
+static AncestrySegment* copyPart(AncestrySegment *list, int lo, int hi) {
+    AncestrySegment *head = NULL, *tail = NULL;
+    for (AncestrySegment *s = list; s; s = s->next) {
+        int start = s->start > lo ? s->start : lo;
+        int end = s->end < hi ? s->end : hi;
+        if (start >= end) continue;
+        AncestrySegment *c = newSegment(start, end, s->tskit_node_id, NULL, NULL);
+        c->count = s->count;
+        if (tail) tail->next = c; else head = c;
+        tail = c;
+    }
+    return head;
+}
+
+/* splitInPlace must give the pieces of the list left and right of the
+ * breakpoint. */
 static void assertSameList(AncestrySegment *expected, AncestrySegment *actual) {
     while (expected && actual) {
         TEST_ASSERT_EQUAL(expected->start, actual->start);
@@ -230,17 +223,20 @@ static void assertSpan(AncestrySegment *half, SegmentSpan span) {
 }
 
 void test_splitInPlace_matches_copying_split(void) {
-    /* Inside a segment, at a segment's start, in a gap, at a segment's end. */
-    int breakpoints[] = {25, 20, 35, 30, 1, 49};
-    for (int k = 0; k < 6; k++) {
+    /* Inside a segment, at a segment's start, in a gap, at a segment's end,
+     * near the ends, and before or after all the material. */
+    int breakpoints[] = {25, 20, 35, 30, 1, 49, 0, 50};
+    for (int k = 0; k < 8; k++) {
         AncestrySegment *ref = threeSegments();
-        AncestrySegment *wantLeft = splitLeft(ref, breakpoints[k]);
-        AncestrySegment *wantRight = splitRight(ref, breakpoints[k]);
+        AncestrySegment *wantLeft = copyPart(ref, 0, breakpoints[k]);
+        AncestrySegment *wantRight = copyPart(ref, breakpoints[k], 100);
         AncestrySegment *list = threeSegments();
         AncestrySegment *left = NULL, *right = NULL;
         SegmentSpan lSpan = {0, 100, 0}, rSpan = {0, 100, 0};
-        TEST_ASSERT_EQUAL(1, splitInPlace(list, breakpoints[k], 3, &left, &right,
-                                          &lSpan, &rSpan));
+        SegmentSpan whole = {0, 100, 0};
+        for (AncestrySegment *s = list; s; s = s->next)
+            spanAdd(&whole, s->start, s->end, s->count, 3);
+        splitInPlace(list, breakpoints[k], 3, &whole, &left, &right, &lSpan, &rSpan);
         assertSameList(wantLeft, left);
         assertSameList(wantRight, right);
         assertSpan(left, lSpan);
@@ -253,38 +249,6 @@ void test_splitInPlace_matches_copying_split(void) {
     }
 }
 
-void test_splitInPlace_refuses_a_shared_list(void) {
-    AncestrySegment *list = threeSegments();
-    retainSegment(list->next);  /* another list shares the middle segment */
-    AncestrySegment *left = NULL, *right = NULL;
-    SegmentSpan lSpan = {0, 100, 0}, rSpan = {0, 100, 0};
-    TEST_ASSERT_EQUAL(0, splitInPlace(list, 25, 3, &left, &right, &lSpan, &rSpan));
-    TEST_ASSERT_NULL(left);
-    TEST_ASSERT_NULL(right);
-    TEST_ASSERT_EQUAL(30, list->next->end);  /* unchanged */
-    TEST_ASSERT_NOT_NULL(list->next->next);
-    list->next->refCount--;
-    freeSegmentTree(list);
-}
-
-// Test edge cases for splitting
-void test_split_edge_cases(void) {
-    testSegment = newSegment(10, 50, TSK_NULL, NULL, NULL);
-    
-    // Split at boundaries
-    AncestrySegment* leftEdge = splitLeft(testSegment, 10);
-    TEST_ASSERT_NULL(leftEdge);  // Nothing to the left
-    
-    AncestrySegment* rightEdge = splitRight(testSegment, 51);
-    TEST_ASSERT_NULL(rightEdge);  // Nothing to the right
-    
-    // Split outside range
-    AncestrySegment* leftOut = splitLeft(testSegment, 5);
-    TEST_ASSERT_NULL(leftOut);
-    
-    AncestrySegment* rightOut = splitRight(testSegment, 60);
-    TEST_ASSERT_NULL(rightOut);  // Nothing to the right of 60 when segment is [10,50)
-}
 
 /* Free every segment and reset the pool after it has expanded: the free
  * list must hold every segment of the pool, not only those free when it
@@ -335,11 +299,7 @@ int main(void) {
     RUN_TEST(test_copySegmentTree_creates_independent_copy);
     RUN_TEST(test_null_safety);
     RUN_TEST(test_mergeAncestryTrees_non_overlapping);
-    RUN_TEST(test_splitLeft_basic);
-    RUN_TEST(test_splitRight_basic);
-    RUN_TEST(test_split_edge_cases);
     RUN_TEST(test_splitInPlace_matches_copying_split);
-    RUN_TEST(test_splitInPlace_refuses_a_shared_list);
     RUN_TEST(test_segment_pool_free_list_holds_every_segment);
     
     return UNITY_END();

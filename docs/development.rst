@@ -142,7 +142,6 @@ The unit test suite includes 49 tests across 7 test files:
    * Site activity queries
    * Fixed region removal
    * Segment coalescing
-   * AVL tree integration
    * Verification functions
 
 7. **Trajectory Handling** (``test_trajectory.c`` - 12 tests):
@@ -188,13 +187,24 @@ To debug a failing test:
 
 .. code-block:: bash
 
-   # Build with debug symbols
-   gcc -g -O0 -I. -I./test/unit -o test_name test/unit/test_name.c test/unit/unity.c \
-       discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c \
-       ancestrySegmentAVL.c ancestryVerify.c activeSegment.c -lm -fcommon
+   # Build one test with debug symbols and no optimization
+   make test_ancestry_segment TEST_CFLAGS='-g -O0 $(INCLUDE)'
    
    # Run with gdb
-   gdb ./test_name
+   gdb ./build/test_ancestry_segment
+
+**Profiling**
+
+``make discoal_profile`` builds ``build/discoal_profile``: the release
+build (the same optimization flags) with debug symbols and frame pointers,
+so that profilers see the code that users run and get full call stacks:
+
+.. code-block:: bash
+
+   make discoal_profile
+   perf record --call-graph fp ./build/discoal_profile 20 1 10000 -t 10 -r 10000
+   perf report
+   valgrind --tool=callgrind ./build/discoal_profile 20 1 10000 -t 10 -r 1000
 
 **Unity Test Framework**
 
@@ -434,7 +444,9 @@ Recent optimizations have achieved significant memory reductions:
 * Dynamic allocation for all major arrays
 * Segment trees for ancestry tracking (80% reduction)
 * Reference counting for segment sharing (10-16% additional reduction)
-* AVL tree indexing for high-recombination scenarios
+* In minimal tree sequence mode, recombination splits a lineage's segment
+  list in place, and a coalescence builds the parent's list in one walk
+  that also gives its span
 * Memory-mapped files for sweep trajectories
 
 When developing, maintain these optimizations and ensure new features don't regress memory usage.

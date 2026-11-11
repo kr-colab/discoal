@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -302,8 +303,8 @@ AncestrySegment* mergeAncestryTrees(AncestrySegment *leftTree, AncestrySegment *
  * An overlap whose count reaches fullCount (all samples) has found its
  * MRCA here, and only here: onFixed(start, end) reports each such run of
  * sites once, so the caller can update the sites still active without
- * walking the parent's other segments. If span is not NULL, the span of
- * the result is added to it, so the caller need not walk the result. */
+ * walking the parent's other segments. The span of the result is added to
+ * *span, so the caller need not walk the result. */
 AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
         AncestrySegment *rightTree, tsk_id_t (*newParentNode)(void *ctx),
         void (*addEdge)(tsk_id_t parent, tsk_id_t child, double left, double right),
@@ -336,7 +337,7 @@ AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
             if (parent == TSK_NULL) parent = newParentNode(ctx);
             addSegmentToResult(&result, &tail, pos, nextPos,
                                lc->count + rc->count, parent);
-            if (span) spanAdd(span, pos, nextPos, lc->count + rc->count, fullCount);
+            spanAdd(span, pos, nextPos, lc->count + rc->count, fullCount);
             addEdge(parent, lc->tskit_node_id, pos, nextPos);
             addEdge(parent, rc->tskit_node_id, pos, nextPos);
             if (lc->count + rc->count == fullCount) {
@@ -352,7 +353,7 @@ AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
             AncestrySegment *c = lc ? lc : rc;
             addSegmentToResult(&result, &tail, pos, nextPos, c->count,
                                c->tskit_node_id);
-            if (span) spanAdd(span, pos, nextPos, c->count, fullCount);
+            spanAdd(span, pos, nextPos, c->count, fullCount);
         }
 
         pos = nextPos;
@@ -365,40 +366,56 @@ AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
     return result;
 }
 
-// Split ancestry tree at breakpoint (for recombination) - left side
 /* Split a segment list at `breakpoint` in place, as msprime does: the
  * segments left of it stay in *left, the rest go to *right, and a segment
  * that spans it is cut, with one new segment for its right part. This
  * moves the list into the two halves, so the caller must drop its own
- * pointer to it. Only for a list that nothing else shares (every segment
- * has a reference count of 1 and no child segments, as in minimal tree
- * sequence mode); for any other list it changes nothing and returns 0,
- * and the caller copies the halves with splitLeft() and splitRight().
- * The spans of the two halves are added to *leftSpan and *rightSpan
- * (valid only when it returns 1). */
-int splitInPlace(AncestrySegment *root, int breakpoint, int fullCount,
-                 AncestrySegment **left, AncestrySegment **right,
-                 SegmentSpan *leftSpan, SegmentSpan *rightSpan) {
-    AncestrySegment *lastLeft = NULL;   /* last segment that starts left of it */
-    for (AncestrySegment *s = root; s; s = s->next) {
-        if (s->refCount != 1 || s->left || s->right) return 0;
-        if (s->start < breakpoint) lastLeft = s;
-        if (s->end <= breakpoint) {
-            spanAdd(leftSpan, s->start, s->end, s->count, fullCount);
-        } else if (s->start >= breakpoint) {
-            spanAdd(rightSpan, s->start, s->end, s->count, fullCount);
+ * pointer to it. Only for a list that nothing else shares: every segment
+ * has a reference count of 1 and no child segments. Minimal tree sequence
+ * mode makes only such lists (the samples' segments, the merge's new
+ * segments, and this split); the full ARG shares segments and copies
+ * instead (splitLeftWithParent()).
+ * The halves are the same as copying each side through
+ * addSegmentToResult() only if no two adjacent segments have the same
+ * count and tskit node, as that function joins them; every list in
+ * minimal mode is built through it, so none has such a pair.
+ * It walks only the segments left of the breakpoint. `whole` is the span
+ * of the list; the spans of the two halves are added to *leftSpan and
+ * *rightSpan, the right one from `whole` less the left one. */
+void splitInPlace(AncestrySegment *root, int breakpoint, int fullCount,
+                  const SegmentSpan *whole,
+                  AncestrySegment **left, AncestrySegment **right,
+                  SegmentSpan *leftSpan, SegmentSpan *rightSpan) {
+    AncestrySegment *lastLeft = NULL;
+    AncestrySegment *s = root;
+    for (; s && s->start < breakpoint; s = s->next) {
+        assert(s->refCount == 1 && !s->left && !s->right);
+        lastLeft = s;
+        spanAdd(leftSpan, s->start, s->end < breakpoint ? s->end : breakpoint,
+                s->count, fullCount);
+    }
+    /* The right half: its sites are the lineage's less the left half's,
+     * its last site is the lineage's, and its first is in the first
+     * counting piece at or right of the breakpoint. */
+    int rightSites = whole->nancSites - leftSpan->nancSites;
+    if (rightSites > 0) {
+        rightSpan->nancSites = rightSites;
+        rightSpan->rLim = whole->rLim;
+        if (lastLeft && lastLeft->end > breakpoint && lastLeft->count > 0
+            && lastLeft->count < fullCount) {
+            rightSpan->lLim = breakpoint;
         } else {
-            spanAdd(leftSpan, s->start, breakpoint, s->count, fullCount);
-            spanAdd(rightSpan, breakpoint, s->end, s->count, fullCount);
+            for (AncestrySegment *t = s; t; t = t->next)
+                if (t->count > 0 && t->count < fullCount) { rightSpan->lLim = t->start; break; }
         }
     }
-    if (lastLeft == NULL) {             /* everything is right of it */
+    if (lastLeft == NULL) {
         *left = NULL;
         *right = root;
-        return 1;
+        return;
     }
     AncestrySegment *rightHead;
-    if (lastLeft->end > breakpoint) {   /* cut the spanning segment */
+    if (lastLeft->end > breakpoint) {
         rightHead = newSegment(breakpoint, lastLeft->end,
                                lastLeft->tskit_node_id, NULL, NULL);
         rightHead->count = lastLeft->count;
@@ -410,89 +427,6 @@ int splitInPlace(AncestrySegment *root, int breakpoint, int fullCount,
     lastLeft->next = NULL;
     *left = root;
     *right = rightHead;
-    return 1;
-}
-
-AncestrySegment* splitLeft(AncestrySegment *root, int breakpoint) {
-    if (!root || breakpoint <= 0) return NULL;
-    
-    // Special case: if breakpoint is beyond all segments, share the entire tree
-    AncestrySegment *last = root;
-    while (last->next) last = last->next;
-    if (breakpoint >= last->end) {
-        // Can share the entire tree
-        if (!root->next) {
-            return retainSegment(root);
-        } else {
-            return copySegmentTree(root);
-        }
-    }
-    
-    // Check if we can share a prefix of the tree
-    if (!root->next && root->start == 0 && breakpoint >= root->end) {
-        return retainSegment(root);
-    }
-    
-    AncestrySegment *result = NULL;
-    AncestrySegment *tail = NULL;
-    AncestrySegment *current = root;
-    
-    while (current && current->start < breakpoint) {
-        if (current->end <= breakpoint) {
-            // Entire segment is to the left
-            addSegmentToResult(&result, &tail, current->start, current->end, current->count, current->tskit_node_id);
-        } else {
-            // Segment spans the breakpoint
-            addSegmentToResult(&result, &tail, current->start, breakpoint, current->count, current->tskit_node_id);
-        }
-        current = current->next;
-    }
-    
-    return result;
-}
-
-// Split ancestry tree at breakpoint (for recombination) - right side
-AncestrySegment* splitRight(AncestrySegment *root, int breakpoint) {
-    if (!root) return NULL;
-    
-    // Special case: if breakpoint is at or before the start, share the entire tree
-    if (breakpoint <= root->start) {
-        if (!root->next) {
-            return retainSegment(root);
-        } else {
-            return copySegmentTree(root);
-        }
-    }
-    
-    // Check if we can share a suffix of the tree
-    AncestrySegment *firstRight = root;
-    while (firstRight && firstRight->end <= breakpoint) {
-        firstRight = firstRight->next;
-    }
-    
-    if (firstRight && !firstRight->next && firstRight->start >= breakpoint) {
-        // Single segment entirely to the right
-        return retainSegment(firstRight);
-    }
-    
-    AncestrySegment *result = NULL;
-    AncestrySegment *tail = NULL;
-    AncestrySegment *current = root;
-    
-    while (current) {
-        if (current->end > breakpoint) {
-            if (current->start >= breakpoint) {
-                // Entire segment is to the right
-                addSegmentToResult(&result, &tail, current->start, current->end, current->count, current->tskit_node_id);
-            } else {
-                // Segment spans the breakpoint
-                addSegmentToResult(&result, &tail, breakpoint, current->end, current->count, current->tskit_node_id);
-            }
-        }
-        current = current->next;
-    }
-    
-    return result;
 }
 
 // Full ARG mode split - left side with parent node ID

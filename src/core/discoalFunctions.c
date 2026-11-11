@@ -71,7 +71,7 @@ static int64_t sweepClassWeight(int popn, int sp);
 /* Slots of nodes[] in use: the active lineages and the empty slots that
  * removeNode() leaves until compactNodes(). */
 static int nodesUsed = 0;
-void compactNodes(void);
+static void compactNodes(void);
 
 // Population list management functions for O(1) node selection
 
@@ -108,6 +108,14 @@ static int64_t lineageWeight(const rootedNode *node) {
 	return (int64_t) node->rLim - node->lLim;
 }
 
+/* Set a lineage's recombination weight from its span, if it is in a
+ * population list. */
+static void setLineageWeight(const rootedNode *node) {
+	if (node->popListIndex >= 0 && node->population >= 0 && node->population < MAXPOPS)
+		fenwickSet(&popLists[node->population].weights, node->popListIndex,
+			lineageWeight(node));
+}
+
 void addNodeToPopList(rootedNode *node, int popn) {
 	if (popn < 0 || popn >= MAXPOPS) return;  // Handle negative/invalid populations
 	
@@ -127,7 +135,7 @@ void addNodeToPopList(rootedNode *node, int popn) {
 	
 	node->popListIndex = list->count;
 	list->nodes[list->count++] = node;
-	fenwickSet(&list->weights, node->popListIndex, lineageWeight(node));
+	setLineageWeight(node);
 }
 
 void removeNodeFromPopList(rootedNode *node) {
@@ -304,7 +312,6 @@ void initialize(){
 
 			if(p>0)nodes[count]->sweepPopn = 0;
 			nodes[count]->id=leafID++;
-			nodes[count]->inActiveSet = 1;  // Sample nodes start in active set
 
 			if (ancientEvent < 0) {
 				addNodeToPopList(nodes[count], p);
@@ -375,11 +382,15 @@ rootedNode *newRootedNode(double cTime, int popn) {
 	 * no-sweep run, plus pre-sweep internal nodes). */
 	temp->sweepPopn = -1;
 	temp->nodesIndex = -1;
+	/* No material yet: an empty span, as emptySpan(). Events that give the
+	 * node material set its span (setLineageSpan()). */
+	temp->nancSites = 0;
+	temp->lLim = nSites;
+	temp->rLim = 0;
 	
 	// Initialize node state tracking
 	temp->parentsRecorded = 0;
 	temp->isFullyRecorded = 0;
-	temp->inActiveSet = 0;  // Will be set to 1 for sample nodes
 	
 	// Initialize ancestry segment tree to NULL (will be set during initialization)
 	temp->ancestryRoot = NULL;
@@ -415,7 +426,7 @@ void markParentRecorded(rootedNode *child, rootedNode *parent) {
 	// 1. All expected parents are recorded
 	// 2. Node is not in active set
 	// 3. All segments on the node are recorded
-	if (recordedParents == expectedParents && !child->inActiveSet) {
+	if (recordedParents == expectedParents && child->nodesIndex < 0) {
 		// Check if all segments are recorded
 		if (areAllSegmentsRecorded(child->ancestryRoot)) {
 			child->isFullyRecorded = 1;
@@ -423,29 +434,6 @@ void markParentRecorded(rootedNode *child, rootedNode *parent) {
 			addToRemovedList(child);
 		}
 	}
-}
-
-// Try to free a node if it's safe to do so
-void tryFreeNode(rootedNode *node) {
-	if (node == NULL || !node->isFullyRecorded) return;
-	
-	// Critical safety check: ensure not in active set
-	if (node->inActiveSet) return;
-	
-	// Additional safety check: ensure not in nodes array
-	if (node->nodesIndex >= 0) return;  // Still active!
-	
-	// Free ancestry segments using reference counting
-	if (node->ancestryRoot) {
-		freeSegmentTree(node->ancestryRoot);
-		node->ancestryRoot = NULL;
-	}
-	
-	// Free the node
-	free(node);
-	
-	// Update statistics
-	freedNodeCount++;
 }
 
 // Global list to track nodes that have been removed from active set but not yet freed
@@ -462,9 +450,6 @@ void addToRemovedList(rootedNode *node) {
 	for (int i = 0; i < removedNodeCount; i++) {
 		if (removedNodes[i] == node) return;  // Already tracked
 	}
-	
-	// Mark as not in active set
-	node->inActiveSet = 0;
 	
 	// Add to removed list
 	removedNodes[removedNodeCount++] = node;
@@ -484,12 +469,7 @@ int sweepAndFreeRemovedNodes() {
 		// Only process nodes that are marked as fully recorded
 		// This marking happens in markParentRecorded when all edges are recorded
 		if (node->isFullyRecorded) {
-			// Extra safety check: ensure it's really not in the active array
-			int inActiveArray = node->nodesIndex >= 0;
-			if (inActiveArray)
-				fprintf(stderr, "WARNING: Fully recorded node still in active array!\n");
-			
-			if (!inActiveArray) {
+			if (node->nodesIndex < 0) {
 				// Safe to free - node is fully recorded and not active
 				if (node->ancestryRoot) {
 					freeSegmentTree(node->ancestryRoot);
@@ -751,7 +731,6 @@ static void recordCoalescentEdges(rootedNode *parent, rootedNode *lChild, rooted
         return;
     }
     
-    extern int minimalTreeSeq;
     
     // Record edges for both children
     recordEdgesForChild(parent_tsk_id, lChild, lchild_tsk_id, minimalTreeSeq);
@@ -783,7 +762,6 @@ static void recordCoalescentEdges(rootedNode *parent, rootedNode *lChild, rooted
  */
 static void recordRecombinationEdges(rootedNode *child, rootedNode *lParent, rootedNode *rParent,
                                      tsk_id_t child_tsk_id, tsk_id_t lparent_tsk_id, tsk_id_t rparent_tsk_id) {
-    extern int minimalTreeSeq;
     if (minimalTreeSeq) {
         // In minimal mode, don't create tskit nodes for recombination parents
         // They will remain with tskit_node_id = TSK_NULL
@@ -848,9 +826,7 @@ static void setLineageSpan(rootedNode *node, const SegmentSpan *span) {
 	node->nancSites = span->nancSites;
 	node->lLim = span->lLim;
 	node->rLim = span->rLim;
-	if (node->popListIndex >= 0 && node->population >= 0 && node->population < MAXPOPS)
-		fenwickSet(&popLists[node->population].weights, node->popListIndex,
-			lineageWeight(node));
+	setLineageWeight(node);
 }
 
 static SegmentSpan emptySpan(void) {
@@ -910,10 +886,6 @@ void coalesceAtTimePopn(double cTime, int popn){
 	rChild->branchLength = cTime - rChild->time;
 	removeNode(rChild);
 	
-	//deal with ancMaterial
-	temp->nancSites = 0;
-	temp->lLim = nSites;
-	temp->rLim = 0;
 	
 	// Add the parent node to discoal's arrays and tskit BEFORE merging/recording
 	addNode(temp);
@@ -933,7 +905,6 @@ void coalesceAtTimePopn(double cTime, int popn){
 	// Update stats from tree when in tree-only mode
 	updateAncestryStatsFromTree(temp);
 	
-	extern int minimalTreeSeq;
 	
 	// Record edges using the new convenience function
 	recordCoalescentEdges(temp, lChild, rChild, parent_tsk_id, lchild_tsk_id, rchild_tsk_id);
@@ -963,10 +934,6 @@ void coalesceAtTimePopn(double cTime, int popn){
 					markParentRecorded(current, temp);
 					rootedNode *next = (current->leftChild != NULL) ? 
 					                  current->leftChild : current->rightChild;
-					// Temporarily disabled node freeing
-					// if (current != first_child) {
-					//     tryFreeNode(current);
-					// }
 					current = next;
 				}
 				// Mark the true descendants
@@ -992,10 +959,6 @@ void coalesceAtTimePopn(double cTime, int popn){
 					markParentRecorded(current, temp);
 					rootedNode *next = (current->leftChild != NULL) ? 
 					                  current->leftChild : current->rightChild;
-					// Temporarily disabled node freeing
-					// if (current != second_child) {
-					//     tryFreeNode(current);
-					// }
 					current = next;
 				}
 				// Mark the true descendants
@@ -1065,10 +1028,6 @@ void coalesceAtTimePopnTrackLeafs(double cTime, int popn){
 	rChild->branchLength = cTime - rChild->time;
 	removeNode(rChild);
 	
-	//deal with ancMaterial
-	temp->nancSites = 0;
-	temp->lLim = nSites;
-	temp->rLim = 0;
 	// Merge ancestry segment trees
 	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
 	//deal with leafs
@@ -1083,7 +1042,6 @@ void coalesceAtTimePopnTrackLeafs(double cTime, int popn){
 }*/
 
 
-// Helper function to update nancSites, lLim, rLim from ancestry tree
 /* The span of a lineage from a walk of its segment list. Splits and
  * merges in minimal mode get it during their own walk instead. */
 void updateAncestryStatsFromTree(rootedNode *node) {
@@ -1098,24 +1056,20 @@ void updateAncestryStatsFromTree(rootedNode *node) {
  * parents, and set the parents' spans. The full ARG gives the parents'
  * segments their own tskit nodes, so it copies the halves. Minimal mode
  * cuts the child's list in place, as msprime does, and the parents then
- * own its segments (the child's ancestryRoot becomes NULL); a list that
- * shares segments is copied instead. */
+ * own its segments (the child's ancestryRoot becomes NULL). */
 static void splitLineage(rootedNode *aNode, rootedNode *lParent, rootedNode *rParent, int xOver){
 	if (minimalTreeSeq) {
 		SegmentSpan lSpan = emptySpan(), rSpan = emptySpan();
-		if (splitInPlace(aNode->ancestryRoot, xOver, sampleSize,
-				&lParent->ancestryRoot, &rParent->ancestryRoot, &lSpan, &rSpan)) {
-			aNode->ancestryRoot = NULL;
-			setLineageSpan(lParent, &lSpan);
-			setLineageSpan(rParent, &rSpan);
-			return;
-		}
-		lParent->ancestryRoot = splitLeft(aNode->ancestryRoot, xOver);
-		rParent->ancestryRoot = splitRight(aNode->ancestryRoot, xOver);
-	} else {
-		lParent->ancestryRoot = splitLeftWithParent(aNode->ancestryRoot, xOver, lParent->tskit_node_id);
-		rParent->ancestryRoot = splitRightWithParent(aNode->ancestryRoot, xOver, rParent->tskit_node_id);
+		SegmentSpan whole = {aNode->nancSites, aNode->lLim, aNode->rLim};
+		splitInPlace(aNode->ancestryRoot, xOver, sampleSize, &whole,
+			&lParent->ancestryRoot, &rParent->ancestryRoot, &lSpan, &rSpan);
+		aNode->ancestryRoot = NULL;
+		setLineageSpan(lParent, &lSpan);
+		setLineageSpan(rParent, &rSpan);
+		return;
 	}
+	lParent->ancestryRoot = splitLeftWithParent(aNode->ancestryRoot, xOver, lParent->tskit_node_id);
+	rParent->ancestryRoot = splitRightWithParent(aNode->ancestryRoot, xOver, rParent->tskit_node_id);
 	updateAncestryStatsFromTree(lParent);
 	updateAncestryStatsFromTree(rParent);
 }
@@ -1237,11 +1191,6 @@ int recombineAtTimePopn(double cTime, int popn){
 		rParent->leftChild = aNode;
 		lParent->population = aNode->population;
 		rParent->population = aNode->population;
-		/* No material until the split; updateAncestryStatsFromTree()
-		 * sets these from the parents' segments. */
-		lParent->nancSites = rParent->nancSites = 0;
-		lParent->lLim = rParent->lLim = nSites;
-		lParent->rLim = rParent->rLim = 0;
 		
 		splitLineage(aNode, lParent, rParent, xOver);
 		
@@ -1267,10 +1216,6 @@ int recombineAtTimePopn(double cTime, int popn){
 		}
 		
 	//	printf("reco-> lParent: %u rParent:%u child: %u time:%f xover:%d\n",lParent,rParent,aNode,cTime,xOver);
-		
-		// Mark that the child node is no longer in active set
-		// It needs both parents to record before it can be freed
-		aNode->inActiveSet = 0;
 		
 		// Mark parent recording if using tskit
 		if (tskitOutputMode || minimalTreeSeq) {
@@ -1314,12 +1259,6 @@ void geneConversionAtTimePopn(double cTime, int popn){
 		rParent->leftChild = aNode;
 		lParent->population = aNode->population;
 		rParent->population = aNode->population;
-		lParent->nancSites=0;
-		rParent->nancSites=0;
-		lParent->lLim= nSites;
-		lParent->rLim=0;
-		rParent->lLim = nSites;
-		rParent->rLim=0;
 		
 		
 		// For gene conversion, handle the ancestry segments
@@ -1360,8 +1299,6 @@ void geneConversionAtTimePopn(double cTime, int popn){
 			return;
 		}
 		
-		// Mark that the child node is no longer in active set
-		aNode->inActiveSet = 0;
 		
 		// Mark parent recording if using tskit
 		if (tskitOutputMode || minimalTreeSeq) {
@@ -2695,12 +2632,6 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 			rParent->leftChild = aNode;
 			lParent->population = aNode->population;
 			rParent->population = aNode->population;
-			lParent->nancSites=0;
-			rParent->nancSites=0;
-			lParent->lLim= nSites;
-			lParent->rLim=0;
-			rParent->lLim = nSites;
-			rParent->rLim=0;
 			
 			//determine sweep popn affinity
 			//left side?
@@ -2739,8 +2670,6 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 				return xOver;
 			}
 			
-			// Mark that the child node is no longer in active set
-			aNode->inActiveSet = 0;
 			
 			// Mark parent recording if using tskit
 			if (tskitOutputMode || minimalTreeSeq) {
@@ -2790,12 +2719,6 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 		rParent->leftChild = aNode;
 		lParent->population = aNode->population;
 		rParent->population = aNode->population;
-		lParent->nancSites=0;
-		rParent->nancSites=0;
-		lParent->lLim= nSites;
-		lParent->rLim=0;
-		rParent->lLim = nSites;
-		rParent->rLim=0;
 		
 		
 		// For gene conversion during sweep, handle the ancestry segments
@@ -2851,8 +2774,6 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 			return;
 		}
 		
-		// Mark that the child node is no longer in active set
-		aNode->inActiveSet = 0;
 		
 		// Mark parent recording if using tskit
 		if (tskitOutputMode || minimalTreeSeq) {
@@ -2881,10 +2802,6 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	rChild->branchLength = cTime - rChild->time;
 	removeNode(rChild);
 	
-	//deal with ancMaterial
-	temp->nancSites = 0;
-	temp->lLim = nSites;
-	temp->rLim = 0;
 	
 	// Add the parent node to discoal's arrays and tskit BEFORE merging/recording
 	addNode(temp);
@@ -2907,7 +2824,6 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	tsk_id_t lchild_tsk_id = get_tskit_node_id(lChild);
 	tsk_id_t rchild_tsk_id = get_tskit_node_id(rChild);
 	
-	extern int minimalTreeSeq;
 	
 	// Record edges using the new convenience function
 	recordCoalescentEdges(temp, lChild, rChild, parent_tsk_id, lchild_tsk_id, rchild_tsk_id);
@@ -2936,10 +2852,6 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 					markParentRecorded(current, temp);
 					rootedNode *next = (current->leftChild != NULL) ? 
 					                  current->leftChild : current->rightChild;
-					// Temporarily disabled node freeing
-					// if (current != first_child) {
-					//     tryFreeNode(current);
-					// }
 					current = next;
 				}
 				// Mark the true descendants
@@ -2965,10 +2877,6 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 					markParentRecorded(current, temp);
 					rootedNode *next = (current->leftChild != NULL) ? 
 					                  current->leftChild : current->rightChild;
-					// Temporarily disabled node freeing
-					// if (current != second_child) {
-					//     tryFreeNode(current);
-					// }
 					current = next;
 				}
 				// Mark the true descendants
@@ -3345,7 +3253,6 @@ void addNode(rootedNode *aNode){
 	ensureNodesCapacity(nodesUsed + 1);
 	aNode->nodesIndex = nodesUsed;
 	nodes[nodesUsed++] = aNode;
-	aNode->inActiveSet = 1;  // Mark as being in active set
 	
 	/* The full ARG records a tskit node for every node. Minimal mode, as
 	 * msprime, records none for recombination parents, and one for a
@@ -3374,7 +3281,7 @@ void addNode(rootedNode *aNode){
  * removal shifted the later ones down. Code that walks nodes[] calls it
  * first; that order decides which lineage a random number picks, and
  * that dormant ancient samples of earlier events come first. */
-void compactNodes(void){
+static void compactNodes(void){
 	if (nodesUsed == alleleNumber) return;
 	int k = 0;
 	for (int i = 0; i < nodesUsed; i++) {
@@ -3403,9 +3310,6 @@ void removeNode(rootedNode *aNode){
 	aNode->nodesIndex = -1;
 	alleleNumber -= 1;
 	if (nodesUsed - alleleNumber > alleleNumber + 64) compactNodes();
-	
-	// Mark as no longer in active set
-	aNode->inActiveSet = 0;
 	
 	// Note: Node will be added to removed list automatically when it becomes
 	// fully recorded (in markParentRecorded), not here

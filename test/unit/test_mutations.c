@@ -43,12 +43,12 @@ void test_nodeStateTracking(void) {
     // Initialize state tracking fields
     node->parentsRecorded = 0;
     node->isFullyRecorded = 0;
-    node->inActiveSet = 1;
+    node->nodesIndex = 3;
     
     // Test state tracking
     TEST_ASSERT_EQUAL(0, node->parentsRecorded);
     TEST_ASSERT_EQUAL(0, node->isFullyRecorded);
-    TEST_ASSERT_EQUAL(1, node->inActiveSet);
+    TEST_ASSERT_EQUAL(3, node->nodesIndex);
     
     free(node);
 }
