@@ -14,8 +14,8 @@
 /* Version string for display */
 #define DISCOAL_VERSION_STRING "2.0.0"
 
-/* Optional: Add development/release status */
-#define DISCOAL_VERSION_STATUS "beta"  /* "release", "beta", "alpha", "dev" */
+/* A pre-release defines DISCOAL_VERSION_STATUS (for example "beta"), which
+ * the version string then carries ("2.0.0-beta"); a release defines none. */
 
 /* Build the full version string */
 #ifdef DISCOAL_VERSION_STATUS

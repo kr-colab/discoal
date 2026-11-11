@@ -16,6 +16,9 @@ Prerequisites:
 * make
 * Standard C libraries including math library
 
+The libraries that discoal uses (tskit, libyaml, libcyaml, demes-c) are in
+the repository, in ``extern/``; you do not install them.
+
 Download
 --------
 
@@ -23,9 +26,9 @@ The source code for discoal is available from GitHub:
 
 .. code-block:: bash
 
-   git clone https://github.com/kern-lab/discoal.git
+   git clone https://github.com/kr-colab/discoal.git
 
-Or download the latest release as a zip file from the `releases page <https://github.com/kern-lab/discoal/releases>`_.
+Or download the latest release as a zip file from the `releases page <https://github.com/kr-colab/discoal/releases>`_.
 
 Compilation
 -----------
@@ -35,9 +38,11 @@ Basic compilation is straightforward:
 .. code-block:: bash
 
    cd discoal
-   make discoal
+   make
 
-This will create the ``discoal`` executable in the current directory.
+This builds ``build/discoal`` and links it as ``./discoal``. ``make discoal``
+builds only ``build/discoal``. The build uses ``-march=native``, so the
+program runs only on processors like the one that built it.
 
 Additional build targets:
 
@@ -49,15 +54,19 @@ Additional build targets:
    # Clean build artifacts
    make clean
    
-   # Build and run tests
+   # Build and run the unit tests
    make run_tests
+
+   # Build, run the unit tests and the checks that CI runs
+   # (needs Python with msprime, tskit, numpy, scipy, demes and stdpopsim)
+   make check
 
 Compilation Options
 -------------------
 
-The standard compilation supports up to 65,535 samples. The previous limitation of 254 samples (and the need for the ``-DBIG`` flag) has been removed due to memory optimizations.
+discoal supports up to 65,535 samples.
 
-To change the maximum number of sites (default 100 million), edit ``MAXSITES`` in ``discoal.h`` and recompile.
+To change the maximum number of sites (default 100 million), edit ``MAXSITES`` in ``src/core/discoal.h`` and recompile.
 
 Testing the Installation
 ------------------------
@@ -75,6 +84,6 @@ Troubleshooting
 
 **Random number seeding**: discoal uses ``/dev/urandom`` for random number generation. This makes it suitable for cluster computing where multiple jobs launch simultaneously without worrying about seed collisions.
 
-**Memory issues**: If you encounter memory allocation errors, ensure your system has sufficient RAM. The optimized version significantly reduces memory usage compared to earlier versions.
+**Memory issues**: If you encounter memory allocation errors, ensure your system has sufficient RAM.
 
 **Compilation errors**: Ensure you have a C99-compatible compiler. On older systems, you may need to add ``-std=c99`` to the compiler flags.

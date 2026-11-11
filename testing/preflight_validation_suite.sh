@@ -257,6 +257,19 @@ run_fail_case "A_negative_time" \
     "the time must be >= 0" \
     4 2 100 -t 2 -A 1 0 -0.1
 
+# Seeds outside the range of the generator's setall() stop with a message
+# that names the option, not inside the generator.
+run_fail_case "seed1_zero" \
+    "the first seed (-d or YAML seed) (0) must be in [1, 2147483562]" \
+    4 2 100 -t 2 -d 0 5
+
+run_fail_case "seed2_above_bound" \
+    "the second seed (-d or YAML seed) (2147483399) must be in [1, 2147483398]" \
+    4 2 100 -t 2 -d 5 2147483399
+
+run_pass_case "seeds_at_bounds" \
+    4 2 100 -t 2 -d 2147483562 2147483398
+
 # A partial sweep must end above one copy of the allele, 1/(2N) with
 # N = 10^6 by default.
 run_fail_case "c_below_one_copy" \

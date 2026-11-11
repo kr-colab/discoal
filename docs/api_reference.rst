@@ -313,13 +313,16 @@ Advanced Options
 
    Time increment scalar for sweeps (default: 40)
 
-.. option:: -T
+.. option:: -ts filename
 
-   Output genealogical trees in Newick format
+   Write each replicate as a tskit tree sequence (``filename``, or
+   ``name_rep1.trees``, ... with more than one replicate) in place of the
+   ms-format haplotypes. Node times are in units of 2N0 generations.
 
-.. option:: -U time
+.. option:: -F
 
-   Only record mutations more recent than time
+   With ``-ts`` (and after it): record the full ancestral recombination
+   graph, every node and edge, not only where lineages coalesce.
 
 .. option:: -h
 
@@ -349,17 +352,11 @@ ms-compatible format::
    haplotype2
    ...
 
-Tree Output
-^^^^^^^^^^^
+Tree Sequence Output
+^^^^^^^^^^^^^^^^^^^^
 
-With ``-T`` flag::
-
-   //
-   [nsites1]tree1;
-   [nsites2]tree2;
-   ...
-
-Where trees are in Newick format and nsites indicates how many sites have that genealogy.
+With ``-ts``, stdout holds only the command line and the seeds, and each
+replicate goes to a tskit tree sequence file (see :doc:`advanced_features`).
 
 Exit Codes
 ----------

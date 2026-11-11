@@ -128,25 +128,30 @@ options that set them (``-ws``, ``-wd``, ``-wn``, ``-ls``, ``-ld``,
 ``-x``, ``-Px``, ``-uA``, ``-h`` and ancient samples work as
 with a simulated trajectory.
 
-Tree Output Mode
-----------------
+Tree Sequence Output
+--------------------
 
-Output genealogical trees in Newick format with ``-T``:
+``-ts file.trees`` writes the genealogies and mutations of each replicate
+as a tskit tree sequence, in place of the ms-format haplotypes:
 
 .. code-block:: bash
 
-   ./discoal 10 1 10000 -t 20 -r 10 -T
+   ./discoal 10 3 10000 -t 20 -r 10 -ts sim.trees
 
-Output format:
+With one replicate the file is ``sim.trees``; with more, discoal writes
+``sim_rep1.trees``, ``sim_rep2.trees``, and so on. Load them with tskit:
 
-.. code-block:: text
+.. code-block:: python
 
-   //
-   [100](0:0.5,1:0.5);
-   [50]((0:0.2,2:0.2):0.3,1:0.5);
-   ...
+   import tskit
+   ts = tskit.load("sim_rep1.trees")
+   print(ts.num_trees, ts.diversity(mode="branch"))
 
-Each line shows: ``[number_of_sites]newick_tree``
+As in msprime, discoal records only the nodes and edges where lineages
+coalesce. ``-F`` (given after ``-ts``) records the full ancestral
+recombination graph: every node and edge, also of recombination events.
+Node times are in units of 2N0 generations. tskit can write the trees in
+Newick format (``ts.trees()`` and ``tree.as_newick()``).
 
 Memory and Performance
 ----------------------
@@ -156,14 +161,16 @@ Large-scale Simulations
 
 For very large simulations:
 
-1. **Increase MAXSITES**: Edit ``discoal.h`` and recompile
-2. **Sample size limit**: The maximum sample size is now 65,535 (previously 254)
+1. **Number of sites**: at most 10^8 (``MAXSITES`` in ``src/core/discoal.h``)
+2. **Sample size**: at most 65,535
 
 Performance Tuning
 ^^^^^^^^^^^^^^^^^^
 
 * **Time discretization**: Lower ``-i`` values speed up sweeps at potential accuracy cost
-* **Memory efficiency**: Current version uses 70-99% less memory than older versions
+* **High recombination rates**: discoal records tree sequences as msprime
+  does, so memory stays at tens of megabytes and run time grows slowly
+  with rho
 * **Parallel runs**: Use different random seeds for embarrassingly parallel execution
 
 Setting Random Seeds
@@ -176,7 +183,8 @@ For reproducibility:
    # Specify both seeds
    ./discoal 20 10 10000 -t 20 -d 12345 67890
 
-Seeds must be positive integers less than 2^31-1.
+The first seed must be in [1, 2147483562] and the second in
+[1, 2147483398]; discoal stops with an error otherwise.
 
 Debugging Features
 ------------------

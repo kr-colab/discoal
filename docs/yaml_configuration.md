@@ -18,7 +18,9 @@ discoal -Y config.yaml -d 1 2      # the seeds 1 2, not those of the file
   - an option that sets a value (for example `-t`, `-r`, `-d`, `-N`)
     replaces the value of the file;
   - an event option (for example `-en`, `-em`, `-A`) adds an event to
-    the events of the file;
+    the events of the file. YAML has no key for continuous growth, so
+    give `-eg`, `-eG`, `-el` or `-eL` on the command line, or use a
+    demes file;
   - `-m i j rate` sets one entry of the migration matrix;
   - `-p` replaces `deme_sample_size`. The sum must still be equal to
     `sample_size`.

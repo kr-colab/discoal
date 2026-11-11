@@ -31,7 +31,7 @@ Setting Up the Environment
 
    .. code-block:: bash
 
-      git clone https://github.com/kern-lab/discoal.git
+      git clone https://github.com/kr-colab/discoal.git
       cd discoal
 
 3. Create the conda environment:
@@ -137,12 +137,11 @@ The unit test suite includes 49 tests across 7 test files:
    
    * Trajectory capacity management
    * File cleanup for rejected trajectories
-   * Memory-mapped file operations
+   * Memory-mapped trajectory files
    * Large file handling
    * File persistence and cleanup
    * Concurrent trajectory management
 
-**Note**: Two test suites (``test_coalescence_recombination.c`` and ``test_memory_management.c``) were removed as they referenced obsolete data structures that have been replaced in the tskit integration.
 
 **Building Individual Tests**
 
@@ -300,7 +299,7 @@ To run the same tests locally before pushing:
 Code Organization
 -----------------
 
-Key source files:
+Key source files, in ``src/core/``:
 
 * ``discoal_multipop.c``: Main program entry and command-line parsing
 * ``discoalFunctions.c``: Core simulation functions
@@ -312,15 +311,15 @@ Key source files:
 Memory Optimizations
 --------------------
 
-Recent optimizations have achieved significant memory reductions:
+These structures keep memory use small:
 
 * Dynamic allocation for all major arrays
-* Segment trees for ancestry tracking (80% reduction)
-* Reference counting for segment sharing (10-16% additional reduction)
+* Segment lists for ancestry tracking, in place of per-site arrays
+* Reference counting for segment sharing
 * In minimal tree sequence mode, recombination splits a lineage's segment
   list in place, and a coalescence builds the parent's list in one walk
   that also gives its span
-* Memory-mapped files for sweep trajectories
+* Sweep trajectories in temporary files, memory-mapped
 
 When developing, maintain these optimizations and ensure new features don't regress memory usage.
 

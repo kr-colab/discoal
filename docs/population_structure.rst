@@ -16,11 +16,12 @@ discoal can simulate multiple populations with migration and complex demographic
 
 .. code-block:: bash
 
-   ./discoal 6 2 100 -t 2 -r 2.4 -p 3 2 2 2
+   ./discoal 6 2 100 -t 2 -r 2.4 -p 3 2 2 2 -M 1.0
 
 .. note::
-   
+
    Populations are zero-indexed (0, 1, 2, ...). A population can have zero samples, which is useful for ghost populations.
+   Lineages in different populations can find a common ancestor only through migration or a join (``-ed``), so a model with more than one population needs one of these; discoal stops with an error otherwise.
 
 Migration
 ---------
@@ -70,8 +71,9 @@ Model admixture using ``-ea`` where one population derives ancestry from two sou
 
 .. code-block:: bash
 
-   # At time 0.02, pop0 derives 15% ancestry from pop2, 85% from pop1
-   ./discoal 6 2 100 -t 2 -r 2.4 -p 3 2 2 2 -ea 0.02 0 1 2 0.85
+   # At time 0.02, pop0 derives 85% ancestry from pop1, 15% from pop2;
+   # pop1 joins pop2 at time 0.5
+   ./discoal 6 2 100 -t 2 -r 2.4 -p 3 2 2 2 -ea 0.02 0 1 2 0.85 -ed 0.5 1 2
 
 Population Size Changes
 -----------------------
@@ -82,7 +84,8 @@ Change population sizes at specific times with ``-en``:
 
    # Pop 0: bottleneck to 10% size at time 0.5
    # Pop 1: expansion to 5x size at time 0.3
-   ./discoal 4 2 1000 -t 10 -p 2 2 2 -en 0.5 0 0.1 -en 0.3 1 5.0
+   # Pop 0 joins pop 1 at time 1.0
+   ./discoal 4 2 1000 -t 10 -p 2 2 2 -en 0.5 0 0.1 -en 0.3 1 5.0 -ed 1.0 0 1
 
 Complex Demographic Models
 --------------------------
@@ -113,12 +116,13 @@ Sample lineages from different time points using ``-A``:
 
 .. code-block:: bash
 
-   # 5 modern samples from pop 0
-   # 3 ancient samples from pop 0 at time 0.1
-   # 2 ancient samples from pop 1 at time 0.5
-   ./discoal 10 5 10000 -t 20 -p 2 5 0 \
+   # Pop 0: 8 samples; 5 modern and 3 taken at time 0.1
+   # Pop 1: 2 samples, both taken at time 0.5
+   # Pop 1 joins pop 0 at time 1.0
+   ./discoal 10 5 10000 -t 20 -p 2 8 2 \
      -A 3 0 0.1 \
-     -A 2 1 0.5
+     -A 2 1 0.5 \
+     -ed 1.0 1 0
 
 Limitations
 -----------

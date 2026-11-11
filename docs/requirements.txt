@@ -1,3 +1,4 @@
 # Requirements for building documentation
 sphinx>=7.0
 sphinx-rtd-theme>=2.0
+myst-parser>=2.0
