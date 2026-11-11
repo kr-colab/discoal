@@ -1147,14 +1147,40 @@ int isCoalNode(rootedNode *aNode){
 		return(0);
 }
 
-/* Rates of recombination and gene conversion in a population: per lineage,
- * rho / 2 (gamma / 2) over the locus, times the share of positions that
- * fall in the lineage's span: the total weight over nSites breakpoint
- * positions (nSites + 1 tract starts). */
+/* Rates of recombination and gene conversion in a population, per unit of
+ * time (2N0 generations). Crossovers and gene conversion tracts start at
+ * rho / 2 and gamma / 2 over the locus, so at rho / (2 nSites) and
+ * gamma / (2 nSites) per site. A lineage has a crossover or an internal
+ * tract at each position of its span (its weight w).
+ *
+ * It also has tracts that start at or left of its first site and run into
+ * its material (left tracts, drawLeftTract()), at gcMean sites' worth of
+ * rate. Only those that end in its span (with probability 1 - pc^w, pc =
+ * 1 - 1/gcMean) change anything, so their rate is gcMean (1 - pc^w) sites,
+ * which is at most min(gcMean, w). Left tracts are drawn at the bound
+ * min(gcMean x lineages, total weight) and thinned (leftTractLineage()):
+ * with gcMean much larger than the spans, most left tracts would cover
+ * all the material and do nothing. */
+static double leftTractBound(int64_t spanWeight, int lineages){
+	const double perLineage = (double) gcMean * lineages;
+	return perLineage < (double) spanWeight ? perLineage : (double) spanWeight;
+}
+
+static double gcWeight(int64_t spanWeight, int lineages){
+	return (double) spanWeight + leftTractBound(spanWeight, lineages);
+}
+
+/* 1 - pc^w: the share of left tracts that end in a span of w positions. */
+static double leftTractEffective(int64_t w){
+	if (w <= 0) return 0.0;
+	if (gcMean <= 1) return 1.0;
+	return -expm1((double) w * log1p(-1.0 / gcMean));
+}
+
 void lineageEventRates(int popn, double *recombination, double *geneConversion){
-	double total = (double) fenwickTotal(currentWeights(popn));
-	*recombination = rho * 0.5 * total / nSites;
-	*geneConversion = my_gamma * 0.5 * total / (nSites + 1);
+	int64_t total = fenwickTotal(currentWeights(popn));
+	*recombination = rho * 0.5 * (double) total / nSites;
+	*geneConversion = my_gamma * 0.5 * gcWeight(total, popLists[popn].count) / nSites;
 }
 
 /* A lineage of population popn and a position in its span, drawn with
@@ -1232,80 +1258,178 @@ int recombineAtTimePopn(double cTime, int popn){
  * gcMean. With a mean of 1 every tract is one site; the inversion formula
  * gives 0 there (log(1 - 1) is -inf), so the length is at least 1. The
  * uniform is drawn in every case, so that the random number stream does
- * not depend on the mean. */
+ * not depend on the mean. A tract longer than the locus has the same
+ * effect at any length, so the length is at most nSites + 1; this keeps
+ * the tract ends far from integer overflow for a very large mean. */
 static int drawTractLength(void){
 	double u = genunf(0,1);
 	if (gcMean <= 1) return 1;
-	int length = (int) ceil(log(u)/log(1.0-(1.0/gcMean)));
-	return length < 1 ? 1 : length;
+	double length = ceil(log(u)/log(1.0-(1.0/gcMean)));
+	if (length < 1) return 1;
+	if (length > nSites + 1) return nSites + 1;
+	return (int) length;
 }
 
-void geneConversionAtTimePopn(double cTime, int popn){
-	rootedNode *aNode, *lParent, *rParent;
-	int xOver;
-	int tractL;
-	
-	/* The tract starts in the lineage's span (drawn by weight). */
-	aNode = drawLineageAndPosition(popn, &xOver);
-	if (aNode != NULL){
-		tractL = drawTractLength();
-		removeNode(aNode); 
-		lParent = newRootedNode(cTime,popn);
-		rParent = newRootedNode(cTime,popn);
-		aNode->leftParent = lParent;
-		aNode->rightParent = rParent;
-		aNode->branchLength = cTime - aNode->time;
-		lParent->leftChild = aNode;
-		rParent->leftChild = aNode;
-		lParent->population = aNode->population;
-		rParent->population = aNode->population;
-		
-		
-		// For gene conversion, handle the ancestry segments
-		// Gene conversion creates a tract where one parent gets a segment and the other gets the rest
-		if (aNode->ancestryRoot) {
-			// Split the tree for gene conversion tract
-			gcSplitResult gcSplit = splitSegmentTreeForGeneConversion(aNode->ancestryRoot, xOver, xOver + tractL);
-			lParent->ancestryRoot = gcSplit.converted;     // Gets the converted tract
-			rParent->ancestryRoot = gcSplit.unconverted;   // Gets everything else
-			
-			// Always free the original tree since split functions create new segments
-			// With our segment-based approach, we don't need to preserve the child's tree
-			freeSegmentTree(aNode->ancestryRoot);
-			aNode->ancestryRoot = NULL;
-		} else {
-			lParent->ancestryRoot = NULL;
-			rParent->ancestryRoot = NULL;
-		}
-		
-		// Update stats from the ancestry trees
-		updateAncestryStatsFromTree(lParent);
-		updateAncestryStatsFromTree(rParent);
-		
-		addNode(lParent);
-		addNode(rParent);
-		
-		// Record edges in tskit for gene conversion (only in full mode)
-		tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
-		tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
-		tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
-		
-		recordRecombinationEdges(aNode, lParent, rParent, child_tsk_id, lparent_tsk_id, rparent_tsk_id);
-		if (minimalTreeSeq) {
-			/* The parents now hold the child's segments, with its tskit
-			 * nodes; the child is not needed. */
-			lParent->leftChild = rParent->leftChild = NULL;
-			freeLineage(aNode);
-			return;
-		}
-		
-		
-		// Mark parent recording if using tskit
-		if (tskitOutputMode || minimalTreeSeq) {
-			markParentRecorded(aNode, lParent);
-			markParentRecorded(aNode, rParent);
-		}
+/* The span of the material without an MRCA in a list of segments. */
+static SegmentSpan spanOfSegments(const AncestrySegment *seg){
+	SegmentSpan span = emptySpan();
+	for (; seg; seg = seg->next)
+		spanAdd(&span, seg->start, seg->end, seg->count, sampleSize);
+	return span;
+}
+
+/* A tract that starts at or left of a lineage's first site without an
+ * MRCA (lLim) and ends in its span of w positions, as msprime's left gene
+ * conversion events (and ms's): the chromosome goes on to the left of the
+ * locus, and of the lineage's material. A tract that starts j sites left
+ * of lLim reaches it if its length L > j. Given that, it covers lLim ..
+ * lLim + K - 1 and starts at lLim - j, with K >= 1 and j >= 0 independent
+ * and geometric with the parameter of L, as the geometric has no memory;
+ * K is drawn given K <= w, so that the tract ends in the span. The start
+ * matters only in a sweep, for the parent that gets the sweep site. */
+static void drawLeftTract(const rootedNode *node, int64_t w, int *start, int *end){
+	int k = 1;
+	if (gcMean > 1) {
+		const double u = genunf(0,1);
+		k = 1 + (int) floor(log1p(-leftTractEffective(w) * u) / log1p(-1.0 / gcMean));
+		if (k < 1) k = 1;
+		if (k > w) k = (int) w;
 	}
+	*end = node->lLim + k;
+	*start = node->lLim - (drawTractLength() - 1);
+}
+
+/* A lineage for a left tract, drawn at the bound of leftTractBound() and
+ * thinned to the rate gcMean (1 - pc^w): uniformly with uniform() when
+ * gcMean x lineages is the bound, else by weight with byWeight(). Returns
+ * NULL if the draw is thinned out; *w is the lineage's weight. */
+static rootedNode *leftTractLineage(int64_t totalWeight, int lineages,
+		rootedNode *(*uniform)(int, int), rootedNode *(*byWeight)(int, int, int *),
+		int popn, int sp, int64_t *w){
+	rootedNode *aNode;
+	double accept;
+	int unused;
+	if ((double) gcMean * lineages <= (double) totalWeight) {
+		aNode = uniform(popn, sp);
+		if (aNode == NULL) return NULL;
+		*w = lineageWeight(aNode);
+		accept = leftTractEffective(*w);
+	} else {
+		aNode = byWeight(popn, sp, &unused);
+		if (aNode == NULL) return NULL;
+		*w = lineageWeight(aNode);
+		accept = (double) gcMean * leftTractEffective(*w) / (double) *w;
+	}
+	return (ranf() < accept) ? aNode : NULL;
+}
+
+/* Gene conversion of aNode in population popn with the tract [start, end):
+ * the converted parent (lParent) gets the material in the tract, the other
+ * parent (rParent) the rest. If one of the two would get no material
+ * without an MRCA, as when the tract falls in a gap of the material or
+ * covers all of it, the event changes nothing, as in msprime, and aNode
+ * stays. In a sweep (sp >= 0, population 0) the parent with the sweep site
+ * keeps aNode's class sp, and the other is a random draw from the
+ * population: it joins class sp with probability popnFreq, the frequency
+ * of that class. A sweep outside the locus (sweepSite < 0) is in no tract. */
+static void convertTract(double cTime, int popn, rootedNode *aNode, int start, int end,
+                         int sp, double sweepSite, double popnFreq){
+	rootedNode *lParent, *rParent;
+
+	if (aNode == NULL || aNode->ancestryRoot == NULL) return;
+	gcSplitResult split = splitSegmentTreeForGeneConversion(aNode->ancestryRoot, start, end);
+	SegmentSpan convertedSpan = spanOfSegments(split.converted);
+	SegmentSpan restSpan = spanOfSegments(split.unconverted);
+	if (convertedSpan.nancSites == 0 || restSpan.nancSites == 0) {
+		freeSegmentTree(split.converted);
+		freeSegmentTree(split.unconverted);
+		return;
+	}
+
+	removeNode(aNode);
+	lParent = newRootedNode(cTime,popn);
+	rParent = newRootedNode(cTime,popn);
+	aNode->leftParent = lParent;
+	aNode->rightParent = rParent;
+	aNode->branchLength = cTime - aNode->time;
+	lParent->leftChild = aNode;
+	rParent->leftChild = aNode;
+	lParent->population = aNode->population;
+	rParent->population = aNode->population;
+
+	/* The split made new segments; the child's are not needed. */
+	lParent->ancestryRoot = split.converted;
+	rParent->ancestryRoot = split.unconverted;
+	freeSegmentTree(aNode->ancestryRoot);
+	aNode->ancestryRoot = NULL;
+	setLineageSpan(lParent, &convertedSpan);
+	setLineageSpan(rParent, &restSpan);
+
+	if (sp >= 0) {
+		const int other = (sp == 0) ? 1 : 0;
+		const int inTract = sweepSite >= 0.0 && sweepSite >= (float) start / nSites
+			&& sweepSite < (float) end / nSites;
+		rootedNode *withSite = inTract ? lParent : rParent;
+		rootedNode *drawn = inTract ? rParent : lParent;
+		withSite->sweepPopn = sp;
+		drawn->sweepPopn = (ranf() < popnFreq) ? sp : other;
+	}
+
+	addNode(lParent);
+	addNode(rParent);
+
+	tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
+	tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
+	tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
+	recordRecombinationEdges(aNode, lParent, rParent, child_tsk_id, lparent_tsk_id, rparent_tsk_id);
+	if (minimalTreeSeq) {
+		/* The parents now hold the child's segments, with its tskit
+		 * nodes; the child is not needed. */
+		lParent->leftChild = rParent->leftChild = NULL;
+		freeLineage(aNode);
+		return;
+	}
+	if (tskitOutputMode) {
+		markParentRecorded(aNode, lParent);
+		markParentRecorded(aNode, rParent);
+	}
+}
+
+/* Lineage draws of population popn with the signatures of the sweep ones
+ * (the class argument is not used), for leftTractLineage(). */
+static rootedNode *uniformInPopulation(int popn, int sp){
+	(void) sp;
+	return pickNodePopn(popn);
+}
+
+static rootedNode *byWeightInPopulation(int popn, int sp, int *position){
+	(void) sp;
+	return drawLineageAndPosition(popn, position);
+}
+
+/* A gene conversion event in population popn: a tract that starts in a
+ * lineage's span (a position drawn by weight), or one that comes in from
+ * the left of its first site (a lineage drawn uniformly), in proportion
+ * to their rates (gcWeight()). */
+void geneConversionAtTimePopn(double cTime, int popn){
+	const double internal = (double) fenwickTotal(currentWeights(popn));
+	const double total = gcWeight((int64_t) internal, popLists[popn].count);
+	rootedNode *aNode;
+	int start, end;
+
+	if (total <= 0) return;
+	if (ranf() * total < internal) {
+		aNode = drawLineageAndPosition(popn, &start);
+		if (aNode == NULL) return;
+		end = start + drawTractLength();
+	} else {
+		int64_t w;
+		aNode = leftTractLineage((int64_t) internal, popLists[popn].count,
+			uniformInPopulation, byWeightInPopulation, popn, -1, &w);
+		if (aNode == NULL) return;
+		drawLeftTract(aNode, w, &start, &end);
+	}
+	convertTract(cTime, popn, aNode, start, end, -1, 0.0, 0.0);
 }
 
 
@@ -2304,8 +2428,8 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 			pCoalb = ((sweepPopnSizes[0] * (sweepPopnSizes[0] - 1) ) * 0.5)/(1-x)*tIncOrig / size0;
 			pRecB = rho * 0.5 * weightB / nSites * tIncOrig;
 			pRecb = rho * 0.5 * weightb / nSites * tIncOrig;
-			pGCB = my_gamma * 0.5 * weightB / (nSites + 1) * tIncOrig;
-			pGCb = my_gamma * 0.5 * weightb / (nSites + 1) * tIncOrig;
+			pGCB = my_gamma * 0.5 * gcWeight((int64_t) weightB, sweepPopnSizes[1]) / nSites * tIncOrig;
+			pGCb = my_gamma * 0.5 * gcWeight((int64_t) weightb, sweepPopnSizes[0]) / nSites * tIncOrig;
 			pRecurMut = (uA * sweepPopnSizes[1]*0.5 *tIncOrig)/x;///sizeRatio[0];
 			if (sweepSite < 0.0){
 				pLeftRecB = leftRho * sweepPopnSizes[1]*0.5 * tIncOrig * (1-x);
@@ -2685,93 +2809,28 @@ int recombineToLeftPopnSweep(int popn, int sp, double popnFreq){
 	return 0;
 }
 
-/*geneConversionAtTimePopnSweep-- preforms gene conversion on
-an individual drawn from a popn and assigns parental
-	popn based on sweep site and frequency of popn / 
-	beneficial mutation */
+/* A gene conversion event in sweep class sp of population popn, as
+ * geneConversionAtTimePopn() among the lineages of that class; the
+ * parents' classes follow the sweep site (convertTract()). */
 void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, double popnFreq){
-	rootedNode *aNode, *lParent, *rParent;
-	int i;
-	int xOver, tractL;
-	double r;
+	const double internal = (double) sweepClassWeight(popn, sp);
+	const double total = gcWeight((int64_t) internal, sweepPopnSizes[sp]);
+	rootedNode *aNode;
+	int start, end;
 
-
-	/* The tract starts in the lineage's span (drawn by weight). */
-	aNode = drawSweepLineageAndPosition(popn, sp, &xOver);
-	if (aNode != NULL){
-		tractL = drawTractLength();
-		removeNode(aNode); 
-		lParent = newRootedNode(cTime,popn);
-		rParent = newRootedNode(cTime,popn);
-		aNode->leftParent = lParent;
-		aNode->rightParent = rParent;
-		aNode->branchLength = cTime - aNode->time;
-		lParent->leftChild = aNode;
-		rParent->leftChild = aNode;
-		lParent->population = aNode->population;
-		rParent->population = aNode->population;
-		
-		
-		// For gene conversion during sweep, handle the ancestry segments
-		if (aNode->ancestryRoot) {
-			// Split the tree for gene conversion tract
-			gcSplitResult gcSplit = splitSegmentTreeForGeneConversion(aNode->ancestryRoot, xOver, xOver + tractL);
-			lParent->ancestryRoot = gcSplit.converted;     // Gets the converted tract
-			rParent->ancestryRoot = gcSplit.unconverted;   // Gets everything else
-			
-			// Always free the original tree since split functions create new segments
-			// With our segment-based approach, we don't need to preserve the child's tree
-			freeSegmentTree(aNode->ancestryRoot);
-			aNode->ancestryRoot = NULL;
-		} else {
-			lParent->ancestryRoot = NULL;
-			rParent->ancestryRoot = NULL;
-		}
-		
-		// Update stats from the ancestry trees
-		updateAncestryStatsFromTree(lParent);
-		updateAncestryStatsFromTree(rParent);
-			//determine sweep popn affinity
-			//left side?
-		//	printf("here-- popnFreq:%f sweepSite:%f xOver: %d test: %d \n",popnFreq,sweepSite,xOver,sweepSite < (float) xOver / nSites);
-		if(sweepSite >= (float) xOver / nSites  && sweepSite < (float) (xOver+tractL) / nSites ){ //lParent has sweep site set to same as child node,rParent is then random
-			lParent->sweepPopn = sp;
-			r = ranf();
-			if (r < popnFreq)rParent->sweepPopn = sp;
-			else rParent->sweepPopn = (sp == 0) ? 1:0;
-		}
-		else{ //rParent has sweep site, lParent is then random
-			rParent->sweepPopn = sp;
-			r = ranf();
-			if (r < popnFreq) lParent->sweepPopn = sp;
-			else lParent->sweepPopn = (sp == 0) ? 1:0;
-		}
-		//	printf("lParentsp:%d rParentsp:%d\n",lParent->sweepPopn,rParent->sweepPopn);
-			//add in the nodes
-		addNode(lParent);
-		addNode(rParent);
-		
-		// Record edges in tskit for gene conversion during sweep (only in full mode)
-		tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
-		tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
-		tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
-		
-		recordRecombinationEdges(aNode, lParent, rParent, child_tsk_id, lparent_tsk_id, rparent_tsk_id);
-		if (minimalTreeSeq) {
-			/* The parents now hold the child's segments, with its tskit
-			 * nodes; the child is not needed. */
-			lParent->leftChild = rParent->leftChild = NULL;
-			freeLineage(aNode);
-			return;
-		}
-		
-		
-		// Mark parent recording if using tskit
-		if (tskitOutputMode || minimalTreeSeq) {
-			markParentRecorded(aNode, lParent);
-			markParentRecorded(aNode, rParent);
-		}
+	if (total <= 0) return;
+	if (ranf() * total < internal) {
+		aNode = drawSweepLineageAndPosition(popn, sp, &start);
+		if (aNode == NULL) return;
+		end = start + drawTractLength();
+	} else {
+		int64_t w;
+		aNode = leftTractLineage((int64_t) internal, sweepPopnSizes[sp],
+			pickNodePopnSweep, drawSweepLineageAndPosition, popn, sp, &w);
+		if (aNode == NULL) return;
+		drawLeftTract(aNode, w, &start, &end);
 	}
+	convertTract(cTime, popn, aNode, start, end, sp, sweepSite, popnFreq);
 }
 
 void coalesceAtTimePopnSweep(double cTime, int popn, int sp){

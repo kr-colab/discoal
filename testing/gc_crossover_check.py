@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Check gene conversion against crossover.
 
-A gene conversion tract that always runs past the end of the locus splits
-a lineage at the tract start, as a crossover at that position does. So a
-simulation with only such gene conversion (-r 0 -g gamma 10^7) must give
-the same distribution of output as one with only crossovers (-r rho), when
-the two rates per breakpoint position are equal: crossovers have nSites
-positions and tract starts nSites + 1, so gamma = rho (nSites + 1) / nSites.
+With very long tracts (-g gamma 10^7), gene conversion acts as crossover at
+twice its rate. A tract that starts in a lineage's span runs past the end of
+the locus, and splits the lineage at its start. A tract that starts left of
+the lineage's first site and ends in its span splits it at its end: these
+arrive at gamma / nSites x mean length per lineage, and end at a position of
+the span with probability about 1 / mean each, so at gamma / nSites per
+position too (less 0.1% here, the share of tracts shorter than the locus).
+So a simulation with only such gene conversion (-r 0 -g gamma 10^7) must give
+the same distribution of output as one with only crossovers (-r rho) with
+gamma = rho / 2.
 
 The check covers the choice of the lineage and of the position (both by
 the lineage's span), in the neutral phase and in the sweep phase. In the
@@ -36,7 +40,7 @@ DISCOAL = os.path.join(REPO, "build", "discoal")
 N_SAMPLE = 20
 SITES = 10000
 RHO = 200.0
-GAMMA = RHO * (SITES + 1) / SITES
+GAMMA = RHO / 2
 TRACT_MEAN = "10000000"  # P(tract < 10^4 sites) = 0.1%
 STATS = ["segsites", "pi", "haplotypes", "pi_left", "pi_mid", "pi_right"]
 MODELS = {
