@@ -5,6 +5,7 @@
 #define __DISCOAL_GLOBALS__
 
 #include <stdint.h>
+#include <limits.h>
 #include "ancestrySegment.h"
 #include "activeSegment.h"
 
@@ -19,6 +20,9 @@
 #define MAXMUTS 400000        /* Maximum mutations for output formatting */
 #define MAXTIME 100000.0     /* Sentinel value representing "infinite" time */
 #define MAXPOPS 121          /* Maximum number of populations */
+/* popID of an -eG, -eL or -eM event before it is expanded to every
+ * population; a value no population index can take. */
+#define ALL_POPULATIONS INT_MIN
 
 /* No longer needed after dynamic memory optimizations:
    - MAXNODES: nodes array is now dynamic

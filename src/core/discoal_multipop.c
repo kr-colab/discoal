@@ -639,6 +639,112 @@ int main(int argc, const char * argv[]){
 	return(0);
 }
 
+/* -eG, -eL and -eM apply to every population, but -p, which sets the
+ * number of populations, can come after them. They are parsed into one
+ * event with popID ALL_POPULATIONS, which is replaced here, after parsing,
+ * by one event for each population (-eG, -eL) or for each ordered pair
+ * (-eM). The new events take the place of the old one, so events at the
+ * same time keep the order of the options. */
+static void expandAllPopulationEvents(void) {
+	int numAll = 0;
+	for (int i = 0; i < eventNumber; i++)
+		if (events[i].popID == ALL_POPULATIONS) numAll++;
+	if (numAll == 0) return;
+	const int oldNumber = eventNumber;
+	struct event *old = malloc(sizeof(struct event) * oldNumber);
+	if (old == NULL) {
+		fprintf(stderr, "Error: out of memory\n");
+		exit(1);
+	}
+	memcpy(old, events, sizeof(struct event) * oldNumber);
+	eventNumber = 0;
+	for (int i = 0; i < oldNumber; i++) {
+		if (old[i].popID != ALL_POPULATIONS) {
+			ensureEventsCapacity();
+			events[eventNumber++] = old[i];
+			continue;
+		}
+		for (int a = 0; a < npops; a++) {
+			for (int b = 0; b < npops; b++) {
+				/* Growth: one event per population (b only counts once).
+				 * Migration: one per ordered pair, source a, destination b. */
+				if (old[i].type == 'm' ? a == b : b > 0) continue;
+				ensureEventsCapacity();
+				events[eventNumber] = old[i];
+				if (old[i].type == 'm') {
+					events[eventNumber].popID2 = a;
+					events[eventNumber].popID = b;
+				} else {
+					events[eventNumber].popID = a;
+				}
+				eventNumber++;
+			}
+		}
+	}
+	free(old);
+}
+
+/* Check the demographic events of the command line (and of YAML, which
+ * checks them already, and of a demes model) before they are sorted: a NaN
+ * time breaks the sort, a negative time puts an event after the present, a
+ * population outside 0 .. npops-1 was ignored, and a NaN rate made the
+ * simulation hang. Ancient samples and sweeps have their own checks. */
+static void checkDemographicEvents(void) {
+	for (int i = 0; i < eventNumber; i++) {
+		const struct event *e = &events[i];
+		const char *what;
+		switch (e->type) {
+			case 'n': what = "-en (YAML population_size_changes)"; break;
+			case 'g': what = "-eg or -eG (YAML exponential_growth_changes)"; break;
+			case 'l': what = "-el or -eL (YAML linear_growth_changes)"; break;
+			case 'm': what = "-em or -eM (YAML migration_rate_changes)"; break;
+			case 'p': what = "-ed or -ej (YAML population_splits)"; break;
+			case 'a': what = "-ea (YAML admixtures)"; break;
+			default: continue;
+		}
+		const double t = internalTimeToUser(e->time);
+		if (!isfinite(t) || t < 0) {
+			fprintf(stderr, "Error: %s: the time (%g) must be a finite "
+				"number >= 0\n", what, t);
+			exit(1);
+		}
+		/* Population fields in use: popID for all; popID2 for -em (the
+		 * source), -ed (the ancestral population) and -ea (source 1); popID3
+		 * for -ea (source 2). */
+		int pops[3] = {e->popID, e->popID2, e->popID3};
+		int numPops = (e->type == 'a') ? 3 : (e->type == 'm' || e->type == 'p') ? 2 : 1;
+		for (int k = 0; k < numPops; k++) {
+			if (pops[k] < 0 || pops[k] >= npops) {
+				fprintf(stderr, "Error: %s at time %g: population %d must be "
+					"between 0 and %d (the number of populations, -p, minus 1)\n",
+					what, t, pops[k], npops - 1);
+				exit(1);
+			}
+		}
+		/* A merge of a population into itself never ends, and migration
+		 * into the same population has no meaning. An -ea source can be the
+		 * admixed population itself: the lineages that do not move stay,
+		 * which makes a pulse (the demes importer uses this). */
+		if ((e->type == 'm' || e->type == 'p') && e->popID == e->popID2) {
+			fprintf(stderr, "Error: %s at time %g: the two populations must "
+				"be different (population %d is given twice)\n",
+				what, t, e->popID);
+			exit(1);
+		}
+		/* The value: a size (-en), a growth rate (-eg, -el; stored per 2N0
+		 * generations) or a migration rate (-em). Its range is checked in
+		 * validateShapeTrajectories(); here only that it is a number. */
+		double value = e->popnSize;
+		if (e->type == 'g' || e->type == 'l') value *= USER_TO_INTERNAL_TIME;
+		if ((e->type == 'n' || e->type == 'g' || e->type == 'l' || e->type == 'm')
+		    && !isfinite(value)) {
+			fprintf(stderr, "Error: %s at time %g: the value (%g) must be a "
+				"finite number\n", what, t, value);
+			exit(1);
+		}
+	}
+}
+
 // Helper function to safely get next argument with bounds checking
 static const char* getNextArg(int argc, const char **argv, int *args, const char *option) {
 	(*args)++;
@@ -1027,19 +1133,15 @@ void getParameters(int argc,const char **argv){
 						eventNumber++;
 						break;
 					case 'G':
-						/* -eG time alpha -- applies to all populations */
-						{
-							double t = userTimeToInternal(atof(argv[++args]));
-							double alpha_val = userRateToInternal(atof(argv[++args]));
-							for (int p = 0; p < npops; p++) {
-								ensureEventsCapacity();
-								events[eventNumber].time = t;
-								events[eventNumber].popID = p;
-								events[eventNumber].popnSize = alpha_val;
-								events[eventNumber].type = 'g';
-								eventNumber++;
-							}
-						}
+						/* -eG time alpha: -eg for every population. -p can
+						 * come later, so expandAllPopulationEvents() makes
+						 * the per-population events after parsing. */
+						ensureEventsCapacity();
+						events[eventNumber].time = userTimeToInternal(atof(argv[++args]));
+						events[eventNumber].popID = ALL_POPULATIONS;
+						events[eventNumber].popnSize = userRateToInternal(atof(argv[++args]));
+						events[eventNumber].type = 'g';
+						eventNumber++;
 						break;
 					case 'l':
 						/* -el time popID gamma: gamma is in relative size (size / N0) */
@@ -1051,19 +1153,14 @@ void getParameters(int argc,const char **argv){
 						eventNumber++;
 						break;
 					case 'L':
-						/* -eL time gamma — applies to all populations */
-						{
-							double t = userTimeToInternal(atof(argv[++args]));
-							double gamma_val = userRateToInternal(atof(argv[++args]));
-							for (int p = 0; p < npops; p++) {
-								ensureEventsCapacity();
-								events[eventNumber].time = t;
-								events[eventNumber].popID = p;
-								events[eventNumber].popnSize = gamma_val;
-								events[eventNumber].type = 'l';
-								eventNumber++;
-							}
-						}
+						/* -eL time gamma: -el for every population, expanded
+						 * after parsing as for -eG. */
+						ensureEventsCapacity();
+						events[eventNumber].time = userTimeToInternal(atof(argv[++args]));
+						events[eventNumber].popID = ALL_POPULATIONS;
+						events[eventNumber].popnSize = userRateToInternal(atof(argv[++args]));
+						events[eventNumber].type = 'l';
+						eventNumber++;
 						break;
 					case 'm':
 						/* -em time srcPop dstPop rate — change migration rate at this time */
@@ -1081,25 +1178,19 @@ void getParameters(int argc,const char **argv){
 						}
 						break;
 					case 'M':
-						/* -eM time rate — set all off-diagonal pairs to the given rate at this time */
+						/* -eM time rate: -em for every ordered pair of
+						 * populations, expanded after parsing as for -eG. */
 						{
-							double t = userTimeToInternal(atof(argv[++args]));
-							double rate_val = atof(argv[++args]);
-							for (int src = 0; src < npops; src++) {
-								for (int dst = 0; dst < npops; dst++) {
-									if (src == dst) continue;
-									ensureEventsCapacity();
-									events[eventNumber].time = t;
-									events[eventNumber].popID2 = src;
-									events[eventNumber].popID = dst;
-									events[eventNumber].popnSize = rate_val;
-									events[eventNumber].type = 'm';
-									eventNumber++;
-								}
-							}
+							ensureEventsCapacity();
+							events[eventNumber].time = userTimeToInternal(atof(argv[++args]));
+							events[eventNumber].popID = ALL_POPULATIONS;
+							events[eventNumber].popID2 = ALL_POPULATIONS;
+							events[eventNumber].popnSize = atof(argv[++args]);
+							events[eventNumber].type = 'm';
 							/* As for -em: migration that starts later still
 							 * counts for initialize()'s check. */
-							if (rate_val > 0) migFlag = 1;
+							if (events[eventNumber].popnSize > 0) migFlag = 1;
+							eventNumber++;
 						}
 						break;
 				}
@@ -1278,6 +1369,8 @@ void getParameters(int argc,const char **argv){
 	}
 	// fprintf(stderr, "DEBUG: Final seeds at end of getParameters: %ld, %ld\n", seed1, seed2);
 	// fprintf(stderr, "DEBUG: Final theta at end of getParameters: %f\n", theta);
+	expandAllPopulationEvents();
+	checkDemographicEvents();
 	sortEventArray(events,eventNumber);
 
 	if (validateShapeTrajectories(events, eventNumber) != 0) {
