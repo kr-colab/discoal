@@ -362,6 +362,42 @@ AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
 }
 
 // Split ancestry tree at breakpoint (for recombination) - left side
+/* Split a segment list at `breakpoint` in place, as msprime does: the
+ * segments left of it stay in *left, the rest go to *right, and a segment
+ * that spans it is cut, with one new segment for its right part. This
+ * moves the list into the two halves, so the caller must drop its own
+ * pointer to it. Only for a list that nothing else shares (every segment
+ * has a reference count of 1 and no child segments, as in minimal tree
+ * sequence mode); for any other list it changes nothing and returns 0,
+ * and the caller copies the halves with splitLeft() and splitRight(). */
+int splitInPlace(AncestrySegment *root, int breakpoint,
+                 AncestrySegment **left, AncestrySegment **right) {
+    AncestrySegment *lastLeft = NULL;   /* last segment that starts left of it */
+    for (AncestrySegment *s = root; s; s = s->next) {
+        if (s->refCount != 1 || s->left || s->right) return 0;
+        if (s->start < breakpoint) lastLeft = s;
+    }
+    if (lastLeft == NULL) {             /* everything is right of it */
+        *left = NULL;
+        *right = root;
+        return 1;
+    }
+    AncestrySegment *rightHead;
+    if (lastLeft->end > breakpoint) {   /* cut the spanning segment */
+        rightHead = newSegment(breakpoint, lastLeft->end,
+                               lastLeft->tskit_node_id, NULL, NULL);
+        rightHead->count = lastLeft->count;
+        rightHead->next = lastLeft->next;
+        lastLeft->end = breakpoint;
+    } else {
+        rightHead = lastLeft->next;
+    }
+    lastLeft->next = NULL;
+    *left = root;
+    *right = rightHead;
+    return 1;
+}
+
 AncestrySegment* splitLeft(AncestrySegment *root, int breakpoint) {
     if (!root || breakpoint <= 0) return NULL;
     

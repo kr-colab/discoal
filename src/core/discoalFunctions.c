@@ -1227,6 +1227,10 @@ int recombineAtTimePopn(double cTime, int popn){
 			// Full ARG mode: use parent's tskit_node_id in segments
 			lParent->ancestryRoot = splitLeftWithParent(aNode->ancestryRoot, xOver, lParent->tskit_node_id);
 			rParent->ancestryRoot = splitRightWithParent(aNode->ancestryRoot, xOver, rParent->tskit_node_id);
+		} else if (splitInPlace(aNode->ancestryRoot, xOver,
+				&lParent->ancestryRoot, &rParent->ancestryRoot)) {
+			/* The parents now own the child's segments. */
+			aNode->ancestryRoot = NULL;
 		} else {
 			// Minimal mode: preserve original tskit_node_id
 			lParent->ancestryRoot = splitLeft(aNode->ancestryRoot, xOver);
@@ -2718,6 +2722,10 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 				// Full ARG mode: use parent's tskit_node_id in segments
 				lParent->ancestryRoot = splitLeftWithParent(aNode->ancestryRoot, xOver, lParent->tskit_node_id);
 				rParent->ancestryRoot = splitRightWithParent(aNode->ancestryRoot, xOver, rParent->tskit_node_id);
+			} else if (splitInPlace(aNode->ancestryRoot, xOver,
+					&lParent->ancestryRoot, &rParent->ancestryRoot)) {
+				/* The parents now own the child's segments. */
+				aNode->ancestryRoot = NULL;
 			} else {
 				// Minimal mode: preserve original tskit_node_id
 				lParent->ancestryRoot = splitLeft(aNode->ancestryRoot, xOver);

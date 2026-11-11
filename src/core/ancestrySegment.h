@@ -37,6 +37,8 @@ AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
         void (*addEdge)(tsk_id_t parent, tsk_id_t child, double left, double right),
         void *ctx, int fullCount, void (*onFixed)(int start, int end));
 AncestrySegment* splitLeft(AncestrySegment *root, int breakpoint);
+int splitInPlace(AncestrySegment *root, int breakpoint,
+                 AncestrySegment **left, AncestrySegment **right);
 AncestrySegment* splitRight(AncestrySegment *root, int breakpoint);
 
 // Full ARG mode versions that update tskit_node_id
