@@ -101,10 +101,8 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 
 rootedNode *pickNodePopn(int popn);
 void addNode(rootedNode *aNode);
-void removeNodeAt(int index);
+void compactNodes(void);
 void removeNode(rootedNode *aNode);
-void addNodeAtIndex(rootedNode *aNode, int anIndex);
-void shiftNodes(int offset);
 void printNode(rootedNode *aNode);
 void freeTree(rootedNode *aNode);
 int nodePopnSize(int popn);

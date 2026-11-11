@@ -68,6 +68,11 @@ void addBreakPoint(int bp) {
 
 static int64_t sweepClassWeight(int popn, int sp);
 
+/* Slots of nodes[] in use: the active lineages and the empty slots that
+ * removeNode() leaves until compactNodes(). */
+static int nodesUsed = 0;
+void compactNodes(void);
+
 // Population list management functions for O(1) node selection
 
 void initializePopLists() {
@@ -284,6 +289,7 @@ void initialize(){
 			int ancientEvent = ancientEventOfSample(p, i);
 			double sampleTime = (ancientEvent < 0) ? 0.0 : events[ancientEvent].time;
 			nodes[count] = newRootedNode(sampleTime,p);
+			nodes[count]->nodesIndex = count;
 			nodes[count]->nancSites = nSites;
 			nodes[count]->lLim=0;
 			nodes[count]->rLim=nSites-1;
@@ -322,6 +328,7 @@ void initialize(){
 	
 	//set initial counts
 	alleleNumber = sampleSize;
+	nodesUsed = sampleSize;
 	totNodeNumber = sampleSize;
 	freedNodeCount = 0;  // Initialize freed node counter
 	/* Restore initial sizes; 'n'/'g'/'l' events mutate currentSize per replicate. */
@@ -367,6 +374,7 @@ rootedNode *newRootedNode(double cTime, int popn) {
 	 * write for nodes that haven't been classified yet (everything in a
 	 * no-sweep run, plus pre-sweep internal nodes). */
 	temp->sweepPopn = -1;
+	temp->nodesIndex = -1;
 	
 	// Initialize node state tracking
 	temp->parentsRecorded = 0;
@@ -425,9 +433,7 @@ void tryFreeNode(rootedNode *node) {
 	if (node->inActiveSet) return;
 	
 	// Additional safety check: ensure not in nodes array
-	for (int i = 0; i < alleleNumber; i++) {
-		if (nodes[i] == node) return;  // Still active!
-	}
+	if (node->nodesIndex >= 0) return;  // Still active!
 	
 	// Free ancestry segments using reference counting
 	if (node->ancestryRoot) {
@@ -479,14 +485,9 @@ int sweepAndFreeRemovedNodes() {
 		// This marking happens in markParentRecorded when all edges are recorded
 		if (node->isFullyRecorded) {
 			// Extra safety check: ensure it's really not in the active array
-			int inActiveArray = 0;
-			for (int j = 0; j < alleleNumber; j++) {
-				if (nodes[j] == node) {
-					inActiveArray = 1;
-					fprintf(stderr, "WARNING: Fully recorded node still in active array!\n");
-					break;
-				}
-			}
+			int inActiveArray = node->nodesIndex >= 0;
+			if (inActiveArray)
+				fprintf(stderr, "WARNING: Fully recorded node still in active array!\n");
 			
 			if (!inActiveArray) {
 				// Safe to free - node is fully recorded and not active
@@ -1816,6 +1817,7 @@ static void addPartialSweepCarrier(rootedNode *lineage){
 }
 
 static void recordPartialSweepSite(double site){
+	compactNodes();
 	int i;
 	partialSweepSite = (hidePartialSNP || site < 0.0) ? -1.0 : site;
 	partialSweepSiteId = TSK_NULL;
@@ -1834,6 +1836,7 @@ static void recordPartialSweepSite(double site){
  * partialSweepFinalFreq, and the selected site is recorded; otherwise
  * every lineage is. */
 static void startSweep(double sweepSite){
+	compactNodes();
 	int i;
 	for(i=0;i<alleleNumber;i++){
 		if(nodes[i]->population!=0)
@@ -2262,6 +2265,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 /* The number of ancient sample lineages of population popn not yet added
  * (dormant: they join at their sampling time). */
 static int dormantLineagesIn(int popn){
+	compactNodes();
 	int i, count = 0;
 	for(i = 0; i < alleleNumber; i++)
 		if(nodes[i]->population == (popn + 1) * -1)
@@ -3170,6 +3174,7 @@ void admixPopns(int popnSrc, int popnDest1, int popnDest2, double admixProp){
  * currentFreq, the allele's frequency at that time, and is in the
  * wild-type class (sweepPopn 0) otherwise. */
 void addAncientSample(int lineageNumber, int popnDest, double addTime, int stillSweeping, double currentFreq){
+	compactNodes();
 	int i;
 	int count = 0;
 	for(i=0; i < alleleNumber && count < lineageNumber; i++){
@@ -3259,6 +3264,7 @@ void cleanupNodeArrays() {
 	
 	if (nodes != NULL) {
 		// Free any remaining nodes and their ancestry segments
+		compactNodes();
 		for (int i = 0; i < alleleNumber; i++) {
 			if (nodes[i] != NULL) {
 				// Free ancestry segments using reference counting
@@ -3343,8 +3349,9 @@ void cleanupSampleNodeIds() {
 }
 
 void addNode(rootedNode *aNode){
-	ensureNodesCapacity(alleleNumber + 1);
-	nodes[alleleNumber] = aNode;
+	ensureNodesCapacity(nodesUsed + 1);
+	aNode->nodesIndex = nodesUsed;
+	nodes[nodesUsed++] = aNode;
 	aNode->inActiveSet = 1;  // Mark as being in active set
 	
 	/* The full ARG records a tskit node for every node. Minimal mode, as
@@ -3368,30 +3375,30 @@ void addNode(rootedNode *aNode){
 		sweepPopnSizes[aNode->sweepPopn]+=1;
 }
 
-//removeNodeAt-- removes a node given an index   
-void removeNodeAt(int index){
-	int i;
-	rootedNode *temp;
-
-	for (i = index ; i < alleleNumber - 1; i++){
-		temp =  nodes[i + 1];
-		nodes[i] = temp;
+/* Close the empty slots that removeNode() leaves in nodes[], keeping the
+ * order of the lineages: after it, nodes[0 .. alleleNumber-1] are the
+ * active lineages in the order in which they were added, as when each
+ * removal shifted the later ones down. Code that walks nodes[] calls it
+ * first; that order decides which lineage a random number picks, and
+ * that dormant ancient samples of earlier events come first. */
+void compactNodes(void){
+	if (nodesUsed == alleleNumber) return;
+	int k = 0;
+	for (int i = 0; i < nodesUsed; i++) {
+		if (nodes[i] != NULL) {
+			nodes[k] = nodes[i];
+			nodes[k]->nodesIndex = k;
+			k++;
+		}
 	}
-	// NULL out the last position to avoid duplicate pointers
-	nodes[alleleNumber - 1] = NULL;
-	alleleNumber -= 1;
-	
-	
+	for (int i = k; i < nodesUsed; i++) nodes[i] = NULL;
+	nodesUsed = k;
 }
 
-//removeNode -- removes a given node, uses above routine
+/* removeNode -- removes a lineage from nodes[] in O(1): its slot becomes
+ * empty. The array is compacted when the empty slots outnumber the
+ * lineages, so the amortized cost stays O(1). */
 void removeNode(rootedNode *aNode){
-	int i = 0;
-
-//find node index
-	while(nodes[i] != aNode){
-		i++;
-	}
 	popnSizes[aNode->population]-=1;
 	if (aNode->population==0 && aNode->sweepPopn >= 0)
 		sweepPopnSizes[aNode->sweepPopn]-=1;
@@ -3399,7 +3406,10 @@ void removeNode(rootedNode *aNode){
 	// Remove from population list
 	removeNodeFromPopList(aNode);
 	
-	removeNodeAt(i);
+	nodes[aNode->nodesIndex] = NULL;
+	aNode->nodesIndex = -1;
+	alleleNumber -= 1;
+	if (nodesUsed - alleleNumber > alleleNumber + 64) compactNodes();
 	
 	// Mark as no longer in active set
 	aNode->inActiveSet = 0;
@@ -3408,31 +3418,10 @@ void removeNode(rootedNode *aNode){
 	// fully recorded (in markParentRecorded), not here
 }
 
-/* addNodeAtIndex - variation on the theme here. adds
-a rootedNode at a specific index. useful for adding pops
-	or outgroups to current pops */
-void addNodeAtIndex(rootedNode *aNode, int anIndex){
-	nodes[anIndex] = aNode;
-}
-
-/*shiftNodes- this moves the nodes over an offset and
-similiarly increases the indices alleleNumber, totNodeNumber
-	by the offset. It doesn't add nodes though so fill it! */
-void shiftNodes(int offset){
-	int i;
-	rootedNode *temp;
-
-	for(i = alleleNumber - 1; i >= 0; i--){
-		temp =  nodes[i];
-		nodes[i+offset] = temp;
-	}
-	alleleNumber += offset;
-	totNodeNumber += offset;
-}
-
 /*pickNodePopnSweep-- picks an allele at random from active nodes from specific popn and sweepPopn
 */
 rootedNode *pickNodePopnSweep(int popn,int sp){
+	compactNodes();
 	int i, popnSize, indexArray[alleleNumber], index;
 
 	//get popnSize -- may later decide to keep this is some sort of variable that is passed
@@ -3488,6 +3477,7 @@ void freeTree(rootedNode *aNode){
 /*nodePopnSize-- returns popnSize of popn from
 	nodes array */
 int nodePopnSize(int popn){
+	compactNodes();
 	int i, popnSize;
 
 	popnSize = 0;
@@ -3502,6 +3492,7 @@ int nodePopnSize(int popn){
 /*nodePopnSweepSize-- returns popnSize of popn/sweepPopn
 	nodes array */
 int nodePopnSweepSize(int popn, int sp){
+	compactNodes();
 	int i, popnSize;
 
 	popnSize = 0;
@@ -3515,6 +3506,7 @@ int nodePopnSweepSize(int popn, int sp){
 
 
 void printAllActiveNodes(){
+	compactNodes();
 	int i;
 	for(i = 0 ; i < alleleNumber; i++){
 		printNode(nodes[i]);
