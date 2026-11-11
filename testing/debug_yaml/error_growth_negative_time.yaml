@@ -1,0 +1,16 @@
+# A growth entry's time must be >= 0. Rejected with:
+#   "Error parsing config: linear_growth_changes[0].time (-0.5) must be >= 0"
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [10]
+  demographic_events:
+    linear_growth_changes:
+      - {time: -0.5, rate: -1.0, population: 0}

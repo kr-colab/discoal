@@ -25,9 +25,8 @@ YAML configuration and demes models
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ``-Y config.yaml`` reads the parameters of a run from a YAML file. YAML
-has a key for each model option of the command line, except continuous
-growth (``-eg``, ``-eG``, ``-el``, ``-eL``): give these on the command
-line with ``-Y``, or use a demes model. A demes model (the demes
+has a key for each model option of the command line, and gives the same
+output as the command line. A demes model (the demes
 specification of the PopSim consortium) goes in
 ``demography.demes_filename``; discoal converts its sizes, times,
 migration rates, pulses and splits. See :doc:`yaml_configuration`,
@@ -57,7 +56,9 @@ Checks of the input
 ^^^^^^^^^^^^^^^^^^^
 
 discoal checks the range of every value on the command line, in YAML files
-and in priors, and stops with a message that names the option. Models that
+and in priors, and stops with a message that names the option. For
+example, a demographic event with a population that does not exist, a
+negative time, or a rate that is not a number stops with an error. Models that
 cannot finish (lineages that can never meet, a size that reaches zero) also
 stop with a message.
 

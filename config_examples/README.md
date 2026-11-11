@@ -16,6 +16,7 @@ This directory contains example YAML configuration files for discoal.
 - `demographic_example.yaml` - Three populations with migration, size changes and splits
 - `demes_example.yaml` - Using an external demes file for demography
 - `migration_change_example.yaml` - Migration rates that change over time
+- `growth_example.yaml` - Exponential (-eg) and linear (-el) growth
 - `ancient_samples_example.yaml` - Ancient samples in two populations
 - `ancient_demes_example.yaml` - Ancient samples with a demes model, from an extinct deme
 - `admixture_example.yaml` - An admixed population (-ea)

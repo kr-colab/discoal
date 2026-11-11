@@ -1,0 +1,16 @@
+# A growth entry must name an existing population. Rejected with:
+#   "Error parsing config: exponential_growth_changes[0].population (3) must be in [0, 1)"
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [10]
+  demographic_events:
+    exponential_growth_changes:
+      - {time: 0.1, rate: 2.0, population: 3}

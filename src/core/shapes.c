@@ -387,9 +387,9 @@ int validateShapeTrajectories(struct event *events, int eventNumber) {
                 if (t_cross < e->time) {
                     fprintf(stderr,
                         "Error: linear migration trajectory from population %d to %d "
-                        "drives the rate to zero at internal time %g (before the "
+                        "drives the rate to zero at time %g (before the "
                         "next event for that pair at time %g).\n",
-                        src, dst, t_cross, e->time);
+                        src, dst, internalTimeToUser(t_cross), internalTimeToUser(e->time));
                     free(migState);
                     return -1;
                 }
@@ -399,8 +399,8 @@ int validateShapeTrajectories(struct event *events, int eventNumber) {
             if (mig_at_event < 0.0) {
                 fprintf(stderr,
                     "Error: migration rate from population %d to %d becomes negative "
-                    "(%g) at internal time %g.\n",
-                    src, dst, mig_at_event, e->time);
+                    "(%g) at time %g.\n",
+                    src, dst, mig_at_event, internalTimeToUser(e->time));
                 free(migState);
                 return -1;
             }
@@ -409,7 +409,7 @@ int validateShapeTrajectories(struct event *events, int eventNumber) {
                 fprintf(stderr,
                     "Error: -em sets migration from population %d to %d to %g at time "
                     "%g; rate must be non-negative.\n",
-                    src, dst, e->popnSize, e->time);
+                    src, dst, e->popnSize, internalTimeToUser(e->time));
                 free(migState);
                 return -1;
             }
@@ -432,9 +432,9 @@ int validateShapeTrajectories(struct event *events, int eventNumber) {
             if (t_cross < e->time) {
                 fprintf(stderr,
                     "Error: linear-growth trajectory drives population %d size to zero "
-                    "at internal time %g (before the next event for that population at "
+                    "at time %g (before the next event for that population at "
                     "time %g). Adjust the linear rate or shorten the interval.\n",
-                    p, t_cross, e->time);
+                    p, internalTimeToUser(t_cross), internalTimeToUser(e->time));
                 free(migState);
                 return -1;
             }
@@ -448,8 +448,8 @@ int validateShapeTrajectories(struct event *events, int eventNumber) {
         double size_at_event = sizeFromShape(&state[p], e->time);
         if (size_at_event <= 0.0) {
             fprintf(stderr,
-                "Error: population %d size becomes non-positive (%g) at internal time %g.\n",
-                p, size_at_event, e->time);
+                "Error: population %d size becomes non-positive (%g) at time %g.\n",
+                p, size_at_event, internalTimeToUser(e->time));
             free(migState);
             return -1;
         }
@@ -458,7 +458,7 @@ int validateShapeTrajectories(struct event *events, int eventNumber) {
             if (e->popnSize <= 0.0) {
                 fprintf(stderr,
                     "Error: -en sets population %d size to %g at time %g; size must be "
-                    "strictly positive.\n", p, e->popnSize, e->time);
+                    "strictly positive.\n", p, e->popnSize, internalTimeToUser(e->time));
                 free(migState);
                 return -1;
             }
@@ -488,9 +488,9 @@ int validateShapeTrajectories(struct event *events, int eventNumber) {
                          state[p].anchor_value / state[p].rate_param;
         fprintf(stderr,
             "Error: linear-growth trajectory drives population %d size to zero "
-            "at internal time %g, and no later event changes it. Adjust the "
+            "at time %g, and no later event changes it. Adjust the "
             "linear rate or add a size change (-en) before that time.\n",
-            p, t_cross);
+            p, internalTimeToUser(t_cross));
         free(migState);
         return -1;
     }

@@ -62,6 +62,12 @@ struct migration_rate_change {
     double time, rate;
     int source, destination;
 };
+/* -eg (exponential) or -el (linear): from `time` back into the past the
+ * population grows at `rate`, per 4N0 generations, from its size at `time`. */
+struct growth_rate_change {
+    double time, rate;
+    int population;
+};
 struct population_split {
     double time;
     int derived, ancestral;
@@ -82,6 +88,10 @@ struct demographic_events {
     unsigned num_population_size_changes;
     struct migration_rate_change *migration_rate_changes;
     unsigned num_migration_rate_changes;
+    struct growth_rate_change *exponential_growth_changes;
+    unsigned num_exponential_growth_changes;
+    struct growth_rate_change *linear_growth_changes;
+    unsigned num_linear_growth_changes;
     struct population_split *population_splits;
     unsigned num_population_splits; 
     struct ancient_sample *ancient_samples;

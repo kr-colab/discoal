@@ -1,0 +1,39 @@
+# Two populations with continuous growth. Going backward in time:
+#   - population 0 grows at rate 10 per 4N0 generations from t=0 (positive:
+#     smaller in the past), until a size change to 0.1 at t=0.2 ends it;
+#   - population 1 changes to size 0.5 at t=0.1, and from there changes
+#     linearly by -1.0 (relative size) per 4N0 generations (negative: larger
+#     in the past), until a size change to 1.0 at t=0.6;
+#   - at t=1.0 population 1 merges into population 0.
+# A growth entry starts from the population's size at its time. A size
+# change at the same time comes first, and resets any growth (as -en does).
+# exponential_growth_changes are -eg, linear_growth_changes are -el; for
+# -eG or -eL, give one entry for each population.
+# Equivalent to: discoal 20 2 10000 -t 5.0 -r 5.0 -p 2 10 10 -M 1.0 -en 0.2 0 0.1 -en 0.1 1 0.5 -en 0.6 1 1.0 -eg 0.0 0 10.0 -el 0.1 1 -1.0 -ed 1.0 1 0 -em 1.0 0 1 0 -em 1.0 1 0 0 -d 12345 10102
+
+simulation:
+  sample_size: 20
+  num_replicates: 2
+  num_sites: 10000
+  seed: [12345, 10102]
+
+genetics:
+  mutation_rate: 5.0
+  recombination_rate: 5.0
+
+demography:
+  deme_sample_size: [10, 10]
+  migration_matrix:
+    - row: [0.0, 1.0]
+    - row: [1.0, 0.0]
+  demographic_events:
+    population_size_changes:
+      - {time: 0.2, size: 0.1, population: 0}
+      - {time: 0.1, size: 0.5, population: 1}
+      - {time: 0.6, size: 1.0, population: 1}
+    exponential_growth_changes:
+      - {time: 0.0, rate: 10.0, population: 0}
+    linear_growth_changes:
+      - {time: 0.1, rate: -1.0, population: 1}
+    population_splits:
+      - {time: 1.0, derived: 1, ancestral: 0}

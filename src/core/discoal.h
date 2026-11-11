@@ -87,6 +87,11 @@ typedef struct event
 	/* For an 'n' event whose time and size are drawn for each replicate:
 	 * 1 + its index in priorSizeChanges. 0 for every other event. */
 	int priorSlot;
+	/* 1 for an -eG, -eL or -eM event before it is expanded to one event per
+	 * population (or per pair); see expandAllPopulationEvents(). A flag,
+	 * not a popID value, so no population index the user types can be
+	 * taken for it. */
+	int allPopulations;
 }
 event;
 

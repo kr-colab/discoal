@@ -52,6 +52,7 @@ declare -A FIXTURE_MODE=(
     [sweep_example.yaml]="ms"
     [demographic_example.yaml]="ms"
     [migration_change_example.yaml]="ms"
+    [growth_example.yaml]="ms"
     [ancient_samples_example.yaml]="ms"
     [ancient_demes_example.yaml]="ms"
     [linked_sweep_example.yaml]="ms"
@@ -74,6 +75,7 @@ declare -A FIXTURE_SAMPLE=(
     [sweep_example.yaml]=15
     [demographic_example.yaml]=20
     [migration_change_example.yaml]=20
+    [growth_example.yaml]=20
     [ancient_samples_example.yaml]=20
     [ancient_demes_example.yaml]=20
     [linked_sweep_example.yaml]=20
@@ -96,6 +98,7 @@ declare -A FIXTURE_REPS=(
     [sweep_example.yaml]=10
     [demographic_example.yaml]=2
     [migration_change_example.yaml]=2
+    [growth_example.yaml]=2
     [ancient_samples_example.yaml]=2
     [ancient_demes_example.yaml]=2
     [linked_sweep_example.yaml]=2
@@ -468,6 +471,19 @@ echo
 readarray -t sorted_fixtures < <(printf '%s\n' "${!FIXTURE_MODE[@]}" | sort)
 for fixture in "${sorted_fixtures[@]}"; do
     run_fixture "${fixture}"
+done
+
+# An example that is not in the tables above would not run; that is a
+# failure, so that every example is checked. Demes model files
+# (*.demes.yaml) are inputs of other examples, not examples.
+for path in "${EXAMPLES_DIR}"/*.yaml; do
+    name=$(basename "${path}")
+    [[ "${name}" == all_options.yaml || "${name}" == *.demes.yaml ]] && continue
+    if [[ -z "${FIXTURE_MODE[${name}]+set}" ]]; then
+        echo "FAIL ${name}: not in the tables of this suite, so not checked"
+        fail_count=$((fail_count + 1))
+        failed_fixtures+=("${name} (not in the tables)")
+    fi
 done
 
 echo

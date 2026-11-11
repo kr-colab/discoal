@@ -30,6 +30,15 @@ demography:
       - time: 0.75
         size: 0.1
         population: 1
+    # rates per 4N0 generations, from the size at `time` (-eg, -el)
+    exponential_growth_changes:
+      - time: 0.0
+        rate: 5.0
+        population: 0
+    linear_growth_changes:
+      - time: 0.25
+        rate: -1.0
+        population: 2
     # rates are 4N0 m; lineages move from source to destination
     migration_rate_changes:
       - time: 0.5

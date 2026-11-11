@@ -180,6 +180,75 @@ run_fail_case "em_negative_rate" \
     "rate must be non-negative" \
     5 1 100 -t 5 -p 2 5 0 -m 0 1 0.5 -em 0.1 0 1 -0.2
 
+# Demographic events with a population outside 0 .. npops-1 were ignored; a
+# negative time stopped inside tskit; a NaN rate made the run hang.
+run_fail_case "eg_population_out_of_range" \
+    "population 5 must be between 0 and 1" \
+    4 1 100 -t 1 -p 2 2 2 -M 1 -eg 0 5 1.0
+
+run_fail_case "en_negative_time" \
+    "-en (YAML population_size_changes): the time (-1) must be a finite number >= 0" \
+    4 1 100 -t 1 -en -1 0 0.5
+
+run_fail_case "eG_nan_rate" \
+    "the value (nan) must be a finite number" \
+    4 1 100 -t 1 -p 2 2 2 -M 1 -eG 0 nan
+
+run_fail_case "em_same_population" \
+    "the two populations must be different (population 1 is given twice)" \
+    4 1 100 -t 1 -p 2 2 2 -M 1 -em 0 1 1 1
+
+run_fail_case "ed_into_itself" \
+    "the two populations must be different (population 0 is given twice)" \
+    4 1 100 -t 1 -p 2 2 2 -M 1 -ed 0.5 0 0
+
+# An -ea source can be the admixed population: a pulse.
+run_pass_case "ea_pulse_source_is_admixed_population" \
+    4 2 100 -t 2 -p 2 2 2 -M 1 -ea 0.5 0 1 0 0.3 -d 1 2
+
+run_fail_case "ed_population_out_of_range" \
+    "population 4 must be between 0 and 1" \
+    4 1 100 -t 1 -p 2 2 2 -ed 1 0 4
+
+# The most negative int is a population index like any other, not a mark
+# for "all populations".
+run_fail_case "A_population_int_min" \
+    "ancient sample of 1 lineages from population -2147483648" \
+    4 1 100 -t 1 -p 2 2 2 -M 1 -A 1 -2147483648 0.1
+
+run_fail_case "en_population_int_min" \
+    "population -2147483648 must be between 0 and 1" \
+    4 1 100 -t 1 -p 2 2 2 -M 1 -en 0.1 -2147483648 0.5
+
+run_fail_case "em_population_int_min" \
+    "population -2147483648 must be between 0 and 1" \
+    4 1 100 -t 1 -p 2 2 2 -M 1 -em 0.5 0 -2147483648 1
+
+# Times in messages are in units of 4N0 generations, as given.
+run_fail_case "el_message_in_user_time" \
+    "drives population 0 size to zero at time 0.25" \
+    5 1 100 -t 5 -el 0.05 0 5.0 -en 1.0 0 1.0
+
+# -eG, -eL and -eM apply to every population, also when -p comes after
+# them: the output must equal that of the same options after -p.
+check_same_output() {
+    local name=$1 a=$2 b=$3
+    local outa outb
+    outa=$("$DISCOAL" $a 2>&1 | tail -n +2)
+    outb=$("$DISCOAL" $b 2>&1 | tail -n +2)
+    if [ -n "$outa" ] && [ "$outa" = "$outb" ]; then
+        echo -e "${GREEN}PASS${NC} $name"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} $name (outputs differ)"
+        FAIL=$((FAIL + 1))
+        FAIL_NAMES+=("$name")
+    fi
+}
+check_same_output "eG_eL_eM_before_p" \
+    "20 2 10000 -t 10 -r 10 -eG 0 2 -eL 0.3 -0.5 -eM 0.5 0.2 -p 2 10 10 -M 1 -d 1 2" \
+    "20 2 10000 -t 10 -r 10 -p 2 10 10 -M 1 -eG 0 2 -eL 0.3 -0.5 -eM 0.5 0.2 -d 1 2"
+
 run_fail_case "Pe1_zero_size_bound" \
     "0 < size low <= size high" \
     20 5 10000 -t 10 -Pe1 0.1 0.2 0 1.0
@@ -216,10 +285,12 @@ run_fail_case "x_negative_with_ls" \
 
 # Recurrent sweeps check, as the neutral sampler does, that the lineages
 # can still meet after the last event (here migration from population 2
-# into population 1 strands lineages after population 1 merges).
+# into population 1 strands lineages after population 1 merges). A fixed
+# seed: with some seeds all lineages coalesce before the last event, and
+# the run is then correct.
 run_fail_case "R_lineages_can_never_meet" \
     "they can never coalesce" \
-    20 2 10000 -t 10 -r 10 -R 0.5 -a 500 -p 3 7 7 6 -M 1 -ed 2 1 0 -ed 3 2 0
+    20 2 10000 -t 10 -r 10 -R 0.5 -a 500 -p 3 7 7 6 -M 1 -ed 2 1 0 -ed 3 2 0 -d 1 7
 
 # One single sweep at most: the sweep sampler follows one sweep at a time.
 run_fail_case "two_ws" \

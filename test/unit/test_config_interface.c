@@ -873,6 +873,64 @@ void test_demography_population_size_change_scales_time_by_2(void) {
 }
 
 /*
+ * exponential_growth_changes and linear_growth_changes are -eg and -el: an
+ * event 'g' or 'l' with the time in internal units (x 2) and the rate per
+ * internal unit (/ 2), after the size changes so that a size change at the
+ * same time comes first.
+ */
+void test_demography_growth_changes_load_as_eg_and_el(void) {
+    const char *yaml =
+        "simulation:\n"
+        "  sample_size: 10\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "demography:\n"
+        "  deme_sample_size: [5, 5]\n"
+        "  demographic_events:\n"
+        "    linear_growth_changes:\n"
+        "      - {time: 0.25, rate: -1.5, population: 1}\n"
+        "    exponential_growth_changes:\n"
+        "      - {time: 0.1, rate: 4.0, population: 0}\n"
+        "    population_size_changes:\n"
+        "      - {time: 0.1, size: 0.5, population: 0}\n";
+
+    TEST_ASSERT_EQUAL_INT(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+    TEST_ASSERT_EQUAL_INT(3, eventNumber);
+    TEST_ASSERT_EQUAL_CHAR('n', events[0].type);
+    TEST_ASSERT_EQUAL_CHAR('g', events[1].type);
+    TEST_ASSERT_EQUAL_INT(0, events[1].popID);
+    TEST_ASSERT_EQUAL_DOUBLE(0.2, events[1].time);
+    TEST_ASSERT_EQUAL_DOUBLE(2.0, events[1].popnSize);
+    TEST_ASSERT_EQUAL_CHAR('l', events[2].type);
+    TEST_ASSERT_EQUAL_INT(1, events[2].popID);
+    TEST_ASSERT_EQUAL_DOUBLE(0.5, events[2].time);
+    TEST_ASSERT_EQUAL_DOUBLE(-0.75, events[2].popnSize);
+}
+
+/*
+ * A growth rate must be finite; a NaN rate made the simulation hang.
+ */
+void test_demography_growth_change_rejects_nan_rate(void) {
+    const char *yaml =
+        "simulation:\n"
+        "  sample_size: 10\n"
+        "  num_replicates: 1\n"
+        "  num_sites: 1000\n"
+        "genetics:\n"
+        "  mutation_rate: 0.0\n"
+        "  recombination_rate: 0.0\n"
+        "demography:\n"
+        "  deme_sample_size: [10]\n"
+        "  demographic_events:\n"
+        "    exponential_growth_changes:\n"
+        "      - {time: 0.1, rate: nan, population: 0}\n";
+    TEST_ASSERT_NOT_EQUAL(EXIT_SUCCESS, apply_from_yaml_string(yaml));
+}
+
+/*
  * population_size_changes[i].population must be in [0, num_demes).
  */
 void test_demography_population_size_change_rejects_bad_pop_index(void) {
@@ -2692,6 +2750,8 @@ int main(void) {
     RUN_TEST(test_demography_rejects_nonintegral_effective_population_size);
     RUN_TEST(test_demography_rejects_effective_population_size_over_intmax);
     RUN_TEST(test_demography_population_size_change_scales_time_by_2);
+    RUN_TEST(test_demography_growth_changes_load_as_eg_and_el);
+    RUN_TEST(test_demography_growth_change_rejects_nan_rate);
     RUN_TEST(test_demography_population_size_change_rejects_bad_pop_index);
     RUN_TEST(test_demography_population_size_change_rejects_negative_time);
     RUN_TEST(test_demography_population_size_change_rejects_nonpositive_size);
