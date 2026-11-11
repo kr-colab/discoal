@@ -329,6 +329,12 @@ run_pass_case "soft_sweep_many_size_changes" \
     -en 0.768 0 7.877 -en 0.9068 0 7.471 \
     -d 2 99
 
+# More samples than the 1000 lineages that nodes[] starts with: the samples
+# overflowed the array (glibc then stopped with "realloc(): invalid old
+# size", or the output was wrong).
+run_pass_case "more_than_1000_samples" \
+    1500 2 1000 -t 5 -r 5 -d 3 4
+
 # Sweeps are not modeled under growth: population 0 may not grow (-eg,
 # -el, -eG, -eL) at or after the earliest start of a sweep, and no
 # population may grow with recurrent sweeps.

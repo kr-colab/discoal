@@ -290,6 +290,9 @@ void initialize(){
 	totChunkNumber = 0;
 	initializeBreakPoints();
 	initializeNodeArrays();
+	/* The samples go straight into nodes[], which starts with room for
+	 * 1000 lineages; addNode() grows it for the lineages that follow. */
+	ensureNodesCapacity(sampleSize);
 	initializePopLists();  // Initialize population lists for O(1) node selection
 	for(p=0;p<npops;p++){
 		popnSizes[p]=sampleSizes[p];
