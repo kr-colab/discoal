@@ -641,14 +641,14 @@ int main(int argc, const char * argv[]){
 
 /* -eG, -eL and -eM apply to every population, but -p, which sets the
  * number of populations, can come after them. They are parsed into one
- * event with popID ALL_POPULATIONS, which is replaced here, after parsing,
+ * event with allPopulations set, which is replaced here, after parsing,
  * by one event for each population (-eG, -eL) or for each ordered pair
  * (-eM). The new events take the place of the old one, so events at the
  * same time keep the order of the options. */
 static void expandAllPopulationEvents(void) {
 	int numAll = 0;
 	for (int i = 0; i < eventNumber; i++)
-		if (events[i].popID == ALL_POPULATIONS) numAll++;
+		if (events[i].allPopulations) numAll++;
 	if (numAll == 0) return;
 	const int oldNumber = eventNumber;
 	struct event *old = malloc(sizeof(struct event) * oldNumber);
@@ -659,7 +659,7 @@ static void expandAllPopulationEvents(void) {
 	memcpy(old, events, sizeof(struct event) * oldNumber);
 	eventNumber = 0;
 	for (int i = 0; i < oldNumber; i++) {
-		if (old[i].popID != ALL_POPULATIONS) {
+		if (!old[i].allPopulations) {
 			ensureEventsCapacity();
 			events[eventNumber++] = old[i];
 			continue;
@@ -671,6 +671,7 @@ static void expandAllPopulationEvents(void) {
 				if (old[i].type == 'm' ? a == b : b > 0) continue;
 				ensureEventsCapacity();
 				events[eventNumber] = old[i];
+				events[eventNumber].allPopulations = 0;
 				if (old[i].type == 'm') {
 					events[eventNumber].popID2 = a;
 					events[eventNumber].popID = b;
@@ -1138,7 +1139,7 @@ void getParameters(int argc,const char **argv){
 						 * the per-population events after parsing. */
 						ensureEventsCapacity();
 						events[eventNumber].time = userTimeToInternal(atof(argv[++args]));
-						events[eventNumber].popID = ALL_POPULATIONS;
+						events[eventNumber].allPopulations = 1;
 						events[eventNumber].popnSize = userRateToInternal(atof(argv[++args]));
 						events[eventNumber].type = 'g';
 						eventNumber++;
@@ -1157,7 +1158,7 @@ void getParameters(int argc,const char **argv){
 						 * after parsing as for -eG. */
 						ensureEventsCapacity();
 						events[eventNumber].time = userTimeToInternal(atof(argv[++args]));
-						events[eventNumber].popID = ALL_POPULATIONS;
+						events[eventNumber].allPopulations = 1;
 						events[eventNumber].popnSize = userRateToInternal(atof(argv[++args]));
 						events[eventNumber].type = 'l';
 						eventNumber++;
@@ -1183,8 +1184,7 @@ void getParameters(int argc,const char **argv){
 						{
 							ensureEventsCapacity();
 							events[eventNumber].time = userTimeToInternal(atof(argv[++args]));
-							events[eventNumber].popID = ALL_POPULATIONS;
-							events[eventNumber].popID2 = ALL_POPULATIONS;
+							events[eventNumber].allPopulations = 1;
 							events[eventNumber].popnSize = atof(argv[++args]);
 							events[eventNumber].type = 'm';
 							/* As for -em: migration that starts later still

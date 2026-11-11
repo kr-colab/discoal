@@ -158,8 +158,11 @@ is required.
 - For `-eG` or `-eL` (all populations), give one entry for each
   population. In the same way, `-eM` is one `migration_rate_changes`
   entry for each pair of populations.
-- Growth of population 0 during a sweep is not modeled; discoal stops
-  with an error.
+- A simulated sweep trajectory does not follow growth, so discoal stops
+  with an error if population 0 grows at or after the start of a single
+  sweep (a growth that a size change ends before the sweep is allowed),
+  or if any population grows with recurrent sweeps. A sweep from a
+  `trajectory_file` follows the sizes, and is not restricted.
 
 For example, the size of population 0 grows tenfold over the last 0.23
 units of time (rate ln(10) / 0.23), and is constant before that:

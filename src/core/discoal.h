@@ -5,7 +5,6 @@
 #define __DISCOAL_GLOBALS__
 
 #include <stdint.h>
-#include <limits.h>
 #include "ancestrySegment.h"
 #include "activeSegment.h"
 
@@ -20,9 +19,6 @@
 #define MAXMUTS 400000        /* Maximum mutations for output formatting */
 #define MAXTIME 100000.0     /* Sentinel value representing "infinite" time */
 #define MAXPOPS 121          /* Maximum number of populations */
-/* popID of an -eG, -eL or -eM event before it is expanded to every
- * population; a value no population index can take. */
-#define ALL_POPULATIONS INT_MIN
 
 /* No longer needed after dynamic memory optimizations:
    - MAXNODES: nodes array is now dynamic
@@ -91,6 +87,11 @@ typedef struct event
 	/* For an 'n' event whose time and size are drawn for each replicate:
 	 * 1 + its index in priorSizeChanges. 0 for every other event. */
 	int priorSlot;
+	/* 1 for an -eG, -eL or -eM event before it is expanded to one event per
+	 * population (or per pair); see expandAllPopulationEvents(). A flag,
+	 * not a popID value, so no population index the user types can be
+	 * taken for it. */
+	int allPopulations;
 }
 event;
 
