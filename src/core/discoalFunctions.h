@@ -30,7 +30,6 @@ rootedNode *newRootedNode(double cTime, int popn);
 // Node memory management
 void markParentRecorded(rootedNode *child, rootedNode *parent);
 void markLeafNodeRecorded(rootedNode *node);
-void tryFreeNode(rootedNode *node);
 void cleanupRemainingNodes();
 
 void coalesceAtTimePopn(double cTime, int popn);
@@ -101,10 +100,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 
 rootedNode *pickNodePopn(int popn);
 void addNode(rootedNode *aNode);
-void removeNodeAt(int index);
 void removeNode(rootedNode *aNode);
-void addNodeAtIndex(rootedNode *aNode, int anIndex);
-void shiftNodes(int offset);
 void printNode(rootedNode *aNode);
 void freeTree(rootedNode *aNode);
 int nodePopnSize(int popn);

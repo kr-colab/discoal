@@ -2,7 +2,6 @@
 #include <string.h>
 #include <assert.h>
 #include "segmentPool.h"
-#include "ancestrySegmentAVL.h"
 
 #define DEFAULT_POOL_SIZE 10000
 #define MIN_POOL_SIZE 1000
@@ -222,13 +221,7 @@ void freeSegmentToPool(AncestrySegment *seg) {
     #endif
     
     // Clear segment data (important for safety)
-    void *avl_tree = seg->avlTree;  // Preserve AVL tree pointer for cleanup
     memset(seg, 0, sizeof(AncestrySegment));
-    
-    // AVL tree needs special cleanup if present
-    if (avl_tree) {
-        freeAVLTree((AVLTree*)avl_tree);
-    }
     
     // Debug magic field would go here if added to struct
     

@@ -8,13 +8,29 @@ typedef struct AncestrySegment {
     int start, end;  // genomic interval [start, end)
     struct AncestrySegment *left, *right;  // child segments (for tree structure)
     struct AncestrySegment *next;  // linked list for segments at same level
-    void *avlTree;  // Optional AVL tree for fast lookups (only on root)
     tsk_id_t tskit_node_id;  // tskit node ID this segment represents (like msprime's segment_t.value)
     uint16_t count;  // number of lineages
     uint16_t refCount;  // Reference count for sharing (max 65535)
     uint8_t isLeaf;  // 1 if this is a leaf segment, 0 otherwise
     uint8_t isRecorded;  // 1 if this segment has been recorded as edge in tskit, 0 otherwise
 } AncestrySegment;
+
+/* The span of a lineage's material that has not found its MRCA: the
+ * number of such sites, and the first and the last of them. Only pieces
+ * with 0 < count < fullCount (the sample size) count. Start a span as
+ * {0, nSites, 0}; it stays so if no piece counts. */
+typedef struct {
+    int nancSites, lLim, rLim;
+} SegmentSpan;
+
+static inline void spanAdd(SegmentSpan *span, int start, int end, int count,
+                           int fullCount) {
+    if (count > 0 && count < fullCount) {
+        span->nancSites += end - start;
+        if (start < span->lLim) span->lLim = start;
+        if (end - 1 > span->rLim) span->rLim = end - 1;
+    }
+}
 
 // Basic operations
 AncestrySegment* newSegment(int start, int end, tsk_id_t tskit_node_id, AncestrySegment *left, AncestrySegment *right);
@@ -36,9 +52,12 @@ AncestrySegment* mergeAncestryTrees(AncestrySegment *left, AncestrySegment *righ
 AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
         AncestrySegment *rightTree, tsk_id_t (*newParentNode)(void *ctx),
         void (*addEdge)(tsk_id_t parent, tsk_id_t child, double left, double right),
-        void *ctx, int fullCount, void (*onFixed)(int start, int end));
-AncestrySegment* splitLeft(AncestrySegment *root, int breakpoint);
-AncestrySegment* splitRight(AncestrySegment *root, int breakpoint);
+        void *ctx, int fullCount, void (*onFixed)(int start, int end),
+        SegmentSpan *span);
+void splitInPlace(AncestrySegment *root, int breakpoint, int fullCount,
+                  const SegmentSpan *whole,
+                  AncestrySegment **left, AncestrySegment **right,
+                  SegmentSpan *leftSpan, SegmentSpan *rightSpan);
 
 // Full ARG mode versions that update tskit_node_id
 AncestrySegment* splitLeftWithParent(AncestrySegment *root, int breakpoint, tsk_id_t parent_tskit_node_id);
