@@ -161,7 +161,7 @@ Large-scale Simulations
 
 For very large simulations:
 
-1. **Number of sites**: at most 10^8 (``MAXSITES`` in ``discoal.h``)
+1. **Number of sites**: at most 10^8 (``MAXSITES`` in ``src/core/discoal.h``)
 2. **Sample size**: at most 65,535
 
 Performance Tuning

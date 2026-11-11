@@ -66,7 +66,7 @@ Compilation Options
 
 discoal supports up to 65,535 samples.
 
-To change the maximum number of sites (default 100 million), edit ``MAXSITES`` in ``discoal.h`` and recompile.
+To change the maximum number of sites (default 100 million), edit ``MAXSITES`` in ``src/core/discoal.h`` and recompile.
 
 Testing the Installation
 ------------------------

@@ -299,7 +299,7 @@ To run the same tests locally before pushing:
 Code Organization
 -----------------
 
-Key source files:
+Key source files, in ``src/core/``:
 
 * ``discoal_multipop.c``: Main program entry and command-line parsing
 * ``discoalFunctions.c``: Core simulation functions

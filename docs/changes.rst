@@ -24,8 +24,10 @@ recombination. Node times are in units of 2N0 generations.
 YAML configuration and demes models
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``-Y config.yaml`` reads the parameters of a run from a YAML file. Every
-command-line feature has a YAML form. A demes model (the demes
+``-Y config.yaml`` reads the parameters of a run from a YAML file. YAML
+has a key for each model option of the command line, except continuous
+growth (``-eg``, ``-eG``, ``-el``, ``-eL``): give these on the command
+line with ``-Y``, or use a demes model. A demes model (the demes
 specification of the PopSim consortium) goes in
 ``demography.demes_filename``; discoal converts its sizes, times,
 migration rates, pulses and splits. See :doc:`yaml_configuration`,
