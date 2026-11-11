@@ -620,6 +620,7 @@ int main(int argc, const char * argv[]){
 		}
 	}
 	// fprintf(stderr, "Debug: Freed %d nodes in final cleanup\n", nodes_freed);
+	releaseFreeLineages();
 	cleanupBreakPoints();
 	cleanupPopLists();
 	

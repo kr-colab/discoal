@@ -23,9 +23,9 @@ void addBreakPoint(int bp);
 void initializeMuts(rootedNode *node, int capacity);
 void ensureMutsCapacity(rootedNode *node, int requiredSize);
 void cleanupMuts(rootedNode *node);
-void cleanupNodeArrays();
 void cleanupRemovedNodes();
 rootedNode *newRootedNode(double cTime, int popn);
+void releaseFreeLineages(void);
 
 // Node memory management
 void markParentRecorded(rootedNode *child, rootedNode *parent);
@@ -91,8 +91,7 @@ double sweepPhaseEventsConditionalTrajectory(int *bpArray, double startTime, dou
 		
 double totalTimeInTree();
 
-double recombinationRate(int popn);
-double geneConversionRate(int popn);
+void lineageEventRates(int popn, double *recombination, double *geneConversion);
 int recombineAtTimePopn(double cTime, int popn);
 void geneConversionAtTimePopn(double cTime, int popn);
 
@@ -102,7 +101,6 @@ rootedNode *pickNodePopn(int popn);
 void addNode(rootedNode *aNode);
 void removeNode(rootedNode *aNode);
 void printNode(rootedNode *aNode);
-void freeTree(rootedNode *aNode);
 int nodePopnSize(int popn);
 int nodePopnSweepSize(int popn, int sp);
 rootedNode *pickNodePopnSweep(int popn,int sp);
