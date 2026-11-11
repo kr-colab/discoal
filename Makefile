@@ -90,6 +90,7 @@ check: discoal run_tests
 	python3 testing/recurrent_sweep_check.py
 	python3 testing/sweep_msprime_check.py --workers $(CHECK_WORKERS)
 	python3 testing/gc_crossover_check.py --workers $(CHECK_WORKERS)
+	python3 testing/gene_conversion_check.py --workers $(CHECK_WORKERS)
 	python3 testing/linkage_msprime_check.py --workers $(CHECK_WORKERS)
 	python3 testing/fuzz_msprime_check.py --models 150 --reps 500 --workers $(CHECK_WORKERS)
 

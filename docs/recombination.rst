@@ -25,13 +25,22 @@ Gene conversion (non-crossover recombination events) is simulated using the ``-g
 
 **Parameters:**
 
-1. γ = 4Ng: The population gene conversion rate
-   
-   * g is the probability of initiating a gene conversion event per base pair
+1. γ = 4N₀gL: The population gene conversion rate for the whole locus of L sites, scaled as ρ is
 
-2. Mean tract length: The average length of converted regions
-   
-   * Tract lengths follow a geometric distribution
+   * g is the probability per generation that a gene conversion tract starts at a given site
+
+2. Mean tract length: The mean number of sites in a tract
+
+   * Tract lengths are geometric on 1, 2, 3, ..., with this mean
+
+**The model** is that of ms and msprime (Wiuf and Hein 2000). A tract starts at a
+site and runs to the right; the sites it covers come from one parent, and the other
+sites from the other parent. The chromosome goes on beyond the locus, so a tract
+can also start to the left of a lineage's first site and run into its material,
+and one can start in the locus and run past its end. A tract that changes no
+lineage's material (it falls in a gap of the material, or covers all of it) has
+no effect. ``testing/gene_conversion_check.py`` checks this model against the
+two-locus theory and against msprime.
 
 **Example:**
 
@@ -50,7 +59,7 @@ The ``-gr`` flag allows specifying gene conversion as a ratio to crossover event
    # Gene conversion rate = 0.5 * recombination rate, tract length 50bp
    ./discoal 10 5 10000 -t 10 -r 20 -gr 0.5 50
 
-In this model, the gene conversion initiation rate is calculated as rho × conversionToCrossoverRatio.
+Here the gene conversion rate is γ = ρ × conversionToCrossoverRatio, so the ratio is g/r, as for ms's ``-c f``.
 
 Combining Recombination Models
 ------------------------------

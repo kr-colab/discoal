@@ -166,10 +166,30 @@ have the same MRCA was 2 to 4 times that of msprime. discoal 2.0 splits
 the lineage at any breakpoint in its span, and agrees with msprime. The
 output of every run with recombination (``-r``) changes.
 
-Gene conversion (``-g``, ``-gr``) now starts a tract at any site in the
-lineage's span, also in such a gap. The gene conversion model does not
-change otherwise: a tract starts inside the span, and a tract that
-starts to the left of the lineage's first site is not modeled.
+Gene conversion is the model of ms and msprime
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+In ms and msprime (the model of Wiuf and Hein), the chromosome goes on to
+the left of the locus, so a gene conversion tract can start to the left of
+a lineage's first site and run into its material. discoal 0.1.x had no
+such tracts, so sites near the left end of a lineage's material were
+converted too rarely. For example, with two samples and no such tracts, the
+TMRCAs of sites 0 and 20 had a correlation of 0.77, against 0.62 in ms,
+msprime and the two-locus theory. discoal 2.0 has these tracts, as msprime
+does, and agrees with the theory and with msprime.
+
+Also:
+
+* A tract that would change no lineage's material (it falls in a gap of
+  the material, or covers all of it) has no effect, as in msprime.
+* A tract can start at any site in the lineage's span, also in a gap
+  whose sites have found their MRCA.
+* ``-g gamma`` is 4N₀gL over the locus of L sites, so tracts start at
+  gamma / L per site, as crossovers do at rho / L. It was gamma / (L + 1).
+  So ``-gr ratio`` now gives a gene conversion rate of exactly ratio times
+  the crossover rate, as ms's ``-c`` does.
+
+The output of every run with gene conversion changes.
 
 Gene conversion in the wild-type class during a sweep
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -204,13 +224,11 @@ Other fixes that change the output
 * Ancient samples taken during a sweep (``-A``): they now get the
   frequency class of the sweep at their sampling time.
 
-Known Differences from msprime
-------------------------------
+Agreement with msprime
+----------------------
 
-discoal's gene conversion model differs from msprime's in two points
-(GitHub issue #143): a tract starts only inside a lineage's span, so tracts
-that start to the left of its first site are not modeled, and a tract that
-holds no material gives a parent with no material, where msprime makes no
-event. Apart from gene conversion, discoal and msprime agree in
-distribution on the stdpopsim catalog and the demes specification's models
-(checked every week).
+discoal and msprime agree in distribution on the stdpopsim catalog and the
+demes specification's models (checked every week), on hard sweeps, on the
+linkage of sites, and on gene conversion. msprime does not model gene
+conversion during a sweep; there discoal is checked against crossover
+(``testing/gc_crossover_check.py``).

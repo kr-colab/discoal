@@ -173,9 +173,14 @@ jobs:
       run: python testing/sweep_msprime_check.py --workers 4
 
     # Gene conversion with tracts longer than the locus must match
-    # crossover, in the neutral phase and in a sweep.
+    # crossover at twice its rate, in the neutral phase and in a sweep.
     - name: Check gene conversion against crossover
       run: python testing/gc_crossover_check.py --workers 4
+
+    # Gene conversion against the two-locus theory, at both ends and in the
+    # middle of the locus, and against msprime.
+    - name: Check gene conversion against theory and msprime
+      run: python testing/gene_conversion_check.py --workers 4
 
     # Linkage of two sites (same MRCA, TMRCA correlation) against msprime:
     # a breakpoint anywhere in a lineage's span must split it.

@@ -30,7 +30,8 @@ run, and each one exits with 0 if every comparison passes.
 | `trajectory_file_check.py` | sweeps from a trajectory file (`-S`) | every PR |
 | `recurrent_sweep_check.py` | recurrent sweeps (`-R`, `-L`) follow the demographic model between sweeps | every PR |
 | `sweep_msprime_check.py` | hard sweeps against msprime's `SweepGenicSelection` | every PR |
-| `gc_crossover_check.py` | gene conversion with tracts longer than the locus equals crossover, in the neutral phase and in a sweep | every PR |
+| `gc_crossover_check.py` | gene conversion with tracts longer than the locus equals crossover at twice its rate, in the neutral phase and in a sweep | every PR |
+| `gene_conversion_check.py` | gene conversion against the two-locus theory (at the left end, in the middle and at the right end of the locus) and against msprime | every PR |
 | `linkage_msprime_check.py` | linkage of two sites (same MRCA, TMRCA correlation) against msprime | every PR |
 | `fuzz_msprime_check.py` | random command-line demographic models against msprime | every PR (150 models) |
 | `stdpopsim_parity.py` | stdpopsim and demes models against msprime | every PR (a core set and a random sample); weekly (all models, without and with recombination) |
