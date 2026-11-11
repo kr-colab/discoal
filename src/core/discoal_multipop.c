@@ -700,8 +700,9 @@ void getParameters(int argc,const char **argv){
 	f0=0.0;
         uA=0.0;
 
-	seed1 = (long) (devrand() % 2147483399);
-	seed2 = (long) (devrand() % 2147483399);
+	/* setall() takes seeds in [1, 2147483562] and [1, 2147483398]. */
+	seed1 = (long) (devrand() % 2147483398) + 1;
+	seed2 = (long) (devrand() % 2147483398) + 1;
 	// fprintf(stderr, "DEBUG: Initial random seeds set: %ld, %ld\n", seed1, seed2);
 
 	EFFECTIVE_POPN_SIZE = 1000000;
@@ -1360,6 +1361,11 @@ void getParameters(int argc,const char **argv){
 			{sampleNegative, "a -p sample size", (double)sampleBad, ">= 0"},
 			{sampleSum != sampleSize, "the sum of the -p sample sizes",
 				(double)sampleSum, "equal to the sample size"},
+			/* The bounds of the generator's setall(). */
+			{seed1 < 1 || seed1 > 2147483562, "the first seed (-d or YAML seed)",
+				(double)seed1, "in [1, 2147483562]"},
+			{seed2 < 1 || seed2 > 2147483398, "the second seed (-d or YAML seed)",
+				(double)seed2, "in [1, 2147483398]"},
 		};
 		for(size_t k = 0; k < sizeof(fixed) / sizeof(fixed[0]); k++){
 			if(fixed[k].bad){
