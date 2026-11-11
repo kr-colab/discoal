@@ -11,6 +11,7 @@
 #include "activeSegment.h"
 #include "discoal.h"
 #include "discoalFunctions.h"
+#include "fenwick.h"
 #include "ranlib.h"
 #include "alleleTraj.h"
 #include "tskitInterface.h"
@@ -68,6 +69,27 @@ void addBreakPoint(int bp) {
 
 static int64_t sweepClassWeight(int popn, int sp);
 
+/* The lineages of each population, for O(1) uniform picks, with their
+ * recombination weights. Only this file reads the weights, and only
+ * through currentWeights() for totals and positions. */
+typedef struct {
+    rootedNode **nodes;      // Array of node pointers
+    int count;              // Number of active nodes in this population
+    int capacity;           // Current array capacity
+    /* Recombination weight of each lineage, at the lineage's position in
+     * nodes[]: the number of breakpoint positions in its span of material
+     * without an MRCA (lineageWeight()). Recombination and gene conversion
+     * draw a lineage, and a breakpoint in its span, from it. */
+    Fenwick weights;
+    /* Slots count .. staleEnd-1 may still hold the weight of a lineage
+     * that left the list: removal does not clear the last slot, as the
+     * next lineage added there usually overwrites it. currentWeights()
+     * clears them before the weights are read as a whole. */
+    int staleEnd;
+} PopulationNodeList;
+
+static PopulationNodeList popLists[MAXPOPS];
+
 /* Slots of nodes[] in use: the active lineages and the empty slots that
  * removeNode() leaves until compactNodes(). */
 static int nodesUsed = 0;
@@ -75,27 +97,16 @@ static void compactNodes(void);
 
 // Population list management functions for O(1) node selection
 
+/* Empty every population list (the lists start zeroed). */
 void initializePopLists() {
-	for (int p = 0; p < MAXPOPS; p++) {
-		popLists[p].nodes = NULL;
-		popLists[p].count = 0;
-		popLists[p].capacity = 0;
-		popLists[p].staleEnd = 0;
-		/* The globals start zeroed, and cleanupPopLists() frees the
-		 * weights of the previous replicate, so this frees nothing live. */
-		fenwickFree(&popLists[p].weights);
-	}
+	cleanupPopLists();
 }
 
 void cleanupPopLists() {
 	for (int p = 0; p < MAXPOPS; p++) {
-		if (popLists[p].nodes != NULL) {
-			free(popLists[p].nodes);
-			popLists[p].nodes = NULL;
-			popLists[p].count = 0;
-			popLists[p].capacity = 0;
-		}
+		free(popLists[p].nodes);
 		fenwickFree(&popLists[p].weights);
+		popLists[p] = (PopulationNodeList){0};
 	}
 }
 
@@ -373,7 +384,6 @@ void initialize(){
 	drawPriors();
 }
 
-static int total_nodes_allocated = 0;
 
 /* Lineages freed in minimal mode, kept for reuse: each event frees and
  * makes lineages, and a list of them saves a malloc and a free per
@@ -401,8 +411,6 @@ rootedNode *newRootedNode(double cTime, int popn) {
 			exit(1);
 		}
 	}
-	total_nodes_allocated++;
-	// fprintf(stderr, "DEBUG: Allocated node %p, total allocated: %d\n", temp, total_nodes_allocated);
 	temp->rightParent = NULL;
 	temp->leftParent = NULL;
 	temp->rightChild = NULL;
@@ -929,12 +937,15 @@ void coalesceAtTimePopn(double cTime, int popn){
 	removeNode(rChild);
 	
 	
-	// Add the parent node to discoal's arrays and tskit BEFORE merging/recording
-	addNode(temp);
+	/* Minimal mode merges first, so that the parent enters its population
+	 * list with its span and its weight is set once. The full ARG adds the
+	 * parent first: the merge records it as the edges' parent. */
 	if (minimalTreeSeq) {
 		coalesceLineagesMinimal(temp, lChild, rChild);
+		addNode(temp);
 		return;
 	}
+	addNode(temp);
 	
 	// Get tskit IDs for all nodes involved in coalescence  
 	tsk_id_t parent_tsk_id = get_tskit_node_id(temp);
@@ -1191,12 +1202,10 @@ int isCoalNode(rootedNode *aNode){
  * rho / 2 (gamma / 2) over the locus, times the share of positions that
  * fall in the lineage's span: the total weight over nSites breakpoint
  * positions (nSites + 1 tract starts). */
-double recombinationRate(int popn){
-	return rho * 0.5 * (double) fenwickTotal(currentWeights(popn)) / nSites;
-}
-
-double geneConversionRate(int popn){
-	return my_gamma * 0.5 * (double) fenwickTotal(currentWeights(popn)) / (nSites + 1);
+void lineageEventRates(int popn, double *recombination, double *geneConversion){
+	double total = (double) fenwickTotal(currentWeights(popn));
+	*recombination = rho * 0.5 * total / nSites;
+	*geneConversion = my_gamma * 0.5 * total / (nSites + 1);
 }
 
 /* A lineage of population popn and a position in its span, drawn with
@@ -1533,8 +1542,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 		//printf("currPopSize[0]: %d currPopSize[1]: %d alleleNumber: %d totNodeNumber: %d activeSites: %d cTime: %f\n",popnSizes[0],popnSizes[1],alleleNumber,totNodeNumber, activeSites, cTime);
 		for(i=0;i<npops;i++){
 			cRate[i] = pairCoalRate(popnSizes[i], sizeAt(i, currentTime));
-			rRate[i] = recombinationRate(i);
-			gcRate[i] = geneConversionRate(i);
+			lineageEventRates(i, &rRate[i], &gcRate[i]);
 
 			for(j=0;j<npops;j++) mRate[i]+=migAt(i, j, currentTime);
 			mRate[i] *= popnSizes[i] * MIG_LINEAGE_WEIGHT;
@@ -2165,6 +2173,9 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 		else if (minF < 1.0/(2.*N))
 			minF = 1.0/(2.*N);
 		tInc = 1.0 / (deltaTMod * N);
+		/* Shapes change only at the events applied above, not in this
+		 * interval. */
+		const int constantShapes = allShapesConstant();
 		//iterate until epoch time or sweep freq
 		while( x > trajectoryEnd(fromStandingVariation, N) && (currentTime+ttau) < localNextTime){
 			ttau += tIncOrig;
@@ -2175,7 +2186,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 				//get next sweep allele freq
 				switch(sweepMode){
 					case 'd':
-					if (allShapesConstant()) {
+					if (constantShapes) {
 						x = detSweepFreq(ttau, alpha * sr_now);
 					} else {
 						/* Time-varying alpha_eff: use the closed-form general formula with the
@@ -2369,8 +2380,9 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 			//printf("currPopSize[0]: %d currPopSize[1]: %d\n",popnSizes[0],popnSizes[1]);
 			for(i=1;i<npops;i++){
 				cRate[i] = pairCoalRate(popnSizes[i], sizeAt(i, cTime + ttau)) * tIncOrig;
-				rRate[i] = recombinationRate(i) * tIncOrig;
-				gcRate[i] = geneConversionRate(i) * tIncOrig;
+				lineageEventRates(i, &rRate[i], &gcRate[i]);
+				rRate[i] *= tIncOrig;
+				gcRate[i] *= tIncOrig;
 				totCRate += cRate[i];
 				totRRate += rRate[i];
 				totGCRate += gcRate[i];
@@ -2519,8 +2531,7 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 	//	printf("currPopSize[0]: %d currPopSize[1]: %d alleleNumber: %d totNodeNumber: %d activeSites: %d cTime: %f\n",popnSizes[0],popnSizes[1],alleleNumber,totNodeNumber, activeSites, cTime);
 		for(i=0;i<npops;i++){
 			cRate[i] = pairCoalRate(popnSizes[i], sizeAt(i, cTime));
-			rRate[i] = recombinationRate(i);
-			gcRate[i] = geneConversionRate(i);
+			lineageEventRates(i, &rRate[i], &gcRate[i]);
 			
 			for(j=0;j<npops;j++) mRate[i]+=migAt(i, j, cTime);
 			mRate[i] *= popnSizes[i] * MIG_LINEAGE_WEIGHT;
@@ -2848,12 +2859,15 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	removeNode(rChild);
 	
 	
-	// Add the parent node to discoal's arrays and tskit BEFORE merging/recording
-	addNode(temp);
+	/* Minimal mode merges first, so that the parent enters its population
+	 * list with its span and its weight is set once. The full ARG adds the
+	 * parent first: the merge records it as the edges' parent. */
 	if (minimalTreeSeq) {
 		coalesceLineagesMinimal(temp, lChild, rChild);
+		addNode(temp);
 		return;
 	}
+	addNode(temp);
 	
 	// Get tskit IDs for all nodes involved in coalescence  
 	tsk_id_t parent_tsk_id = get_tskit_node_id(temp);
@@ -3204,34 +3218,6 @@ void cleanupRemovedNodes() {
 	removedNodeCount = 0;
 }
 
-void cleanupNodeArrays() {
-	// First free any nodes still in the removed list
-	cleanupRemovedNodes();
-	
-	if (nodes != NULL) {
-		// Free any remaining nodes and their ancestry segments
-		compactNodes();
-		for (int i = 0; i < alleleNumber; i++) {
-			if (nodes[i] != NULL) {
-				// Free ancestry segments using reference counting
-				if (nodes[i]->ancestryRoot != NULL) {
-					freeSegmentTree(nodes[i]->ancestryRoot);
-					nodes[i]->ancestryRoot = NULL;
-				}
-				free(nodes[i]);
-				nodes[i] = NULL;
-			}
-		}
-		free(nodes);
-		nodes = NULL;
-		nodesCapacity = 0;
-	}
-	// Cleanup sample node tracking
-	cleanupSampleNodeIds();
-	
-	// Cleanup population lists
-	cleanupPopLists();
-}
 
 // Sample node tracking functions (always available)
 void initializeSampleNodeIds() {
@@ -3301,13 +3287,12 @@ void addNode(rootedNode *aNode){
 	
 	/* The full ARG records a tskit node for every node. Minimal mode, as
 	 * msprime, records none for recombination parents, and one for a
-	 * coalescence parent only where its children's material overlaps
-	 * (coalesceLineagesMinimal). */
+	 * coalescence parent only where its children's material overlaps: the
+	 * merge (coalesceLineagesMinimal()) sets it before the parent is added,
+	 * and a node from newRootedNode() has none. */
 	if (!minimalTreeSeq) {
 		tsk_id_t tsk_id = tskit_add_node(aNode->time, aNode->population, 0);  // is_sample=0
 		set_tskit_node_id(aNode, tsk_id);
-	} else {
-		set_tskit_node_id(aNode, TSK_NULL);
 	}
 	
 	// Add to population list
@@ -3342,7 +3327,7 @@ static void compactNodes(void){
 
 /* removeNode -- removes a lineage from nodes[] in O(1): its slot becomes
  * empty. The array is compacted when the empty slots are more than four
- * times the lineages (and 1024), so a compaction, O(slots), comes once in
+ * times the lineages plus 1024, so a compaction, O(slots), comes once in
  * many removals: the amortized cost stays O(1) and small. The slots hold
  * only pointers. */
 void removeNode(rootedNode *aNode){
@@ -3400,23 +3385,6 @@ void printNode(rootedNode *aNode){
 	// ancSites array removed - ancestry now tracked via tree
 }
 
-void freeTree(rootedNode *aNode){
-	int i;
-	//printf("final nodeNumber = %d\n",totNodeNumber);
-	//cleanup nodes
-	for (i = 0; i < totNodeNumber; i++){
-		if (nodes[i] == NULL) {
-			continue;
-		}
-		// Free ancestry segment tree
-		if (nodes[i]->ancestryRoot) {
-			freeSegmentTree(nodes[i]->ancestryRoot);
-			nodes[i]->ancestryRoot = NULL;
-		}
-		free(nodes[i]);
-		nodes[i] = NULL;
-	}
-}
 
 /*nodePopnSize-- returns popnSize of popn from
 	nodes array */
