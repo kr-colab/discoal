@@ -1,0 +1,17 @@
+# A growth rate must be a number; a NaN rate made the simulation hang.
+# Rejected with:
+#   "Error parsing config: exponential_growth_changes[0].rate (nan) must be a finite number"
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [10]
+  demographic_events:
+    exponential_growth_changes:
+      - {time: 0.1, rate: nan, population: 0}

@@ -18,9 +18,7 @@ discoal -Y config.yaml -d 1 2      # the seeds 1 2, not those of the file
   - an option that sets a value (for example `-t`, `-r`, `-d`, `-N`)
     replaces the value of the file;
   - an event option (for example `-en`, `-em`, `-A`) adds an event to
-    the events of the file. YAML has no key for continuous growth, so
-    give `-eg`, `-eG`, `-el` or `-eL` on the command line, or use a
-    demes file;
+    the events of the file;
   - `-m i j rate` sets one entry of the migration matrix;
   - `-p` replaces `deme_sample_size`. The sum must still be equal to
     `sample_size`.
@@ -100,6 +98,8 @@ demography:
   demographic_events:                # optional
     population_size_changes:
       - {time: 0.5, size: 0.1, population: 0}
+    exponential_growth_changes:
+      - {time: 0.0, rate: 2.0, population: 1}
     migration_rate_changes:
       - {time: 0.2, rate: 0.5, source: 1, destination: 2}
     ancient_samples:
@@ -141,6 +141,35 @@ block, with `deme_sample_size: [n]`.
 A `population_size_change` is `-en time population size`. `size` is a
 fraction of N, and must be `> 0`. `time` must be `>= 0`. `population`
 is required.
+
+### Growth
+
+- An entry of `exponential_growth_changes` is `-eg time population
+  rate`: from `time` back into the past, the size of `population`
+  changes exponentially at `rate` per 4N generations, from its size at
+  `time`. A positive rate makes the population smaller in the past.
+- An entry of `linear_growth_changes` is `-el time population rate`:
+  the size changes linearly, by `rate` (a fraction of N) per 4N
+  generations. A positive rate makes the population smaller in the
+  past, and discoal stops with an error if the size reaches zero.
+- `time` must be `>= 0`, and `rate` a finite number. The growth goes on
+  until the next size change or growth entry of the population; a rate
+  of 0 stops it. A size change resets the growth, as `-en` does.
+- For `-eG` or `-eL` (all populations), give one entry for each
+  population. In the same way, `-eM` is one `migration_rate_changes`
+  entry for each pair of populations.
+- Growth of population 0 during a sweep is not modeled; discoal stops
+  with an error.
+
+For example, the size of population 0 grows tenfold over the last 0.23
+units of time (rate ln(10) / 0.23), and is constant before that:
+
+```yaml
+    exponential_growth_changes:
+      - {time: 0.0, rate: 10.0, population: 0}
+    population_size_changes:
+      - {time: 0.23, size: 0.1, population: 0}
+```
 
 ### Splits and admixtures
 
@@ -195,11 +224,14 @@ the same time take effect in this order:
 1. `ancient_samples`;
 2. `migration_rate_changes`;
 3. `population_size_changes`;
-4. `population_splits`, then `admixtures`, each followed by the
+4. `exponential_growth_changes`, then `linear_growth_changes`, so that
+   a growth entry starts from the new size of a size change at the same
+   time;
+5. `population_splits`, then `admixtures`, each followed by the
    migration changes that end the population's migration;
-5. size changes drawn from priors;
-6. the sweep;
-7. events from command-line options.
+6. size changes drawn from priors;
+7. the sweep;
+8. events from command-line options.
 
 In each list, the order is the file order. On the command line, events
 at the same time take effect in the order of the options. To get the

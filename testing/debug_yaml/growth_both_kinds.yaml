@@ -1,0 +1,21 @@
+# Exponential and linear growth in one population, each ended by a size
+# change. Must run.
+
+simulation:
+  sample_size: 10
+  num_replicates: 1
+  num_sites: 1000
+  seed: [1, 2]
+genetics:
+  mutation_rate: 0.1
+  recombination_rate: 0.1
+demography:
+  deme_sample_size: [10]
+  demographic_events:
+    population_size_changes:
+      - {time: 0.2, size: 0.1, population: 0}
+      - {time: 0.5, size: 1.0, population: 0}
+    exponential_growth_changes:
+      - {time: 0.0, rate: 10.0, population: 0}
+    linear_growth_changes:
+      - {time: 0.2, rate: -1.0, population: 0}

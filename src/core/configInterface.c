@@ -21,9 +21,25 @@ static int check_pop_index(const char *arr, const char *field, int idx,
     return EXIT_SUCCESS;
 }
 
+/* A value that is not finite (nan, inf) is rejected before the range
+ * checks below, which a NaN would pass. */
+static int check_finite_double(const char *arr, const char *field, int idx,
+    double val)
+{
+    if (!isfinite(val)) {
+        fprintf(stderr,
+            "Error parsing config: %s[%d].%s (%g) must be a finite number\n",
+            arr, idx, field, val);
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
+}
+
 static int check_positive_double(const char *arr, const char *field, int idx,
     double val)
 {
+    if (check_finite_double(arr, field, idx, val) != EXIT_SUCCESS)
+        return EXIT_FAILURE;
     if (val <= 0) {
         fprintf(stderr,
             "Error parsing config: %s[%d].%s (%g) must be > 0\n",
@@ -36,6 +52,8 @@ static int check_positive_double(const char *arr, const char *field, int idx,
 static int check_nonneg_double(const char *arr, const char *field, int idx,
     double val)
 {
+    if (check_finite_double(arr, field, idx, val) != EXIT_SUCCESS)
+        return EXIT_FAILURE;
     if (val < 0) {
         fprintf(stderr,
             "Error parsing config: %s[%d].%s (%g) must be >= 0\n",
@@ -189,6 +207,18 @@ static const cyaml_schema_value_t migration_rate_change_schema = {
         migration_rate_change_fields_schema),
 };
 
+static const cyaml_schema_field_t growth_rate_change_fields_schema[] = {
+    /* required arguments */
+    CYAML_FIELD_FLOAT("time", CYAML_FLAG_DEFAULT, struct growth_rate_change, time),
+    CYAML_FIELD_FLOAT("rate", CYAML_FLAG_DEFAULT, struct growth_rate_change, rate),
+    CYAML_FIELD_INT("population", CYAML_FLAG_DEFAULT, struct growth_rate_change, population),
+    CYAML_FIELD_END
+};
+static const cyaml_schema_value_t growth_rate_change_schema = {
+    CYAML_VALUE_MAPPING(CYAML_FLAG_DEFAULT, struct growth_rate_change,
+        growth_rate_change_fields_schema),
+};
+
 static const cyaml_schema_field_t population_split_fields_schema[] = {
     /* required arguments */
     CYAML_FIELD_FLOAT("time", CYAML_FLAG_DEFAULT, struct population_split, time),
@@ -236,6 +266,12 @@ static const cyaml_schema_field_t demographic_events_fields_schema[] = { /* sub-
     CYAML_FIELD_SEQUENCE_COUNT("migration_rate_changes", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
         struct demographic_events, migration_rate_changes, num_migration_rate_changes,
         &migration_rate_change_schema, 1, CYAML_UNLIMITED),
+    CYAML_FIELD_SEQUENCE_COUNT("exponential_growth_changes", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        struct demographic_events, exponential_growth_changes, num_exponential_growth_changes,
+        &growth_rate_change_schema, 1, CYAML_UNLIMITED),
+    CYAML_FIELD_SEQUENCE_COUNT("linear_growth_changes", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        struct demographic_events, linear_growth_changes, num_linear_growth_changes,
+        &growth_rate_change_schema, 1, CYAML_UNLIMITED),
     CYAML_FIELD_SEQUENCE_COUNT("population_splits", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
         struct demographic_events, population_splits, num_population_splits,
         &population_split_schema, 1, CYAML_UNLIMITED),
@@ -644,6 +680,8 @@ int parse_demography_block(struct demography_config *cfg)
              * each sample's deme exists at its sampling time. */
             if (cfg->demes_filename != NULL &&
                 (dmo->num_population_size_changes > 0 ||
+                 dmo->num_exponential_growth_changes > 0 ||
+                 dmo->num_linear_growth_changes > 0 ||
                  dmo->num_population_splits > 0 ||
                  dmo->num_migration_rate_changes > 0 ||
                  dmo->num_admixtures > 0)) {
@@ -745,6 +783,38 @@ int parse_demography_block(struct demography_config *cfg)
                 events[eventNumber].popID = psc->population;
                 events[eventNumber].popnSize = psc->size;
                 eventNumber++;
+            }
+            /* Growth, as -eg / -el time population rate. These come after
+             * the size changes: a size change at the same time resets
+             * growth (as -en does in ms), so this order lets the growth
+             * start from the new size. The rate is per 4N0 generations,
+             * like the command-line value. */
+            for (int kind = 0; kind < 2; ++kind) {
+                const char *list = kind == 0 ? "exponential_growth_changes"
+                                             : "linear_growth_changes";
+                const unsigned count = kind == 0
+                    ? dmo->num_exponential_growth_changes
+                    : dmo->num_linear_growth_changes;
+                const struct growth_rate_change *changes = kind == 0
+                    ? dmo->exponential_growth_changes
+                    : dmo->linear_growth_changes;
+                for (int i = 0; i < (int)count; ++i) {
+                    const struct growth_rate_change *grc = &changes[i];
+                    if (check_pop_index(list, "population", i,
+                            grc->population, cfg->num_demes) != EXIT_SUCCESS ||
+                        check_nonneg_double(list, "time", i,
+                            grc->time) != EXIT_SUCCESS ||
+                        check_finite_double(list, "rate", i,
+                            grc->rate) != EXIT_SUCCESS) {
+                        return EXIT_FAILURE;
+                    }
+                    ensureEventsCapacity();
+                    events[eventNumber].type = kind == 0 ? 'g' : 'l';
+                    events[eventNumber].time = userTimeToInternal(grc->time);
+                    events[eventNumber].popID = grc->population;
+                    events[eventNumber].popnSize = userRateToInternal(grc->rate);
+                    eventNumber++;
+                }
             }
             for (int i = 0; i < dmo->num_population_splits; ++i) {
                 struct population_split *split = &dmo->population_splits[i];
