@@ -133,6 +133,11 @@ typedef struct {
      * without an MRCA (lineageWeight()). Recombination and gene conversion
      * draw a lineage, and a breakpoint in its span, from it. */
     Fenwick weights;
+    /* Slots count .. staleEnd-1 may still hold the weight of a lineage
+     * that left the list: removal does not clear the last slot, as the
+     * next lineage added there usually overwrites it. currentWeights()
+     * clears them before the weights are read as a whole. */
+    int staleEnd;
 } PopulationNodeList;
 
 

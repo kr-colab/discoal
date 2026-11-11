@@ -80,6 +80,7 @@ void initializePopLists() {
 		popLists[p].nodes = NULL;
 		popLists[p].count = 0;
 		popLists[p].capacity = 0;
+		popLists[p].staleEnd = 0;
 		/* The globals start zeroed, and cleanupPopLists() frees the
 		 * weights of the previous replicate, so this frees nothing live. */
 		fenwickFree(&popLists[p].weights);
@@ -114,6 +115,17 @@ static void setLineageWeight(const rootedNode *node) {
 	if (node->popListIndex >= 0 && node->population >= 0 && node->population < MAXPOPS)
 		fenwickSet(&popLists[node->population].weights, node->popListIndex,
 			lineageWeight(node));
+}
+
+/* The weights of a population, with the slots of lineages that have left
+ * it cleared: every reader of the total or of cumulative positions goes
+ * through it. */
+static Fenwick *currentWeights(int popn) {
+	PopulationNodeList *list = &popLists[popn];
+	for (int k = list->count; k < list->staleEnd; k++)
+		fenwickSet(&list->weights, k, 0);
+	list->staleEnd = list->count;
+	return &list->weights;
 }
 
 void addNodeToPopList(rootedNode *node, int popn) {
@@ -153,7 +165,9 @@ void removeNodeFromPopList(rootedNode *node) {
 		list->nodes[index]->popListIndex = index;
 		fenwickSet(&list->weights, index, fenwickGet(&list->weights, list->count - 1));
 	}
-	fenwickSet(&list->weights, list->count - 1, 0);
+	/* The last slot keeps its weight until a lineage is added there or the
+	 * weights are read as a whole (currentWeights()). */
+	if (list->staleEnd < list->count) list->staleEnd = list->count;
 	
 	list->count--;
 	node->popListIndex = -1;
@@ -361,12 +375,31 @@ void initialize(){
 
 static int total_nodes_allocated = 0;
 
+/* Lineages freed in minimal mode, kept for reuse: each event frees and
+ * makes lineages, and a list of them saves a malloc and a free per
+ * lineage. Linked through leftParent; released by releaseFreeLineages(). */
+static rootedNode *freeLineages = NULL;
+
+void releaseFreeLineages(void) {
+	while (freeLineages) {
+		rootedNode *next = freeLineages->leftParent;
+		free(freeLineages);
+		freeLineages = next;
+	}
+}
+
 rootedNode *newRootedNode(double cTime, int popn) {
 	rootedNode *temp;
 
-	temp =  malloc(sizeof(rootedNode));
-	if(temp==NULL){
-		printf("fucked: out o' memory from rootedNode alloc\n");
+	if (freeLineages) {
+		temp = freeLineages;
+		freeLineages = temp->leftParent;
+	} else {
+		temp = malloc(sizeof(rootedNode));
+		if (temp == NULL) {
+			fprintf(stderr, "Error: out of memory for a lineage\n");
+			exit(1);
+		}
 	}
 	total_nodes_allocated++;
 	// fprintf(stderr, "DEBUG: Allocated node %p, total allocated: %d\n", temp, total_nodes_allocated);
@@ -837,10 +870,12 @@ static SegmentSpan emptySpan(void) {
 	return span;
 }
 
-/* Free a lineage that has left the active set (minimal mode). */
+/* Free a lineage that has left the active set (minimal mode): its struct
+ * goes to the list for reuse by newRootedNode(). */
 static void freeLineage(rootedNode *node){
 	if (node->ancestryRoot) freeSegmentTree(node->ancestryRoot);
-	free(node);
+	node->leftParent = freeLineages;
+	freeLineages = node;
 }
 
 /* Sites whose MRCA a coalescence has just found are no longer active. */
@@ -1157,11 +1192,11 @@ int isCoalNode(rootedNode *aNode){
  * fall in the lineage's span: the total weight over nSites breakpoint
  * positions (nSites + 1 tract starts). */
 double recombinationRate(int popn){
-	return rho * 0.5 * (double) fenwickTotal(&popLists[popn].weights) / nSites;
+	return rho * 0.5 * (double) fenwickTotal(currentWeights(popn)) / nSites;
 }
 
 double geneConversionRate(int popn){
-	return my_gamma * 0.5 * (double) fenwickTotal(&popLists[popn].weights) / (nSites + 1);
+	return my_gamma * 0.5 * (double) fenwickTotal(currentWeights(popn)) / (nSites + 1);
 }
 
 /* A lineage of population popn and a position in its span, drawn with
@@ -1169,7 +1204,7 @@ double geneConversionRate(int popn){
  * over all the population's weights gives both. Returns NULL if no lineage
  * has a span. */
 static rootedNode *drawLineageAndPosition(int popn, int *position){
-	Fenwick *w = &popLists[popn].weights;
+	Fenwick *w = currentWeights(popn);
 	int64_t total = fenwickTotal(w);
 	if (total <= 0) return NULL;
 	int64_t at = (int64_t) (ranf() * (double) total);
@@ -1467,6 +1502,9 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 	int  i,j;
 	int coalescenceCounter = 0;  // Counter for coalescent events only
 	const int SWEEP_INTERVAL = 10;  // Sweep every 10 coalescent events
+	/* Sizes and migration rates change only at events, which come between
+	 * calls of this sampler. */
+	const int constantShapes = allShapesConstant();
 
 	if(startTime == endTime){
 		return(endTime);
@@ -1508,7 +1546,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 		}
 		//printf("totRate: %f totCRate: %f totRRate: %f \n",totRate,totCRate,totRRate);
 
-		if (allShapesConstant()) {
+		if (constantShapes) {
 			//find time of next event
 			waitTime = genexp(1.0)  * (1.0/ totRate);
 			cTime += waitTime;
@@ -3303,8 +3341,10 @@ static void compactNodes(void){
 }
 
 /* removeNode -- removes a lineage from nodes[] in O(1): its slot becomes
- * empty. The array is compacted when the empty slots outnumber the
- * lineages, so the amortized cost stays O(1). */
+ * empty. The array is compacted when the empty slots are more than four
+ * times the lineages (and 1024), so a compaction, O(slots), comes once in
+ * many removals: the amortized cost stays O(1) and small. The slots hold
+ * only pointers. */
 void removeNode(rootedNode *aNode){
 	popnSizes[aNode->population]-=1;
 	if (aNode->population==0 && aNode->sweepPopn >= 0)
@@ -3316,7 +3356,7 @@ void removeNode(rootedNode *aNode){
 	nodes[aNode->nodesIndex] = NULL;
 	aNode->nodesIndex = -1;
 	alleleNumber -= 1;
-	if (nodesUsed - alleleNumber > alleleNumber + 64) compactNodes();
+	if (nodesUsed - alleleNumber > 4 * alleleNumber + 1024) compactNodes();
 	
 	// Note: Node will be added to removed list automatically when it becomes
 	// fully recorded (in markParentRecorded), not here

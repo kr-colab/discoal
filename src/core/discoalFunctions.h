@@ -26,6 +26,7 @@ void cleanupMuts(rootedNode *node);
 void cleanupNodeArrays();
 void cleanupRemovedNodes();
 rootedNode *newRootedNode(double cTime, int popn);
+void releaseFreeLineages(void);
 
 // Node memory management
 void markParentRecorded(rootedNode *child, rootedNode *parent);
