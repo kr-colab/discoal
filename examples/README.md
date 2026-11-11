@@ -40,7 +40,7 @@ python sweep_diversity_analysis.py --replicates 10 --samples 20 --length 5000000
 - `--length`: Sequence length in bp (default: 5,000,000)
 - `--window`: Window size for diversity calculation (default: 5,000)
 - `--cores`: Number of parallel cores to use (default: 4)
-- `--discoal`: Path to discoal executable (default: ../discoal)
+- `--discoal`: Path to discoal executable (default: ../build/discoal)
 
 ### 2. Simple Sweep Diversity (`sweep_diversity_simple.py`)
 
@@ -92,7 +92,7 @@ You can modify these scripts to:
 ## Troubleshooting
 
 If you get errors:
-1. Check that discoal is built: `ls ../discoal`
+1. Check that discoal is built: `ls ../build/discoal`
 2. Ensure tskit is installed: `python -c "import tskit; print(tskit.__version__)"`
 3. For parallel processing issues, reduce cores: `--cores 1`
 

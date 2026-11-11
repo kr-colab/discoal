@@ -16,7 +16,7 @@ The documentation includes:
 - Complete parameter reference
 - Advanced features and workflows
 
-A PDF version is also available in `discoaldoc.pdf`.
+Read the Docs also offers the documentation as a PDF and as an ePub.
 
 ### Additional Documentation
 
