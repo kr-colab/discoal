@@ -62,17 +62,6 @@ With the development environment activated:
    make clean
    make discoal
 
-For testing, you'll need both optimized and legacy versions:
-
-.. code-block:: bash
-
-   make test_binaries
-
-This builds:
-
-* ``discoal_edited``: The optimized version with all memory improvements
-* ``discoal_legacy_backup``: The reference version from the master-backup branch
-
 Testing
 -------
 
@@ -228,150 +217,37 @@ Common testing commands during development:
 
    # Run all unit tests
    make run_tests
-   
+
    # Run specific test suite
-   make test_node_operations && ./test_node_operations
-   
+   make test_node_operations && ./build/test_node_operations
+
    # Clean and rebuild all tests
    make clean && make run_tests
-   
-   # Quick validation during development
-   cd testing/ && ./focused_validation_suite.sh
-   
-   # Full validation before commits
-   cd testing/ && ./comprehensive_validation_suite.sh
-   
-   # Statistical validation (if needed)
-   cd testing/ && ./statistical_validation_suite.sh
-   
-   # Run comprehensive tests (optimized vs legacy from master-backup)
-   make test_comprehensive
-   
-   # Run comprehensive tests (current working dir vs HEAD of branch)
-   make test_comprehensive_head
 
-**Make Targets for Comprehensive Testing**
+   # Everything that CI checks for a pull request
+   make check
 
-The Makefile provides convenient targets that build the required binaries and run the comprehensive test suite:
+Checks of the simulator
+^^^^^^^^^^^^^^^^^^^^^^^
 
-* ``make test_comprehensive``: 
-  
-  * Builds ``discoal_edited`` (optimized version from current working directory)
-  * Builds ``discoal_legacy_backup`` from the ``master-backup`` branch
-  * Runs the comprehensive validation suite comparing these two versions
-  * Use this to ensure your optimizations maintain compatibility with the original implementation
+The ``testing/`` directory holds the checks of discoal's output: command
+lines that must run, YAML and demes input that must give the same output as
+the command line, and statistical comparisons with msprime (units,
+demography, linkage, sweeps, gene conversion) and with SLiM (sweeps).
+``testing/README.md`` lists each check, what it checks, and where it runs
+(every pull request, weekly, or by hand).
 
-* ``make test_comprehensive_head``:
-  
-  * Builds ``discoal_edited`` (optimized version from current working directory)
-  * Builds ``discoal_legacy_backup`` from HEAD of the current branch
-  * Runs the comprehensive validation suite comparing working changes against the last commit
-  * Use this to measure performance improvements of uncommitted changes
-
-These targets automatically handle the complex process of building from different sources and are the recommended way to run comprehensive tests during development.
-
-Comprehensive Validation Suite
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The primary testing framework compares the optimized version against the legacy version to ensure identical output:
+``make check`` runs the checks of every pull request: the unit tests, then
+each script in the same order as CI. ``CHECK_WORKERS`` sets the number of
+parallel workers of the statistical checks (default 4):
 
 .. code-block:: bash
 
-   cd testing/
-   ./comprehensive_validation_suite.sh
+   make check CHECK_WORKERS=16
 
-This suite:
-
-* Runs 27 test cases covering all documented features
-* Compares output between optimized and legacy versions
-* Profiles memory usage and performance
-* Reports any differences or regressions
-
-Test categories include:
-
-* Basic coalescent simulations
-* Recombination and gene conversion
-* Multiple populations with migration
-* Selection (hard/soft/partial sweeps)
-* Complex demographic scenarios
-* Stress tests with extreme parameters
-
-Focused Validation Suite
-^^^^^^^^^^^^^^^^^^^^^^^^
-
-For rapid testing during development:
-
-.. code-block:: bash
-
-   cd testing/
-   ./focused_validation_suite.sh
-
-This runs a subset of critical tests for quick feedback.
-
-Statistical Validation Suite
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-To ensure optimizations don't introduce statistical biases:
-
-.. code-block:: bash
-
-   cd testing/
-   ./statistical_validation_suite.sh              # 100 replicates, auto mode
-   ./statistical_validation_suite.sh parallel 50  # 50 replicates, parallel mode
-   ./statistical_validation_suite.sh 200          # 200 replicates
-
-This suite:
-
-* Runs multiple replicates of each test case
-* Extracts segregating sites statistics
-* Performs Kolmogorov-Smirnov tests
-* Verifies distributions are statistically equivalent
-
-msprime Comparison Suite
-^^^^^^^^^^^^^^^^^^^^^^^^
-
-To validate discoal against the well-established msprime coalescent simulator:
-
-.. code-block:: bash
-
-   cd testing/
-   ./msprime_comparison_suite.sh
-
-This suite compares discoal and msprime across:
-
-* Neutral models with and without recombination
-* Various sample sizes and mutation rates
-* Selection models (hard sweeps with different strengths and ages)
-
-The comparison includes runtime performance metrics and statistical tests to ensure equivalent output distributions.
-
-**Parameter Scaling for msprime Comparisons**
-
-When comparing discoal with msprime, careful parameter conversion is required due to different conventions:
-
-1. **Population Size**: discoal uses scaled parameters assuming Ne=1. For msprime, we use Ne=0.5 with diploid samples (n_samples/2) and ploidy=2 to match discoal's haploid output.
-
-2. **Mutation Rate**: 
-   
-   * discoal: θ = 4 × Ne × μ × L (over whole locus)
-   * msprime: mutation_rate = θ / (4 × Ne × L) (per base pair)
-
-3. **Recombination Rate**:
-   
-   * discoal: ρ = 4 × Ne × r × L
-   * msprime: recombination_rate = ρ / (4 × Ne × L)
-
-4. **Selection Coefficient** (for sweeps):
-   
-   * discoal: α = 2 × Ne × s
-   * msprime: s = α / (2 × Ne) × 2 (factor of 2 for msprime's fitness model)
-
-5. **Sweep Timing**:
-   
-   * When τ > 0 in discoal, we rescale to Ne=0.25 in msprime for consistent time units
-   * Allele frequencies use the original Ne to ensure valid [0,1] bounds
-
-These scaling conventions ensure that both simulators produce statistically equivalent results, as validated by the comparison suite.
+The statistical checks need Python with msprime, tskit, numpy, scipy, demes
+and stdpopsim. They use fixed seeds, so their results do not change from run
+to run.
 
 Development Workflow
 --------------------
@@ -384,31 +260,29 @@ Development Workflow
 
       make run_tests
 
-4. **Run focused validation tests** frequently:
+4. **Run all checks** before a pull request:
 
    .. code-block:: bash
 
-      cd testing/ && ./focused_validation_suite.sh
+      make check
 
-5. **Run comprehensive tests** before committing:
-
-   .. code-block:: bash
-
-      cd testing/ && ./comprehensive_validation_suite.sh
-
-6. **Document performance improvements** in commit messages
-7. **Submit pull request** - CI will automatically run tests
+5. **Submit pull request** - CI runs the same checks
 
 Continuous Integration
 ^^^^^^^^^^^^^^^^^^^^^^
 
 discoal uses GitHub Actions for continuous integration. The CI workflow automatically runs on every push and pull request to ensure code quality.
 
-**CI Jobs:**
+**CI Jobs (every push and pull request):**
 
-1. **Unit Tests**: Runs all unit tests on multiple OS versions (Ubuntu 20.04, 22.04, latest) with both gcc and clang compilers
-2. **Basic Functionality Tests**: Verifies core discoal functionality (coalescent, recombination, selection, tree sequence output)
-3. **Memory Leak Check**: Uses valgrind to ensure no memory leaks in common usage scenarios
+1. **Unit Tests**: all unit tests on Ubuntu 22.04 and the latest Ubuntu, with gcc and clang
+2. **Basic Functionality Tests**: smoke tests, and the YAML, preflight and demes suites
+3. **Unit Conventions vs msprime**: the statistical checks against msprime (units, sweeps, trajectory files, recurrent sweeps, gene conversion, linkage, a fuzz test of random models)
+4. **Parity with msprime on demes models**: a fixed set of core models and a random sample of the others
+5. **Memory Leak Check**: valgrind on common runs
+
+A weekly workflow runs the full parity check against msprime, without and
+with recombination.
 
 **CI Badge:**
 
@@ -418,11 +292,10 @@ To run the same tests locally before pushing:
 
 .. code-block:: bash
 
-   # Run unit tests
-   make run_tests
-   
+   make check
+
    # Check for memory leaks (requires valgrind)
-   valgrind --leak-check=full ./discoal 10 1 100 -t 10
+   valgrind --leak-check=full ./build/discoal 10 1 100 -t 10
 
 Code Organization
 -----------------

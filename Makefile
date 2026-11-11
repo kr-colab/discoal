@@ -166,110 +166,30 @@ discoal_mem_branch:
 		exit 1; \
 	fi
 
-#
-# tests - for comprehensive population genetics testing
-#
+# make check: the checks that CI runs for every pull request, in one
+# command (see testing/README.md). Needs Python with msprime, tskit, numpy,
+# scipy, demes and stdpopsim. CHECK_WORKERS sets the parallel workers of the
+# statistical checks.
+CHECK_WORKERS ?= 4
 
-test: discoal_legacy_backup discoal_edited
-	@echo "Running comprehensive test suite..."
-	@ln -sf build/discoal_legacy_backup discoal_legacy_backup
-	@ln -sf build/discoal_edited discoal_edited
-	cd testing && ./comprehensive_validation_suite.sh
+check: discoal run_tests
+	bash testing/yaml_parser_suite.sh
+	bash testing/yaml_validation_suite.sh
+	bash testing/preflight_validation_suite.sh
+	bash testing/demes_validation_suite.sh
+	bash testing/demes_output_comparison_suite.sh
+	python3 testing/units_convention_check.py
+	python3 testing/sweep_snp_check.py
+	python3 testing/trajectory_file_check.py
+	python3 testing/recurrent_sweep_check.py
+	python3 testing/sweep_msprime_check.py --workers $(CHECK_WORKERS)
+	python3 testing/gc_crossover_check.py --workers $(CHECK_WORKERS)
+	python3 testing/linkage_msprime_check.py --workers $(CHECK_WORKERS)
+	python3 testing/fuzz_msprime_check.py --models 150 --reps 500 --workers $(CHECK_WORKERS)
 
-test_comprehensive: discoal_legacy_backup discoal_edited
-	@echo "Running comprehensive test suite..."
-	@ln -sf build/discoal_legacy_backup discoal_legacy_backup
-	@ln -sf build/discoal_edited discoal_edited
-	cd testing && ./comprehensive_validation_suite.sh
+test: check
 
-test_quick: discoal_legacy_backup discoal_edited
-	@echo "Running quick focused validation..."
-	@ln -sf build/discoal_legacy_backup discoal_legacy_backup
-	@ln -sf build/discoal_edited discoal_edited
-	cd testing && ./focused_validation_suite.sh
-
-test_reps: discoal_legacy_backup discoal_edited
-	@echo "Running statistical validation with custom replicate count..."
-	@read -p "Enter number of replicates (default 100): " reps; \
-	reps=$${reps:-100}; \
-	echo "Running with $$reps replicates..."; \
-	cd testing && ./statistical_validation_suite.sh $$reps
-
-# Build version from HEAD of current branch as legacy_backup for comparison
-discoal_legacy_backup_head:
-	@echo "Building version from HEAD of current branch as legacy_backup..."
-	@mkdir -p /tmp/discoal_head_build
-	@git archive HEAD | tar -x -C /tmp/discoal_head_build
-	@cd /tmp/discoal_head_build && $(CC) $(CFLAGS) -o discoal_legacy_backup discoal_multipop.c discoalFunctions.c ranlibComplete.c alleleTraj.c ancestrySegment.c ancestrySegmentAVL.c ancestryVerify.c activeSegment.c tskitInterface.c $(TSKIT_SOURCES) -lm -fcommon && mv discoal_legacy_backup $(CURDIR)/
-	@rm -rf /tmp/discoal_head_build
-	@echo "HEAD version built successfully as discoal_legacy_backup"
-
-# Build both versions for HEAD comparison testing
-test_binaries_head: discoal_edited discoal_legacy_backup_head
-	@echo "Built both optimized and HEAD versions for testing"
-
-# Run comprehensive test comparing optimized vs HEAD of branch
-test_comprehensive_head: test_binaries_head
-	@echo "Running comprehensive validation suite (optimized vs HEAD)..."
-	@echo "This will compare the performance improvements of our optimizations"
-	@echo "Optimized = current working directory with trajectory optimizations"
-	@echo "Legacy = HEAD of current branch (before optimizations)"
-	cd testing && ./comprehensive_validation_suite.sh
-
-test_binaries_mem: discoal_edited discoal_mem_branch
-	@echo "Built both optimized and mem branch versions for testing"
-	cp build/discoal_mem_branch build/discoal_legacy_backup 
-	@echo "copying discoal_mem_branch to discoal_legacy_backup for testing"
-
-test_comprehensive_mem: test_binaries_mem
-	@echo "Running comprehensive validation suite (optimized vs HEAD)..."
-	@echo "This will compare the performance improvements of our optimizations"
-	@echo "Optimized = current working directory with trajectory optimizations"
-	@echo "Legacy = mem branch (before optimizations)"
-	cd testing && ./comprehensive_validation_suite.sh
-
-test_msprime: discoal_edited
-	@echo "Running msprime comparison suite..."
-	cd testing && ./msprime_comparison_suite.sh
-
-test_nicestats: discoal_legacy_backup discoal_edited niceStats
-	@echo "Running niceStats comparison suite (1000 replicates in 10 chunks)..."
-	cd testing && ./nicestats_comparison_suite.sh 1000 50
-
-test_nicestats_quick: discoal_legacy_backup discoal_edited niceStats
-	@echo "Running quick niceStats comparison (100 replicates in 5 chunks)..."
-	cd testing && ./nicestats_comparison_suite.sh 100 5
-
-test_nicestats_large: discoal_legacy_backup discoal_edited niceStats
-	@echo "Running large niceStats comparison (10000 replicates in 20 chunks)..."
-	cd testing && ./nicestats_comparison_suite.sh 10000 20
-
-test_nicestats_mem: discoal_mem_branch discoal_edited niceStats
-	@echo "Running niceStats comparison suite (current vs mem branch)..."
-	cd testing && ./nicestats_comparison_suite.sh 1000 10 ../discoal_mem_branch
-
-test_nicestats_xoshiro: discoal discoal_xoshiro niceStats
-	@echo "Running niceStats comparison suite (legacy RNG vs xoshiro256++)..."
-	@# Use discoal as legacy and discoal_xoshiro as edited for comparison
-	@cp discoal discoal_legacy_backup
-	@cp discoal_xoshiro discoal_edited
-	cd testing && ./nicestats_comparison_suite.sh 1000 50
-	@# Clean up temporary copies
-
-test_growth: discoal extern/ms niceStats
-	@echo "Running exponential growth comparison against ms baseline..."
-	cd testing && ./growth_comparison_suite.sh
-	@rm -f discoal_legacy_backup discoal_edited
-
-# Compare current tskit-integration branch with mem branch
-test_tskit_vs_mem: discoal_edited discoal_mem_branch
-	@echo "Comparing tskit-integration branch (current) vs mem branch..."
-	@echo "This will show the differences between the memory optimizations and tskit integration"
-	@# Temporarily rename binaries for the test suite
-	@mv discoal_mem_branch discoal_legacy_backup
-	cd testing && ./comprehensive_validation_suite.sh
-	@# Restore original name
-	@mv discoal_legacy_backup discoal_mem_branch
+.PHONY: check test
 
 # Unit test-related targets
 TEST_DIR = test/unit
