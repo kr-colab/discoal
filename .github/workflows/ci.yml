@@ -172,6 +172,11 @@ jobs:
     - name: Check gene conversion against crossover
       run: python testing/gc_crossover_check.py --workers 4
 
+    # Linkage of two sites (same MRCA, TMRCA correlation) against msprime:
+    # a breakpoint anywhere in a lineage's span must split it.
+    - name: Check two-site linkage against msprime
+      run: python testing/linkage_msprime_check.py --workers 4
+
     # Random command-line demographic models (sizes, growth, migration,
     # admixture, merges, ancient samples, recombination) against msprime.
     # Fixed seeds, so the result does not change from run to run.
