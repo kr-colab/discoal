@@ -42,6 +42,11 @@ lineage's material (it falls in a gap of the material, or covers all of it) has
 no effect. ``testing/gene_conversion_check.py`` checks this model against the
 two-locus theory and against msprime.
 
+During a sweep, the parent that gets the sweep site keeps its lineage's class
+(beneficial or wild type). A sweep outside the locus (``-ls``, ``-ld``, ``-ln``,
+``-L``) has only a recombination distance, not a site, so discoal takes it to be
+in no tract: a tract would have to run across that distance to reach it.
+
 **Example:**
 
 .. code-block:: bash
