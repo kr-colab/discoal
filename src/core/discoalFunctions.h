@@ -2,9 +2,6 @@
 #define __DISCOAL_H__
 
 void initialize();
-void initializeBreakPoints();
-void ensureBreakPointsCapacity();
-void cleanupBreakPoints();
 void ensureEventsCapacity();
 
 // Population list management functions for O(1) node selection
@@ -19,7 +16,6 @@ void initializeSampleNodeIds();
 void ensureSampleNodeCapacity(int required_size);
 void addSampleNodeId(tsk_id_t tskit_node_id);
 void cleanupSampleNodeIds();
-void addBreakPoint(int bp);
 void initializeMuts(rootedNode *node, int capacity);
 void ensureMutsCapacity(rootedNode *node, int requiredSize);
 void cleanupMuts(rootedNode *node);
@@ -79,11 +75,11 @@ void ensureAllNodesCapacity(int requiredSize);
 
 			
 			
-double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *finalFreq, double alpha, char sweepMode, double *sizeRatio);
+double recurrentSweepPhaseGeneralPopNumber(double startTime, double endTime, double *finalFreq, double alpha, char sweepMode, double *sizeRatio);
 		
 double proposeTrajectory(int currentEventNumber, float *currentTrajectory, double *sizeRatio, char sweepMode, \
 	double initialFreq, double *finalFreq, double alpha, double f0, double currentTime);
-double sweepPhaseEventsConditionalTrajectory(int *bpArray, double startTime, double endTime, double sweepSite,\
+double sweepPhaseEventsConditionalTrajectory(double startTime, double endTime, double sweepSite,\
 	double initialFreq, double *finalFreq, int *stillSweeping, double alpha,\
 	double *sizeRatio, char sweepMode,double f0, double uA);
 
@@ -95,7 +91,7 @@ void lineageEventRates(int popn, double *recombination, double *geneConversion);
 int recombineAtTimePopn(double cTime, int popn);
 void geneConversionAtTimePopn(double cTime, int popn);
 
-double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *sizeRatio);
+double neutralPhaseGeneralPopNumber(double startTime, double endTime, double *sizeRatio);
 
 rootedNode *pickNodePopn(int popn);
 void addNode(rootedNode *aNode);

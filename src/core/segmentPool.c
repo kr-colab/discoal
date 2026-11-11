@@ -198,8 +198,7 @@ AncestrySegment* allocSegmentFromPool(void) {
     
     // Debug assertion would go here if magic field added to struct
     
-    // The segment should already be zeroed
-    // Just update statistics
+    // newSegment() sets every field; just update statistics
     g_pool.stats.total_allocations++;
     g_pool.stats.current_in_use++;
     
@@ -220,10 +219,7 @@ void freeSegmentToPool(AncestrySegment *seg) {
     }
     #endif
     
-    // Clear segment data (important for safety)
-    memset(seg, 0, sizeof(AncestrySegment));
-    
-    // Debug magic field would go here if added to struct
+    /* No clearing: newSegment() sets every field of a segment it takes. */
     
     // Return to free list
     g_pool.free_list[g_pool.free_count++] = seg;
