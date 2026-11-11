@@ -95,14 +95,14 @@ jobs:
         ./build/discoal 10 5 1000 -t 10 > output.txt
         [ -s output.txt ] || exit 1
         grep -q "^//$" output.txt || exit 1
-        echo "✓ Basic coalescent works"
+        echo "Basic coalescent works"
     
     - name: Test with recombination
       run: |
         echo "=== Testing with recombination ==="
         ./build/discoal 10 5 1000 -t 10 -r 10 > output_recomb.txt
         [ -s output_recomb.txt ] || exit 1
-        echo "✓ Recombination works"
+        echo "Recombination works"
     
     - name: Test tree sequence output
       run: |
@@ -166,6 +166,11 @@ jobs:
 
     - name: Check recurrent sweeps
       run: python testing/recurrent_sweep_check.py
+
+    # Hard sweeps (several strengths, and one that ended in the past)
+    # against msprime's SweepGenicSelection.
+    - name: Check hard sweeps against msprime
+      run: python testing/sweep_msprime_check.py --workers 4
 
     # Gene conversion with tracts longer than the locus must match
     # crossover, in the neutral phase and in a sweep.
