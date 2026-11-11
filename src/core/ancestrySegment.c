@@ -348,7 +348,8 @@ static void linkRest(AncestrySegment **head, AncestrySegment **tail,
  * An overlap whose count reaches fullCount (all samples) has found its
  * MRCA here, and only here: onFixed(start, end) reports each such run of
  * sites once, so the caller can update the sites still active without
- * walking the parent's other segments.
+ * walking the parent's other segments. Such a piece is not kept: the lists
+ * of minimal mode hold only material without an MRCA.
  *
  * As in msprime, the merge works segment by segment and takes over both
  * lists, which no other list may share (minimal tree sequence mode): a
@@ -425,6 +426,13 @@ AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
                 seg = r;
                 r = r->next;
                 l->start = end;
+            }
+            if (count == fullCount) {
+                /* The sites have found their MRCA: no other lineage has
+                 * material here, so the piece can give no edge and counts
+                 * for no span. As msprime, drop it. */
+                freeSegmentToPool(seg);
+                continue;
             }
             seg->count = count;
             seg->tskit_node_id = parent;
