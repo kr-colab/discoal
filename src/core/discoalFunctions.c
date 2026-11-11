@@ -858,6 +858,8 @@ static void coalesceLineagesMinimal(rootedNode *parent, rootedNode *lChild, root
 	parent->ancestryRoot = mergeAncestryTreesCoalescing(lChild->ancestryRoot,
 		rChild->ancestryRoot, coalescenceParentNode, coalescenceEdge, parent,
 		sampleSize, sitesFixed, &span);
+	/* The merge took over the children's segments. */
+	lChild->ancestryRoot = rChild->ancestryRoot = NULL;
 	activeSites = getActiveSiteCount(&activeMaterialSegments);
 	setLineageSpan(parent, &span);
 	parent->leftChild = parent->rightChild = NULL;

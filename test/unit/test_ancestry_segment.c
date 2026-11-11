@@ -249,6 +249,144 @@ void test_splitInPlace_matches_copying_split(void) {
     }
 }
 
+/* ---- The merge against a reference ---- */
+
+/* The merge as it was before it reused segments: it walks every interval
+ * between the boundaries of both lists, copies each piece into a new
+ * segment, and leaves the children's lists alone. The new merge must give
+ * the same list, edges, fixed runs and span. */
+static void refAppend(AncestrySegment **head, AncestrySegment **tail, int start,
+                      int end, uint16_t count, tsk_id_t node) {
+    if (*tail && (*tail)->end == start && (*tail)->count == count &&
+        (*tail)->tskit_node_id == node) {
+        (*tail)->end = end;
+        return;
+    }
+    AncestrySegment *seg = newSegment(start, end, node, NULL, NULL);
+    seg->count = count;
+    if (*tail) (*tail)->next = seg; else *head = seg;
+    *tail = seg;
+}
+
+static AncestrySegment* referenceMerge(AncestrySegment *l, AncestrySegment *r,
+        tsk_id_t (*newParentNode)(void *ctx),
+        void (*addEdge)(tsk_id_t parent, tsk_id_t child, double left, double right),
+        int fullCount, void (*onFixed)(int start, int end), SegmentSpan *span) {
+    AncestrySegment *result = NULL, *tail = NULL;
+    tsk_id_t parent = TSK_NULL;
+    int fixedStart = -1, fixedEnd = -1;
+    int pos = 1 << 30;
+    if (l) pos = l->start;
+    if (r && r->start < pos) pos = r->start;
+    while (l || r) {
+        int nextPos = 1 << 30;
+        if (l) {
+            if (l->start > pos && l->start < nextPos) nextPos = l->start;
+            if (l->end > pos && l->end < nextPos) nextPos = l->end;
+        }
+        if (r) {
+            if (r->start > pos && r->start < nextPos) nextPos = r->start;
+            if (r->end > pos && r->end < nextPos) nextPos = r->end;
+        }
+        if (nextPos == 1 << 30) break;
+        AncestrySegment *lc = (l && pos >= l->start && pos < l->end) ? l : NULL;
+        AncestrySegment *rc = (r && pos >= r->start && pos < r->end) ? r : NULL;
+        if (lc && rc) {
+            if (parent == TSK_NULL) parent = newParentNode(NULL);
+            refAppend(&result, &tail, pos, nextPos, lc->count + rc->count, parent);
+            spanAdd(span, pos, nextPos, lc->count + rc->count, fullCount);
+            addEdge(parent, lc->tskit_node_id, pos, nextPos);
+            addEdge(parent, rc->tskit_node_id, pos, nextPos);
+            if (lc->count + rc->count == fullCount) {
+                if (fixedEnd == pos) {
+                    fixedEnd = nextPos;
+                } else {
+                    if (fixedStart >= 0) onFixed(fixedStart, fixedEnd);
+                    fixedStart = pos;
+                    fixedEnd = nextPos;
+                }
+            }
+        } else if (lc || rc) {
+            AncestrySegment *c = lc ? lc : rc;
+            refAppend(&result, &tail, pos, nextPos, c->count, c->tskit_node_id);
+            spanAdd(span, pos, nextPos, c->count, fullCount);
+        }
+        pos = nextPos;
+        while (l && l->end <= pos) l = l->next;
+        while (r && r->end <= pos) r = r->next;
+    }
+    if (fixedStart >= 0) onFixed(fixedStart, fixedEnd);
+    return result;
+}
+
+/* A record of the callbacks: edges and fixed runs, in order. */
+static int eventLog[4096][4];
+static int eventCount;
+static tsk_id_t logParent(void *ctx) { (void) ctx; return 99; }
+static void logEdge(tsk_id_t parent, tsk_id_t child, double left, double right) {
+    int *e = eventLog[eventCount++];
+    e[0] = (int) parent; e[1] = (int) child; e[2] = (int) left; e[3] = (int) right;
+}
+static void logFixed(int start, int end) {
+    int *e = eventLog[eventCount++];
+    e[0] = -1; e[1] = -1; e[2] = start; e[3] = end;
+}
+
+/* A random canonical list (adjacent segments differ in count or node),
+ * with gaps, counts 1 to 3 and tskit nodes 1 to 3, built twice from the
+ * same random numbers. */
+static void randomListPair(AncestrySegment **a, AncestrySegment **b) {
+    AncestrySegment *ha = NULL, *ta = NULL, *hb = NULL, *tb = NULL;
+    int pos = rand() % 4;
+    int n = rand() % 8;
+    for (int k = 0; k < n; k++) {
+        int len = 1 + rand() % 6;
+        uint16_t count = 1 + rand() % 3;
+        tsk_id_t node = 1 + rand() % 3;
+        refAppend(&ha, &ta, pos, pos + len, count, node);
+        refAppend(&hb, &tb, pos, pos + len, count, node);
+        pos += len + (rand() % 3 == 0 ? 0 : rand() % 5);
+    }
+    *a = ha;
+    *b = hb;
+}
+
+void test_merge_matches_reference(void) {
+    int fullCount = 6;  /* two counts of 3 make a newly fixed piece */
+    srand(11);
+    for (int iter = 0; iter < 5000; iter++) {
+        AncestrySegment *l1, *l2, *r1, *r2;
+        randomListPair(&l1, &l2);
+        randomListPair(&r1, &r2);
+
+        SegmentSpan wantSpan = {0, 1000, 0}, gotSpan = {0, 1000, 0};
+        int wantLog[4096][4], wantCount;
+        eventCount = 0;
+        AncestrySegment *want = referenceMerge(l1, r1, logParent, logEdge,
+                                               fullCount, logFixed, &wantSpan);
+        wantCount = eventCount;
+        for (int k = 0; k < eventCount; k++)
+            for (int j = 0; j < 4; j++) wantLog[k][j] = eventLog[k][j];
+
+        eventCount = 0;
+        AncestrySegment *got = mergeAncestryTreesCoalescing(l2, r2, logParent,
+            logEdge, NULL, fullCount, logFixed, &gotSpan);
+
+        assertSameList(want, got);
+        TEST_ASSERT_EQUAL(wantCount, eventCount);
+        for (int k = 0; k < eventCount; k++)
+            TEST_ASSERT_EQUAL_INT_ARRAY(wantLog[k], eventLog[k], 4);
+        TEST_ASSERT_EQUAL(wantSpan.nancSites, gotSpan.nancSites);
+        TEST_ASSERT_EQUAL(wantSpan.lLim, gotSpan.lLim);
+        TEST_ASSERT_EQUAL(wantSpan.rLim, gotSpan.rLim);
+
+        freeSegmentTree(want);
+        freeSegmentTree(got);   /* l2 and r2 are used up by the merge */
+        freeSegmentTree(l1);
+        freeSegmentTree(r1);
+    }
+}
+
 
 /* Free every segment and reset the pool after it has expanded: the free
  * list must hold every segment of the pool, not only those free when it
@@ -300,6 +438,7 @@ int main(void) {
     RUN_TEST(test_null_safety);
     RUN_TEST(test_mergeAncestryTrees_non_overlapping);
     RUN_TEST(test_splitInPlace_matches_copying_split);
+    RUN_TEST(test_merge_matches_reference);
     RUN_TEST(test_segment_pool_free_list_holds_every_segment);
     
     return UNITY_END();
