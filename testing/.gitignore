@@ -12,5 +12,4 @@
 !*.sh
 !*.md
 !README.md
-!TEST_SUITE_DOCUMENTATION.mdcomprehensive_results.log
 .parity_cache/

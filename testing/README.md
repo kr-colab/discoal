@@ -1,136 +1,74 @@
-# Discoal Testing Framework
+# discoal checks
 
-This directory contains the comprehensive testing framework for validating discoal optimizations and ensuring functional compatibility.
+This directory holds the checks of discoal's output. The unit tests of the
+C code are in `test/unit` (`make run_tests`).
 
-## Quick Start
-
-```bash
-# Navigate to testing directory
-cd testing/
-
-# Run comprehensive validation (all documented examples)
-./comprehensive_validation_suite.sh
-
-# Run quick validation (core functionality)
-./focused_validation_suite.sh
-
-# Compare with msprime simulator
-./msprime_comparison_suite.sh
-
-# Run nicestats comparison (requires niceStats - see below)
-./nicestats_comparison_suite.sh
-```
-
-## Building niceStats
-
-Several test suites require the `niceStats` utility for computing population genetics summary statistics:
+## Quick start
 
 ```bash
-# From project root
-make niceStats
+make check                    # the checks of every pull request
+make check CHECK_WORKERS=16   # more parallel workers for the statistical checks
 ```
 
-This builds `niceStats` from the msUtils library and creates a symlink in the project root.
+`make check` builds discoal, runs the unit tests, and then runs each check
+below that CI runs for every pull request, in the same order. The
+statistical checks need Python with msprime, tskit, numpy, scipy, demes and
+stdpopsim. They use fixed seeds, so their results do not change from run to
+run, and each one exits with 0 if every comparison passes.
 
-## Test Suites
+## The checks
 
-| Script | Purpose | Runtime |
-|--------|---------|---------|
-| `comprehensive_validation_suite.sh` | Complete validation of all documented functionality | 15-30 min |
-| `focused_validation_suite.sh` | Quick regression testing of core features | 3-5 min |
-| `nicestats_comparison_suite.sh` | Statistical comparison of summary statistics | 5-15 min |
-| `msprime_comparison_suite.sh` | Statistical comparison with msprime simulator | 5-10 min |
-| `demes_validation_suite.sh` | Demes models through a YAML config (`-Y`): each is accepted or, where marked, rejected (in CI) | under 1 s |
-| `demes_output_comparison_suite.sh` | Demes models through `-Y` give output identical to the equivalent command line (in CI) | under 1 s |
-| `yaml_validation_suite.sh` | YAML configuration file validation | 2 min |
-| `yaml_parser_suite.sh` | YAML parser regression suite (walks `testing/debug_yaml/`) | < 5 sec |
-| `units_convention_check.py` | Checks the units of times, growth rates, and migration rates against msprime (needs msprime and demes) | under 1 min |
-| `slim_sweep_check.py` | Compares discoal's hard, soft (`-f`), partial (`-c`) and neutral (`-wn`) sweeps with forward simulations in SLiM (stdpopsim's constant-size script with discoal's sweep logic), and the hard sweep with msprime; run by hand (needs stdpopsim, SLiM, pyslim, msprime) | about 7 min with 120 workers |
-| `sweep_snp_check.py` | Checks the selected SNP of partial sweeps (`-c`): its position, the binomial count of its carriers, `-h`, one site per recurrent sweep, and `-ts` output (needs numpy, tskit) | about 15 s |
-| `trajectory_file_check.py` | Checks `-S`: a file holding discoal's deterministic trajectory gives the same branch length and diversity as `-wd`; a file that starts at frequency 0.5 gives a partial sweep whose selected SNP is carried by Binomial(n, 0.5) samples; `-S` runs with ancient samples (needs numpy, tskit) | about 3 s |
-| `recurrent_sweep_check.py` | Checks that recurrent sweeps (`-R`) follow migration changes (`-eM`, `-em`) between sweeps: at a negligible sweep rate the output must equal the neutral output | about 1 s |
-| `fuzz_msprime_check.py` | Random command-line demographic models (sizes, growth, migration, admixture, merges, ancient samples, recombination) against msprime, compared with KS tests on branch statistics; `--models`, `--reps`, `--seed`, `--discoal` | a few seconds |
-| `stdpopsim_parity.py` | Compares discoal and msprime branch-mode statistics on every stdpopsim demographic model, random generic stdpopsim models (`--generic`), and demes files (`--demes-dir`, e.g. the examples and test cases of the demes specification), with ancient samples at stdpopsim's default sampling times and, in "+ancient" variants of the generic models and demes files, from every deme at random times (needs stdpopsim, msprime, demes, tskit, scipy). `--sample K --sample-seed S` adds K models drawn at random. CI runs 10 core models and 80 random ones, seeded by the commit, on every push and PR; `.github/workflows/parity-weekly.yml` runs everything weekly | about 15 min with 24 workers for the catalog and generic models |
+| check | what it checks | runs |
+|---|---|---|
+| `yaml_parser_suite.sh` | the YAML parser accepts the valid files in `debug_yaml/` and rejects the invalid ones with the right error | every PR |
+| `yaml_validation_suite.sh` | each example in `config_examples/` gives the same output as the equivalent command line (ms output and tree sequences, compared with `cmp_trees.py`) | every PR |
+| `preflight_validation_suite.sh` | many command lines run and give output, or stop with the expected error; regression cases of fixed defects | every PR |
+| `demes_validation_suite.sh` | demes models load and run, or are rejected where they must be (through `demes_run.sh`) | every PR |
+| `demes_output_comparison_suite.sh` | a demes model and the same model given on the command line give the same output | every PR |
+| `units_convention_check.py` | time, size, growth and migration units against msprime | every PR |
+| `sweep_snp_check.py` | the selected SNP of partial sweeps: its position and the number of its carriers | every PR |
+| `trajectory_file_check.py` | sweeps from a trajectory file (`-S`) | every PR |
+| `recurrent_sweep_check.py` | recurrent sweeps (`-R`, `-L`) follow the demographic model between sweeps | every PR |
+| `sweep_msprime_check.py` | hard sweeps against msprime's `SweepGenicSelection` | every PR |
+| `gc_crossover_check.py` | gene conversion with tracts longer than the locus equals crossover, in the neutral phase and in a sweep | every PR |
+| `linkage_msprime_check.py` | linkage of two sites (same MRCA, TMRCA correlation) against msprime | every PR |
+| `fuzz_msprime_check.py` | random command-line demographic models against msprime | every PR (150 models) |
+| `stdpopsim_parity.py` | stdpopsim and demes models against msprime | every PR (a core set and a random sample); weekly (all models, without and with recombination) |
+| `slim_sweep_check.py` | hard, soft and partial sweeps and ancient samples against forward simulations in SLiM | by hand (needs SLiM, pyslim, stdpopsim) |
+| `yaml_parser_fuzz.py` | the YAML parser on many random variants of valid files: no crash, no silent acceptance of bad input | by hand |
 
-## Documentation
+Helpers: `cmp_trees.py` compares two tree-sequence files (provenance
+ignored); `demes_run.sh` runs discoal on a demes file through a YAML
+configuration; `debug_yaml/` holds the YAML parser's test files.
 
-- **`TEST_SUITE_DOCUMENTATION.md`**: Complete documentation of the testing framework
-- **`README.md`**: This quick reference guide
+## Running one check
 
-## Test Results
-
-Test results are stored in timestamped directories:
-```
-comprehensive_validation_YYYYMMDD_HHMMSS/
-├── validation_summary.txt           # Overall results
-├── *_optimized.out                  # Optimized outputs  
-├── *_legacy.out                     # Legacy outputs
-├── *_optimized_memory.txt           # Memory profiles
-└── *_legacy_memory.txt              # Memory profiles
-```
-
-## Usage Guidelines
-
-### Before Optimization
-1. Run comprehensive suite to establish baseline
-2. Document current success rates and memory usage
-
-### During Development
-1. Use focused suite for rapid iteration testing
-2. Run relevant subset tests for specific optimizations
-
-### After Optimization
-1. Run comprehensive suite to validate no regressions
-2. Document improvements in success rates and memory usage
-3. Update test cases if new capabilities are added
-
-## Requirements
-
-- **Git setup**: Access to both current feature branch and master branch
-- **Build system**: Automated binary generation via `make test_binaries`
-  - `discoal_edited`: Built from current working branch
-  - `discoal_legacy_backup`: Built from master branch for stable baseline comparison
-- **System**: BSD `time` command for memory profiling
-- **Optional**: `timeout` command (install with `brew install coreutils` on macOS)
-
-## msprime Comparison Tests
-
-The `msprime_comparison_suite.sh` compares discoal with the msprime coalescent simulator to ensure statistical equivalence:
+Each script runs from the repository root and uses `build/discoal`:
 
 ```bash
-# Run comparison tests (requires conda environment)
-conda activate discoal_dev
-./msprime_comparison_suite.sh
-
-# Analyze results from a previous run
-./analyze_msprime_comparison.py msprime_comparison_20240611_120000/
+bash testing/preflight_validation_suite.sh
+python3 testing/sweep_msprime_check.py --workers 8
+python3 testing/fuzz_msprime_check.py --models 150 --reps 500 --workers 8
 ```
 
-The suite tests:
-- Neutral coalescent with various sample sizes
-- Models with recombination at different rates
-- Statistical equivalence using Kolmogorov-Smirnov and Mann-Whitney U tests
+The Python checks accept `--discoal PATH` to test another build, and print
+one line per comparison (`ok` or `FAIL`, with the z-score and the KS p-value)
+and a summary line.
 
-## Adding New Tests
+## The parity check against msprime
 
-Extend the `TEST_CASES` array in any test script:
+`stdpopsim_parity.py` needs the demes specification for its demes models:
 
 ```bash
-declare -a TEST_CASES=(
-    # Format: "category:name:command_args:expected_behavior"
-    "new_category:test_name:discoal_args:both_succeed"
-)
+git clone https://github.com/popsim-consortium/demes-spec
+python3 testing/stdpopsim_parity.py --reps 1000 --generic 20 --seed 1 \
+    --demes-dir demes-spec/examples --demes-dir demes-spec/test-cases/valid \
+    --workers 16
 ```
 
-Expected behaviors:
-- `both_succeed`: Both versions should succeed with identical output
-- `optimized_preferred`: Optimized version should succeed, legacy may fail
-- `legacy_only`: Legacy version should succeed (regression detection)
-
-## Maintenance
-
-- **Monthly**: Run comprehensive suite on latest codebase
-- **Pre-release**: Full validation with all test suites  
-- **Post-optimization**: Update documentation with new capabilities
-
-For detailed information, see `TEST_SUITE_DOCUMENTATION.md`.
+Add `--rho 100 --sites 10000` to compare with recombination (on the number
+of trees). Results are cached in `testing/.parity_cache` (only what changed
+runs again; `--no-cache` turns it off). `--tsv` writes the per-test results,
+`--jobs-tsv` the per-model status and run times. The weekly workflow
+(`.github/workflows/parity-weekly.yml`) runs all models with and without
+recombination.
