@@ -23,7 +23,7 @@
 /* No longer needed after dynamic memory optimizations:
    - MAXNODES: nodes array is now dynamic
    - SMALLCHUNKS: was never used  
-   - MAXBREAKS: breakPoints array is now dynamic
+   - MAXBREAKS: breakpoints are not stored
    - MAXLEAFS: was never used
    - MAXEVENTS: events array is now dynamic
 */
@@ -143,10 +143,10 @@ int sample_node_capacity;
 // int activeMaterial[MAXSITES];  // DEPRECATED - replaced by segment structure
 ActiveMaterial activeMaterialSegments;  // New segment-based structure
 
-int sampleSize, sampleNumber, breakNumber, alleleNumber, \
+int sampleSize, sampleNumber, alleleNumber, \
 	totNodeNumber, totChunkNumber, npops, eventFlag, nSites, activeSites,\
 	mask, outputStyle, effectiveSampleSize, gcMean,\
-	*breakPoints, breakPointsCapacity, sampleSizes[MAXPOPS];
+	sampleSizes[MAXPOPS];
 
 double  leftRho, rho, theta, tDiv, alpha, sweepSite, tau, my_gamma, \
  	lambda, timeRecovery,bottleNeckRatio, bottleNeckDuration, \

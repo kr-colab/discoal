@@ -20,12 +20,15 @@ AncestrySegment* newSegment(int start, int end, tsk_id_t tskit_node_id, Ancestry
     seg->next = NULL;
     seg->isLeaf = (left == NULL && right == NULL) ? 1 : 0;
     seg->refCount = 1;  // Initial reference count
+    seg->isRecorded = 0;
     
     // For leaf segments, count is 1; for internal nodes, sum of children
     if (seg->isLeaf) {
         seg->count = 1;
     } else if (left && right) {
         seg->count = left->count + right->count;
+    } else {
+        seg->count = 0;
     }
     
     return seg;

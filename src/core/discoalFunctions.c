@@ -18,55 +18,6 @@
 #include "shapes.h"
 
 
-// Initial capacity for breakPoints array
-#define INITIAL_BREAKPOINTS_CAPACITY 1000
-
-void initializeBreakPoints() {
-	// Clean up any existing allocation first
-	if (breakPoints != NULL) {
-		free(breakPoints);
-		breakPoints = NULL;
-	}
-	
-	breakPointsCapacity = INITIAL_BREAKPOINTS_CAPACITY;
-	breakPoints = malloc(sizeof(int) * breakPointsCapacity);
-	if (breakPoints == NULL) {
-		fprintf(stderr, "Error: Failed to allocate memory for breakPoints array\n");
-		exit(1);
-	}
-	breakPoints[0] = 666; // Initialize with original marker value
-	breakNumber = 0;
-}
-
-void ensureBreakPointsCapacity() {
-	if (breakNumber >= breakPointsCapacity) {
-		int newCapacity = breakPointsCapacity * 2;
-		int *newBreakPoints = realloc(breakPoints, sizeof(int) * newCapacity);
-		if (newBreakPoints == NULL) {
-			fprintf(stderr, "Error: Failed to reallocate memory for breakPoints array (capacity: %d -> %d)\n", 
-					breakPointsCapacity, newCapacity);
-			exit(1);
-		}
-		breakPoints = newBreakPoints;
-		breakPointsCapacity = newCapacity;
-	}
-}
-
-void cleanupBreakPoints() {
-	if (breakPoints != NULL) {
-		free(breakPoints);
-		breakPoints = NULL;
-		breakPointsCapacity = 0;
-		breakNumber = 0;
-	}
-}
-
-void addBreakPoint(int bp) {
-	ensureBreakPointsCapacity();
-	breakPoints[breakNumber] = bp;
-	breakNumber += 1;
-}
-
 static int64_t sweepClassWeight(int popn, int sp);
 
 /* The lineages of each population, for O(1) uniform picks, with their
@@ -313,7 +264,6 @@ void initialize(){
 
 	/* Initialize the arrays */
 	totChunkNumber = 0;
-	initializeBreakPoints();
 	initializeNodeArrays();
 	/* The samples go straight into nodes[], which starts with room for
 	 * 1000 lineages; addNode() grows it for the lineages that follow. */
@@ -355,7 +305,6 @@ void initialize(){
 	}
 
 
-	breakNumber = 0;
 	// Initialize segment-based active material (all sites start as active);
 	// free the previous replicate's first (the global starts zeroed)
 	freeActiveMaterial(&activeMaterialSegments);
@@ -1505,8 +1454,8 @@ static void requireLineagesCanMeet(double t){
 
 /*neutralPhaseGeneralPopNumber--coalescent, recombination, gc events until
 specified time. returns endTime. can handle multiple popns*/
-double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *sizeRatio){
-	double cTime, cRate[npops], rRate[npops], gcRate[npops], mRate[npops],totRate, waitTime, bp,r, r2;
+double neutralPhaseGeneralPopNumber(double startTime, double endTime, double *sizeRatio){
+	double cTime, cRate[npops], rRate[npops], gcRate[npops], mRate[npops],totRate, waitTime, r, r2;
 	double totCRate, totRRate, totGCRate,totMRate, eSum;
 	int  i,j;
 	int coalescenceCounter = 0;  // Counter for coalescent events only
@@ -1571,10 +1520,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 					i = 0;
 					r2 = ranf();
 					while(eSum/totRRate < r2) eSum += rRate[++i];
-					bp = recombineAtTimePopn(cTime,i);
-					if (bp != 666){
-						addBreakPoint(bp);
-					}
+					recombineAtTimePopn(cTime,i);
 				}
 				else{
 					if(r < ((totRRate + totGCRate)/totRate)){
@@ -1658,10 +1604,7 @@ double neutralPhaseGeneralPopNumber(int *bpArray,double startTime, double endTim
 				i = 0;
 				r2 = ranf();
 				while(eSum/totRRate < r2) eSum += rRate[++i];
-				bp = recombineAtTimePopn(cTime,i);
-				if (bp != 666){
-					addBreakPoint(bp);
-				}
+				recombineAtTimePopn(cTime,i);
 			}
 			else if (winnerKind == 1) {
 				/* gene conversion: pick population proportional to gcRate */
@@ -2274,12 +2217,12 @@ static int dormantLineagesIn(int popn){
 }
 
 /*sweepPhaseEventsConditionalTrajectory-- does sweep phase with trajectory created externally */
-double sweepPhaseEventsConditionalTrajectory(int *bpArray, double startTime, double endTime, double sweepSite,\
+double sweepPhaseEventsConditionalTrajectory(double startTime, double endTime, double sweepSite,\
 double initialFreq, double *finalFreq, int *stillSweeping, double alpha,\
 double *sizeRatio, char sweepMode,double f0, double uA)
 {
 
-	double totRate,bp;
+	double totRate;
 	double  ttau, x, tInc, tIncOrig;
 	double pCoalB, pCoalb, pRecB, pRecb, r, sum,eventRand,eventProb, pLeftRecB, pLeftRecb;
 	double pRecurMut, pGCB, pGCb;
@@ -2418,12 +2361,10 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 			else if (r < (sum += pCoalb) / sweepPopTotRate)
 				coalesceAtTimePopnSweep(eventTime, 0, 0);
 			else if (r < (sum += pRecb) / sweepPopTotRate) {
-				bp = recombineAtTimePopnSweep(eventTime, 0, 0, sweepSite, (1.0-x));
-				if (bp != 666) addBreakPoint(bp);
+				recombineAtTimePopnSweep(eventTime, 0, 0, sweepSite, (1.0-x));
 			}
 			else if (r < (sum += pRecB) / sweepPopTotRate) {
-				bp = recombineAtTimePopnSweep(eventTime, 0, 1, sweepSite, x);
-				if (bp != 666) addBreakPoint(bp);
+				recombineAtTimePopnSweep(eventTime, 0, 1, sweepSite, x);
 			}
 			else if (r < (sum += pGCB) / sweepPopTotRate)
 				geneConversionAtTimePopnSweep(eventTime, 0, 1, sweepSite, x);
@@ -2450,10 +2391,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 						i = 1;
 						r2 = ranf();
 						while(eSum/totRRate < r2) eSum += rRate[++i];
-						bp = recombineAtTimePopn(eventTime,i);
-						if (bp != 666){
-							addBreakPoint(bp);
-						}
+						recombineAtTimePopn(eventTime,i);
 					}
 					else{
 						if(r < ((totRRate + totGCRate)/totRate)){
@@ -2500,8 +2438,8 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 
 /*recurrentSweepPhaseGeneralPopNumber--coalescent, recombination, gc events, and sweeps! until
 specified time. returns endTime. can handle multiple popns*/
-double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double endTime, double *finalFreq, double alpha, char sweepMode, double *sizeRatio){
-	double cTime, cRate[npops], rRate[npops], gcRate[npops], mRate[npops],totRate, waitTime, bp,r, r2;
+double recurrentSweepPhaseGeneralPopNumber(double startTime, double endTime, double *finalFreq, double alpha, char sweepMode, double *sizeRatio){
+	double cTime, cRate[npops], rRate[npops], gcRate[npops], mRate[npops],totRate, waitTime, r, r2;
 	double totCRate, totRRate, totGCRate,totMRate, eSum,curSweepSite, initFreq;
 	int  i,j;
 
@@ -2559,10 +2497,7 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 				i = 0;
 				r2 = ranf();
 				while(eSum/totRRate < r2) eSum += rRate[++i];
-				bp = recombineAtTimePopn(cTime,i);
-				if (bp != 666){
-					addBreakPoint(bp);
-				}
+				recombineAtTimePopn(cTime,i);
 			}
 			else{
 				if(r < ((totRRate + totGCRate)/totRate)){
@@ -2617,7 +2552,7 @@ double recurrentSweepPhaseGeneralPopNumber(int *bpArray,double startTime, double
 							initFreq = sweepStartFreq(cTime);
 							sampleSweepTrajectory(currentEventNumber, sizeRatio, sweepMode,
 								initFreq, finalFreq, alpha, f0, cTime);
-							cTime= sweepPhaseEventsConditionalTrajectory(bpArray, cTime, endTime, curSweepSite,\
+							cTime= sweepPhaseEventsConditionalTrajectory(cTime, endTime, curSweepSite,\
 								initFreq, finalFreq, &activeSweepFlag, alpha,\
 								sizeRatio, sweepMode,0, 0);
 							
