@@ -29,7 +29,6 @@ void test_newSegment_creates_valid_segment(void) {
     TEST_ASSERT_EQUAL(1, testSegment->refCount);
     TEST_ASSERT_NULL(testSegment->left);
     TEST_ASSERT_NULL(testSegment->right);
-    TEST_ASSERT_NULL(testSegment->avlTree);
 }
 
 // Test segment creation with invalid range

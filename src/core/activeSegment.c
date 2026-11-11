@@ -36,7 +36,6 @@ void initializeActiveMaterial(ActiveMaterial *am, int nSites) {
     
     // Start with single segment covering all sites
     am->segments = newActiveSegment(0, nSites);
-    am->avlTree = NULL;
     am->totalActive = nSites;
     am->lookupStart = am->lookupEnd = NULL;
     am->lookupCount = am->lookupCapacity = 0;
@@ -80,11 +79,6 @@ void freeActiveMaterial(ActiveMaterial *am) {
     am->lookupStart = am->lookupEnd = NULL;
     am->lookupCount = am->lookupCapacity = 0;
     am->lookupStale = 1;
-    
-    if (am->avlTree) {
-        freeAVLTree((AVLTree*)am->avlTree);
-        am->avlTree = NULL;
-    }
     
     am->totalActive = 0;
 }
@@ -232,9 +226,6 @@ void printActiveSegments(ActiveMaterial *am) {
     while (seg) {
         printf("  Segment %d: [%d, %d)\n", count++, seg->start, seg->end);
         seg = seg->next;
-    }
-    if (am->avlTree) {
-        printf("  AVL tree: present\n");
     }
 }
 

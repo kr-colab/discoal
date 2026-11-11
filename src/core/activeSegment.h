@@ -2,7 +2,6 @@
 #define __ACTIVE_SEGMENT_H__
 
 #include "ancestrySegment.h"
-#include "ancestrySegmentAVL.h"
 
 // Segment representing a contiguous region of active material
 typedef struct ActiveSegment {
@@ -14,7 +13,6 @@ typedef struct ActiveSegment {
 // Main structure for tracking active material
 typedef struct {
     ActiveSegment *segments;  // Linked list of active segments
-    void *avlTree;           // Unused; NULL
     int totalActive;         // Total count of active sites
     /* The list as sorted arrays of starts and ends, for binary search in
      * isActiveSite(). Rebuilt from the list when a lookup finds it stale

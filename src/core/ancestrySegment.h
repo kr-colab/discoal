@@ -8,7 +8,6 @@ typedef struct AncestrySegment {
     int start, end;  // genomic interval [start, end)
     struct AncestrySegment *left, *right;  // child segments (for tree structure)
     struct AncestrySegment *next;  // linked list for segments at same level
-    void *avlTree;  // Optional AVL tree for fast lookups (only on root)
     tsk_id_t tskit_node_id;  // tskit node ID this segment represents (like msprime's segment_t.value)
     uint16_t count;  // number of lineages
     uint16_t refCount;  // Reference count for sharing (max 65535)

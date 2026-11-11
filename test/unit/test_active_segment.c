@@ -11,7 +11,6 @@ ActiveMaterial testActiveMaterial;
 void setUp(void) {
     nSites = 100;  // Set global for tests
     testActiveMaterial.segments = NULL;
-    testActiveMaterial.avlTree = NULL;
     testActiveMaterial.totalActive = 0;
 }
 
@@ -30,7 +29,6 @@ void test_initializeActiveMaterial_all_sites_active(void) {
     // Check the single segment covers all sites [0, 100)
     TEST_ASSERT_EQUAL(0, testActiveMaterial.segments->start);
     TEST_ASSERT_EQUAL(100, testActiveMaterial.segments->end);
-    TEST_ASSERT_NULL(testActiveMaterial.avlTree);  // No AVL for single segment
 }
 
 // Test site activity queries

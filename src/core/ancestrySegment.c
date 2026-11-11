@@ -3,7 +3,6 @@
 #include <string.h>
 #include <limits.h>
 #include "ancestrySegment.h"
-#include "ancestrySegmentAVL.h"
 #include "segmentPool.h"
 
 AncestrySegment* newSegment(int start, int end, tsk_id_t tskit_node_id, AncestrySegment *left, AncestrySegment *right) {
@@ -20,7 +19,6 @@ AncestrySegment* newSegment(int start, int end, tsk_id_t tskit_node_id, Ancestry
     seg->next = NULL;
     seg->isLeaf = (left == NULL && right == NULL) ? 1 : 0;
     seg->refCount = 1;  // Initial reference count
-    seg->avlTree = NULL;  // AVL tree only used on root segments
     
     // For leaf segments, count is 1; for internal nodes, sum of children
     if (seg->isLeaf) {
@@ -70,12 +68,11 @@ AncestrySegment* copySegmentTree(AncestrySegment *root) {
     return newRoot;
 }
 
-/* The segment of a lineage that covers `site`, or NULL. Uses the AVL tree
- * for an O(log n) lookup if the list has one. */
+/* The segment of a lineage that covers `site`, or NULL: a walk of the
+ * sorted list. Only rare paths look up a site (migration that depends on
+ * the sweep site, partial-sweep carriers), so no search structure is kept
+ * up to date at every coalescence. */
 AncestrySegment* segmentAt(AncestrySegment *root, int site) {
-    if (root && root->avlTree) {
-        return findSegmentContaining((AVLTree*)root->avlTree, site);
-    }
     for (AncestrySegment *current = root; current; current = current->next) {
         if (site >= current->start && site < current->end) {
             return current;
@@ -154,12 +151,6 @@ void releaseSegment(AncestrySegment *seg) {
                     node->segment = chain_current->right;
                     node->next = stack;
                     stack = node;
-                }
-                
-                // Free AVL tree if present
-                if (chain_current->avlTree) {
-                    freeAVLTree((AVLTree*)chain_current->avlTree);
-                    chain_current->avlTree = NULL;
                 }
                 
                 // Free current segment
@@ -295,21 +286,6 @@ AncestrySegment* mergeAncestryTrees(AncestrySegment *leftTree, AncestrySegment *
         while (r && r->end <= pos) r = r->next;
     }
     
-    // Build AVL tree if result has enough segments for it to be worthwhile
-    if (result) {
-        int segmentCount = 0;
-        AncestrySegment *temp = result;
-        while (temp && segmentCount < 3) {  // Count up to threshold
-            segmentCount++;
-            temp = temp->next;
-        }
-        
-        // Build AVL tree for fast lookups if we have 3 or more segments
-        if (segmentCount >= 3) {
-            result->avlTree = buildAVLFromList(result);
-        }
-    }
-    
     return result;
 }
 
@@ -382,10 +358,6 @@ AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
 
     if (fixedStart >= 0) onFixed(fixedStart, fixedEnd);
 
-    /* An AVL tree for fast lookups, as mergeAncestryTrees() builds. */
-    if (result && result->next && result->next->next) {
-        result->avlTree = buildAVLFromList(result);
-    }
     return result;
 }
 
