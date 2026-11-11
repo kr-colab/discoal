@@ -217,6 +217,18 @@ static void assertSameList(AncestrySegment *expected, AncestrySegment *actual) {
     TEST_ASSERT_NULL(actual);
 }
 
+/* The span that splitInPlace() reports equals a walk of the half. With a
+ * sample size of 3 the segment [40,50) (count 3) has found its MRCA and
+ * does not count. */
+static void assertSpan(AncestrySegment *half, SegmentSpan span) {
+    SegmentSpan walk = {0, 100, 0};
+    for (AncestrySegment *s = half; s; s = s->next)
+        spanAdd(&walk, s->start, s->end, s->count, 3);
+    TEST_ASSERT_EQUAL(walk.nancSites, span.nancSites);
+    TEST_ASSERT_EQUAL(walk.lLim, span.lLim);
+    TEST_ASSERT_EQUAL(walk.rLim, span.rLim);
+}
+
 void test_splitInPlace_matches_copying_split(void) {
     /* Inside a segment, at a segment's start, in a gap, at a segment's end. */
     int breakpoints[] = {25, 20, 35, 30, 1, 49};
@@ -226,9 +238,13 @@ void test_splitInPlace_matches_copying_split(void) {
         AncestrySegment *wantRight = splitRight(ref, breakpoints[k]);
         AncestrySegment *list = threeSegments();
         AncestrySegment *left = NULL, *right = NULL;
-        TEST_ASSERT_EQUAL(1, splitInPlace(list, breakpoints[k], &left, &right));
+        SegmentSpan lSpan = {0, 100, 0}, rSpan = {0, 100, 0};
+        TEST_ASSERT_EQUAL(1, splitInPlace(list, breakpoints[k], 3, &left, &right,
+                                          &lSpan, &rSpan));
         assertSameList(wantLeft, left);
         assertSameList(wantRight, right);
+        assertSpan(left, lSpan);
+        assertSpan(right, rSpan);
         freeSegmentTree(left);
         freeSegmentTree(right);
         freeSegmentTree(wantLeft);
@@ -241,7 +257,8 @@ void test_splitInPlace_refuses_a_shared_list(void) {
     AncestrySegment *list = threeSegments();
     retainSegment(list->next);  /* another list shares the middle segment */
     AncestrySegment *left = NULL, *right = NULL;
-    TEST_ASSERT_EQUAL(0, splitInPlace(list, 25, &left, &right));
+    SegmentSpan lSpan = {0, 100, 0}, rSpan = {0, 100, 0};
+    TEST_ASSERT_EQUAL(0, splitInPlace(list, 25, 3, &left, &right, &lSpan, &rSpan));
     TEST_ASSERT_NULL(left);
     TEST_ASSERT_NULL(right);
     TEST_ASSERT_EQUAL(30, list->next->end);  /* unchanged */

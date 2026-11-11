@@ -15,6 +15,23 @@ typedef struct AncestrySegment {
     uint8_t isRecorded;  // 1 if this segment has been recorded as edge in tskit, 0 otherwise
 } AncestrySegment;
 
+/* The span of a lineage's material that has not found its MRCA: the
+ * number of such sites, and the first and the last of them. Only pieces
+ * with 0 < count < fullCount (the sample size) count. Start a span as
+ * {0, nSites, 0}; it stays so if no piece counts. */
+typedef struct {
+    int nancSites, lLim, rLim;
+} SegmentSpan;
+
+static inline void spanAdd(SegmentSpan *span, int start, int end, int count,
+                           int fullCount) {
+    if (count > 0 && count < fullCount) {
+        span->nancSites += end - start;
+        if (start < span->lLim) span->lLim = start;
+        if (end - 1 > span->rLim) span->rLim = end - 1;
+    }
+}
+
 // Basic operations
 AncestrySegment* newSegment(int start, int end, tsk_id_t tskit_node_id, AncestrySegment *left, AncestrySegment *right);
 void freeSegmentTree(AncestrySegment *root);
@@ -35,10 +52,12 @@ AncestrySegment* mergeAncestryTrees(AncestrySegment *left, AncestrySegment *righ
 AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
         AncestrySegment *rightTree, tsk_id_t (*newParentNode)(void *ctx),
         void (*addEdge)(tsk_id_t parent, tsk_id_t child, double left, double right),
-        void *ctx, int fullCount, void (*onFixed)(int start, int end));
+        void *ctx, int fullCount, void (*onFixed)(int start, int end),
+        SegmentSpan *span);
 AncestrySegment* splitLeft(AncestrySegment *root, int breakpoint);
-int splitInPlace(AncestrySegment *root, int breakpoint,
-                 AncestrySegment **left, AncestrySegment **right);
+int splitInPlace(AncestrySegment *root, int breakpoint, int fullCount,
+                 AncestrySegment **left, AncestrySegment **right,
+                 SegmentSpan *leftSpan, SegmentSpan *rightSpan);
 AncestrySegment* splitRight(AncestrySegment *root, int breakpoint);
 
 // Full ARG mode versions that update tskit_node_id

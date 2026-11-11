@@ -302,11 +302,13 @@ AncestrySegment* mergeAncestryTrees(AncestrySegment *leftTree, AncestrySegment *
  * An overlap whose count reaches fullCount (all samples) has found its
  * MRCA here, and only here: onFixed(start, end) reports each such run of
  * sites once, so the caller can update the sites still active without
- * walking the parent's other segments. */
+ * walking the parent's other segments. If span is not NULL, the span of
+ * the result is added to it, so the caller need not walk the result. */
 AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
         AncestrySegment *rightTree, tsk_id_t (*newParentNode)(void *ctx),
         void (*addEdge)(tsk_id_t parent, tsk_id_t child, double left, double right),
-        void *ctx, int fullCount, void (*onFixed)(int start, int end)) {
+        void *ctx, int fullCount, void (*onFixed)(int start, int end),
+        SegmentSpan *span) {
     AncestrySegment *result = NULL, *tail = NULL;
     AncestrySegment *l = leftTree, *r = rightTree;
     tsk_id_t parent = TSK_NULL;
@@ -334,6 +336,7 @@ AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
             if (parent == TSK_NULL) parent = newParentNode(ctx);
             addSegmentToResult(&result, &tail, pos, nextPos,
                                lc->count + rc->count, parent);
+            if (span) spanAdd(span, pos, nextPos, lc->count + rc->count, fullCount);
             addEdge(parent, lc->tskit_node_id, pos, nextPos);
             addEdge(parent, rc->tskit_node_id, pos, nextPos);
             if (lc->count + rc->count == fullCount) {
@@ -349,6 +352,7 @@ AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
             AncestrySegment *c = lc ? lc : rc;
             addSegmentToResult(&result, &tail, pos, nextPos, c->count,
                                c->tskit_node_id);
+            if (span) spanAdd(span, pos, nextPos, c->count, fullCount);
         }
 
         pos = nextPos;
@@ -369,13 +373,24 @@ AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
  * pointer to it. Only for a list that nothing else shares (every segment
  * has a reference count of 1 and no child segments, as in minimal tree
  * sequence mode); for any other list it changes nothing and returns 0,
- * and the caller copies the halves with splitLeft() and splitRight(). */
-int splitInPlace(AncestrySegment *root, int breakpoint,
-                 AncestrySegment **left, AncestrySegment **right) {
+ * and the caller copies the halves with splitLeft() and splitRight().
+ * The spans of the two halves are added to *leftSpan and *rightSpan
+ * (valid only when it returns 1). */
+int splitInPlace(AncestrySegment *root, int breakpoint, int fullCount,
+                 AncestrySegment **left, AncestrySegment **right,
+                 SegmentSpan *leftSpan, SegmentSpan *rightSpan) {
     AncestrySegment *lastLeft = NULL;   /* last segment that starts left of it */
     for (AncestrySegment *s = root; s; s = s->next) {
         if (s->refCount != 1 || s->left || s->right) return 0;
         if (s->start < breakpoint) lastLeft = s;
+        if (s->end <= breakpoint) {
+            spanAdd(leftSpan, s->start, s->end, s->count, fullCount);
+        } else if (s->start >= breakpoint) {
+            spanAdd(rightSpan, s->start, s->end, s->count, fullCount);
+        } else {
+            spanAdd(leftSpan, s->start, breakpoint, s->count, fullCount);
+            spanAdd(rightSpan, breakpoint, s->end, s->count, fullCount);
+        }
     }
     if (lastLeft == NULL) {             /* everything is right of it */
         *left = NULL;

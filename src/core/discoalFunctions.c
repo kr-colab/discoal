@@ -841,6 +841,23 @@ static void coalescenceEdge(tsk_id_t parent, tsk_id_t child, double left, double
 	}
 }
 
+/* Set a lineage's span of material without an MRCA (nancSites, lLim,
+ * rLim), and its recombination weight if it is already in a population
+ * list. */
+static void setLineageSpan(rootedNode *node, const SegmentSpan *span) {
+	node->nancSites = span->nancSites;
+	node->lLim = span->lLim;
+	node->rLim = span->rLim;
+	if (node->popListIndex >= 0 && node->population >= 0 && node->population < MAXPOPS)
+		fenwickSet(&popLists[node->population].weights, node->popListIndex,
+			lineageWeight(node));
+}
+
+static SegmentSpan emptySpan(void) {
+	SegmentSpan span = {0, nSites, 0};
+	return span;
+}
+
 /* Free a lineage that has left the active set (minimal mode). */
 static void freeLineage(rootedNode *node){
 	if (node->ancestryRoot) freeSegmentTree(node->ancestryRoot);
@@ -858,11 +875,12 @@ static void sitesFixed(int start, int end){
  * without walking the parent's segments (updateActiveMaterial()), whose
  * fixed ones were removed when they were fixed. */
 static void coalesceLineagesMinimal(rootedNode *parent, rootedNode *lChild, rootedNode *rChild){
+	SegmentSpan span = emptySpan();
 	parent->ancestryRoot = mergeAncestryTreesCoalescing(lChild->ancestryRoot,
 		rChild->ancestryRoot, coalescenceParentNode, coalescenceEdge, parent,
-		sampleSize, sitesFixed);
+		sampleSize, sitesFixed, &span);
 	activeSites = getActiveSiteCount(&activeMaterialSegments);
-	updateAncestryStatsFromTree(parent);
+	setLineageSpan(parent, &span);
 	parent->leftChild = parent->rightChild = NULL;
 	freeLineage(lChild);
 	freeLineage(rChild);
@@ -1066,36 +1084,40 @@ void coalesceAtTimePopnTrackLeafs(double cTime, int popn){
 
 
 // Helper function to update nancSites, lLim, rLim from ancestry tree
+/* The span of a lineage from a walk of its segment list. Splits and
+ * merges in minimal mode get it during their own walk instead. */
 void updateAncestryStatsFromTree(rootedNode *node) {
 	if (!node || !node->ancestryRoot) return;
-	
-	node->nancSites = 0;
-	node->lLim = nSites;
-	node->rLim = 0;
-	
-	// Walk the segment list instead of querying every site
-	AncestrySegment *seg = node->ancestryRoot;
-	while (seg) {
-		// Check if this segment is polymorphic (has ancestry but not fixed)
-		if (seg->count > 0 && seg->count < sampleSize) {
-			// Add all sites in this polymorphic segment
-			node->nancSites += (seg->end - seg->start);
-			
-			// Update left boundary
-			if (seg->start < node->lLim) {
-				node->lLim = seg->start;
-			}
-			// Update right boundary (end is exclusive, so last site is end-1)
-			if (seg->end - 1 > node->rLim) {
-				node->rLim = seg->end - 1;
-			}
+	SegmentSpan span = emptySpan();
+	for (AncestrySegment *seg = node->ancestryRoot; seg; seg = seg->next)
+		spanAdd(&span, seg->start, seg->end, seg->count, sampleSize);
+	setLineageSpan(node, &span);
+}
+
+/* Split a recombining lineage's segments at xOver between its two
+ * parents, and set the parents' spans. The full ARG gives the parents'
+ * segments their own tskit nodes, so it copies the halves. Minimal mode
+ * cuts the child's list in place, as msprime does, and the parents then
+ * own its segments (the child's ancestryRoot becomes NULL); a list that
+ * shares segments is copied instead. */
+static void splitLineage(rootedNode *aNode, rootedNode *lParent, rootedNode *rParent, int xOver){
+	if (minimalTreeSeq) {
+		SegmentSpan lSpan = emptySpan(), rSpan = emptySpan();
+		if (splitInPlace(aNode->ancestryRoot, xOver, sampleSize,
+				&lParent->ancestryRoot, &rParent->ancestryRoot, &lSpan, &rSpan)) {
+			aNode->ancestryRoot = NULL;
+			setLineageSpan(lParent, &lSpan);
+			setLineageSpan(rParent, &rSpan);
+			return;
 		}
-		seg = seg->next;
+		lParent->ancestryRoot = splitLeft(aNode->ancestryRoot, xOver);
+		rParent->ancestryRoot = splitRight(aNode->ancestryRoot, xOver);
+	} else {
+		lParent->ancestryRoot = splitLeftWithParent(aNode->ancestryRoot, xOver, lParent->tskit_node_id);
+		rParent->ancestryRoot = splitRightWithParent(aNode->ancestryRoot, xOver, rParent->tskit_node_id);
 	}
-	/* A lineage already in a population list (its span has changed). */
-	if (node->popListIndex >= 0 && node->population >= 0 && node->population < MAXPOPS)
-		fenwickSet(&popLists[node->population].weights, node->popListIndex,
-			lineageWeight(node));
+	updateAncestryStatsFromTree(lParent);
+	updateAncestryStatsFromTree(rParent);
 }
 
 /*updateActiveMaterial- does bookkeeping on the material that has found it's MRCA-- added for efficiency */
@@ -1221,30 +1243,11 @@ int recombineAtTimePopn(double cTime, int popn){
 		lParent->lLim = rParent->lLim = nSites;
 		lParent->rLim = rParent->rLim = 0;
 		
-		// Split ancestry segment tree at crossover point
-		extern int minimalTreeSeq;
-		if (!minimalTreeSeq) {
-			// Full ARG mode: use parent's tskit_node_id in segments
-			lParent->ancestryRoot = splitLeftWithParent(aNode->ancestryRoot, xOver, lParent->tskit_node_id);
-			rParent->ancestryRoot = splitRightWithParent(aNode->ancestryRoot, xOver, rParent->tskit_node_id);
-		} else if (splitInPlace(aNode->ancestryRoot, xOver,
-				&lParent->ancestryRoot, &rParent->ancestryRoot)) {
-			/* The parents now own the child's segments. */
-			aNode->ancestryRoot = NULL;
-		} else {
-			// Minimal mode: preserve original tskit_node_id
-			lParent->ancestryRoot = splitLeft(aNode->ancestryRoot, xOver);
-			rParent->ancestryRoot = splitRight(aNode->ancestryRoot, xOver);
-		}
+		splitLineage(aNode, lParent, rParent, xOver);
 		
-		// Always free the original tree since split functions create new segments
-		// With our segment-based approach, we don't need to preserve the child's tree
+		// The child's segments are not needed after the split
 		freeSegmentTree(aNode->ancestryRoot);
 		aNode->ancestryRoot = NULL;
-		
-		// Update stats from tree when in tree-only mode
-		updateAncestryStatsFromTree(lParent);
-		updateAncestryStatsFromTree(rParent);
 		
 		addNode(lParent);
 		addNode(rParent);
@@ -2716,25 +2719,7 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 			}
 		//	printf("lParentsp:%d rParentsp:%d\n",lParent->sweepPopn,rParent->sweepPopn);
 			
-			// Split ancestry segment tree at crossover point
-			extern int minimalTreeSeq;
-			if (!minimalTreeSeq) {
-				// Full ARG mode: use parent's tskit_node_id in segments
-				lParent->ancestryRoot = splitLeftWithParent(aNode->ancestryRoot, xOver, lParent->tskit_node_id);
-				rParent->ancestryRoot = splitRightWithParent(aNode->ancestryRoot, xOver, rParent->tskit_node_id);
-			} else if (splitInPlace(aNode->ancestryRoot, xOver,
-					&lParent->ancestryRoot, &rParent->ancestryRoot)) {
-				/* The parents now own the child's segments. */
-				aNode->ancestryRoot = NULL;
-			} else {
-				// Minimal mode: preserve original tskit_node_id
-				lParent->ancestryRoot = splitLeft(aNode->ancestryRoot, xOver);
-				rParent->ancestryRoot = splitRight(aNode->ancestryRoot, xOver);
-			}
-			
-			// Update stats from ancestry trees
-			updateAncestryStatsFromTree(lParent);
-			updateAncestryStatsFromTree(rParent);
+			splitLineage(aNode, lParent, rParent, xOver);
 			
 			//add in the nodes
 			addNode(lParent);
