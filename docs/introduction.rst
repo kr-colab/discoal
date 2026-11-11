@@ -29,8 +29,9 @@ Technical Details
 discoal implements several optimizations for efficient simulation:
 
 * **Dynamic memory allocation**: Arrays grow as needed rather than pre-allocating maximum sizes
-* **Segment-based ancestry tracking**: Uses interval trees instead of per-site arrays
-* **Memory-mapped trajectory files**: Large sweep trajectories stored on disk
+* **Segment-based ancestry tracking**: Each lineage keeps a list of the segments of its ancestral material, not an array of sites
+* **Tree sequence recording as in msprime**: Only the nodes and edges where lineages coalesce are recorded, and segments whose sites have found their common ancestor are dropped
 * **Weighted recombination draws**: Each population keeps a Fenwick tree of its lineages' spans, so a recombination picks its lineage and breakpoint in O(log n)
+* **Trajectory files**: Sweep trajectories are kept in temporary files, memory-mapped, and deleted when closed
 
-These optimizations result in memory savings of 70-99% for typical simulations while maintaining identical output to previous versions.
+Memory use stays at tens of megabytes even at high recombination rates.

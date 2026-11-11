@@ -1,10 +1,10 @@
-[![CI](https://github.com/kern-lab/discoal/actions/workflows/ci.yml/badge.svg)](https://github.com/kern-lab/discoal/actions/workflows/ci.yml)
+[![CI](https://github.com/kr-colab/discoal/actions/workflows/ci.yml/badge.svg)](https://github.com/kr-colab/discoal/actions/workflows/ci.yml)
 [![Documentation Status](https://readthedocs.org/projects/discoal/badge/?version=latest)](https://discoal.readthedocs.io/en/latest/?badge=latest)
 
 # discoal
 discoal is a coalescent simulation program capable of simulating models with recombination, selective sweeps, and demographic changes including population splits and admixture events.
 
-**Recent improvements**: Memory optimizations have increased the maximum sample size from 254 to 65,535 samples, eliminated the need for the `-DBIG` compilation flag, and reduced memory usage by 15-99% across different simulation scenarios.
+**discoal 2.0** writes tree sequences (`-ts`), reads YAML configuration files and demes models (`-Y`), has growth and migration-change events (`-eg`, `-el`, `-em`), and is checked against msprime and SLiM. It is faster than msprime at high recombination rates. See [the list of changes](https://discoal.readthedocs.io/en/latest/changes.html), which includes changes that can make old commands fail or give different output.
 
 ## Documentation
 
@@ -20,16 +20,20 @@ Read the Docs also offers the documentation as a PDF and as an ePub.
 
 ### Additional Documentation
 
-- [YAML Configuration](docs/yaml_configuration.md) - Using YAML files to specify simulation parameters
-- [Demes Integration](docs/demes_integration.md) - Using demes-format demographic models
+- [YAML Configuration](https://discoal.readthedocs.io/en/latest/yaml_configuration.html) - Using YAML files to specify simulation parameters
+- [Demes Integration](https://discoal.readthedocs.io/en/latest/demes_integration.html) - Using demes-format demographic models
 
 ## Quick Start
 
-To install discoal, clone this repository, cd into the directory, then assuming you have gcc and make installed on your system, simply type `make discoal`.
+discoal needs a C compiler (gcc or clang) and make; the libraries it uses
+are in `extern/`. Clone this repository, change into its directory, and
+type `make`. This builds `build/discoal` and links it as `./discoal`
+(`make discoal` builds only `build/discoal`).
 
-For a quick reference, typing `./discoal` will bring up a verbose usage statement:
+Typing `./discoal` with no arguments prints the usage:
 ```
 $ ./discoal
+discoal version 2.0.0
 usage: discoal sampleSize numReplicates nSites -ws tau
 parameters: 
 	 -t theta 

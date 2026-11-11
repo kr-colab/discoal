@@ -16,6 +16,8 @@ discoal - a coalescent simulator with selection
    population_structure
    selection
    advanced_features
+   yaml_configuration
+   demes_integration
    examples
    development
    api_reference
@@ -38,7 +40,7 @@ Quick Start
 .. code-block:: bash
 
    # Download and compile
-   git clone https://github.com/kern-lab/discoal.git
+   git clone https://github.com/kr-colab/discoal.git
    cd discoal
    make discoal
 
@@ -61,7 +63,7 @@ Kern, A.D. and Schrider, D.R. (2016). discoal: flexible coalescent simulations w
 Support
 -------
 
-* Report issues on `GitHub <https://github.com/kern-lab/discoal/issues>`_
+* Report issues on `GitHub <https://github.com/kr-colab/discoal/issues>`_
 * Contact: adkern@uoregon.edu
 
 Indices and tables

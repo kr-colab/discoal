@@ -69,18 +69,19 @@ Linked Selection
 
 Simulate effects of a sweep outside the sampled region:
 
-* ``-ls``: Stochastic sweep to the left
-* ``-ld``: Deterministic sweep to the left  
-* ``-ln``: Neutral fixation to the left
+* ``-ls tau leftRho``: Stochastic sweep to the left
+* ``-ld tau leftRho``: Deterministic sweep to the left
+* ``-ln tau leftRho``: Neutral fixation to the left
+
+The selected site is at genetic distance 4Nr = 2 x leftRho to the left of
+the locus.
 
 **Example:**
 
 .. code-block:: bash
 
    # Sweep to the left at genetic distance 4Nr = 100
-   ./discoal 20 10 10000 -t 20 -r 20 -ls 0.05 -a 1000
-
-The position is drawn uniformly between 0 and the specified genetic distance.
+   ./discoal 20 10 10000 -t 20 -r 20 -ls 0.05 50 -a 1000
 
 Recurrent Hitchhiking
 ---------------------
