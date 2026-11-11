@@ -1,7 +1,9 @@
 #include "unity.h"
 #include "ancestrySegment.h"
 #include "segmentPool.h"
+#include <limits.h>
 #include <stdlib.h>
+#include <string.h>
 
 // Test fixtures
 AncestrySegment* testSegment;
@@ -275,11 +277,11 @@ static AncestrySegment* referenceMerge(AncestrySegment *l, AncestrySegment *r,
     AncestrySegment *result = NULL, *tail = NULL;
     tsk_id_t parent = TSK_NULL;
     int fixedStart = -1, fixedEnd = -1;
-    int pos = 1 << 30;
+    int pos = INT_MAX;
     if (l) pos = l->start;
     if (r && r->start < pos) pos = r->start;
     while (l || r) {
-        int nextPos = 1 << 30;
+        int nextPos = INT_MAX;
         if (l) {
             if (l->start > pos && l->start < nextPos) nextPos = l->start;
             if (l->end > pos && l->end < nextPos) nextPos = l->end;
@@ -288,7 +290,7 @@ static AncestrySegment* referenceMerge(AncestrySegment *l, AncestrySegment *r,
             if (r->start > pos && r->start < nextPos) nextPos = r->start;
             if (r->end > pos && r->end < nextPos) nextPos = r->end;
         }
-        if (nextPos == 1 << 30) break;
+        if (nextPos == INT_MAX) break;
         AncestrySegment *lc = (l && pos >= l->start && pos < l->end) ? l : NULL;
         AncestrySegment *rc = (r && pos >= r->start && pos < r->end) ? r : NULL;
         if (lc && rc) {
@@ -320,7 +322,7 @@ static AncestrySegment* referenceMerge(AncestrySegment *l, AncestrySegment *r,
 }
 
 /* A record of the callbacks: edges and fixed runs, in order. */
-static int eventLog[4096][4];
+static int eventLog[128][4];
 static int eventCount;
 static tsk_id_t logParent(void *ctx) { (void) ctx; return 99; }
 static void logEdge(tsk_id_t parent, tsk_id_t child, double left, double right) {
@@ -333,44 +335,46 @@ static void logFixed(int start, int end) {
 }
 
 /* A random canonical list (adjacent segments differ in count or node),
- * with gaps, counts 1 to 3 and tskit nodes 1 to 3, built twice from the
- * same random numbers. */
-static void randomListPair(AncestrySegment **a, AncestrySegment **b) {
-    AncestrySegment *ha = NULL, *ta = NULL, *hb = NULL, *tb = NULL;
+ * with gaps, counts 1 to 3 and tskit nodes 1 to 3. */
+static AncestrySegment* randomList(void) {
+    AncestrySegment *head = NULL, *tail = NULL;
     int pos = rand() % 4;
     int n = rand() % 8;
     for (int k = 0; k < n; k++) {
         int len = 1 + rand() % 6;
-        uint16_t count = 1 + rand() % 3;
-        tsk_id_t node = 1 + rand() % 3;
-        refAppend(&ha, &ta, pos, pos + len, count, node);
-        refAppend(&hb, &tb, pos, pos + len, count, node);
+        refAppend(&head, &tail, pos, pos + len, 1 + rand() % 3, 1 + rand() % 3);
         pos += len + (rand() % 3 == 0 ? 0 : rand() % 5);
     }
-    *a = ha;
-    *b = hb;
+    return head;
+}
+
+static SegmentSpan spanOf(AncestrySegment *list, int fullCount) {
+    SegmentSpan span = {0, 1000, 0};
+    for (; list; list = list->next)
+        spanAdd(&span, list->start, list->end, list->count, fullCount);
+    return span;
 }
 
 void test_merge_matches_reference(void) {
     int fullCount = 6;  /* two counts of 3 make a newly fixed piece */
     srand(11);
     for (int iter = 0; iter < 5000; iter++) {
-        AncestrySegment *l1, *l2, *r1, *r2;
-        randomListPair(&l1, &l2);
-        randomListPair(&r1, &r2);
+        /* The merge uses up its lists, so it gets copies. */
+        AncestrySegment *l1 = randomList(), *r1 = randomList();
+        AncestrySegment *l2 = copyPart(l1, 0, INT_MAX);
+        AncestrySegment *r2 = copyPart(r1, 0, INT_MAX);
 
         SegmentSpan wantSpan = {0, 1000, 0}, gotSpan = {0, 1000, 0};
-        int wantLog[4096][4], wantCount;
         eventCount = 0;
         AncestrySegment *want = referenceMerge(l1, r1, logParent, logEdge,
                                                fullCount, logFixed, &wantSpan);
-        wantCount = eventCount;
-        for (int k = 0; k < eventCount; k++)
-            for (int j = 0; j < 4; j++) wantLog[k][j] = eventLog[k][j];
+        int wantLog[128][4], wantCount = eventCount;
+        memcpy(wantLog, eventLog, sizeof wantLog);
 
+        SegmentSpan lSpan = spanOf(l2, fullCount), rSpan = spanOf(r2, fullCount);
         eventCount = 0;
         AncestrySegment *got = mergeAncestryTreesCoalescing(l2, r2, logParent,
-            logEdge, NULL, fullCount, logFixed, &gotSpan);
+            logEdge, NULL, fullCount, logFixed, &lSpan, &rSpan, &gotSpan);
 
         assertSameList(want, got);
         TEST_ASSERT_EQUAL(wantCount, eventCount);
@@ -381,7 +385,7 @@ void test_merge_matches_reference(void) {
         TEST_ASSERT_EQUAL(wantSpan.rLim, gotSpan.rLim);
 
         freeSegmentTree(want);
-        freeSegmentTree(got);   /* l2 and r2 are used up by the merge */
+        freeSegmentTree(got);
         freeSegmentTree(l1);
         freeSegmentTree(r1);
     }

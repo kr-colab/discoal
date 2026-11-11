@@ -855,9 +855,11 @@ static void sitesFixed(int start, int end){
  * fixed ones were removed when they were fixed. */
 static void coalesceLineagesMinimal(rootedNode *parent, rootedNode *lChild, rootedNode *rChild){
 	SegmentSpan span = emptySpan();
+	SegmentSpan lSpan = {lChild->nancSites, lChild->lLim, lChild->rLim};
+	SegmentSpan rSpan = {rChild->nancSites, rChild->lLim, rChild->rLim};
 	parent->ancestryRoot = mergeAncestryTreesCoalescing(lChild->ancestryRoot,
 		rChild->ancestryRoot, coalescenceParentNode, coalescenceEdge, parent,
-		sampleSize, sitesFixed, &span);
+		sampleSize, sitesFixed, &lSpan, &rSpan, &span);
 	/* The merge took over the children's segments. */
 	lChild->ancestryRoot = rChild->ancestryRoot = NULL;
 	activeSites = getActiveSiteCount(&activeMaterialSegments);

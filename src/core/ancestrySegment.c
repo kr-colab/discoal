@@ -179,14 +179,28 @@ AncestrySegment* shallowCopySegment(AncestrySegment *seg) {
 }
 
 // Helper function to add a segment to the result list
+/* Whether a piece continues the tail of a list: adjacent, with the same
+ * count and tskit node. Every list builder joins such a piece to the tail
+ * (addSegmentToResult(), appendSegment(), linkRest()), so that no list has
+ * two such neighbours: splitInPlace() relies on this canonical form. */
+static inline int continuesTail(const AncestrySegment *tail, int start,
+                                uint16_t count, tsk_id_t node) {
+    return tail && tail->end == start && tail->count == count &&
+           tail->tskit_node_id == node;
+}
+
+/* A segment that a list may change in place: no other list shares it. */
+static inline void assertOwned(const AncestrySegment *seg) {
+    assert(seg->refCount == 1 && !seg->left && !seg->right);
+}
+
 static void addSegmentToResult(AncestrySegment **result, AncestrySegment **tail, 
                                int start, int end, uint16_t count, tsk_id_t parent_tskit_node_id) {
     if (start >= end || count == 0) return;  // Skip empty or zero-count segments
     
     // Extend the previous segment if this one continues it: adjacent, with
     // the same count and the same tskit node
-    if (*tail && (*tail)->end == start && (*tail)->count == count &&
-        (*tail)->tskit_node_id == parent_tskit_node_id) {
+    if (continuesTail(*tail, start, count, parent_tskit_node_id)) {
         (*tail)->end = end;  // Extend previous segment
     } else {
         // Create new segment
@@ -290,21 +304,35 @@ AncestrySegment* mergeAncestryTrees(AncestrySegment *leftTree, AncestrySegment *
     return result;
 }
 
-/* Append one segment to the list head..tail. As addSegmentToResult(), it
- * joins the segment to the tail when it continues it (adjacent, with the
- * same count and tskit node), so the list stays in canonical form; the
- * joined segment is freed. */
+/* Append one segment to the list head..tail, joined to the tail if it
+ * continues it (the joined segment is freed). Unlike addSegmentToResult(),
+ * it takes an existing segment and never gets an empty one. */
 static void appendSegment(AncestrySegment **head, AncestrySegment **tail,
                           AncestrySegment *seg) {
+    assertOwned(seg);
     seg->next = NULL;
-    if (*tail && (*tail)->end == seg->start && (*tail)->count == seg->count &&
-        (*tail)->tskit_node_id == seg->tskit_node_id) {
+    if (continuesTail(*tail, seg->start, seg->count, seg->tskit_node_id)) {
         (*tail)->end = seg->end;
         freeSegmentToPool(seg);
         return;
     }
     if (*tail) (*tail)->next = seg; else *head = seg;
     *tail = seg;
+}
+
+/* Link the rest of a canonical list after the tail in one step. Only its
+ * first segment can continue the tail; it is joined to it if it does. */
+static void linkRest(AncestrySegment **head, AncestrySegment **tail,
+                     AncestrySegment *rest) {
+    if (!rest) return;
+    assertOwned(rest);
+    if (continuesTail(*tail, rest->start, rest->count, rest->tskit_node_id)) {
+        (*tail)->end = rest->end;
+        (*tail)->next = rest->next;
+        freeSegmentToPool(rest);
+        return;
+    }
+    if (*tail) (*tail)->next = rest; else *head = rest;
 }
 
 /* Merge the ancestry of two lineages at a common-ancestor event, recording
@@ -320,44 +348,48 @@ static void appendSegment(AncestrySegment **head, AncestrySegment **tail,
  * An overlap whose count reaches fullCount (all samples) has found its
  * MRCA here, and only here: onFixed(start, end) reports each such run of
  * sites once, so the caller can update the sites still active without
- * walking the parent's other segments. The span of the result is added to
- * *span, so the caller need not walk the result.
+ * walking the parent's other segments.
  *
  * As in msprime, the merge works segment by segment and takes over both
  * lists, which no other list may share (minimal tree sequence mode): a
  * segment that does not overlap the other list moves into the result, an
- * overlap reuses the segment of the two that ends there, and the part of
- * a segment before an overlap is the only new segment. The children's
- * lists are used up, so the caller must drop its pointers to them. */
+ * overlap reuses the segment of the two that ends there, the part of a
+ * segment before an overlap is the only new segment, and what is left of
+ * one list when the other ends is linked in one step. The children's lists
+ * are used up, so the caller must drop its pointers to them.
+ *
+ * The span of the result is added to *span. lSpan and rSpan are the spans
+ * of the two lists: where no site reaches its MRCA here, every counted site
+ * of either child stays counted and an overlap counts once, so the span
+ * follows from them without a walk of the result. */
 AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
         AncestrySegment *rightTree, tsk_id_t (*newParentNode)(void *ctx),
         void (*addEdge)(tsk_id_t parent, tsk_id_t child, double left, double right),
         void *ctx, int fullCount, void (*onFixed)(int start, int end),
-        SegmentSpan *span) {
+        const SegmentSpan *lSpan, const SegmentSpan *rSpan, SegmentSpan *span) {
     AncestrySegment *head = NULL, *tail = NULL;
     AncestrySegment *l = leftTree, *r = rightTree;
     tsk_id_t parent = TSK_NULL;
     int fixedStart = -1, fixedEnd = -1;  // a run of newly fixed sites
+    int overlapSites = 0;                // sites both children count
 
     while (l && r) {
         AncestrySegment *seg;
-        if (l->end <= r->start || r->end <= l->start) {
-            /* The first of the two ends before the other starts: it moves
-             * into the result whole. */
-            if (l->start < r->start) { seg = l; l = l->next; }
-            else                     { seg = r; r = r->next; }
-            spanAdd(span, seg->start, seg->end, seg->count, fullCount);
-            appendSegment(&head, &tail, seg);
+        if (l->end <= r->start) {
+            /* It ends before the other starts: it moves in whole. */
+            seg = l;
+            l = l->next;
+        } else if (r->end <= l->start) {
+            seg = r;
+            r = r->next;
         } else if (l->start != r->start) {
             /* One starts first: its part before the other is new. */
-            AncestrySegment **first = (l->start < r->start) ? &l : &r;
-            AncestrySegment *other = (l->start < r->start) ? r : l;
-            seg = newSegment((*first)->start, other->start,
-                             (*first)->tskit_node_id, NULL, NULL);
-            seg->count = (*first)->count;
-            (*first)->start = other->start;
-            spanAdd(span, seg->start, seg->end, seg->count, fullCount);
-            appendSegment(&head, &tail, seg);
+            AncestrySegment *first = (l->start < r->start) ? l : r;
+            AncestrySegment *other = (first == l) ? r : l;
+            seg = newSegment(first->start, other->start,
+                             first->tskit_node_id, NULL, NULL);
+            seg->count = first->count;
+            first->start = other->start;
         } else {
             /* Both start here: they coalesce over [start, end). */
             int start = l->start;
@@ -375,35 +407,48 @@ AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
                     fixedEnd = end;
                 }
             }
-            /* The segment that ends here becomes the parent's; the other
-             * one is freed if it ends here too, and trimmed if not. */
-            AncestrySegment *lNext = l->next, *rNext = r->next;
+            overlapSites += end - start;
+            /* The segment that ends here (end is the nearer end) becomes
+             * the parent's; the other one is freed if it ends here too,
+             * and trimmed if not. */
             if (l->end == end) {
                 seg = l;
-                l = lNext;
-                if (r->end == end) { freeSegmentToPool(r); r = rNext; }
-                else r->start = end;
+                l = l->next;
+                if (r->end == end) {
+                    AncestrySegment *done = r;
+                    r = r->next;
+                    freeSegmentToPool(done);
+                } else {
+                    r->start = end;
+                }
             } else {
                 seg = r;
-                r = rNext;
+                r = r->next;
                 l->start = end;
             }
-            seg->end = end;
             seg->count = count;
             seg->tskit_node_id = parent;
-            spanAdd(span, start, end, count, fullCount);
-            appendSegment(&head, &tail, seg);
         }
+        appendSegment(&head, &tail, seg);
     }
-    /* What is left of one list moves into the result. */
-    for (AncestrySegment *rest = l ? l : r; rest; ) {
-        AncestrySegment *next = rest->next;
-        spanAdd(span, rest->start, rest->end, rest->count, fullCount);
-        appendSegment(&head, &tail, rest);
-        rest = next;
-    }
+    linkRest(&head, &tail, l ? l : r);
 
-    if (fixedStart >= 0) onFixed(fixedStart, fixedEnd);
+    if (fixedStart >= 0) {
+        onFixed(fixedStart, fixedEnd);
+        /* Newly fixed sites can be a child's first or last counted site:
+         * walk the result. */
+        for (AncestrySegment *t = head; t; t = t->next)
+            spanAdd(span, t->start, t->end, t->count, fullCount);
+    } else {
+        const SegmentSpan *child[2] = {lSpan, rSpan};
+        for (int k = 0; k < 2; k++) {
+            if (child[k]->nancSites <= 0) continue;
+            span->nancSites += child[k]->nancSites;
+            if (child[k]->lLim < span->lLim) span->lLim = child[k]->lLim;
+            if (child[k]->rLim > span->rLim) span->rLim = child[k]->rLim;
+        }
+        span->nancSites -= overlapSites;
+    }
     return head;
 }
 
@@ -413,13 +458,12 @@ AncestrySegment* mergeAncestryTreesCoalescing(AncestrySegment *leftTree,
  * moves the list into the two halves, so the caller must drop its own
  * pointer to it. Only for a list that nothing else shares: every segment
  * has a reference count of 1 and no child segments. Minimal tree sequence
- * mode makes only such lists (the samples' segments, the merge's new
- * segments, and this split); the full ARG shares segments and copies
- * instead (splitLeftWithParent()).
+ * mode makes only such lists (the samples' segments, the merge, and this
+ * split); the full ARG shares segments and copies instead
+ * (splitLeftWithParent()).
  * The halves are the same as copying each side through
- * addSegmentToResult() only if no two adjacent segments have the same
- * count and tskit node, as that function joins them; every list in
- * minimal mode is built through it, so none has such a pair.
+ * addSegmentToResult() only if the list is canonical (continuesTail()):
+ * every list builder joins such neighbours, so none has them.
  * It walks only the segments left of the breakpoint. `whole` is the span
  * of the list; the spans of the two halves are added to *leftSpan and
  * *rightSpan, the right one from `whole` less the left one. */
@@ -430,7 +474,7 @@ void splitInPlace(AncestrySegment *root, int breakpoint, int fullCount,
     AncestrySegment *lastLeft = NULL;
     AncestrySegment *s = root;
     for (; s && s->start < breakpoint; s = s->next) {
-        assert(s->refCount == 1 && !s->left && !s->right);
+        assertOwned(s);
         lastLeft = s;
         spanAdd(leftSpan, s->start, s->end < breakpoint ? s->end : breakpoint,
                 s->count, fullCount);
