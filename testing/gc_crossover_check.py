@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Check gene conversion against crossover.
 
-A gene conversion tract that always runs past the end of the locus splits
-a lineage at the tract start, as a crossover at that position does. So a
-simulation with only such gene conversion (-r 0 -g gamma 10^7) must give
-the same distribution of output as one with only crossovers (-r rho), when
-the two rates per breakpoint position are equal: crossovers have nSites
-positions and tract starts nSites + 1, so gamma = rho (nSites + 1) / nSites.
+With very long tracts (-g gamma 10^7), gene conversion acts as crossover at
+twice its rate. A tract that starts in a lineage's span runs past the end of
+the locus, and splits the lineage at its start. A tract that starts left of
+the lineage's first site and ends in its span splits it at its end: these
+arrive at gamma / nSites x mean length per lineage, and end at a position of
+the span with probability about 1 / mean each, so at gamma / nSites per
+position too (less 0.1% here, the share of tracts shorter than the locus).
+So a simulation with only such gene conversion (-r 0 -g gamma 10^7) must give
+the same distribution of output as one with only crossovers (-r rho) with
+gamma = rho / 2.
 
 The check covers the choice of the lineage and of the position (both by
 the lineage's span), in the neutral phase and in the sweep phase. In the
@@ -36,12 +40,19 @@ DISCOAL = os.path.join(REPO, "build", "discoal")
 N_SAMPLE = 20
 SITES = 10000
 RHO = 200.0
-GAMMA = RHO * (SITES + 1) / SITES
+GAMMA = RHO / 2
 TRACT_MEAN = "10000000"  # P(tract < 10^4 sites) = 0.1%
 STATS = ["segsites", "pi", "haplotypes", "pi_left", "pi_mid", "pi_right"]
+# name: (options, replicates as a multiple of --reps)
 MODELS = {
-    "neutral": ["-t", "40"],
-    "sweep": ["-t", "40", "-ws", "0", "-a", "1000", "-x", "0.5"],
+    "neutral": (["-t", "40"], 1),
+    "sweep": (["-t", "40", "-ws", "0", "-a", "1000", "-x", "0.5"], 1),
+    # The sweep site at the left end (site 0): most lineages' material
+    # starts right of it, so a tract from the left of the material covers
+    # it, and the converted (left) parent keeps the class, as the left
+    # parent of a crossover does. A wrong class there changes pi_left by
+    # about 8%, so this case has twice the replicates.
+    "sweep at left end": (["-t", "40", "-ws", "0", "-a", "1000", "-x", "0"], 2),
 }
 
 
@@ -91,12 +102,13 @@ def main():
 
     ok = True
     with concurrent.futures.ProcessPoolExecutor(opts.workers) as pool:
-        for name, model in MODELS.items():
+        for name, (model, factor) in MODELS.items():
+            reps = opts.reps * factor
             crossover = simulate(pool, opts.discoal, model + ["-r", str(RHO)],
-                                 opts.reps, chunks, 1000)
+                                 reps, chunks, 1000)
             conversion = simulate(pool, opts.discoal, model + ["-r", "0", "-g", str(GAMMA),
                                                  TRACT_MEAN],
-                                  opts.reps, chunks, 5000)
+                                  reps, chunks, 5000)
             for j, stat in enumerate(STATS):
                 a, b = conversion[:, j], crossover[:, j]
                 se = np.sqrt(a.var() / len(a) + b.var() / len(b))
@@ -104,7 +116,7 @@ def main():
                 p = stats.ks_2samp(a, b).pvalue
                 good = abs(z) < 4 and p > 1e-4
                 ok &= good
-                print(f"{'ok  ' if good else 'FAIL'} {name:8s} {stat:10s} "
+                print(f"{'ok  ' if good else 'FAIL'} {name:17s} {stat:10s} "
                       f"conversion {a.mean():8.3f}  crossover {b.mean():8.3f}  "
                       f"z={z:+.2f}  KS p={p:.3g}", flush=True)
     print("all checks passed" if ok else "some checks FAILED")

@@ -94,6 +94,8 @@ Parameter                                   discoal unit                msprime 
 ==========================================  ==========================  =====================================
 ``-t`` theta                                4N₀μ for the whole locus    ``mutation_rate`` = theta / (4N₀ L)
 ``-r`` rho                                  4N₀r for the whole locus    ``recombination_rate`` = rho / (4N₀ L)
+``-g`` gamma                                4N₀g for the whole locus    ``gene_conversion_rate`` = gamma / (4N₀ L)
+``-g`` mean tract length                    sites                       ``gene_conversion_tract_length``
 times (``-en``, ``-ed``, ``-em``, ``-ws``)  4N₀ generations             generations = time × 4N₀
 ``-en`` size                                size / N₀                   ``initial_size`` = size × N₀
 ``-eg`` alpha                               per 4N₀ generations         ``growth_rate`` = alpha / (4N₀)
@@ -104,4 +106,4 @@ times (``-en``, ``-ed``, ``-em``, ``-ws``)  4N₀ generations             genera
 
 ``-m i j`` moves lineages from population i to population j backward in time, which is the ms and msprime convention. In YAML configs, times and rates use the same units as the command line. Demes files use generations (or years) and per-generation rates; discoal converts them. Tree sequence output stores node times in units of 2N₀ generations, discoal's internal scale.
 
-``testing/units_convention_check.py`` checks each of these conventions against msprime.
+``testing/units_convention_check.py`` checks each of these conventions against msprime; ``testing/gene_conversion_check.py`` checks gene conversion.

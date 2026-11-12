@@ -75,8 +75,8 @@ genetics:
 - All values must be `>= 0`. A mutation or recombination rate of 0 is
   allowed.
 - Gene conversion has two forms. Set one of them, not both:
-  - `gene_conversion_rate`: the rate for the whole locus, scaled as rho
-    is (`-g rate length`).
+  - `gene_conversion_rate`: the rate for the whole locus, 4N g L, scaled
+    as rho is (`-g rate length`).
   - `crossover_ratio`: the rate is `recombination_rate x
     crossover_ratio` (`-gr ratio length`).
 - With either form, `gene_conversion_tract_length` must be at least 1.

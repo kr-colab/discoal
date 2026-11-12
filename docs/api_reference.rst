@@ -31,12 +31,18 @@ Basic Parameters
 
    Gene conversion parameters:
    
-   * gamma: Population gene conversion rate (4N₀g)
-   * tractLength: Mean conversion tract length in bp
+   * gamma: Population gene conversion rate for the whole locus (4N₀gL,
+     scaled as rho is); tracts start at gamma / L per site
+   * tractLength: Mean conversion tract length in sites (an integer >= 1);
+     lengths are geometric on 1, 2, 3, ...
+
+   Tracts run to the right, and can come in from the left of a lineage's
+   material, as in ms and msprime (see :doc:`recombination`).
 
 .. option:: -gr ratio tractLength
 
-   Gene conversion as ratio to crossover rate
+   Gene conversion at ratio times the crossover rate: gamma = rho x ratio,
+   so the ratio is g/r, as for ms's ``-c``
 
 Demographic Options
 ^^^^^^^^^^^^^^^^^^^
