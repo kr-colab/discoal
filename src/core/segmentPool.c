@@ -229,7 +229,7 @@ void freeSegmentToPool(AncestrySegment *seg) {
     g_pool.stats.current_in_use--;
 }
 
-size_t calculateInitialPoolSize(int sampleSize, double rho, int nSites) {
+size_t calculateInitialPoolSize(int sampleSize, double rho) {
     // Base allocation for samples and their initial coalescences
     size_t base = sampleSize * 10;
     

@@ -28,10 +28,10 @@ void cleanupRemainingNodes();
 
 void coalesceAtTimePopn(double cTime, int popn);
 void coalesceAtTimePopnSweep(double cTime, int popn, int sp);
-void migrateAtTime(double cTime,int srcPopn, int destPopn);
+void migrateAtTime(int srcPopn, int destPopn);
 
 int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, double popnFreq);
-int recombineToLeftPopnSweep(int popn, int sp, double popnFreq);
+int recombineToLeftPopnSweep(int popn, int sp);
 void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, double popnFreq);
 
 
@@ -43,7 +43,7 @@ void addMutation(rootedNode *aNode, double site);
 int hasMutation(rootedNode *aNode, double site);
 void sortNodeMutations(rootedNode *node);
 void sortAllMutations();
-void makeGametesMS(int argc,const char *argv[]);
+void makeGametesMS(void);
 
 
 void dropMutationsRecurse();
@@ -55,7 +55,7 @@ void admixPopns(int popnSrc, int popnDest1, int popnDest2, double admixProp);
 void addAncientSample(int lineageNumber, int popnDest, double addTime, int stillSweeping, double currentFreq);
 
 
-void recurrentMutAtTime(double cTime,int srcPopn, int sp);
+void recurrentMutAtTime(int srcPopn, int sp);
 
 
 // Memory-mapped trajectory functions
@@ -67,13 +67,12 @@ void ensureAllNodesCapacity(int requiredSize);
 
 			
 			
-double recurrentSweepPhaseGeneralPopNumber(double startTime, double endTime, double *finalFreq, double alpha, char sweepMode, double *sizeRatio);
+double recurrentSweepPhaseGeneralPopNumber(double startTime, double endTime, double *finalFreq, double alpha, char sweepMode);
 		
-double proposeTrajectory(int currentEventNumber, float *currentTrajectory, double *sizeRatio, char sweepMode, \
-	double initialFreq, double *finalFreq, double alpha, double f0, double currentTime);
+double proposeTrajectory(int currentEventNumber, char sweepMode, \
+	double initialFreq, double alpha, double f0, double currentTime);
 double sweepPhaseEventsConditionalTrajectory(double startTime, double endTime, double sweepSite,\
-	double initialFreq, double *finalFreq, int *stillSweeping, double alpha,\
-	double *sizeRatio, char sweepMode,double f0, double uA);
+	double initialFreq, double *finalFreq, int *stillSweeping,double f0, double uA);
 
 
 		
@@ -83,7 +82,7 @@ void lineageEventRates(int popn, double *recombination, double *geneConversion);
 int recombineAtTimePopn(double cTime, int popn);
 void geneConversionAtTimePopn(double cTime, int popn);
 
-double neutralPhaseGeneralPopNumber(double startTime, double endTime, double *sizeRatio);
+double neutralPhaseGeneralPopNumber(double startTime, double endTime);
 
 rootedNode *pickNodePopn(int popn);
 void addNode(rootedNode *aNode);
@@ -97,8 +96,8 @@ void sortEventArray(struct event *eArray, int eNumber);
 int addPriorSizeChange(const char *what, double timeLow, double timeHigh,
                        double sizeLow, double sizeHigh, int popID);
 void drawPriors();
-void sampleSweepTrajectory(int currentEventNumber, double *sizeRatio,
-	char sweepMode, double initialFreq, double *finalFreq, double alpha,
+void sampleSweepTrajectory(int currentEventNumber,
+	char sweepMode, double initialFreq, double alpha,
 	double f0, double currentTime);
 int setSweepTrajectoryFile(const char *path);
 void buildSweepTrajectoryFromFile(void);

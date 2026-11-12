@@ -29,7 +29,7 @@ int getActiveSiteCount(ActiveMaterial *am);
 
 // Update active material based on ancestry information
 void updateActiveMaterialFromAncestry(ActiveMaterial *am, AncestrySegment *ancestry, 
-                                     int sampleSize, int nSites);
+                                     int sampleSize);
 
 // Utility functions
 int verifyActiveMaterial(ActiveMaterial *am, int nSites);

@@ -83,7 +83,6 @@ static void xoshiro256pp_jump(xoshiro256pp_state *state) {
             state->s[0] ^= state->s[3];
             state->s[2] ^= t;
             state->s[3] = rotl(state->s[3], 45);
-            state->s[0] + state->s[3]; /* Result not used during jump */
         }
     }
     
@@ -107,7 +106,6 @@ static void init_generator(int gen, long iseed1, long iseed2) {
     }
     
     /* Warm up the generator with exactly 20 iterations for compatibility */
-    xoshiro256pp_state saved_state = rng_ctx.states[gen];
     int saved_gen = rng_ctx.current_generator;
     rng_ctx.current_generator = gen;
     
@@ -500,6 +498,7 @@ void genmul(long n, double *p, long ncat, long *ix) {
 
 /* Multivariate normal - simplified */
 void genmn(double *parm, double *x, double *work) {
+    (void) work;
     /* This is a simplified implementation */
     /* In production, would need proper Cholesky decomposition */
     /* For now, generate independent normals */
@@ -512,6 +511,8 @@ void genmn(double *parm, double *x, double *work) {
 
 /* Set parameters for multivariate normal */
 void setgmn(double *meanv, double *covm, long p, double *parm) {
+    (void) meanv;
+    (void) covm;
     /* Store dimension */
     parm[0] = (double)p;
     
@@ -521,6 +522,7 @@ void setgmn(double *meanv, double *covm, long p, double *parm) {
 
 /* Initialize generator type - for compatibility */
 void initgn(long isdtyp) {
+    (void) isdtyp;
     /* This function exists for compatibility but doesn't need to do anything */
     /* with xoshiro256++ since we don't have different generator types */
 }

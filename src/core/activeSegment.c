@@ -195,7 +195,7 @@ void removeFixedRegion(ActiveMaterial *am, int start, int end) {
 
 // Update active material based on ancestry segments
 void updateActiveMaterialFromAncestry(ActiveMaterial *am, AncestrySegment *ancestry, 
-                                     int sampleSize, int nSites) {
+                                     int sampleSize) {
     if (!am || !ancestry) return;
     
     // Walk through ancestry segments and remove fixed regions

@@ -35,7 +35,7 @@ AncestrySegment* allocSegmentFromPool(void);
 void freeSegmentToPool(AncestrySegment *seg);
 
 // Calculate recommended initial pool size based on simulation parameters
-size_t calculateInitialPoolSize(int sampleSize, double rho, int nSites);
+size_t calculateInitialPoolSize(int sampleSize, double rho);
 
 // Get current pool statistics
 PoolStats getPoolStatistics(void);
