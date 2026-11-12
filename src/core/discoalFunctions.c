@@ -1074,6 +1074,12 @@ static void splitLineage(rootedNode *aNode, rootedNode *lParent, rootedNode *rPa
 	rParent->ancestryRoot = splitRightWithParent(aNode->ancestryRoot, xOver, rParent->tskit_node_id);
 	updateAncestryStatsFromTree(lParent);
 	updateAncestryStatsFromTree(rParent);
+	/* The parents have copies, so the child's segments are not needed. The
+	 * child is freed once both its parents are recorded
+	 * (markParentRecorded()), which also needs it to hold no segments that
+	 * are not recorded: a sample node's never are. */
+	freeSegmentTree(aNode->ancestryRoot);
+	aNode->ancestryRoot = NULL;
 }
 
 /*updateActiveMaterial- does bookkeeping on the material that has found it's MRCA-- added for efficiency */
@@ -1219,10 +1225,6 @@ int recombineAtTimePopn(double cTime, int popn){
 		rParent->population = aNode->population;
 		
 		splitLineage(aNode, lParent, rParent, xOver);
-		
-		// The child's segments are not needed after the split
-		freeSegmentTree(aNode->ancestryRoot);
-		aNode->ancestryRoot = NULL;
 		
 		addNode(lParent);
 		addNode(rParent);
