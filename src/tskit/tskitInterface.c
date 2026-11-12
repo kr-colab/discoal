@@ -15,36 +15,10 @@
 // Global tskit table collection
 tsk_table_collection_t *tsk_tables = NULL;
 
-// Mapping between discoal node IDs and tskit node IDs
-// We'll use the totNodeNumber as the key
-tsk_id_t *node_id_map = NULL;
-int node_id_map_capacity = 0;
-
 // Edge buffering for squashing optimization
 tsk_edge_t *buffered_edges = NULL;
 int num_buffered_edges = 0;
 int max_buffered_edges = 0;
-
-// Flag to enable/disable edge squashing (for testing)
-static int edge_squashing_enabled = 1;  // Enabled
-
-// Debug counters for edge squashing analysis
-static int total_edges_buffered = 0;
-static int total_edges_after_squashing = 0;
-static int flush_count_parent_change = 0;
-static int flush_count_node_creation = 0;
-static int flush_count_periodic = 0;
-static int flush_count_final = 0;
-
-// Function to enable edge squashing
-void tskit_enable_edge_squashing(void) {
-    edge_squashing_enabled = 1;
-}
-
-// Function to disable edge squashing (for performance comparison)
-void tskit_disable_edge_squashing(void) {
-    edge_squashing_enabled = 0;
-}
 
 // Initialize tskit recording
 int tskit_initialize(double sequence_length) {
@@ -90,30 +64,13 @@ int tskit_initialize(double sequence_length) {
         }
     }
     
-    // Initialize node ID mapping
-    node_id_map_capacity = 1000;  // Start with reasonable size
-    node_id_map = malloc(sizeof(tsk_id_t) * node_id_map_capacity);
-    if (node_id_map == NULL) {
-        tsk_table_collection_free(tsk_tables);
-        free(tsk_tables);
-        tsk_tables = NULL;
-        return -1;
-    }
-    
-    // Initialize all mappings to TSK_NULL
-    for (int i = 0; i < node_id_map_capacity; i++) {
-        node_id_map[i] = TSK_NULL;
-    }
-    
     // Initialize edge buffering
     max_buffered_edges = 128;  // Start with same size as msprime
     buffered_edges = malloc(sizeof(tsk_edge_t) * max_buffered_edges);
     if (buffered_edges == NULL) {
         tsk_table_collection_free(tsk_tables);
         free(tsk_tables);
-        free(node_id_map);
         tsk_tables = NULL;
-        node_id_map = NULL;
         return -1;
     }
     num_buffered_edges = 0;
@@ -147,8 +104,6 @@ int tskit_flush_edges(void) {
     }
     
     if (num_buffered_edges > 0) {
-        // Track edges before squashing
-        total_edges_buffered += num_buffered_edges;
         
         // Apply edge squashing using tskit's built-in function
         ret = tsk_squash_edges(buffered_edges, num_buffered_edges, &num_edges);
@@ -156,10 +111,7 @@ int tskit_flush_edges(void) {
             fprintf(stderr, "Error squashing edges: %s\n", tsk_strerror(ret));
             return ret;
         }
-        
-        // Track edges after squashing
-        total_edges_after_squashing += num_edges;
-        
+
         // Add squashed edges to the table
         for (j = 0; j < num_edges; j++) {
             edge = buffered_edges[j];
@@ -182,32 +134,7 @@ int tskit_flush_edges(void) {
 
 // Special flush for periodic node sweeping (to track frequency)
 int tskit_flush_edges_periodic(void) {
-    flush_count_periodic++;
     return tskit_flush_edges();
-}
-
-// Ensure node_id_map has enough capacity
-static void ensure_node_map_capacity(int required_size) {
-    if (required_size >= node_id_map_capacity) {
-        int new_capacity = node_id_map_capacity;
-        while (new_capacity <= required_size) {
-            new_capacity *= 2;
-        }
-        
-        tsk_id_t *new_map = realloc(node_id_map, sizeof(tsk_id_t) * new_capacity);
-        if (new_map == NULL) {
-            fprintf(stderr, "Error: Failed to reallocate node_id_map\n");
-            exit(1);
-        }
-        
-        // Initialize new entries to TSK_NULL
-        for (int i = node_id_map_capacity; i < new_capacity; i++) {
-            new_map[i] = TSK_NULL;
-        }
-        
-        node_id_map = new_map;
-        node_id_map_capacity = new_capacity;
-    }
 }
 
 // Record a new node
@@ -221,7 +148,6 @@ tsk_id_t tskit_add_node(double time, int population, int is_sample) {
     }
     
     // Flush buffered edges before adding a new node (like msprime)
-    flush_count_node_creation++;
     ret = tskit_flush_edges();
     if (ret != 0) {
         fprintf(stderr, "Error flushing edges before node creation\n");
@@ -238,10 +164,6 @@ tsk_id_t tskit_add_node(double time, int population, int is_sample) {
                                      TSK_NULL,  // individual
                                      NULL, 0);  // metadata
     
-    // Debug output (commented out for production)
-    // fprintf(stderr, "DEBUG tskit_add_node: id=%lld, time=%.12f, pop=%d, is_sample=%d\n", 
-    //         (long long)node_id, time, tsk_population, is_sample);
-    
     return node_id;
 }
 
@@ -255,28 +177,11 @@ int tskit_add_edges(tsk_id_t parent, tsk_id_t child, double left, double right) 
     }
     
     // Check parent-child time relationship (only in debug mode)
-    // if (parent >= 0 && child >= 0 && parent < tsk_tables->nodes.num_rows && child < tsk_tables->nodes.num_rows) {
-    //     double parent_time = tsk_tables->nodes.time[parent];
-    //     double child_time = tsk_tables->nodes.time[child];
-    //     if (parent_time <= child_time) {
-    //         fprintf(stderr, "ERROR: Bad edge timing! Parent time %.12f <= child time %.12f\n", parent_time, child_time);
-    //     }
-    // }
-    
-    // If edge squashing is disabled, add directly to table
-    if (!edge_squashing_enabled) {
-        ret = tsk_edge_table_add_row(&tsk_tables->edges,
-                                     left, right,
-                                     parent, child,
-                                     NULL, 0);  // metadata
-        return ret;
-    }
     
     // Check if we need to flush due to parent change (like msprime)
     if (num_buffered_edges > 0) {
         last_edge = buffered_edges[num_buffered_edges - 1];
         if (last_edge.parent != parent) {
-            flush_count_parent_change++;
             ret = tskit_flush_edges();
             if (ret != 0) {
                 return ret;
@@ -299,12 +204,6 @@ int tskit_add_edges(tsk_id_t parent, tsk_id_t child, double left, double right) 
     buffered_edges[num_buffered_edges].metadata = NULL;
     buffered_edges[num_buffered_edges].metadata_length = 0;
     num_buffered_edges++;
-    
-    // Debug output (commented out for production)
-    // if (right - left < 0.0001) {
-    //     fprintf(stderr, "WARNING: Very small edge interval: parent=%lld, child=%lld, left=%.10f, right=%.10f, length=%.10f\n", 
-    //             (long long)parent, (long long)child, left, right, right - left);
-    // }
     
     return 0;
 }
@@ -402,7 +301,6 @@ static int add_provenance(void) {
     extern double f0;            // Starting frequency
     extern double sweepSite;     // Sweep position
     extern char sweepMode;       // Type of sweep
-    extern int activeSweepFlag;  // Whether sweep is active
     
     // Get tskit version
     char tskit_version[32] = "C-API";  // tskit C API doesn't expose version easily
@@ -423,7 +321,6 @@ static int add_provenance(void) {
     
     // Add population sizes if multiple populations
     if (npops > 1 && currentSize != NULL) {
-        char pop_sizes[512];
         strcat(params_str, ",\"population_sizes\": [");
         for (int i = 0; i < npops; i++) {
             char size_str[64];
@@ -502,7 +399,6 @@ int tskit_finalize(const char *filename) {
     }
     
     // Flush any remaining buffered edges before finalizing
-    flush_count_final++;
     ret = tskit_flush_edges();
     if (ret != 0) {
         fprintf(stderr, "Error flushing edges during finalization\n");
@@ -510,14 +406,6 @@ int tskit_finalize(const char *filename) {
     }
     
     // Print edge squashing and flush frequency statistics (debug mode)
-    // if (edge_squashing_enabled && total_edges_buffered > 0) {
-    //     double reduction = 100.0 * (total_edges_buffered - total_edges_after_squashing) / total_edges_buffered;
-    //     int total_flushes = flush_count_parent_change + flush_count_node_creation + flush_count_periodic + flush_count_final;
-    //     fprintf(stderr, "Edge squashing: %d -> %d edges (%.1f%% reduction)\n", 
-    //             total_edges_buffered, total_edges_after_squashing, reduction);
-    //     fprintf(stderr, "Flush frequency: Parent=%d, Node=%d, Periodic=%d, Final=%d (Total=%d)\n",
-    //             flush_count_parent_change, flush_count_node_creation, flush_count_periodic, flush_count_final, total_flushes);
-    // }
     
     // Add provenance record
     ret = add_provenance();
@@ -561,23 +449,11 @@ void tskit_cleanup(void) {
         tsk_tables = NULL;
     }
     
-    if (node_id_map != NULL) {
-        free(node_id_map);
-        node_id_map = NULL;
-        node_id_map_capacity = 0;
-    }
-    
     if (buffered_edges != NULL) {
         free(buffered_edges);
         buffered_edges = NULL;
         max_buffered_edges = 0;
         num_buffered_edges = 0;
-        total_edges_buffered = 0;
-        total_edges_after_squashing = 0;
-        flush_count_parent_change = 0;
-        flush_count_node_creation = 0;
-        flush_count_periodic = 0;
-        flush_count_final = 0;
     }
 }
 
@@ -588,14 +464,6 @@ tsk_id_t get_tskit_node_id(rootedNode *node) {
 
 }
 
-// Store mapping from discoal node to tskit node ID using index
-void set_tskit_node_id_at_index(int index, tsk_id_t tsk_id) {
-    ensure_node_map_capacity(index);
-    node_id_map[index] = tsk_id;
-    // fprintf(stderr, "Stored mapping at index %d -> tskit ID %lld\n", 
-    //         index, (long long)tsk_id);
-}
-
 // Store mapping from discoal node to tskit node ID
 void set_tskit_node_id(rootedNode *node, tsk_id_t tsk_id) {
     // In tskit-only mode, store tskit ID directly in the node
@@ -603,7 +471,6 @@ void set_tskit_node_id(rootedNode *node, tsk_id_t tsk_id) {
     return;
 
 }
-
 
 // Structure for temporary mutation storage
 typedef struct {

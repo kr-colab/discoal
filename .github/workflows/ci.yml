@@ -40,14 +40,6 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential make git
     
-    - name: Download Unity test framework
-      run: |
-        if [ ! -d "extern/Unity" ]; then
-          cd extern
-          git clone https://github.com/ThrowTheSwitch/Unity.git
-          cd ..
-        fi
-    
     - name: Build discoal
       run: |
         make clean
@@ -257,14 +249,6 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential make valgrind git
     
-    - name: Download Unity test framework
-      run: |
-        if [ ! -d "extern/Unity" ]; then
-          cd extern
-          git clone https://github.com/ThrowTheSwitch/Unity.git
-          cd ..
-        fi
-
     - name: Build with debug symbols
       run: |
         make clean

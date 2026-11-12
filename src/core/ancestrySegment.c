@@ -20,7 +20,6 @@ AncestrySegment* newSegment(int start, int end, tsk_id_t tskit_node_id, Ancestry
     seg->next = NULL;
     seg->isLeaf = (left == NULL && right == NULL) ? 1 : 0;
     seg->refCount = 1;  // Initial reference count
-    seg->isRecorded = 0;
     
     // For leaf segments, count is 1; for internal nodes, sum of children
     if (seg->isLeaf) {
@@ -582,65 +581,6 @@ AncestrySegment* splitRightWithParent(AncestrySegment *root, int breakpoint, tsk
     }
     
     return result;
-}
-
-void printSegmentTree(AncestrySegment *root, int depth) {
-    AncestrySegment *current = root;
-    while (current) {
-        for (int i = 0; i < depth; i++) printf("  ");
-        printf("[%d,%d) count=%d%s\n", current->start, current->end, 
-               current->count, current->isLeaf ? " (leaf)" : "");
-        current = current->next;
-    }
-}
-
-int verifySegmentTree(AncestrySegment *root, int nSites) {
-    if (!root) return 1;  // Empty tree is valid
-    
-    AncestrySegment *current = root;
-    int lastEnd = 0;
-    
-    while (current) {
-        // Check for gaps or overlaps
-        if (current->start != lastEnd) {
-            fprintf(stderr, "Gap or overlap in segments: %d to %d\n", lastEnd, current->start);
-            return 0;
-        }
-        
-        // Check bounds
-        if (current->start < 0 || current->end > nSites) {
-            fprintf(stderr, "Segment out of bounds: [%d,%d)\n", current->start, current->end);
-            return 0;
-        }
-        
-        lastEnd = current->end;
-        current = current->next;
-    }
-    
-    return 1;
-}
-
-// Check if all segments in the tree have been recorded
-int areAllSegmentsRecorded(AncestrySegment *root) {
-    if (!root) return 1;  // Empty tree is considered fully recorded
-    
-    AncestrySegment *current = root;
-    while (current) {
-        if (!current->isRecorded) {
-            return 0;  // Found an unrecorded segment
-        }
-        current = current->next;
-    }
-    
-    return 1;  // All segments are recorded
-}
-
-// Mark a segment as recorded
-void markSegmentRecorded(AncestrySegment *seg) {
-    if (seg && seg->refCount == 1) {
-        // Only mark as recorded if this segment is not shared
-        seg->isRecorded = 1;
-    }
 }
 
 // Split ancestry tree for gene conversion

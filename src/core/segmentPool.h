@@ -41,13 +41,10 @@ size_t calculateInitialPoolSize(int sampleSize, double rho, int nSites);
 PoolStats getPoolStatistics(void);
 
 // Print pool statistics to file
-void printPoolStatistics(FILE *fp);
 
 // Get current memory usage in bytes
-size_t getPoolMemoryUsage(void);
 
 // Optional: trim pool to reduce memory usage
-void trimSegmentPool(size_t target_size);
 
 // Debug support
 #ifdef DEBUG_SEGMENT_POOL

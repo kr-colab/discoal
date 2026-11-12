@@ -213,22 +213,6 @@ void updateActiveMaterialFromAncestry(ActiveMaterial *am, AncestrySegment *ances
     am->lookupStale = 1;
 }
 
-// Print active segments for debugging
-void printActiveSegments(ActiveMaterial *am) {
-    if (!am) {
-        printf("ActiveMaterial: NULL\n");
-        return;
-    }
-    
-    printf("ActiveMaterial: %d total active sites\n", am->totalActive);
-    ActiveSegment *seg = am->segments;
-    int count = 0;
-    while (seg) {
-        printf("  Segment %d: [%d, %d)\n", count++, seg->start, seg->end);
-        seg = seg->next;
-    }
-}
-
 // Verify integrity of active material structure
 int verifyActiveMaterial(ActiveMaterial *am, int nSites) {
     if (!am) return 0;

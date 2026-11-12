@@ -74,7 +74,6 @@ rootedNode;
 /******************************************************************************/
 /* Here is the event object used to keep track of demographic changes         */
 
-
 typedef struct event
 {
 	double time, popnSize;
@@ -122,10 +121,6 @@ typedef struct {
     double anchor_time;    /* time at which anchor_value applies */
 } Shape;
 
-
-
-
-
 /******************************************************************************/
 
 /******************************************************************************/
@@ -142,34 +137,21 @@ tsk_id_t *sample_node_ids;
 int sample_node_count;
 int sample_node_capacity;
 
-
-// int activeMaterial[MAXSITES];  // DEPRECATED - replaced by segment structure
 ActiveMaterial activeMaterialSegments;  // New segment-based structure
 
-int sampleSize, sampleNumber, alleleNumber, \
-	totNodeNumber, totChunkNumber, npops, eventFlag, nSites, activeSites,\
-	mask, outputStyle, effectiveSampleSize, gcMean,\
-	sampleSizes[MAXPOPS];
+int sampleSize, sampleNumber, alleleNumber, npops, nSites, activeSites,
+	gcMean, sampleSizes[MAXPOPS];
 
-double  leftRho, rho, theta, tDiv, alpha, sweepSite, tau, my_gamma, \
- 	lambda, timeRecovery,bottleNeckRatio, bottleNeckDuration, \
- 	ancestralSizeRatio, sweepLeft, sweepRight, thetas[MAXPOPS];
-double mig[MAXPOPS];
+double leftRho, rho, theta, tDiv, alpha, sweepSite, tau, my_gamma;
 
-int sampleS, sampleFD, sampleHaps, rejectCount, sampleRMin, offset, winNumber, \
-	popnSizes[MAXPOPS],sweepPopnSizes[MAXPOPS];
+int popnSizes[MAXPOPS], sweepPopnSizes[MAXPOPS];
 
+char sweepMode;
 
+double currentTime;
+int eventNumber, migFlag, currentEventNumber;
 
-const char *mFile;
-
-char sweepMode, windowMode;
-
-double coaltime, currentTime, pAccept;
-int mn, eventNumber, migFlag, currentEventNumber;
-
-
-double SweepStartingFrequency, f0;
+double f0;
 
 double uA;
 
@@ -237,13 +219,11 @@ extern int recurrentLeftOfLocus;
 extern int sweepPositionGiven;
 extern int demesModelLoaded;     /* the populations come from a demes file (-Y with demes_filename) */
 
-
 int hidePartialSNP;
 
 // Tree sequence recording
 int tskitOutputMode;
 char tskitOutputFilename[1024];
 int minimalTreeSeq;  // Flag for minimal tree sequence recording (coalescence only)
-
 
 #endif

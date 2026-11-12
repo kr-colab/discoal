@@ -29,7 +29,6 @@ void cleanupRemainingNodes();
 void coalesceAtTimePopn(double cTime, int popn);
 void coalesceAtTimePopnSweep(double cTime, int popn, int sp);
 void migrateAtTime(double cTime,int srcPopn, int destPopn);
-void migrateExceptSite(double site, double scalar, int srcPopn, int destPopn);
 
 int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, double popnFreq);
 int recombineToLeftPopnSweep(int popn, int sp, double popnFreq);
@@ -38,12 +37,8 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 
 void updateActiveMaterial(rootedNode *aNode);
 void updateAncestryStatsFromTree(rootedNode *node);
-int isActive(int site);
 int isAncestralHere(rootedNode *aNode, float site);
-int nAncestorsHere(rootedNode *aNode, float site);
 
-int siteBetweenChunks(rootedNode *aNode, int xOverSite);
-void dropMutations();
 void addMutation(rootedNode *aNode, double site);
 int hasMutation(rootedNode *aNode, double site);
 void sortNodeMutations(rootedNode *node);
@@ -111,16 +106,11 @@ void buildSweepTrajectoryFromFile(void);
 double sweepStartFreq(double t);
 
 int findRootAtSite(float site);
-int hasMaterialHere(rootedNode *aNode, float site);
-int isLeaf(rootedNode *aNode);
-int isCoalNode(rootedNode *aNode);
 void newickRecurse(rootedNode *aNode, float site,float tempTime);
 void printTreeAtSite(float site);
 void printAllNodes();
-void printAllActiveNodes();
 
 unsigned int devrand(void);
 int compare_doubles(const void *a,const void *b);
-int compare_floats(const void *a,const void *b);
 
 #endif

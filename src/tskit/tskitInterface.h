@@ -27,8 +27,6 @@
 extern tsk_table_collection_t *tsk_tables;
 
 // Mapping between discoal node IDs and tskit node IDs
-extern tsk_id_t *node_id_map;
-extern int node_id_map_capacity;
 
 // Edge buffering for squashing optimization
 extern tsk_edge_t *buffered_edges;
@@ -67,7 +65,6 @@ tsk_id_t get_tskit_node_id(rootedNode *node);
 
 // Store mapping from discoal node to tskit node ID
 void set_tskit_node_id(rootedNode *node, tsk_id_t tsk_id);
-void set_tskit_node_id_at_index(int index, tsk_id_t tsk_id);
 
 // Place mutations using edge-based algorithm (similar to msprime's design)
 int tskit_place_mutations_edge_based(double theta);
@@ -77,7 +74,5 @@ int tskit_place_mutations_edge_based(double theta);
 void tskit_store_command_line(int argc, const char **argv);
 
 // Functions to enable/disable edge squashing (for performance comparison)
-void tskit_enable_edge_squashing(void);
-void tskit_disable_edge_squashing(void);
 
 #endif

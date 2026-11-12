@@ -7,7 +7,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-#include "ancestryWrapper.h"
 #include "activeSegment.h"
 #include "discoal.h"
 #include "discoalFunctions.h"
@@ -16,7 +15,6 @@
 #include "alleleTraj.h"
 #include "tskitInterface.h"
 #include "shapes.h"
-
 
 static int64_t sweepClassWeight(int popn, int sp);
 
@@ -259,11 +257,10 @@ static int ancientEventOfSample(int p, int i){
 }
 
 void initialize(){
-	int i,j,p, count=0;
+	int i,p, count=0;
 	int leafID=0;
 
 	/* Initialize the arrays */
-	totChunkNumber = 0;
 	initializeNodeArrays();
 	/* The samples go straight into nodes[], which starts with room for
 	 * 1000 lineages; addNode() grows it for the lineages that follow. */
@@ -304,7 +301,6 @@ void initialize(){
 		}
 	}
 
-
 	// Initialize segment-based active material (all sites start as active);
 	// free the previous replicate's first (the global starts zeroed)
 	freeActiveMaterial(&activeMaterialSegments);
@@ -313,7 +309,6 @@ void initialize(){
 	//set initial counts
 	alleleNumber = sampleSize;
 	nodesUsed = sampleSize;
-	totNodeNumber = sampleSize;
 	/* Restore initial sizes; 'n'/'g'/'l' events mutate currentSize per replicate. */
 	for (p = 0; p < MAXPOPS; p++) currentSize[p] = currentSizeConst[p];
 
@@ -325,13 +320,10 @@ void initialize(){
 			fprintf(stderr,"tDiv or migration not set in population split model\n");
 			exit(1);
 		}
-
-		eventFlag = 0;
 	}
 	
 	drawPriors();
 }
-
 
 /* Lineages freed in minimal mode, kept for reuse: each event frees and
  * makes lineages, and a list of them saves a malloc and a free per
@@ -432,40 +424,6 @@ void recurrentMutAtTime(double cTime,int srcPopn, int sp){
         sweepPopnSizes[temp->sweepPopn]+=1;
 }
 
-
-
-// migrateExceptSite -- does migration unless specific site is present in allele picked
-void migrateExceptSite(double site, double scalar, int srcPopn, int destPopn){
-	// Check if source population has any nodes
-	if (popLists[srcPopn].count == 0) {
-		return;
-	}
-	
-	rootedNode *temp;
-	int doMig=0;
-	temp = pickNodePopn(srcPopn);
-	
-	if(isAncestralHere(temp,site) == 0 || ranf() < scalar) doMig = 1; //migration of site is 10% rate of other sites
-	if(doMig == 1)
-	{
-		// Remove from source population list
-		removeNodeFromPopList(temp);
-		
-		temp->population = destPopn;
-		
-		// Add to destination population list
-		addNodeToPopList(temp, destPopn);
-		
-		popnSizes[srcPopn]-=1;
-		popnSizes[destPopn]+=1;
-		if (srcPopn==0 && temp->sweepPopn >= 0)
-			sweepPopnSizes[temp->sweepPopn]-=1;
-	}
-	
-	
-}
-
-
 ////////
 
 // Structure to hold a node and its ancestry segments for edge recording
@@ -492,7 +450,6 @@ static void recordEdgesForChild(tsk_id_t parent_tsk_id, rootedNode *child, tsk_i
             while (seg != NULL) {
                 tskit_add_edges(parent_tsk_id, child_tsk_id, 
                     (double)seg->start, (double)seg->end);
-                markSegmentRecorded(seg);
                 seg = seg->next;
             }
         }
@@ -504,7 +461,6 @@ static void recordEdgesForChild(tsk_id_t parent_tsk_id, rootedNode *child, tsk_i
                 tskit_add_edges(parent_tsk_id, seg->tskit_node_id, 
                     (double)seg->start, (double)seg->end);
             }
-            markSegmentRecorded(seg);
             seg = seg->next;
         }
     }
@@ -526,22 +482,10 @@ static void recordCoalescentEdges(rootedNode *parent, rootedNode *lChild, rooted
     if (parent_tsk_id == TSK_NULL) {
         return;
     }
-    
-    
+
     // Record edges for both children
     recordEdgesForChild(parent_tsk_id, lChild, lchild_tsk_id, minimalTreeSeq);
     recordEdgesForChild(parent_tsk_id, rChild, rchild_tsk_id, minimalTreeSeq);
-    
-    // CRITICAL: Mark the parent's segments as recorded too!
-    // The parent has new segments from mergeAncestryTrees that need to be marked
-    // otherwise the parent node can never be freed
-    if (parent->ancestryRoot != NULL) {
-        AncestrySegment *seg = parent->ancestryRoot;
-        while (seg != NULL) {
-            markSegmentRecorded(seg);
-            seg = seg->next;
-        }
-    }
 }
 
 /**
@@ -572,7 +516,6 @@ static void recordRecombinationEdges(rootedNode *child, rootedNode *lParent, roo
         while (seg != NULL) {
             tskit_add_edges(lparent_tsk_id, child_tsk_id,
                 (double)seg->start, (double)seg->end);
-            markSegmentRecorded(seg);
             seg = seg->next;
         }
     }
@@ -583,7 +526,6 @@ static void recordRecombinationEdges(rootedNode *child, rootedNode *lParent, roo
         while (seg != NULL) {
             tskit_add_edges(rparent_tsk_id, child_tsk_id,
                 (double)seg->start, (double)seg->end);
-            markSegmentRecorded(seg);
             seg = seg->next;
         }
     }
@@ -673,7 +615,6 @@ void coalesceAtTimePopn(double cTime, int popn){
 	}
 	
 	rootedNode *temp, *lChild, *rChild;
-	int i;
 	
 	temp = newRootedNode(cTime,popn);
 
@@ -688,8 +629,7 @@ void coalesceAtTimePopn(double cTime, int popn){
 	rChild->leftParent = temp;
 	rChild->branchLength = cTime - rChild->time;
 	removeNode(rChild);
-	
-	
+
 	/* Minimal mode merges first, so that the parent enters its population
 	 * list with its span and its weight is set once. The full ARG adds the
 	 * parent first: the merge records it as the edges' parent. */
@@ -710,12 +650,10 @@ void coalesceAtTimePopn(double cTime, int popn){
 	
 	// Update stats from tree when in tree-only mode
 	updateAncestryStatsFromTree(temp);
-	
-	
+
 	// Record edges using the new convenience function
 	recordCoalescentEdges(temp, lChild, rChild, parent_tsk_id, lchild_tsk_id, rchild_tsk_id);
-	
-	
+
 	/* The children's edges are recorded and the parent has its own copy of
 	 * their segments, so nothing reads the children again. */
 	temp->leftChild = temp->rightChild = NULL;
@@ -724,41 +662,7 @@ void coalesceAtTimePopn(double cTime, int popn){
 	
 	//update active anc. material (addNode was moved earlier)
 	updateActiveMaterial(temp);
-	//popnSizes[popn]--; //decrese popnSize	
 }
-
-/*
-void coalesceAtTimePopnTrackLeafs(double cTime, int popn){
-	rootedNode *temp, *lChild, *rChild;
-	int i;
-
-	temp = newRootedNode(cTime,popn);
-	temp->leafs = calloc(sizeof(int) * sampleSize);
-	lChild = pickNodePopn(popn);
-	temp->leftChild = lChild;
-	lChild->leftParent = temp;
-	lChild->branchLength = cTime - lChild->time;
-	removeNode(lChild);
-
-	rChild =  pickNodePopn(popn);
-	temp->rightChild = rChild;
-	rChild->leftParent = temp;
-	rChild->branchLength = cTime - rChild->time;
-	removeNode(rChild);
-	
-	// Merge ancestry segment trees
-	temp->ancestryRoot = mergeAncestryTrees(lChild->ancestryRoot, rChild->ancestryRoot);
-	//deal with leafs
-	for(i=0;i<sampleSize;i++){
-		temp->leafs[i] =  lChild->leafs[i] + rChild->leafs[i];
-	}
-	
-	addNode(temp);
-	//update active anc. material
-	updateActiveMaterial(temp);
-	//popnSizes[popn]--; //decrese popnSize	
-}*/
-
 
 /* The span of a lineage from a walk of its segment list. Splits and
  * merges in minimal mode get it during their own walk instead. */
@@ -806,65 +710,14 @@ void updateActiveMaterial(rootedNode *aNode){
 	// Update global active site count
 	activeSites = getActiveSiteCount(&activeMaterialSegments);
 	
-	#ifdef DEBUG_ACTIVE_MATERIAL
-	fprintf(stderr, "DEBUG updateActiveMaterial: node at time %f, %d sites still active\n", 
-	        aNode->time, activeSites);
-	printActiveSegments(&activeMaterialSegments);
-	#endif
-	
-	#ifdef DEBUG_TREE_ONLY
-	if (activeSites == 0) {
-		fprintf(stderr, "DEBUG: All sites have found MRCA\n");
-	}
-	#endif
 }
 
-/* asks whether a potential breakpoint is in material that hasn't found MRCA yet*/
-int isActive(int site){
-	return isActiveSite(&activeMaterialSegments, site);
-}
-
-int siteBetweenChunks(rootedNode *aNode, int xOverSite){
-
-	if(aNode->rLim < aNode->lLim)return(0);
-	if (aNode->lLim < xOverSite && aNode->rLim >= xOverSite){
-		return 1;
-	}
-	else{
-		return 0;
-	}
-}
-
+/* 1 if aNode carries material at site (a fraction of the locus) that has
+ * not found its MRCA: some, but not all, samples descend from it there. */
 int isAncestralHere(rootedNode *aNode, float site){
-	int bp;
-	bp = floor(site * nSites);
-	return isPolymorphicAt(aNode, bp, sampleSize);
-}
-
-int hasMaterialHere(rootedNode *aNode, float site){
-	int bp;
-	bp = floor(site * nSites);
-	return hasAncestryAt(aNode, bp);
-}
-
-int nAncestorsHere(rootedNode *aNode, float site){
-	int bp;
-	bp = floor(site * nSites);
-	return getAncestryAt(aNode, bp);
-}
-
-int isLeaf(rootedNode *aNode){
-	if(aNode->leftChild == NULL && aNode->rightChild == NULL)
-		return(1);
-	else
-		return(0);
-}
-
-int isCoalNode(rootedNode *aNode){
-	if(aNode->leftChild != NULL && aNode->rightChild != NULL)
-		return(1);
-	else
-		return(0);
+	int bp = floor(site * nSites);
+	uint16_t count = aNode->ancestryRoot ? getAncestryCount(aNode->ancestryRoot, bp) : 0;
+	return count > 0 && count < sampleSize;
 }
 
 /* Rates of recombination and gene conversion in a population, per unit of
@@ -1128,7 +981,6 @@ void geneConversionAtTimePopn(double cTime, int popn){
 	convertTract(cTime, popn, aNode, start, end, -1, 0.0, 0.0);
 }
 
-
 /* Draw the next event time across all rate components using NHPP per-component
  * draws. Returns the minimum waiting time and writes the firing event class
  * + index into *winnerKind / *winnerArg.
@@ -1308,7 +1160,6 @@ double neutralPhaseGeneralPopNumber(double startTime, double endTime, double *si
 		for(i=0;i<npops;i++){
 			mRate[i]=0.0;
 		}
-		//printf("currPopSize[0]: %d currPopSize[1]: %d alleleNumber: %d totNodeNumber: %d activeSites: %d cTime: %f\n",popnSizes[0],popnSizes[1],alleleNumber,totNodeNumber, activeSites, cTime);
 		for(i=0;i<npops;i++){
 			cRate[i] = pairCoalRate(popnSizes[i], sizeAt(i, currentTime));
 			lineageEventRates(i, &rRate[i], &gcRate[i]);
@@ -1321,7 +1172,6 @@ double neutralPhaseGeneralPopNumber(double startTime, double endTime, double *si
 			totGCRate += gcRate[i];
 			totRate += cRate[i] + rRate[i] + mRate[i] + gcRate[i];
 		}
-		//printf("totRate: %f totCRate: %f totRRate: %f \n",totRate,totCRate,totRRate);
 
 		if (constantShapes) {
 			//find time of next event
@@ -1359,10 +1209,8 @@ double neutralPhaseGeneralPopNumber(double startTime, double endTime, double *si
 							j = 0;
 							r2 = ranf();
 							while(eSum/totMRate < r2) eSum += mRate[++i];
-							//printf("outer totMRate: %f eSum: %f i:%d\n",totMRate,eSum,i);
 							//pick dest popn
 							eSum = migAt(i, 0, currentTime) * popnSizes[i] * MIG_LINEAGE_WEIGHT;
-							//printf("outer eSumNew:%f mRate[%d]:%f\n",eSum,i,mRate[i]);
 							r2 = ranf();
 							while(eSum/mRate[i] < r2){
 								eSum += migAt(i, ++j, currentTime) * popnSizes[i] * MIG_LINEAGE_WEIGHT;
@@ -1390,7 +1238,6 @@ double neutralPhaseGeneralPopNumber(double startTime, double endTime, double *si
 								extern int tskit_flush_edges_periodic(void);
 								tskit_flush_edges_periodic();
 							}
-
 
 						}
 					}
@@ -1475,7 +1322,6 @@ void ensureTrajectoryCapacity(long int requiredSize) {
 		exit(1);
 	}
 }
-
 
 /* Unmap and close the mapped sweep trajectory, if any. Its file is
  * anonymous (tmpfile), so closing it, or the end of the process however it
@@ -1838,7 +1684,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 {
 	double tInc, tIncOrig, minF,ttau, N;
 	double N_0 = (double) EFFECTIVE_POPN_SIZE;
-	double localNextTime,localCurrentTime, currentSizeRatio;
+	double localNextTime, currentSizeRatio;
 	int i, insweepphase;
 	long int j;
 	double x;
@@ -1887,7 +1733,6 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 	ttau=0.0;
 	//go through each event until last one
 	for(i=currentEventNumber;i<eventNumber;i++){
-		localCurrentTime = events[i].time;
 		if(i == eventNumber - 1){
 			localNextTime = MAXTIME;
 			}
@@ -1969,7 +1814,6 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 				insweepphase = 0;
 				x = neutralStochasticBelowCeiling(tInc, x, minF);
 			}
-			//printf("j: %ld x: %f\n",j,x);
 			
 			// Check trajectory size to prevent runaway
 			if (j >= TRAJSTEPSTART) {
@@ -2019,7 +1863,6 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 
 }
 
-
 /* The number of ancient sample lineages of population popn not yet added
  * (dormant: they join at their sampling time). */
 static int dormantLineagesIn(int popn){
@@ -2038,7 +1881,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 {
 
 	double totRate;
-	double  ttau, x, tInc, tIncOrig;
+	double  ttau, x, tIncOrig;
 	double pCoalB, pCoalb, pRecB, pRecb, r, sum,eventRand,eventProb, pLeftRecB, pLeftRecb;
 	double pRecurMut, pGCB, pGCb;
 	double sweepPopTotRate,cRate[npops], rRate[npops], gcRate[npops];
@@ -2046,7 +1889,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	double N = (double) EFFECTIVE_POPN_SIZE;
 	double minF;
 	double cTime = startTime;
-	int insweepphase, i;
+	int i;
 
 	//initialize stuff
 	pCoalB = pCoalb = pRecB = pRecb = totRate = pRecurMut = pLeftRecB = pLeftRecb = totGCRate = totCRate = totRRate = 0;
@@ -2068,12 +1911,9 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	//using popnSize global to manage bookkeeping
 	sweepPopnSizes[1] = nodePopnSweepSize(0,1);
 	sweepPopnSizes[0] = nodePopnSweepSize(0,0);
-	//  printf("sweepPopnSizes: %d %d \n",sweepPopnSizes[1],sweepPopnSizes[0]);
 
 	//set time increment
-	tInc = 1.0 / (deltaTMod * N);
 	tIncOrig = 1.0 / (deltaTMod * EFFECTIVE_POPN_SIZE);
-	insweepphase = 1;
 	
 	//go for epoch time, sweep freq, or root
 	/* The sweep ends at trajectoryEnd() for population 0's size at each
@@ -2127,7 +1967,6 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 				pLeftRecb = leftRho * sweepPopnSizes[0]*0.5 * tIncOrig * x;
                         }
 			sweepPopTotRate = pCoalB + pCoalb + pRecB + pRecb + pGCB + pGCb + pRecurMut + pLeftRecB + pLeftRecb;
-			//printf("nB: %d; x: %g; pCoalB: %g; tInc: %g cTime+ttau: %g popnSizes[0]:%d\n",sweepPopnSizes[1],x,pCoalB,tInc,cTime+ttau,  popnSizes[0]);
 			//now two events in population 1
 			totRate = 0.0;
 			totCRate = 0.0;
@@ -2135,7 +1974,6 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 			totGCRate = 0.0;
 			totRate = sweepPopTotRate;
 
-			//printf("currPopSize[0]: %d currPopSize[1]: %d\n",popnSizes[0],popnSizes[1]);
 			for(i=1;i<npops;i++){
 				cRate[i] = pairCoalRate(popnSizes[i], sizeAt(i, cTime + ttau)) * tIncOrig;
 				lineageEventRates(i, &rRate[i], &gcRate[i]);
@@ -2146,12 +1984,8 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 				totGCRate += gcRate[i];
 				totRate += cRate[i] + rRate[i] + gcRate[i];
 			}
-			
 
 			eventProb *= 1-totRate;
-			//printf("x(t): %g t: %g tinc: %g eventProb: %g eventRand: %g totRate: %g swPopnSize1: %d swPopnSize2: %d\n",x,ttau,tInc, eventProb,
-			//	eventRand,totRate,sweepPopnSizes[0],sweepPopnSizes[1]);	
-
 
 		}
 		if(cTime+ttau >= endTime){
@@ -2221,15 +2055,13 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 							//coalesce 
 							//pick popn
 							eSum = cRate[1];
-						//	printf("esum= %f\n",eSum);
 							i = 1;
 							r2 = ranf();
 							while(eSum/totCRate < r2){
 								 eSum += cRate[++i];
 								}
 							coalesceAtTimePopn(eventTime,i);
-					
-					
+
 						}
 					}
 				}
@@ -2246,10 +2078,8 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 	if(sweepPopnSizes[1]==0 && ancientToCome == 0) *stillSweeping = 0;
 
 	*finalFreq = x;
-//	printf("sp: %d %d\n",	sweepPopnSizes[0], 	sweepPopnSizes[1]);
 	return(cTime+(ttau));
 }
-
 
 /*recurrentSweepPhaseGeneralPopNumber--coalescent, recombination, gc events, and sweeps! until
 specified time. returns endTime. can handle multiple popns*/
@@ -2281,7 +2111,6 @@ double recurrentSweepPhaseGeneralPopNumber(double startTime, double endTime, dou
 		for(i=0;i<npops;i++){
 			mRate[i]=0.0;
 		}
-	//	printf("currPopSize[0]: %d currPopSize[1]: %d alleleNumber: %d totNodeNumber: %d activeSites: %d cTime: %f\n",popnSizes[0],popnSizes[1],alleleNumber,totNodeNumber, activeSites, cTime);
 		for(i=0;i<npops;i++){
 			cRate[i] = pairCoalRate(popnSizes[i], sizeAt(i, cTime));
 			lineageEventRates(i, &rRate[i], &gcRate[i]);
@@ -2331,10 +2160,8 @@ double recurrentSweepPhaseGeneralPopNumber(double startTime, double endTime, dou
 						j = 0;
 						r2 = ranf();
 						while(eSum/totMRate < r2) eSum += mRate[++i];
-						//printf("outer totMRate: %f eSum: %f i:%d\n",totMRate,eSum,i);
 						//pick dest popn
 						eSum = migAt(i, 0, cTime) * popnSizes[i] * MIG_LINEAGE_WEIGHT;
-						//printf("outer eSumNew:%f mRate[%d]:%f\n",eSum,i,mRate[i]);
 						r2 = ranf();
 						while(eSum/mRate[i] < r2){
 							eSum += migAt(i, ++j, cTime) * popnSizes[i] * MIG_LINEAGE_WEIGHT;
@@ -2381,8 +2208,6 @@ double recurrentSweepPhaseGeneralPopNumber(double startTime, double endTime, dou
 	return(cTime);
 }
 
-
-
 /*recombineAtTimePopnSweep-- preforms recombination on
 an individual drawn from a popn and assigns parental
 	popn based on sweep site and frequency of popn / 
@@ -2420,10 +2245,8 @@ static rootedNode *drawSweepLineageAndPosition(int popn, int sp, int *position){
 
 int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, double popnFreq){
 	rootedNode *aNode, *lParent, *rParent;
-	int i;
 	int xOver;
 	double r;
-
 
 		/* The breakpoint is in the lineage's span (drawn by weight). */
 		aNode = drawSweepLineageAndPosition(popn, sp, &xOver);
@@ -2441,7 +2264,6 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 			
 			//determine sweep popn affinity
 			//left side?
-		//	printf("here-- popnFreq:%f sweepSite:%f xOver: %d test: %d \n",popnFreq,sweepSite,xOver,sweepSite < (float) xOver / nSites);
 			if(sweepSite < (float) xOver / nSites){ //lParent has sweep site set to same as child node,rParent is then random
 				lParent->sweepPopn = sp;
 				r = ranf();
@@ -2454,7 +2276,6 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 				if (r < popnFreq) lParent->sweepPopn = sp;
 				else lParent->sweepPopn = (sp == 0) ? 1:0;
 			}
-		//	printf("lParentsp:%d rParentsp:%d\n",lParent->sweepPopn,rParent->sweepPopn);
 			
 			splitLineage(aNode, lParent, rParent, xOver);
 			
@@ -2513,7 +2334,6 @@ void geneConversionAtTimePopnSweep(double cTime, int popn, int sp, double sweepS
 
 void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	rootedNode *temp, *lChild, *rChild;
-	int i;
 
 	temp = newRootedNode(cTime,popn);
 
@@ -2529,8 +2349,7 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	rChild->leftParent = temp;
 	rChild->branchLength = cTime - rChild->time;
 	removeNode(rChild);
-	
-	
+
 	/* Minimal mode merges first, so that the parent enters its population
 	 * list with its span and its weight is set once. The full ARG adds the
 	 * parent first: the merge records it as the edges' parent. */
@@ -2554,8 +2373,7 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	// Get tskit IDs for children (parent already retrieved above)
 	tsk_id_t lchild_tsk_id = get_tskit_node_id(lChild);
 	tsk_id_t rchild_tsk_id = get_tskit_node_id(rChild);
-	
-	
+
 	// Record edges using the new convenience function
 	recordCoalescentEdges(temp, lChild, rChild, parent_tsk_id, lchild_tsk_id, rchild_tsk_id);
 	
@@ -2567,24 +2385,7 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	
 	//update active anc. material
 	updateActiveMaterial(temp);
-	//popnSizes[popn]--; //decrese popnSize
-	//sweepPopnSizes[sp]--;	
 }
-
-
-
-/*******************************************************/
-void dropMutations(){
-	// Always use edge-based mutation placement with tskit
-	int ret = tskit_place_mutations_edge_based(theta);
-	if (ret < 0) {
-		fprintf(stderr, "Error: Failed to place mutations using edge-based algorithm\n");
-	}
-}
-
-
-
-
 
 /* Hash table entry for mutation duplicate detection */
 typedef struct MutHashEntry {
@@ -2603,9 +2404,6 @@ static inline unsigned int hashMutation(double mut) {
 	u.i *= 0x9e3779b97f4a7c15ULL;  /* Golden ratio constant */
 	return (unsigned int)(u.i % MUTATION_HASH_SIZE);
 }
-
-
-
 
 //////////////////////////////////////////////////////////
 ///////////////
@@ -2735,7 +2533,6 @@ void addAncientSample(int lineageNumber, int popnDest, double addTime, int still
 				   partialSweepSite >= 0.0)
 					addPartialSweepCarrier(nodes[i]);
 			}
-			//printf("time for %d: %f\n", i, nodes[i]->time);
 			popnSizes[popnDest]++;
 			count++;
 		}
@@ -2786,9 +2583,7 @@ void ensureNodesCapacity(int requiredSize) {
 	}
 }
 
-
 // Clean up nodes in the removed list (called between replicates)
-
 
 // Sample node tracking functions (always available)
 void initializeSampleNodeIds() {
@@ -2870,7 +2665,6 @@ void addNode(rootedNode *aNode){
 	addNodeToPopList(aNode, aNode->population);
 	
 	alleleNumber += 1;
-	totNodeNumber += 1;
 	popnSizes[aNode->population]+=1;
 	if(aNode->population==0 && aNode->sweepPopn >= 0)
 		sweepPopnSizes[aNode->sweepPopn]+=1;
@@ -2926,7 +2720,6 @@ rootedNode *pickNodePopnSweep(int popn,int sp){
 	//get popnSize -- may later decide to keep this is some sort of variable that is passed
 	popnSize = 0;
 	for(i = 0 ; i < alleleNumber; i++){
-                //fprintf(stderr,"node %d in pop %d and sweepPopn %d, looking for %d and %d\n", i,nodes[i]->population,nodes[i]->sweepPopn,popn,sp);
 		if(nodes[i]->sweepPopn == sp && nodes[i]->population == popn){
 			indexArray[popnSize] = i;  //store indexes as we go
 			popnSize++;
@@ -2948,13 +2741,11 @@ rootedNode *pickNodePopnSweep(int popn,int sp){
 	return(nodes[index]);
 }
 
-
 void printNode(rootedNode *aNode){
 	printf("node: %p time: %f lLim: %d rLim: %d nancSites: %d popn: %d sweepPopn: %d\n",aNode, aNode->time,aNode->lLim,\
 		aNode->rLim, aNode->nancSites, aNode->population, aNode->sweepPopn);
 	// ancSites array removed - ancestry now tracked via tree
 }
-
 
 /*nodePopnSize-- returns popnSize of popn from
 	nodes array */
@@ -2984,15 +2775,6 @@ int nodePopnSweepSize(int popn, int sp){
 		}
 	}
 	return(popnSize);
-}
-
-
-void printAllActiveNodes(){
-	compactNodes();
-	int i;
-	for(i = 0 ; i < alleleNumber; i++){
-		printNode(nodes[i]);
-	}
 }
 
 /********** event stuff */
@@ -3025,17 +2807,6 @@ int compare_doubles(const void *a,const void *b){
 		return -1;
 	}
 }
-int compare_floats(const void *a,const void *b){
-	float *pa = (float *) a;
-	float *pb = (float *) b;
-	if ((*pa - *pb) > 0 ){
-		return 1;
-	}
-	else{
-		return -1;
-	}
-}
-
 
 /* used for getting random number seeds */
 unsigned int devrand(void) {
@@ -3050,7 +2821,6 @@ unsigned int devrand(void) {
 	close(fn); 
 	return r;
 }
-
 
 // Muts dynamic memory management functions
 
@@ -3170,8 +2940,7 @@ void makeGametesMS(int argc, const char *argv[]) {
 	// Get number of samples and sites
 	tsk_size_t num_samples = tsk_treeseq_get_num_samples(&ts);
 	tsk_size_t num_sites = tsk_treeseq_get_num_sites(&ts);
-	
-	
+
 	// Print segsites header
 	printf("\n//\nsegsites: %zu", (size_t)num_sites);
 	

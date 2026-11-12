@@ -32,7 +32,6 @@ void updateActiveMaterialFromAncestry(ActiveMaterial *am, AncestrySegment *ances
                                      int sampleSize, int nSites);
 
 // Utility functions
-void printActiveSegments(ActiveMaterial *am);
 int verifyActiveMaterial(ActiveMaterial *am, int nSites);
 
 // Internal helpers (exposed for testing)
