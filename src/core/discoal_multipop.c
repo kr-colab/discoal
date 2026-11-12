@@ -1653,65 +1653,114 @@ static void printUsage(FILE *out){
 	fprintf(out, "▐▌  █  █   ▝▀▚▖▐▌   ▐▌ ▐▌▐▛▀▜▌▐▌   \n");
 	fprintf(out, "▐▙▄▄▀▗▄█▄▖▗▄▄▞▘▝▚▄▄▖▝▚▄▞▘▐▌ ▐▌▐▙▄▄\n\n\n");
 	
-	fprintf(out,"discoal version %s\n", DISCOAL_VERSION);
-	fprintf(out,"usage: discoal sampleSize numReplicates nSites -ws tau\n");
-	fprintf(out,"parameters: \n");
-
-	fprintf(out,"\t -t theta \n");
-	fprintf(out,"\t -r rho (=zero if not specified)\n");
-	fprintf(out,"\t -g conversionRate tractLengthMean (gene conversion)\n");
-	fprintf(out,"\t -gr conversionToCrossoverRatio tractLengthMean (gene conversion where initiation rate = rho*conversionToCrossoverRatio)\n");
-	fprintf(out,"\t -p npops sampleSize1 sampleSize2 etc.\n");
-	fprintf(out,"\t -Y configFile.yaml (load parameters from a YAML configuration file; a demes model goes in demography.demes_filename)\n");
-	fprintf(out,"\t -en time popnID size (changes size of popnID)\n");
-	fprintf(out,"\t -eg time popnID alpha (sets popnID to exponential growth at rate alpha per 4N0 generations, as in ms; positive alpha = past was smaller)\n");
-	fprintf(out,"\t -eG time alpha (-eg applied to all populations)\n");
-	fprintf(out,"\t -el time popnID gamma (sets popnID to linear growth; gamma is the change in relative size per 4N0 generations; positive gamma = past was smaller)\n");
-	fprintf(out,"\t -eL time gamma (-el applied to all populations)\n");
-	fprintf(out,"\t -ed time popnID1 popnID2 (joins popnID1 into popnID2; -ej is an alias)\n");
-	fprintf(out,"\t -ea time daughterPopnID founderPopnID1 founderPopnID2 admixProp (admixture-- back in time daughterPopnID into two founders)\n");
-	fprintf(out,"\t -em time popnID1 popnID2 migRate (changes migration rate from popnID1 to popnID2 starting at time)\n");
-	fprintf(out,"\t -eM time migRate (sets all off-diagonal migration rates to migRate starting at time)\n");
-	
-	fprintf(out,"\t -ws tau (sweep ended tau ago, in units of 4N0 generations; stochastic sweep)\n");  
-	fprintf(out,"\t -wd tau (sweep ended tau ago, in units of 4N0 generations; deterministic sweep)\n"); 
-	fprintf(out,"\t -wn tau (sweep ended tau ago, in units of 4N0 generations; neutral sweep)\n");
-	fprintf(out,"\t -ls tau leftRho (stochastic sweep some genetic distance to the left of the simulated window--at 4Nr = 2 x leftRho)\n");
-	fprintf(out,"\t\t similarly, ld and ln simulate deterministic and neutral sweeps to the left of the window, respectively\n");
-	fprintf(out,"\t -f first frequency at which selection acts on allele (F0; sweep models only)\n");
-	fprintf(out,"\t -uA rate at which adaptive mutation recurs during the sweep phase (sweep models only)\n");
-	fprintf(out,"\t -N sweepEffectivePopnSize (sweep models only)\n");	
-	fprintf(out,"\t -a alpha (=2Ns)\n");
-	fprintf(out,"\t -x sweepSite (0-1)\n");
-	fprintf(out,"\t -c partialSweepFinalFrequency (partial sweeps)\n");	
-	fprintf(out,"\t -i dt (sweep time increment scalar; default 40 -> 1/40N)\n");
-	fprintf(out,"\t -S file (sweep trajectory from a file: lines of time (4N0 generations, increasing) and allele frequency, ending at frequency 0)\n");
-	
-	fprintf(out,"\t -M migRate (sets all rates to migRate)\n");
-	fprintf(out,"\t -m popnID1 popnID2 migRate (sets migRate from popnID1 to popnID2)\n");
-	fprintf(out,"\t -A sampleSize popnID time (ancient sample from popnID at specified time)\n");
-	
-	fprintf(out,"\t -Pt low high (prior on theta)\n");
-	fprintf(out,"\t -Pr low high (prior on rho)\n");
-        fprintf(out,"\t -Pre mean upperBound (prior on rho -- exponentially distributed but truncated at an upper bound)\n");
-	fprintf(out,"\t -Pa low high (prior on alpha)\n");
-	fprintf(out,"\t -Pu low high (prior on tau; sweep models only; still must use \"-ws tau\" (or a YAML sweep, not both) and \"tau\" will be ignored)\n");
-	fprintf(out,"\t -PuA low high (prior on uA; sweep models only)\n");
-	fprintf(out,"\t -Px low high (prior on sweepSite; sweep models only)\n");
-	fprintf(out,"\t -Pf low high (prior on F0; sweep models only)\n");
-	fprintf(out,"\t -Pc low high (prior on partialSweepFinalFreq; sweep models only)\n");
-	fprintf(out,"\t -Pe1 lowTime highTime lowSize highSize (priors on first demographic move time and size)\n");
-	fprintf(out,"\t -Pe2 lowTime highTime lowSize highSize (priors on second demographic move time and size)\n");
-	fprintf(out,"\t -R rhhRate (recurrent hitch hiking mode at the locus; rhh is rate per 2N individuals / generation)\n");
-	fprintf(out,"\t -L rhhRate (recurrent hitch hiking mode to the side of locus; leftRho is ~Unif(0,4Ns); rhh is rate per 2N individuals / generation)\n");
-	fprintf(out,"\t -h (hide selected SNP in partial sweep mode)\n");
-	fprintf(out,"\t -v (verbose: print progress and demes conversion details to stderr)\n");
-	fprintf(out,"\t -ts filename (tree sequence output mode - saves to tskit file)\n");
-	fprintf(out,"\t -F (full ARG mode - record all edges including recombination; use with -ts)\n");
-	fprintf(out,"\t -d seed1 seed2 (set random number generator seeds)\n");
-	fprintf(out,"\t --help (print this text)\n");
-	fprintf(out,"\t --version (print the version)\n");
-	
+	fprintf(out,
+		"discoal version %s\n"
+		"A coalescent simulator with recombination, population structure and\n"
+		"selective sweeps.\n"
+		"\n"
+		"usage: discoal sampleSize numReplicates nSites [options]\n"
+		"       discoal -Y config.yaml [options]\n"
+		"\n"
+		"examples:\n"
+		"  discoal 10 5 10000 -t 10 -r 10\n"
+		"      neutral, with recombination\n"
+		"  discoal 10 5 10000 -t 10 -r 10 -ws 0.01 -a 1000 -x 0.5\n"
+		"      a hard sweep at the middle of the locus\n"
+		"  discoal 20 1 10000 -t 10 -p 2 10 10 -ed 1.0 1 0\n"
+		"      two populations that join\n"
+		"  discoal 10 3 10000 -t 10 -r 10 -ts out.trees\n"
+		"      tree sequences (tskit)\n"
+		"\n"
+		"Times are in units of 4N0 generations, sizes in units of N0, and theta,\n"
+		"rho and migration rates are 4N0 times the rate (as in ms). Populations are\n"
+		"numbered from 0.\n"
+		"\n"
+		"mutation and recombination:\n"
+		"  -t theta                4N0 u for the whole locus\n"
+		"  -r rho                  4N0 r for the whole locus (default 0)\n"
+		"  -g gamma tractLength    gene conversion: 4N0 g for the whole locus, and the\n"
+		"                          mean tract length in sites\n"
+		"  -gr ratio tractLength   gene conversion at ratio x rho\n"
+		"\n"
+		"populations and samples:\n"
+		"  -p npops n1 n2 ...      number of populations and the sample size of each\n"
+		"  -M migRate              migration between all populations at migRate\n"
+		"                          (give -p first)\n"
+		"  -m pop1 pop2 migRate    migration from pop1 to pop2 (give -p first)\n"
+		"  -A n pop time           n of the samples of pop are ancient, taken at time\n"
+		"\n"
+		"demographic events:\n"
+		"  -en time pop size       size of pop changes to size\n"
+		"  -eg time pop alpha      exponential growth of pop at rate alpha per 4N0\n"
+		"                          generations (positive: smaller in the past)\n"
+		"  -eG time alpha          -eg for all populations\n"
+		"  -el time pop gamma      linear growth of pop; gamma is the change in size\n"
+		"                          per 4N0 generations (positive: smaller in the past)\n"
+		"  -eL time gamma          -el for all populations\n"
+		"  -ed time pop1 pop2      pop1 joins pop2, backward in time (-ej is the same)\n"
+		"  -ea time pop src1 src2 prop\n"
+		"                          admixture: backward in time a lineage of pop goes\n"
+		"                          to src1 with probability prop, else to src2\n"
+		"  -em time pop1 pop2 migRate\n"
+		"                          migration from pop1 to pop2 changes to migRate\n"
+		"  -eM time migRate        all migration rates change to migRate\n"
+		"\n"
+		"sweeps:\n"
+		"  -ws tau                 stochastic sweep that ended tau ago\n"
+		"  -wd tau                 deterministic sweep that ended tau ago\n"
+		"  -wn tau                 neutral fixation that ended tau ago\n"
+		"  -ls tau leftRho         stochastic sweep to the left of the locus, at a\n"
+		"                          distance of 4N0 r = 2 x leftRho\n"
+		"  -ld tau leftRho         as -ls, deterministic\n"
+		"  -ln tau leftRho         as -ls, neutral fixation\n"
+		"  -S file                 sweep whose trajectory is in file: lines of time\n"
+		"                          (increasing) and allele frequency, ending at 0\n"
+		"  -R rate                 recurrent sweeps in the locus; rate per 2N\n"
+		"                          individuals per generation\n"
+		"  -L rate                 recurrent sweeps to the left of the locus, at a\n"
+		"                          distance drawn uniformly from (0, 4Ns)\n"
+		"  -a alpha                strength of selection, 2Ns\n"
+		"  -x position             position of the selected site in the locus, 0 to 1\n"
+		"  -f f0                   soft sweep: selection starts at frequency f0\n"
+		"  -uA rate                soft sweep: rate of recurrent beneficial mutation\n"
+		"  -c frequency            partial sweep: final frequency of the allele\n"
+		"  -h                      hide the selected SNP of a partial sweep\n"
+		"  -N size                 effective population size during a sweep\n"
+		"                          (default 1000000)\n"
+		"  -i dt                   time step of sweep trajectories, 1/(dt N)\n"
+		"                          (default 40)\n"
+		"\n"
+		"priors (a value is drawn for each replicate):\n"
+		"  -Pt low high            theta, uniform\n"
+		"  -Pr low high            rho, uniform\n"
+		"  -Pre mean upperBound    rho, exponential, cut at upperBound\n"
+		"  -Pa low high            alpha, uniform\n"
+		"  -Pu low high            tau, uniform (give a sweep option too; its tau is\n"
+		"                          not used)\n"
+		"  -PuA low high           uA, uniform\n"
+		"  -Px low high            position of the selected site, uniform\n"
+		"  -Pf low high            f0, uniform\n"
+		"  -Pc low high            final frequency of a partial sweep, uniform\n"
+		"  -Pe1 lowTime highTime lowSize highSize\n"
+		"                          a size change of population 0: time and size,\n"
+		"                          uniform\n"
+		"  -Pe2 lowTime highTime lowSize highSize\n"
+		"                          a second such size change\n"
+		"\n"
+		"input and output:\n"
+		"  -Y file                 read the model from a YAML file; a demes model\n"
+		"                          goes in demography.demes_filename\n"
+		"  -ts file                write tree sequences (tskit) to file; with several\n"
+		"                          replicates, to file_rep1, file_rep2, ...\n"
+		"  -F                      with -ts (and after it): the full ARG, with the\n"
+		"                          nodes and edges of recombination\n"
+		"  -d seed1 seed2          seeds of the random number generator\n"
+		"  -v                      print progress and demes details to stderr\n"
+		"  --help                  print this text\n"
+		"  --version               print the version\n"
+		"\n"
+		"Documentation: https://discoal.readthedocs.io\n",
+		DISCOAL_VERSION);
 }
 
 void usage(){

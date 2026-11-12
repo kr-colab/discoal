@@ -34,58 +34,110 @@ type `make`. This builds `build/discoal` and links it as `./discoal`
 ```
 $ ./discoal --help
 discoal version 2.0.0
-usage: discoal sampleSize numReplicates nSites -ws tau
-parameters: 
-	 -t theta 
-	 -r rho (=zero if not specified)
-	 -g conversionRate tractLengthMean (gene conversion)
-	 -gr conversionToCrossoverRatio tractLengthMean (gene conversion where initiation rate = rho*conversionToCrossoverRatio)
-	 -p npops sampleSize1 sampleSize2 etc.
-	 -Y configFile.yaml (load parameters from a YAML configuration file; a demes model goes in demography.demes_filename)
-	 -en time popnID size (changes size of popnID)
-	 -eg time popnID alpha (sets popnID to exponential growth at rate alpha per 4N0 generations, as in ms; positive alpha = past was smaller)
-	 -eG time alpha (-eg applied to all populations)
-	 -el time popnID gamma (sets popnID to linear growth; gamma is the change in relative size per 4N0 generations; positive gamma = past was smaller)
-	 -eL time gamma (-el applied to all populations)
-	 -ed time popnID1 popnID2 (joins popnID1 into popnID2; -ej is an alias)
-	 -ea time daughterPopnID founderPopnID1 founderPopnID2 admixProp (admixture-- back in time daughterPopnID into two founders)
-	 -em time popnID1 popnID2 migRate (changes migration rate from popnID1 to popnID2 starting at time)
-	 -eM time migRate (sets all off-diagonal migration rates to migRate starting at time)
-	 -ws tau (sweep ended tau ago, in units of 4N0 generations; stochastic sweep)
-	 -wd tau (sweep ended tau ago, in units of 4N0 generations; deterministic sweep)
-	 -wn tau (sweep ended tau ago, in units of 4N0 generations; neutral sweep)
-	 -ls tau leftRho (stochastic sweep some genetic distance to the left of the simulated window--at 4Nr = 2 x leftRho)
-		 similarly, ld and ln simulate deterministic and neutral sweeps to the left of the window, respectively
-	 -f first frequency at which selection acts on allele (F0; sweep models only)
-	 -uA rate at which adaptive mutation recurs during the sweep phase (sweep models only)
-	 -N sweepEffectivePopnSize (sweep models only)
-	 -a alpha (=2Ns)
-	 -x sweepSite (0-1)
-	 -c partialSweepFinalFrequency (partial sweeps)
-	 -i dt (sweep time increment scalar; default 40 -> 1/40N)
-	 -S file (sweep trajectory from a file: lines of time (4N0 generations, increasing) and allele frequency, ending at frequency 0)
-	 -M migRate (sets all rates to migRate)
-	 -m popnID1 popnID2 migRate (sets migRate from popnID1 to popnID2)
-	 -A sampleSize popnID time (ancient sample from popnID at specified time)
-	 -Pt low high (prior on theta)
-	 -Pr low high (prior on rho)
-	 -Pre mean upperBound (prior on rho -- exponentially distributed but truncated at an upper bound)
-	 -Pa low high (prior on alpha)
-	 -Pu low high (prior on tau; sweep models only; still must use "-ws tau" (or a YAML sweep, not both) and "tau" will be ignored)
-	 -PuA low high (prior on uA; sweep models only)
-	 -Px low high (prior on sweepSite; sweep models only)
-	 -Pf low high (prior on F0; sweep models only)
-	 -Pc low high (prior on partialSweepFinalFreq; sweep models only)
-	 -Pe1 lowTime highTime lowSize highSize (priors on first demographic move time and size)
-	 -Pe2 lowTime highTime lowSize highSize (priors on second demographic move time and size)
-	 -R rhhRate (recurrent hitch hiking mode at the locus; rhh is rate per 2N individuals / generation)
-	 -L rhhRate (recurrent hitch hiking mode to the side of locus; leftRho is ~Unif(0,4Ns); rhh is rate per 2N individuals / generation)
-	 -h (hide selected SNP in partial sweep mode)
-	 -v (verbose: print progress and demes conversion details to stderr)
-	 -ts filename (tree sequence output mode - saves to tskit file)
-	 -F (full ARG mode - record all edges including recombination; use with -ts)
-	 -d seed1 seed2 (set random number generator seeds)
-	 --help (print this text)
-	 --version (print the version)
+A coalescent simulator with recombination, population structure and
+selective sweeps.
+
+usage: discoal sampleSize numReplicates nSites [options]
+       discoal -Y config.yaml [options]
+
+examples:
+  discoal 10 5 10000 -t 10 -r 10
+      neutral, with recombination
+  discoal 10 5 10000 -t 10 -r 10 -ws 0.01 -a 1000 -x 0.5
+      a hard sweep at the middle of the locus
+  discoal 20 1 10000 -t 10 -p 2 10 10 -ed 1.0 1 0
+      two populations that join
+  discoal 10 3 10000 -t 10 -r 10 -ts out.trees
+      tree sequences (tskit)
+
+Times are in units of 4N0 generations, sizes in units of N0, and theta,
+rho and migration rates are 4N0 times the rate (as in ms). Populations are
+numbered from 0.
+
+mutation and recombination:
+  -t theta                4N0 u for the whole locus
+  -r rho                  4N0 r for the whole locus (default 0)
+  -g gamma tractLength    gene conversion: 4N0 g for the whole locus, and the
+                          mean tract length in sites
+  -gr ratio tractLength   gene conversion at ratio x rho
+
+populations and samples:
+  -p npops n1 n2 ...      number of populations and the sample size of each
+  -M migRate              migration between all populations at migRate
+                          (give -p first)
+  -m pop1 pop2 migRate    migration from pop1 to pop2 (give -p first)
+  -A n pop time           n of the samples of pop are ancient, taken at time
+
+demographic events:
+  -en time pop size       size of pop changes to size
+  -eg time pop alpha      exponential growth of pop at rate alpha per 4N0
+                          generations (positive: smaller in the past)
+  -eG time alpha          -eg for all populations
+  -el time pop gamma      linear growth of pop; gamma is the change in size
+                          per 4N0 generations (positive: smaller in the past)
+  -eL time gamma          -el for all populations
+  -ed time pop1 pop2      pop1 joins pop2, backward in time (-ej is the same)
+  -ea time pop src1 src2 prop
+                          admixture: backward in time a lineage of pop goes
+                          to src1 with probability prop, else to src2
+  -em time pop1 pop2 migRate
+                          migration from pop1 to pop2 changes to migRate
+  -eM time migRate        all migration rates change to migRate
+
+sweeps:
+  -ws tau                 stochastic sweep that ended tau ago
+  -wd tau                 deterministic sweep that ended tau ago
+  -wn tau                 neutral fixation that ended tau ago
+  -ls tau leftRho         stochastic sweep to the left of the locus, at a
+                          distance of 4N0 r = 2 x leftRho
+  -ld tau leftRho         as -ls, deterministic
+  -ln tau leftRho         as -ls, neutral fixation
+  -S file                 sweep whose trajectory is in file: lines of time
+                          (increasing) and allele frequency, ending at 0
+  -R rate                 recurrent sweeps in the locus; rate per 2N
+                          individuals per generation
+  -L rate                 recurrent sweeps to the left of the locus, at a
+                          distance drawn uniformly from (0, 4Ns)
+  -a alpha                strength of selection, 2Ns
+  -x position             position of the selected site in the locus, 0 to 1
+  -f f0                   soft sweep: selection starts at frequency f0
+  -uA rate                soft sweep: rate of recurrent beneficial mutation
+  -c frequency            partial sweep: final frequency of the allele
+  -h                      hide the selected SNP of a partial sweep
+  -N size                 effective population size during a sweep
+                          (default 1000000)
+  -i dt                   time step of sweep trajectories, 1/(dt N)
+                          (default 40)
+
+priors (a value is drawn for each replicate):
+  -Pt low high            theta, uniform
+  -Pr low high            rho, uniform
+  -Pre mean upperBound    rho, exponential, cut at upperBound
+  -Pa low high            alpha, uniform
+  -Pu low high            tau, uniform (give a sweep option too; its tau is
+                          not used)
+  -PuA low high           uA, uniform
+  -Px low high            position of the selected site, uniform
+  -Pf low high            f0, uniform
+  -Pc low high            final frequency of a partial sweep, uniform
+  -Pe1 lowTime highTime lowSize highSize
+                          a size change of population 0: time and size,
+                          uniform
+  -Pe2 lowTime highTime lowSize highSize
+                          a second such size change
+
+input and output:
+  -Y file                 read the model from a YAML file; a demes model
+                          goes in demography.demes_filename
+  -ts file                write tree sequences (tskit) to file; with several
+                          replicates, to file_rep1, file_rep2, ...
+  -F                      with -ts (and after it): the full ARG, with the
+                          nodes and edges of recombination
+  -d seed1 seed2          seeds of the random number generator
+  -v                      print progress and demes details to stderr
+  --help                  print this text
+  --version               print the version
+
+Documentation: https://discoal.readthedocs.io
 ```
 
