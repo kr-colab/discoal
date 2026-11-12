@@ -191,7 +191,7 @@ run_fail_case "en_negative_time" \
     4 1 100 -t 1 -en -1 0 0.5
 
 run_fail_case "eG_nan_rate" \
-    "the value (nan) must be a finite number" \
+    "Invalid numeric argument for -eG: 'nan'" \
     4 1 100 -t 1 -p 2 2 2 -M 1 -eG 0 nan
 
 run_fail_case "em_same_population" \
@@ -209,6 +209,134 @@ run_pass_case "ea_pulse_source_is_admixed_population" \
 run_fail_case "ed_population_out_of_range" \
     "population 4 must be between 0 and 1" \
     4 1 100 -t 1 -p 2 2 2 -ed 1 0 4
+
+# The command line: a missing or non-numeric value, or an option name that
+# does not exist, stops with a message. These crashed, ran with the value
+# read as 0, or were ignored.
+run_fail_case "en_missing_value" \
+    "option -en needs more values" \
+    10 1 100 -t 5 -en 0.1 0
+
+run_fail_case "ws_missing_value" \
+    "option -ws needs more values" \
+    10 1 100 -t 5 -ws
+
+run_fail_case "A_missing_value" \
+    "option -A needs more values" \
+    10 1 100 -t 5 -A 2 0
+
+run_fail_case "en_non_numeric_time" \
+    "Invalid numeric argument for -en: 'abc'" \
+    10 1 100 -t 5 -en abc 0 0.5
+
+run_fail_case "en_non_numeric_population" \
+    "Invalid integer argument for -en: 'zero'" \
+    10 1 100 -t 5 -en 0.1 zero 0.5
+
+run_fail_case "ws_non_numeric" \
+    "Invalid numeric argument for -ws: 'abc'" \
+    10 1 100 -t 5 -ws abc -a 100
+
+run_fail_case "positional_non_numeric" \
+    "Invalid integer argument for numReplicates: 'x'" \
+    10 x 100 -t 5
+
+run_fail_case "positional_not_an_integer" \
+    "Invalid integer argument for nSites: '1e3'" \
+    10 1 1e3 -t 5
+
+run_fail_case "unknown_e_option" \
+    "Unknown option '-ez'" \
+    10 1 100 -t 5 -ez 1 2 3
+
+run_fail_case "option_prefix_alone" \
+    "Unknown option '-P'" \
+    10 1 100 -t 5 -P
+
+run_fail_case "unknown_u_option" \
+    "Unknown option '-uX'" \
+    10 1 100 -t 5 -uX 3
+
+# Only the exact name -Y loads a file: -Yzzz is not a YAML run (it gets
+# the usage text, as any call with too few arguments), and after a full
+# command line it is an unknown option.
+# Values that are not finite, population indices of -m outside the model,
+# and sizes below the smallest model stop with a message. (-R inf ran
+# without end; -m 10 1000 1 wrote outside the migration matrix; 0
+# replicates gave no output and no message.)
+run_fail_case "R_infinite" \
+    "Invalid numeric argument for -R: 'inf'" \
+    4 1 1000 -R inf -a 100
+
+run_fail_case "t_overflow" \
+    "Invalid numeric argument for -t: '1e400'" \
+    4 1 100 -t 1e400
+
+run_fail_case "m_population_out_of_range" \
+    "-m 10 1000: the two populations must be different and between 0 and 1" \
+    4 1 100 -t 1 -p 2 2 2 -m 10 1000 1
+
+run_fail_case "m_same_population" \
+    "-m 1 1: the two populations must be different" \
+    4 1 100 -t 1 -p 2 2 2 -M 1 -m 1 1 2
+
+run_fail_case "zero_replicates" \
+    "the number of replicates (0) must be >= 1" \
+    10 0 100 -t 5
+
+run_fail_case "zero_sites" \
+    "the number of sites (0) must be >= 1" \
+    10 1 0 -t 5
+
+run_fail_case "one_sample" \
+    "the sample size (1) must be >= 2" \
+    1 1 100 -t 5
+
+run_fail_case "p_zero_populations" \
+    "-p needs at least 1 population" \
+    4 1 100 -t 1 -p 0
+
+run_fail_case "c_out_of_range" \
+    "-c (1.5) must be above 0 and below 1" \
+    10 1 100 -t 5 -ws 0 -a 100 -c 1.5
+
+run_fail_case "F_before_ts" \
+    "-F needs -ts before it" \
+    10 1 100 -t 5 -F
+
+run_fail_case "Y_name_with_suffix" \
+    "usage: discoal" \
+    -Yzzz "$REPO_ROOT/config_examples/basic_example.yaml"
+
+run_fail_case "Y_name_with_suffix_after_arguments" \
+    "Unknown option '-Yzzz'" \
+    10 1 100 -t 5 -Yzzz "$REPO_ROOT/config_examples/basic_example.yaml"
+
+run_fail_case "Y_twice" \
+    "-Y can be given only once" \
+    -Y "$REPO_ROOT/config_examples/basic_example.yaml" -Y "$REPO_ROOT/config_examples/basic_example.yaml"
+
+run_fail_case "ts_directory_missing" \
+    "cannot write the tree sequence" \
+    10 1 100 -t 5 -ts /nonexistent-directory/x.trees
+
+# --help and --version write to stdout and end with status 0; a write error
+# on stdout ends with status 1.
+check_status_stdout() {
+    local name=$1 want_rc=$2 want_out=$3; shift 3
+    local out rc
+    out=$(timeout "$CASE_TIMEOUT" "$@" 2>/dev/null); rc=$?
+    if [ "$rc" -eq "$want_rc" ] && { [ -z "$want_out" ] || printf '%s' "$out" | grep -qF -- "$want_out"; }; then
+        echo -e "${GREEN}PASS${NC} $name"; PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} $name (exit $rc)"; FAIL=$((FAIL + 1)); FAIL_NAMES+=("$name")
+    fi
+}
+check_status_stdout "help_to_stdout" 0 "usage: discoal" "$DISCOAL" --help
+check_status_stdout "version_to_stdout" 0 "discoal " "$DISCOAL" --version
+if [ -w /dev/full ]; then
+    check_status_stdout "stdout_write_error" 1 "" sh -c "\"$DISCOAL\" 10 5 1000 -t 50 > /dev/full"
+fi
 
 # A -ts filename longer than the buffer stops with a message.
 run_fail_case "ts_filename_too_long" \
@@ -655,11 +783,11 @@ run_fail_case "p_one_population_wrong_size" \
     20 1 1000 -t 5 -r 5 -p 1 10
 
 run_fail_case "ws_nan_with_Pu" \
-    "a sweep time (-ws, -wd, -wn, -ls, -ld, -ln) (nan) must be >= 0" \
+    "Invalid numeric argument for -ws: 'nan'" \
     20 2 1000 -t 5 -r 5 -ws nan -a 500 -Pu 0.05 0.1
 
 run_fail_case "x_nan" \
-    "-x (nan) must be in [0, 1]" \
+    "Invalid numeric argument for -x: 'nan'" \
     20 2 1000 -t 5 -r 5 -ws 0.01 -a 500 -x nan
 
 # A fixed value that a prior replaces is not used, so it is not checked.

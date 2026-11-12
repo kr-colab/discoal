@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <assert.h>
 #include <limits.h>
+#include <errno.h>
 #include "ranlib.h"
 #include "discoal.h"
 #include "discoalFunctions.h"
@@ -39,6 +40,7 @@ long seed1, seed2;
 double nextTime, currentFreq;
 
 void getParameters(int argc,const char **argv);
+static void printUsage(FILE *out);
 void usage();
 void initializeTrajectoryVariables(double N);
 
@@ -77,9 +79,19 @@ void ensureEventsCapacity() {
 	}
 }
 
+/* At exit, flush stdout: a write error (a full disk, for example) must
+ * not end as success with cut-off output. */
+static void checkStdout(void){
+	if (fflush(stdout) != 0 || ferror(stdout)) {
+		fprintf(stderr, "Error: cannot write the output: %s\n", strerror(errno));
+		_exit(1);
+	}
+}
+
 int main(int argc, const char * argv[]){
 	int i,j;
 	
+	atexit(checkStdout);
 	getParameters(argc,argv);
 	/* Snapshot for per-replicate restore in initialize(); see currentSizeConst. */
 	for (i = 0; i < MAXPOPS; i++) currentSizeConst[i] = currentSize[i];
@@ -499,10 +511,7 @@ int main(int argc, const char * argv[]){
 			if (i == 0) {
 				fprintf(stderr, "Writing tree sequence to %s\n", replicate_filename);
 			}
-			int ret = tskit_finalize(replicate_filename);
-			if (ret != 0) {
-				fprintf(stderr, "Error writing tree sequence: %s\n", tsk_strerror(ret));
-			}
+			if (tskit_finalize(replicate_filename) != 0) exit(1);
 		} else {
 			// No file output - just need to sort tables for internal consistency
 			// (tskit_finalize with NULL filename would fail)
@@ -544,7 +553,7 @@ int main(int argc, const char * argv[]){
 	
 	// Clean up segment pool
 	destroySegmentPool();
-	
+
 	return(0);
 }
 
@@ -655,43 +664,62 @@ static void checkDemographicEvents(void) {
 	}
 }
 
-// Helper function to safely get next argument with bounds checking
+/* The value of an option: the next argument. Stops with a message if
+ * there is none. */
 static const char* getNextArg(int argc, const char **argv, int *args, const char *option) {
 	(*args)++;
 	if (*args >= argc) {
-		fprintf(stderr, "Error: Option %s requires an argument\n", option);
-		usage();
+		fprintf(stderr, "Error: option %s needs more values; try 'discoal --help'\n", option);
 		exit(1);
 	}
 	return argv[*args];
 }
 
-// Helper function to safely parse integer argument
+/* An integer value of an option. The whole argument must be an integer in
+ * the range of int: atoi() would read "abc" as 0 and "12x" as 12. */
 static int parseIntArg(int argc, const char **argv, int *args, const char *option) {
 	const char *arg = getNextArg(argc, argv, args, option);
 	char *endptr;
+	errno = 0;
 	long val = strtol(arg, &endptr, 10);
-	
-	if (*endptr != '\0' || val > INT_MAX || val < INT_MIN) {
+	if (endptr == arg || *endptr != '\0' || errno == ERANGE || val > INT_MAX || val < INT_MIN) {
 		fprintf(stderr, "Error: Invalid integer argument for %s: '%s'\n", option, arg);
 		exit(1);
 	}
-	
 	return (int)val;
 }
 
-// Helper function to safely parse double argument
+/* A numeric value of an option; the whole argument must be a finite
+ * number (strtod() also reads "nan", "inf" and, as infinity, numbers too
+ * large for a double). */
 static double parseDoubleArg(int argc, const char **argv, int *args, const char *option) {
 	const char *arg = getNextArg(argc, argv, args, option);
 	char *endptr;
 	double val = strtod(arg, &endptr);
-	
-	if (*endptr != '\0') {
+	if (endptr == arg || *endptr != '\0' || !isfinite(val)) {
 		fprintf(stderr, "Error: Invalid numeric argument for %s: '%s'\n", option, arg);
 		exit(1);
 	}
-	
 	return val;
+}
+
+/* Every option name. An argument that is not one of them is an error:
+ * the parser below looks only at the first letters, so without this check
+ * -e, -P or -uX would be taken for another option or ignored. -s, -D and
+ * -T are here so that the parser gives their own messages. A new option
+ * goes here, in the parser of getParameters(), and in printUsage(). */
+static int isOption(const char *arg) {
+	static const char *const names[] = {
+		"-t", "-r", "-g", "-gr", "-p", "-Y", "-en", "-eg", "-eG", "-el",
+		"-eL", "-ed", "-ej", "-ea", "-em", "-eM", "-ws", "-wd", "-wn", "-ls",
+		"-ld", "-ln", "-f", "-uA", "-N", "-a", "-x", "-c", "-i", "-S", "-M",
+		"-m", "-A", "-Pt", "-Pr", "-Pre", "-Pa", "-Pu", "-PuA", "-Px", "-Pf",
+		"-Pc", "-Pe1", "-Pe2", "-R", "-L", "-h", "-v", "-ts", "-F", "-d",
+		"-s", "-D", "-T",
+	};
+	for (size_t k = 0; k < sizeof(names) / sizeof(names[0]); k++)
+		if (strcmp(arg, names[k]) == 0) return 1;
+	return 0;
 }
 
 void getParameters(int argc,const char **argv){
@@ -760,10 +788,25 @@ void getParameters(int argc,const char **argv){
 	 * left currentSize at garbage (#46). */
 	currentSize = calloc(MAXPOPS, sizeof(double));
 
+	/* --help (also -help, and -h as the only argument) and --version (-V)
+	 * write to stdout and end with status 0, before anything else is read.
+	 * In a run, -h hides the selected SNP. */
+	const int onlyH = (argc == 2 && strcmp(argv[1], "-h") == 0);
+	for (i = 1; i < argc; i++) {
+		if (onlyH || strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-help") == 0) {
+			printUsage(stdout);
+			exit(0);
+		}
+		if (strcmp(argv[i], "--version") == 0 || strcmp(argv[i], "-V") == 0) {
+			printf("discoal %s\n", DISCOAL_VERSION);
+			exit(0);
+		}
+	}
+
 	// Locate -Y first so we can validate "-Y xor positional args" before
 	// doing any work. The positional form "sampleSize numReplicates nSites"
 	// and -Y are mutually exclusive: loading YAML and then running the
-	// positional parser would feed "-Y" or another flag into atoi() (when -Y
+	// positional parser would read "-Y" or another flag as a number (when -Y
 	// comes before the positional slots) or overwrite the per-pop state YAML
 	// just installed (when positional slots come first).
 	// -v must be known before the YAML file (and any demes file it names)
@@ -774,10 +817,12 @@ void getParameters(int argc,const char **argv){
 
 	int yaml_arg_idx = -1;
 	for (i = 1; i < argc; i++) {
-		if (argv[i][0] == '-' && argv[i][1] == 'Y') {
-			yaml_arg_idx = i;
-			break;
+		if (strcmp(argv[i], "-Y") != 0) continue;
+		if (yaml_arg_idx != -1) {
+			fprintf(stderr, "Error: -Y can be given only once\n");
+			exit(1);
 		}
+		yaml_arg_idx = i;
 	}
 	if (yaml_arg_idx != -1 && argc >= 2 && argv[1][0] != '-') {
 		fprintf(stderr,
@@ -819,10 +864,13 @@ void getParameters(int argc,const char **argv){
 	}
 
 	if (!yaml_config_loaded) {
-		sampleSize = atoi(argv[1]);
-		sampleNumber = atoi(argv[2]);
-		nSites = atoi(argv[3]);
-		args = 4;
+		/* The three positional arguments are argv[1 .. 3]; the options
+		 * start at argv[4]. */
+		args = 0;
+		sampleSize = parseIntArg(argc, argv, &args, "sampleSize");
+		sampleNumber = parseIntArg(argc, argv, &args, "numReplicates");
+		nSites = parseIntArg(argc, argv, &args, "nSites");
+		args++;
 
 		popnSizes[0]=sampleSize;
 		popnSizes[1]=0;
@@ -836,23 +884,23 @@ void getParameters(int argc,const char **argv){
 
 	while(args < argc){
 		// Skip YAML config arguments if already processed
-		if (argv[args][0] == '-' && argv[args][1] == 'Y') {
+		if (strcmp(argv[args], "-Y") == 0) {
 			args += 2;  // Skip -Y and its filename argument
 			continue;
 		}
 		
 		// Check if argument starts with '-'
 		if (argv[args][0] != '-') {
-			fprintf(stderr, "Error: Unexpected argument '%s'\n", argv[args]);
-			fprintf(stderr, "All options must start with '-'. Try '%s' without arguments for usage.\n", argv[0]);
+			fprintf(stderr, "Error: Unexpected argument '%s' (an option must start with '-'); try 'discoal --help'\n", argv[args]);
 			exit(1);
 		}
 		
-		// Check for empty option after '-'
-		if (argv[args][1] == '\0') {
-			fprintf(stderr, "Error: Empty option '-'\n");
+		if (!isOption(argv[args])) {
+			fprintf(stderr, "Error: Unknown option '%s'; try 'discoal --help'\n", argv[args]);
 			exit(1);
 		}
+		/* The option's name, for messages about its values. */
+		const char *opt = argv[args];
 
 		/* A demes model gives the demography, and the YAML its samples,
 		 * checked against the demes' lifetimes (as the YAML allows only
@@ -873,15 +921,14 @@ void getParameters(int argc,const char **argv){
 		switch(argv[args][1]){
 			case 'F' :
 			if (!tskitOutputMode) {
-				fprintf(stderr, "Error: -F flag requires -ts to be specified first\n");
-				fprintf(stderr, "Usage: %s [options] -ts <filename.trees> -F\n", argv[0]);
+				fprintf(stderr, "Error: -F needs -ts before it, as in '-ts file.trees -F'\n");
 				exit(1);
 			}
 			minimalTreeSeq = 0;  // Disable minimal mode, use full recording
 			fprintf(stderr, "Note: Full tree sequence mode enabled (recording all edges including recombination)\n");
 			break;
 			case 'S' :
-			if (setSweepTrajectoryFile(getNextArg(argc, argv, &args, "-S")) != 0)
+			if (setSweepTrajectoryFile(getNextArg(argc, argv, &args, opt)) != 0)
 				exit(1);
 			break;
 			case 's' :
@@ -893,48 +940,43 @@ void getParameters(int argc,const char **argv){
 			case 't' :
 			if (argv[args][2] == 's') {  // -ts flag for tree sequence
 				tskitOutputMode = 1;
-				args++;
-				if (args >= argc || argv[args] == NULL || argv[args][0] == '-' || strlen(argv[args]) == 0) {
-					fprintf(stderr, "Error: -ts flag requires a filename argument\n");
-					fprintf(stderr, "Usage: %s [options] -ts <filename.trees>\n", argv[0]);
-					fprintf(stderr, "Example: %s 10 1 1000 -t 5 -ts output.trees\n", argv[0]);
-					if (args < argc && argv[args] != NULL && argv[args][0] == '-') {
-						fprintf(stderr, "Note: '%s' looks like another flag, not a filename\n", argv[args]);
-					}
+				const char *filename = getNextArg(argc, argv, &args, opt);
+				if (filename[0] == '\0' || filename[0] == '-') {
+					fprintf(stderr, "Error: -ts needs a filename, not '%s'; try 'discoal --help'\n", filename);
 					exit(1);
 				}
-				if (strlen(argv[args]) >= sizeof(tskitOutputFilename)) {
+				if (strlen(filename) >= sizeof(tskitOutputFilename)) {
 					fprintf(stderr, "Error: the -ts filename is too long (at most %zu characters)\n",
 						sizeof(tskitOutputFilename) - 1);
 					exit(1);
 				}
-				strcpy(tskitOutputFilename, argv[args]);
+				strcpy(tskitOutputFilename, filename);
 			}
 			else {  // -t flag for theta
-				theta = parseDoubleArg(argc, argv, &args, "-t");
+				theta = parseDoubleArg(argc, argv, &args, opt);
 			}
 			break;
 			case 'i' :
-			deltaTMod = parseDoubleArg(argc, argv, &args, "-i");
+			deltaTMod = parseDoubleArg(argc, argv, &args, opt);
 			break;
 			case 'r' :
-			rho = parseDoubleArg(argc, argv, &args, "-r");
+			rho = parseDoubleArg(argc, argv, &args, opt);
 			break;
 			case 'g' :
                         if (argv[args][2] == 'r')
                         {
-			  gammaCoRatio = parseDoubleArg(argc, argv, &args, "-gr");
-			  gcMean = parseIntArg(argc, argv, &args, "-gr");
+			  gammaCoRatio = parseDoubleArg(argc, argv, &args, opt);
+			  gcMean = parseIntArg(argc, argv, &args, opt);
                           gammaCoRatioMode = 1;
                         }
                         else
                         {
-			  my_gamma = parseDoubleArg(argc, argv, &args, "-g");
-			  gcMean = parseIntArg(argc, argv, &args, "-g");
+			  my_gamma = parseDoubleArg(argc, argv, &args, opt);
+			  gcMean = parseIntArg(argc, argv, &args, opt);
                         }
 			break;
 			case 'a' :
-			alpha = parseDoubleArg(argc, argv, &args, "-a");
+			alpha = parseDoubleArg(argc, argv, &args, opt);
 			break;
 			case 'D' :
 			fprintf(stderr,
@@ -943,17 +985,16 @@ void getParameters(int argc,const char **argv){
 				"demography.demes_filename instead. See "
 				"config_examples/demes_example.yaml.\n");
 			exit(1);
-			break;
 			case 'x' :
-			sweepSite = parseDoubleArg(argc, argv, &args, "-x");
+			sweepSite = parseDoubleArg(argc, argv, &args, opt);
 			sweepPositionGiven = 1;
 			break;
 			case 'M' :
 			if(npops==1){
-				fprintf(stderr,"Error: attempting to set migration but only one population! Be sure that 'm' flags are specified after 'p' flag\n");
+				fprintf(stderr,"Error: %s needs more than one population; give -p before %s\n", opt, opt);
 				exit(1);
 			}
-			migR = parseDoubleArg(argc, argv, &args, "-M");
+			migR = parseDoubleArg(argc, argv, &args, opt);
 			for(i=0;i<npops;i++){
 				for(j=0;j<npops;j++){
 					if(i!=j){
@@ -969,23 +1010,32 @@ void getParameters(int argc,const char **argv){
 			case 'm' :
 			// -m flag for migration
 				if(npops==1){
-					fprintf(stderr,"Error: attempting to set migration but only one population! Be sure that 'm' flags are specified after 'p' flag\n");
+					fprintf(stderr,"Error: %s needs more than one population; give -p before %s\n", opt, opt);
 					exit(1);
 				}
-				i = parseIntArg(argc, argv, &args, "-m");
-				j = parseIntArg(argc, argv, &args, "-m");
-				migR = parseDoubleArg(argc, argv, &args, "-m");
+				i = parseIntArg(argc, argv, &args, opt);
+				j = parseIntArg(argc, argv, &args, opt);
+				migR = parseDoubleArg(argc, argv, &args, opt);
+				if (i < 0 || i >= npops || j < 0 || j >= npops || i == j) {
+					fprintf(stderr, "Error: -m %d %d: the two populations must be different and between 0 and %d (give -p before -m)\n",
+						i, j, npops - 1);
+					exit(1);
+				}
 				migMatConst[i][j]=migR;
 				migFlag = 1;
 			break;
 			case 'p' :
-			npops = parseIntArg(argc, argv, &args, "-p");
+			npops = parseIntArg(argc, argv, &args, opt);
+			if(npops < 1){
+				fprintf(stderr,"Error: -p needs at least 1 population (got %d)\n", npops);
+				exit(1);
+			}
 			if(npops > MAXPOPS){
 				fprintf(stderr,"Error: too many populations defined. Current maximum number = %d. Change MAXPOPS in discoal.h and recompile\n",MAXPOPS);
 				exit(1);
 			}
 			for(i=0;i<npops;i++){
-				sampleSizes[i] = parseIntArg(argc, argv, &args, "-p");
+				sampleSizes[i] = parseIntArg(argc, argv, &args, opt);
 				// Don't overwrite currentSize if it was already set (e.g., by demes)
 				// Only set to 1.0 if it's still 0 (uninitialized)
 				if (currentSize[i] == 0.0) {
@@ -998,29 +1048,29 @@ void getParameters(int argc,const char **argv){
 				switch(argv[args][2]){
 					case 'n':
 					ensureEventsCapacity();
-					events[eventNumber].time = userTimeToInternal(atof(argv[++args]));
-					events[eventNumber].popID = atoi(argv[++args]);
-					events[eventNumber].popnSize = atof(argv[++args]);
+					events[eventNumber].time = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
+					events[eventNumber].popID = parseIntArg(argc, argv, &args, opt);
+					events[eventNumber].popnSize = parseDoubleArg(argc, argv, &args, opt);
 					events[eventNumber].type = 'n'; //size change
 					eventNumber++;
 					break;
 					case 'd' :
 					case 'j' :  // -ej is equivalent to -ed (for ms compatibility)
-					tDiv =  atof(argv[++args]);
+					tDiv =  parseDoubleArg(argc, argv, &args, opt);
 						ensureEventsCapacity();
 					events[eventNumber].time = userTimeToInternal(tDiv);
-					events[eventNumber].popID = atoi(argv[++args]);
-					events[eventNumber].popID2 = atoi(argv[++args]);
+					events[eventNumber].popID = parseIntArg(argc, argv, &args, opt);
+					events[eventNumber].popID2 = parseIntArg(argc, argv, &args, opt);
 					events[eventNumber].type = 'p'; //pop split
 					eventNumber++;
 					break;
 					case 'a' :
 						ensureEventsCapacity();
-					events[eventNumber].time = userTimeToInternal(atof(argv[++args]));
-					events[eventNumber].popID = atoi(argv[++args]);
-					events[eventNumber].popID2 = atoi(argv[++args]);
-					events[eventNumber].popID3 = atoi(argv[++args]);
-					events[eventNumber].admixProp = atof(argv[++args]);
+					events[eventNumber].time = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
+					events[eventNumber].popID = parseIntArg(argc, argv, &args, opt);
+					events[eventNumber].popID2 = parseIntArg(argc, argv, &args, opt);
+					events[eventNumber].popID3 = parseIntArg(argc, argv, &args, opt);
+					events[eventNumber].admixProp = parseDoubleArg(argc, argv, &args, opt);
 					events[eventNumber].type = 'a'; //admix split
 					eventNumber++;
 					break;
@@ -1030,9 +1080,9 @@ void getParameters(int argc,const char **argv){
 					case 'g':
 						/* -eg time popID alpha */
 						ensureEventsCapacity();
-						events[eventNumber].time = userTimeToInternal(atof(argv[++args]));
-						events[eventNumber].popID = atoi(argv[++args]);
-						events[eventNumber].popnSize = userRateToInternal(atof(argv[++args]));  /* alpha stored in popnSize field */
+						events[eventNumber].time = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
+						events[eventNumber].popID = parseIntArg(argc, argv, &args, opt);
+						events[eventNumber].popnSize = userRateToInternal(parseDoubleArg(argc, argv, &args, opt));  /* alpha stored in popnSize field */
 						events[eventNumber].type = 'g';
 						eventNumber++;
 						break;
@@ -1041,18 +1091,18 @@ void getParameters(int argc,const char **argv){
 						 * come later, so expandAllPopulationEvents() makes
 						 * the per-population events after parsing. */
 						ensureEventsCapacity();
-						events[eventNumber].time = userTimeToInternal(atof(argv[++args]));
+						events[eventNumber].time = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
 						events[eventNumber].allPopulations = 1;
-						events[eventNumber].popnSize = userRateToInternal(atof(argv[++args]));
+						events[eventNumber].popnSize = userRateToInternal(parseDoubleArg(argc, argv, &args, opt));
 						events[eventNumber].type = 'g';
 						eventNumber++;
 						break;
 					case 'l':
 						/* -el time popID gamma: gamma is in relative size (size / N0) */
 						ensureEventsCapacity();
-						events[eventNumber].time = userTimeToInternal(atof(argv[++args]));
-						events[eventNumber].popID = atoi(argv[++args]);
-						events[eventNumber].popnSize = userRateToInternal(atof(argv[++args]));  /* gamma stored in popnSize field */
+						events[eventNumber].time = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
+						events[eventNumber].popID = parseIntArg(argc, argv, &args, opt);
+						events[eventNumber].popnSize = userRateToInternal(parseDoubleArg(argc, argv, &args, opt));  /* gamma stored in popnSize field */
 						events[eventNumber].type = 'l';
 						eventNumber++;
 						break;
@@ -1060,9 +1110,9 @@ void getParameters(int argc,const char **argv){
 						/* -eL time gamma: -el for every population, expanded
 						 * after parsing as for -eG. */
 						ensureEventsCapacity();
-						events[eventNumber].time = userTimeToInternal(atof(argv[++args]));
+						events[eventNumber].time = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
 						events[eventNumber].allPopulations = 1;
-						events[eventNumber].popnSize = userRateToInternal(atof(argv[++args]));
+						events[eventNumber].popnSize = userRateToInternal(parseDoubleArg(argc, argv, &args, opt));
 						events[eventNumber].type = 'l';
 						eventNumber++;
 						break;
@@ -1070,10 +1120,10 @@ void getParameters(int argc,const char **argv){
 						/* -em time srcPop dstPop rate — change migration rate at this time */
 						{
 							ensureEventsCapacity();
-							events[eventNumber].time = userTimeToInternal(atof(argv[++args]));
-							events[eventNumber].popID2 = atoi(argv[++args]);  /* source pop */
-							events[eventNumber].popID = atoi(argv[++args]);   /* destination pop */
-							events[eventNumber].popnSize = atof(argv[++args]); /* new rate stored in popnSize field */
+							events[eventNumber].time = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
+							events[eventNumber].popID2 = parseIntArg(argc, argv, &args, opt);  /* source pop */
+							events[eventNumber].popID = parseIntArg(argc, argv, &args, opt);   /* destination pop */
+							events[eventNumber].popnSize = parseDoubleArg(argc, argv, &args, opt); /* new rate stored in popnSize field */
 							events[eventNumber].type = 'm';  /* lowercase 'm' for time-varying migration event */
 							/* Migration that starts later still counts as
 							 * migration for initialize()'s check. */
@@ -1086,9 +1136,9 @@ void getParameters(int argc,const char **argv){
 						 * populations, expanded after parsing as for -eG. */
 						{
 							ensureEventsCapacity();
-							events[eventNumber].time = userTimeToInternal(atof(argv[++args]));
+							events[eventNumber].time = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
 							events[eventNumber].allPopulations = 1;
-							events[eventNumber].popnSize = atof(argv[++args]);
+							events[eventNumber].popnSize = parseDoubleArg(argc, argv, &args, opt);
 							events[eventNumber].type = 'm';
 							/* As for -em: migration that starts later still
 							 * counts for initialize()'s check. */
@@ -1110,7 +1160,7 @@ void getParameters(int argc,const char **argv){
 					sweepMode = 'N';
 					break;
 					}
-				tau = userTimeToInternal(atof(argv[++args]));
+				tau = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
 					ensureEventsCapacity();
 				events[eventNumber].time = tau;
 				events[eventNumber].type = 's'; //sweep event
@@ -1129,8 +1179,8 @@ void getParameters(int argc,const char **argv){
                                 	break;
 				}
 				sweepSite = -1.0;
-				tau = userTimeToInternal(atof(argv[++args]));
-				leftRho = atof(argv[++args]) * 2.0;
+				tau = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
+				leftRho = parseDoubleArg(argc, argv, &args, opt) * 2.0;
 				leftRhoFlag=1;
 					ensureEventsCapacity();
 				events[eventNumber].time = tau;
@@ -1138,106 +1188,105 @@ void getParameters(int argc,const char **argv){
 				eventNumber++;
 					break;
 			case 'f':
-			f0 = atof(argv[++args]);
+			f0 = parseDoubleArg(argc, argv, &args, opt);
 			softSweepMode = 1;
 			break;
                         case 'u':
-                        uA = atof(argv[++args]);
+                        uA = parseDoubleArg(argc, argv, &args, opt);
                         break;
 			case 'P' :
 			  switch(argv[args][2]){
 				case 't':
 				  priorTheta = 1;
-				  pThetaLow=atof(argv[++args]);
-				  pThetaUp=atof(argv[++args]);
+				  pThetaLow=parseDoubleArg(argc, argv, &args, opt);
+				  pThetaUp=parseDoubleArg(argc, argv, &args, opt);
 				break;
 				case 'c':
 				  priorC = 1;
 			          partialSweepMode = 1;
-				  pCLow=atof(argv[++args]);
-				  pCUp=atof(argv[++args]);
+				  pCLow=parseDoubleArg(argc, argv, &args, opt);
+				  pCUp=parseDoubleArg(argc, argv, &args, opt);
 				break;
                                 case 'r':
-                                  if (strlen(argv[args]) == 4 && argv[args][3] == 'e'){
+                                  if (strcmp(opt, "-Pre") == 0){
                                         priorRho = 2;
-                                        pRhoMean=atof(argv[++args]);
-                                        pRhoUp=atof(argv[++args]);
+                                        pRhoMean=parseDoubleArg(argc, argv, &args, opt);
+                                        pRhoUp=parseDoubleArg(argc, argv, &args, opt);
                                   }
                                   else{
                                         priorRho = 1;
-                                        pRhoLow=atof(argv[++args]);
-                                        pRhoUp=atof(argv[++args]);
+                                        pRhoLow=parseDoubleArg(argc, argv, &args, opt);
+                                        pRhoUp=parseDoubleArg(argc, argv, &args, opt);
                                   }
                                 break;
 				case 'a':
 				  priorAlpha = 1;
-				  pAlphaLow=atof(argv[++args]);
-				  pAlphaUp=atof(argv[++args]);
+				  pAlphaLow=parseDoubleArg(argc, argv, &args, opt);
+				  pAlphaUp=parseDoubleArg(argc, argv, &args, opt);
 				break;
 				case 'u':
-                                	if (strlen(argv[args]) == 4 && argv[args][3] == 'A'){
+                                	if (strcmp(opt, "-PuA") == 0){
 					  priorUA = 1;
-					  pUALow=atof(argv[++args]);
-					  pUAUp=atof(argv[++args]);
+					  pUALow=parseDoubleArg(argc, argv, &args, opt);
+					  pUAUp=parseDoubleArg(argc, argv, &args, opt);
 					}
                                 	else{
 					  priorTau = 1;
-					  pTauLow=userTimeToInternal(atof(argv[++args]));
-					  pTauUp=userTimeToInternal(atof(argv[++args]));
+					  pTauLow=userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
+					  pTauUp=userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
 					}
 				break;
 				case 'x':
 				  priorX = 1;
-				  pXLow=atof(argv[++args]);
-				  pXUp=atof(argv[++args]);
+				  pXLow=parseDoubleArg(argc, argv, &args, opt);
+				  pXUp=parseDoubleArg(argc, argv, &args, opt);
 				break;
 				case 'f':
 				  priorF0 = 1;
-				  pF0Low=atof(argv[++args]);
-				  pF0Up=atof(argv[++args]);
+				  pF0Low=parseDoubleArg(argc, argv, &args, opt);
+				  pF0Up=parseDoubleArg(argc, argv, &args, opt);
 				break;
 				case 'e':
 				/* -Pe1 / -Pe2 lowTime highTime lowSize highSize: a size
 				 * change of population 0 with uniform priors on time and
 				 * size. Both work the same way; the digit only names them. */
-				if (argv[args][3] == '1' || argv[args][3] == '2') {
-					const char *opt = argv[args];
-					double tLow = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
-					double tHigh = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
-					double sLow = parseDoubleArg(argc, argv, &args, opt);
-					double sHigh = parseDoubleArg(argc, argv, &args, opt);
-					if (addPriorSizeChange(opt, tLow, tHigh, sLow, sHigh, 0) != 0)
-						exit(1);
+				{
+				double tLow = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
+				double tHigh = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
+				double sLow = parseDoubleArg(argc, argv, &args, opt);
+				double sHigh = parseDoubleArg(argc, argv, &args, opt);
+				if (addPriorSizeChange(opt, tLow, tHigh, sLow, sHigh, 0) != 0)
+					exit(1);
 				}
 				break;
 			}
                         break;
 			case 'd' :
-			seed1 = parseIntArg(argc, argv, &args, "-d");
-			seed2 = parseIntArg(argc, argv, &args, "-d");
+			seed1 = parseIntArg(argc, argv, &args, opt);
+			seed2 = parseIntArg(argc, argv, &args, opt);
 			break;
 			case 'N' :
-			EFFECTIVE_POPN_SIZE = parseIntArg(argc, argv, &args, "-N");
+			EFFECTIVE_POPN_SIZE = parseIntArg(argc, argv, &args, opt);
 			break;
 			case 'R' :
 			recurSweepMode = 1;
 			sweepMode = 's';
-			recurSweepRate = atof(argv[++args]);
+			recurSweepRate = parseDoubleArg(argc, argv, &args, opt);
 			break;
 			case 'L' :
 			recurSweepMode = 1;
 			recurrentLeftOfLocus = 1;
 			sweepMode = 's';
 			sweepSite = -1.0;
-			recurSweepRate = atof(argv[++args]);
+			recurSweepRate = parseDoubleArg(argc, argv, &args, opt);
 			break;
 			case 'c' :
 			partialSweepMode = 1;
 			sweepMode = 's';
-			partialSweepFinalFreq = atof(argv[++args]);
+			partialSweepFinalFreq = parseDoubleArg(argc, argv, &args, opt);
             if (partialSweepFinalFreq <= 0.0 || partialSweepFinalFreq >= 1.0)
             {
-                fprintf(stderr,"partialSweepFinalFreq must be > 0 and < 1.0\n");
+                fprintf(stderr,"Error: -c (%g) must be above 0 and below 1\n", partialSweepFinalFreq);
                 exit(1);
             }
 			break;
@@ -1249,9 +1298,9 @@ void getParameters(int argc,const char **argv){
 			break;
 			case 'A' :
 				ensureEventsCapacity();
-			events[eventNumber].lineageNumber = atoi(argv[++args]);
-			events[eventNumber].popID = atoi(argv[++args]);	 
-			events[eventNumber].time = userTimeToInternal(atof(argv[++args])); 
+			events[eventNumber].lineageNumber = parseIntArg(argc, argv, &args, opt);
+			events[eventNumber].popID = parseIntArg(argc, argv, &args, opt);	 
+			events[eventNumber].time = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt)); 
 			events[eventNumber].type = 'A'; //ancient sample
 			eventNumber++;
 			break;
@@ -1259,12 +1308,10 @@ void getParameters(int argc,const char **argv){
 			fprintf(stderr, "Error: -T tree output mode has been removed.\n");
 			fprintf(stderr, "Use -ts <filename.trees> for tree sequence output instead.\n");
 			exit(1);
-			break;
 			default:
-			fprintf(stderr, "Error: Unknown option '-%c'\n", argv[args][1]);
-			fprintf(stderr, "Try '%s' without arguments for usage information.\n", argv[0]);
+			/* isOption() passed a name that no case handles. */
+			fprintf(stderr, "Error: internal error: option %s is not handled\n", opt);
 			exit(1);
-			break;
 		}
 		args++;
 	}
@@ -1335,6 +1382,9 @@ void getParameters(int argc,const char **argv){
 				(double)gcMean, ">= 1 when the gene conversion rate is above 0, and >= 0"},
 			/* Ancestry counts are uint16_t. */
 			{sampleSize > 65535, "the sample size", (double)sampleSize, "<= 65535"},
+			{sampleSize < 2, "the sample size", (double)sampleSize, ">= 2"},
+			{sampleNumber < 1, "the number of replicates", (double)sampleNumber, ">= 1"},
+			{nSites < 1, "the number of sites", (double)nSites, ">= 1"},
 			{nSites > MAXSITES, "the number of sites", (double)nSites,
 				"<= " STRINGIFY(MAXSITES) " (MAXSITES, set at compile time)"},
 			{!priorAlpha && !(alpha >= 0.0), "-a", alpha, ">= 0"},
@@ -1595,69 +1645,125 @@ void getParameters(int argc,const char **argv){
 	
 }
 
-void usage(){
-	fprintf(stderr, "▗▄▄▄ ▗▄▄▄▖ ▗▄▄▖ ▗▄▄▖ ▗▄▖  ▗▄▖ ▗▖   \n");
-	fprintf(stderr, "▐▌  █  █  ▐▌   ▐▌   ▐▌ ▐▌▐▌ ▐▌▐▌   \n");
-	fprintf(stderr, "▐▌  █  █   ▝▀▚▖▐▌   ▐▌ ▐▌▐▛▀▜▌▐▌   \n");
-	fprintf(stderr, "▐▙▄▄▀▗▄█▄▖▗▄▄▞▘▝▚▄▄▖▝▚▄▞▘▐▌ ▐▌▐▙▄▄\n\n\n");
+/* The usage text. --help writes it to stdout; a call with too few
+ * arguments writes it to stderr (usage()). */
+static void printUsage(FILE *out){
+	fprintf(out, "▗▄▄▄ ▗▄▄▄▖ ▗▄▄▖ ▗▄▄▖ ▗▄▖  ▗▄▖ ▗▖   \n");
+	fprintf(out, "▐▌  █  █  ▐▌   ▐▌   ▐▌ ▐▌▐▌ ▐▌▐▌   \n");
+	fprintf(out, "▐▌  █  █   ▝▀▚▖▐▌   ▐▌ ▐▌▐▛▀▜▌▐▌   \n");
+	fprintf(out, "▐▙▄▄▀▗▄█▄▖▗▄▄▞▘▝▚▄▄▖▝▚▄▞▘▐▌ ▐▌▐▙▄▄\n\n\n");
 	
-	fprintf(stderr,"discoal version %s\n", DISCOAL_VERSION);
-	fprintf(stderr,"usage: discoal sampleSize numReplicates nSites -ws tau\n");
-	fprintf(stderr,"parameters: \n");
-
-	fprintf(stderr,"\t -t theta \n");
-	fprintf(stderr,"\t -r rho (=zero if not specified)\n");
-	fprintf(stderr,"\t -g conversionRate tractLengthMean (gene conversion)\n");
-	fprintf(stderr,"\t -gr conversionToCrossoverRatio tractLengthMean (gene conversion where initiation rate = rho*conversionToCrossoverRatio)\n");
-	fprintf(stderr,"\t -p npops sampleSize1 sampleSize2 etc.\n");
-	fprintf(stderr,"\t -Y configFile.yaml (load parameters from a YAML configuration file; a demes model goes in demography.demes_filename)\n");
-	fprintf(stderr,"\t -en time popnID size (changes size of popnID)\n");
-	fprintf(stderr,"\t -eg time popnID alpha (sets popnID to exponential growth at rate alpha per 4N0 generations, as in ms; positive alpha = past was smaller)\n");
-	fprintf(stderr,"\t -eG time alpha (-eg applied to all populations)\n");
-	fprintf(stderr,"\t -el time popnID gamma (sets popnID to linear growth; gamma is the change in relative size per 4N0 generations; positive gamma = past was smaller)\n");
-	fprintf(stderr,"\t -eL time gamma (-el applied to all populations)\n");
-	fprintf(stderr,"\t -ed time popnID1 popnID2 (joins popnID1 into popnID2; -ej is an alias)\n");
-	fprintf(stderr,"\t -ea time daughterPopnID founderPopnID1 founderPopnID2 admixProp (admixture-- back in time daughterPopnID into two founders)\n");
-	fprintf(stderr,"\t -em time popnID1 popnID2 migRate (changes migration rate from popnID1 to popnID2 starting at time)\n");
-	fprintf(stderr,"\t -eM time migRate (sets all off-diagonal migration rates to migRate starting at time)\n");
-	
-	fprintf(stderr,"\t -ws tau (sweep ended tau ago, in units of 4N0 generations; stochastic sweep)\n");  
-	fprintf(stderr,"\t -wd tau (sweep ended tau ago, in units of 4N0 generations; deterministic sweep)\n"); 
-	fprintf(stderr,"\t -wn tau (sweep ended tau ago, in units of 4N0 generations; neutral sweep)\n");
-	fprintf(stderr,"\t -ls tau leftRho (stochastic sweep some genetic distance to the left of the simulated window--at 4Nr = 2 x leftRho)\n");
-	fprintf(stderr,"\t\t similarly, ld and ln simulate deterministic and neutral sweeps to the left of the window, respectively\n");
-	fprintf(stderr,"\t -f first frequency at which selection acts on allele (F0; sweep models only)\n");
-	fprintf(stderr,"\t -uA rate at which adaptive mutation recurs during the sweep phase (sweep models only)\n");
-	fprintf(stderr,"\t -N sweepEffectivePopnSize (sweep models only)\n");	
-	fprintf(stderr,"\t -a alpha (=2Ns)\n");
-	fprintf(stderr,"\t -x sweepSite (0-1)\n");
-	fprintf(stderr,"\t -c partialSweepFinalFrequency (partial sweeps)\n");	
-	fprintf(stderr,"\t -i dt (sweep time increment scalar; default 40 -> 1/40N)\n");
-	fprintf(stderr,"\t -S file (sweep trajectory from a file: lines of time (4N0 generations, increasing) and allele frequency, ending at frequency 0)\n");
-	
-	fprintf(stderr,"\t -M migRate (sets all rates to migRate)\n");
-	fprintf(stderr,"\t -m popnID1 popnID2 migRate (sets migRate from popnID1 to popnID2)\n");
-	fprintf(stderr,"\t -A sampleSize popnID time (ancient sample from popnID at specified time)\n");
-	
-	fprintf(stderr,"\t -Pt low high (prior on theta)\n");
-	fprintf(stderr,"\t -Pr low high (prior on rho)\n");
-        fprintf(stderr,"\t -Pre mean upperBound (prior on rho -- exponentially distributed but truncated at an upper bound)\n");
-	fprintf(stderr,"\t -Pa low high (prior on alpha)\n");
-	fprintf(stderr,"\t -Pu low high (prior on tau; sweep models only; still must use \"-ws tau\" (or a YAML sweep, not both) and \"tau\" will be ignored)\n");
-	fprintf(stderr,"\t -PuA low high (prior on uA; sweep models only)\n");
-	fprintf(stderr,"\t -Px low high (prior on sweepSite; sweep models only)\n");
-	fprintf(stderr,"\t -Pf low high (prior on F0; sweep models only)\n");
-	fprintf(stderr,"\t -Pc low high (prior on partialSweepFinalFreq; sweep models only)\n");
-	fprintf(stderr,"\t -Pe1 lowTime highTime lowSize highSize (priors on first demographic move time and size)\n");
-	fprintf(stderr,"\t -Pe2 lowTime highTime lowSize highSize (priors on second demographic move time and size)\n");
-	fprintf(stderr,"\t -R rhhRate (recurrent hitch hiking mode at the locus; rhh is rate per 2N individuals / generation)\n");
-	fprintf(stderr,"\t -L rhhRate (recurrent hitch hiking mode to the side of locus; leftRho is ~Unif(0,4Ns); rhh is rate per 2N individuals / generation)\n");
-	fprintf(stderr,"\t -h (hide selected SNP in partial sweep mode)\n");
-	fprintf(stderr,"\t -v (verbose: print progress and demes conversion details to stderr)\n");
-	fprintf(stderr,"\t -ts filename (tree sequence output mode - saves to tskit file)\n");
-	fprintf(stderr,"\t -F (full ARG mode - record all edges including recombination; use with -ts)\n");
-	fprintf(stderr,"\t -d seed1 seed2 (set random number generator seeds)\n");
-	
-	exit(1);
+	fprintf(out,
+		"discoal version %s\n"
+		"A coalescent simulator with recombination, population structure and\n"
+		"selective sweeps.\n"
+		"\n"
+		"usage: discoal sampleSize numReplicates nSites [options]\n"
+		"       discoal -Y config.yaml [options]\n"
+		"\n"
+		"examples:\n"
+		"  discoal 10 5 10000 -t 10 -r 10\n"
+		"      neutral, with recombination\n"
+		"  discoal 10 5 10000 -t 10 -r 10 -ws 0.01 -a 1000 -x 0.5\n"
+		"      a hard sweep at the middle of the locus\n"
+		"  discoal 20 1 10000 -t 10 -p 2 10 10 -ed 1.0 1 0\n"
+		"      two populations that join\n"
+		"  discoal 10 3 10000 -t 10 -r 10 -ts out.trees\n"
+		"      tree sequences (tskit)\n"
+		"\n"
+		"Times are in units of 4N0 generations, sizes in units of N0, and theta,\n"
+		"rho and migration rates are 4N0 times the rate (as in ms). Populations are\n"
+		"numbered from 0.\n"
+		"\n"
+		"mutation and recombination:\n"
+		"  -t theta                4N0 u for the whole locus\n"
+		"  -r rho                  4N0 r for the whole locus (default 0)\n"
+		"  -g gamma tractLength    gene conversion: 4N0 g for the whole locus, and the\n"
+		"                          mean tract length in sites\n"
+		"  -gr ratio tractLength   gene conversion at ratio x rho\n"
+		"\n"
+		"populations and samples:\n"
+		"  -p npops n1 n2 ...      number of populations and the sample size of each\n"
+		"  -M migRate              migration between all populations at migRate\n"
+		"                          (give -p first)\n"
+		"  -m pop1 pop2 migRate    migration from pop1 to pop2 (give -p first)\n"
+		"  -A n pop time           n of the samples of pop are ancient, taken at time\n"
+		"\n"
+		"demographic events:\n"
+		"  -en time pop size       size of pop changes to size\n"
+		"  -eg time pop alpha      exponential growth of pop at rate alpha per 4N0\n"
+		"                          generations (positive: smaller in the past)\n"
+		"  -eG time alpha          -eg for all populations\n"
+		"  -el time pop gamma      linear growth of pop; gamma is the change in size\n"
+		"                          per 4N0 generations (positive: smaller in the past)\n"
+		"  -eL time gamma          -el for all populations\n"
+		"  -ed time pop1 pop2      pop1 joins pop2, backward in time (-ej is the same)\n"
+		"  -ea time pop src1 src2 prop\n"
+		"                          admixture: backward in time a lineage of pop goes\n"
+		"                          to src1 with probability prop, else to src2\n"
+		"  -em time pop1 pop2 migRate\n"
+		"                          migration from pop1 to pop2 changes to migRate\n"
+		"  -eM time migRate        all migration rates change to migRate\n"
+		"\n"
+		"sweeps:\n"
+		"  -ws tau                 stochastic sweep that ended tau ago\n"
+		"  -wd tau                 deterministic sweep that ended tau ago\n"
+		"  -wn tau                 neutral fixation that ended tau ago\n"
+		"  -ls tau leftRho         stochastic sweep to the left of the locus, at a\n"
+		"                          distance of 4N0 r = 2 x leftRho\n"
+		"  -ld tau leftRho         as -ls, deterministic\n"
+		"  -ln tau leftRho         as -ls, neutral fixation\n"
+		"  -S file                 sweep whose trajectory is in file: lines of time\n"
+		"                          (increasing) and allele frequency, ending at 0\n"
+		"  -R rate                 recurrent sweeps in the locus; rate per 2N\n"
+		"                          individuals per generation\n"
+		"  -L rate                 recurrent sweeps to the left of the locus, at a\n"
+		"                          distance drawn uniformly from (0, 4Ns)\n"
+		"  -a alpha                strength of selection, 2Ns\n"
+		"  -x position             position of the selected site in the locus, 0 to 1\n"
+		"  -f f0                   soft sweep: selection starts at frequency f0\n"
+		"  -uA rate                soft sweep: rate of recurrent beneficial mutation\n"
+		"  -c frequency            partial sweep: final frequency of the allele\n"
+		"  -h                      hide the selected SNP of a partial sweep\n"
+		"  -N size                 effective population size during a sweep\n"
+		"                          (default 1000000)\n"
+		"  -i dt                   time step of sweep trajectories, 1/(dt N)\n"
+		"                          (default 40)\n"
+		"\n"
+		"priors (a value is drawn for each replicate):\n"
+		"  -Pt low high            theta, uniform\n"
+		"  -Pr low high            rho, uniform\n"
+		"  -Pre mean upperBound    rho, exponential, cut at upperBound\n"
+		"  -Pa low high            alpha, uniform\n"
+		"  -Pu low high            tau, uniform (give a sweep option too; its tau is\n"
+		"                          not used)\n"
+		"  -PuA low high           uA, uniform\n"
+		"  -Px low high            position of the selected site, uniform\n"
+		"  -Pf low high            f0, uniform\n"
+		"  -Pc low high            final frequency of a partial sweep, uniform\n"
+		"  -Pe1 lowTime highTime lowSize highSize\n"
+		"                          a size change of population 0: time and size,\n"
+		"                          uniform\n"
+		"  -Pe2 lowTime highTime lowSize highSize\n"
+		"                          a second such size change\n"
+		"\n"
+		"input and output:\n"
+		"  -Y file                 read the model from a YAML file; a demes model\n"
+		"                          goes in demography.demes_filename\n"
+		"  -ts file                write tree sequences (tskit) to file; with several\n"
+		"                          replicates, to file_rep1, file_rep2, ...\n"
+		"  -F                      with -ts (and after it): the full ARG, with the\n"
+		"                          nodes and edges of recombination\n"
+		"  -d seed1 seed2          seeds of the random number generator\n"
+		"  -v                      print progress and demes details to stderr\n"
+		"  --help                  print this text\n"
+		"  --version               print the version\n"
+		"\n"
+		"Documentation: https://discoal.readthedocs.io\n",
+		DISCOAL_VERSION);
 }
 
+void usage(){
+	printUsage(stderr);
+	exit(1);
+}

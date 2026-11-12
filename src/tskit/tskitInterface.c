@@ -8,6 +8,8 @@
 #include <math.h>
 #include <time.h>
 #include <sys/utsname.h>
+#include <unistd.h>
+#include <errno.h>
 #include "tskitInterface.h"
 #include "ranlib.h"
 #include "version.h"
@@ -431,14 +433,28 @@ int tskit_finalize(const char *filename) {
         return ret;
     }
     
-    // Write to file
-    ret = tsk_table_collection_dump(tsk_tables, filename, 0);
-    if (ret != 0) {
-        fprintf(stderr, "Error writing tree sequence: %s\n", tsk_strerror(ret));
-        return ret;
+    /* Write to a temporary file in the same directory and rename it, so
+     * that an interrupted run leaves no partial file under the final
+     * name. */
+    size_t temp_size = strlen(filename) + 32;
+    char *temp_filename = malloc(temp_size);
+    if (temp_filename == NULL) {
+        fprintf(stderr, "Error: out of memory\n");
+        return -1;
     }
-    
-    return 0;
+    snprintf(temp_filename, temp_size, "%s.tmp%ld", filename, (long) getpid());
+    ret = tsk_table_collection_dump(tsk_tables, temp_filename, 0);
+    if (ret != 0) {
+        fprintf(stderr, "Error: cannot write the tree sequence %s: %s\n",
+            filename, tsk_strerror(ret));
+    } else if (rename(temp_filename, filename) != 0) {
+        fprintf(stderr, "Error: cannot write the tree sequence %s: %s\n",
+            filename, strerror(errno));
+        ret = -1;
+    }
+    if (ret != 0) remove(temp_filename);
+    free(temp_filename);
+    return ret;
 }
 
 // Clean up tskit resources
