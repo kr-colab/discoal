@@ -55,8 +55,13 @@ Other new options
 Checks of the input
 ^^^^^^^^^^^^^^^^^^^
 
-discoal checks the range of every value on the command line, in YAML files
-and in priors, and stops with a message that names the option. For
+discoal checks every value on the command line, in YAML files and in
+priors, and stops with a message that names the option. A value that is
+missing or not a number, and an option name that does not exist (for
+example ``-u`` for ``-uA``), are errors; discoal 0.1.x crashed, read the
+value as 0, or ignored the option. A tree sequence file is written under
+a temporary name and renamed, so an interrupted run leaves no partial
+file. ``--help`` and ``--version`` print to stdout. For
 example, a demographic event with a population that does not exist, a
 negative time, or a rate that is not a number stops with an error. Models that
 cannot finish (lineages that can never meet, a size that reaches zero) also

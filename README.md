@@ -30,9 +30,9 @@ are in `extern/`. Clone this repository, change into its directory, and
 type `make`. This builds `build/discoal` and links it as `./discoal`
 (`make discoal` builds only `build/discoal`).
 
-Typing `./discoal` with no arguments prints the usage:
+`./discoal --help` prints the usage:
 ```
-$ ./discoal
+$ ./discoal --help
 discoal version 2.0.0
 usage: discoal sampleSize numReplicates nSites -ws tau
 parameters: 
@@ -85,5 +85,7 @@ parameters:
 	 -ts filename (tree sequence output mode - saves to tskit file)
 	 -F (full ARG mode - record all edges including recombination; use with -ts)
 	 -d seed1 seed2 (set random number generator seeds)
+	 --help (print this text)
+	 --version (print the version)
 ```
 

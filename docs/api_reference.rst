@@ -368,4 +368,10 @@ Exit Codes
 ----------
 
 * 0: Success
-* 1: Error (a message on stderr says what is wrong)
+* 1: Error (a message on stderr says what is wrong). This includes a
+  value that is missing or not a number, an option that does not exist,
+  and output that cannot be written.
+
+``discoal --help`` prints the usage text and ``discoal --version`` the
+version, both to stdout with exit code 0. In a run, ``-h`` hides the
+selected SNP.

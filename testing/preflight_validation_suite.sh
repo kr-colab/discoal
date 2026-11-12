@@ -210,6 +210,75 @@ run_fail_case "ed_population_out_of_range" \
     "population 4 must be between 0 and 1" \
     4 1 100 -t 1 -p 2 2 2 -ed 1 0 4
 
+# The command line: a missing or non-numeric value, or an option name that
+# does not exist, stops with a message. These crashed, ran with the value
+# read as 0, or were ignored.
+run_fail_case "en_missing_value" \
+    "option -en needs more values" \
+    10 1 100 -t 5 -en 0.1 0
+
+run_fail_case "ws_missing_value" \
+    "option -ws needs more values" \
+    10 1 100 -t 5 -ws
+
+run_fail_case "A_missing_value" \
+    "option -A needs more values" \
+    10 1 100 -t 5 -A 2 0
+
+run_fail_case "en_non_numeric_time" \
+    "Invalid numeric argument for -en: 'abc'" \
+    10 1 100 -t 5 -en abc 0 0.5
+
+run_fail_case "en_non_numeric_population" \
+    "Invalid integer argument for -en: 'zero'" \
+    10 1 100 -t 5 -en 0.1 zero 0.5
+
+run_fail_case "ws_non_numeric" \
+    "Invalid numeric argument for -ws: 'abc'" \
+    10 1 100 -t 5 -ws abc -a 100
+
+run_fail_case "positional_non_numeric" \
+    "Invalid integer argument for numReplicates: 'x'" \
+    10 x 100 -t 5
+
+run_fail_case "positional_not_an_integer" \
+    "Invalid integer argument for nSites: '1e3'" \
+    10 1 1e3 -t 5
+
+run_fail_case "unknown_e_option" \
+    "Unknown option '-ez'" \
+    10 1 100 -t 5 -ez 1 2 3
+
+run_fail_case "option_prefix_alone" \
+    "Unknown option '-P'" \
+    10 1 100 -t 5 -P
+
+run_fail_case "unknown_u_option" \
+    "Unknown option '-uX'" \
+    10 1 100 -t 5 -uX 3
+
+run_fail_case "ts_directory_missing" \
+    "cannot write the tree sequence" \
+    10 1 100 -t 5 -ts /nonexistent-directory/x.trees
+
+# --help and --version write to stdout and end with status 0; a write error
+# on stdout ends with status 1.
+check_status_stdout() {
+    local name=$1 want_rc=$2 want_out=$3; shift 3
+    local out rc
+    out=$("$@" 2>/dev/null); rc=$?
+    if [ "$rc" -eq "$want_rc" ] && { [ -z "$want_out" ] || printf '%s' "$out" | grep -qF -- "$want_out"; }; then
+        echo -e "${GREEN}PASS${NC} $name"; PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} $name (exit $rc)"; FAIL=$((FAIL + 1)); FAIL_NAMES+=("$name")
+    fi
+}
+check_status_stdout "help_to_stdout" 0 "usage: discoal" "$DISCOAL" --help
+check_status_stdout "version_to_stdout" 0 "discoal " "$DISCOAL" --version
+if [ -w /dev/full ]; then
+    check_status_stdout "stdout_write_error" 1 "" sh -c "\"$DISCOAL\" 10 5 1000 -t 50 > /dev/full"
+fi
+
 # A -ts filename longer than the buffer stops with a message.
 run_fail_case "ts_filename_too_long" \
     "the -ts filename is too long" \
