@@ -2696,25 +2696,17 @@ rootedNode *pickNodePopnSweep(int popn,int sp){
 		}
 	}
 	if(popnSize == 0){
-		fprintf(stderr,"error encountered in pickNodePopnSweep\n");
-		fprintf(stderr,"tried to pick allele from popn %d, sweepPopn %d but popnSize is %d! Rho=%f\n",popn,sp,popnSize,rho);
-		printf("popnSizes[0]:%d popnSizes[1]:%d sweepPopnSizes[0]:%d sweepPopnSizes[1]:%d\n", popnSizes[0],popnSizes[1],\
-			sweepPopnSizes[0],sweepPopnSizes[1]);
-		for(i = 0 ; i < alleleNumber; i++){
-			printNode(nodes[i]);
-		}
+		/* The sweep's event rates count the lineages of each class, so an
+		 * event in an empty class means that the counts are wrong. */
+		fprintf(stderr, "Error: internal error: a sweep event needs a lineage of "
+			"population %d, class %d, but there is none (class sizes %d and %d)\n",
+			popn, sp, sweepPopnSizes[0], sweepPopnSizes[1]);
 		exit(1);
 	}
 	//choose random index
 	index = indexArray[ignuin(0, popnSize - 1)];
 
 	return(nodes[index]);
-}
-
-void printNode(rootedNode *aNode){
-	printf("node: %p time: %f lLim: %d rLim: %d nancSites: %d popn: %d sweepPopn: %d\n",aNode, aNode->time,aNode->lLim,\
-		aNode->rLim, aNode->nancSites, aNode->population, aNode->sweepPopn);
-	// ancSites array removed - ancestry now tracked via tree
 }
 
 /*nodePopnSize-- returns popnSize of popn from

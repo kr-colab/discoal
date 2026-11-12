@@ -508,9 +508,7 @@ int main(int argc, const char * argv[]){
 				}
 			}
 			
-			if (i == 0) {
-				fprintf(stderr, "Writing tree sequence to %s\n", replicate_filename);
-			}
+			VERBOSE_LOG("Writing tree sequence to %s\n", replicate_filename);
 			if (tskit_finalize(replicate_filename) != 0) exit(1);
 		} else {
 			// No file output - just need to sort tables for internal consistency
@@ -1005,7 +1003,6 @@ void getParameters(int argc,const char **argv){
 				exit(1);
 			}
 			minimalTreeSeq = 0;  // Disable minimal mode, use full recording
-			fprintf(stderr, "Note: Full tree sequence mode enabled (recording all edges including recombination)\n");
 			break;
 			case 'S' :
 			if (setSweepTrajectoryFile(getNextArg(argc, argv, &args, opt)) != 0)

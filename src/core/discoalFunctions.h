@@ -87,7 +87,6 @@ double neutralPhaseGeneralPopNumber(double startTime, double endTime);
 rootedNode *pickNodePopn(int popn);
 void addNode(rootedNode *aNode);
 void removeNode(rootedNode *aNode);
-void printNode(rootedNode *aNode);
 int nodePopnSize(int popn);
 int nodePopnSweepSize(int popn, int sp);
 rootedNode *pickNodePopnSweep(int popn,int sp);
