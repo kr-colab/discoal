@@ -33,5 +33,4 @@ double detSweepFreqGeneral(double alpha, double A) {
 	return epsilon / denom;
 }
 
-/* Note: Optimized versions are now in alleleTraj.h as inline functions */
 

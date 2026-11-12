@@ -72,7 +72,7 @@ static int check_nonneg_double(const char *arr, const char *field, int idx,
 static int check_not_merged(const char *arr, int idx, int pop, double time,
                             const struct demographic_events *dmo,
                             int skip_admixture) {
-    for (int k = 0; k < dmo->num_population_splits; ++k) {
+    for (int k = 0; k < (int) dmo->num_population_splits; ++k) {
         const struct population_split *sp = &dmo->population_splits[k];
         if (pop == sp->derived && time >= sp->time) {
             fprintf(stderr,
@@ -83,7 +83,7 @@ static int check_not_merged(const char *arr, int idx, int pop, double time,
             return EXIT_FAILURE;
         }
     }
-    for (int k = 0; k < dmo->num_admixtures; ++k) {
+    for (int k = 0; k < (int) dmo->num_admixtures; ++k) {
         const struct admixture *ad = &dmo->admixtures[k];
         if (k == skip_admixture) continue;
         if (pop == ad->population && time >= ad->time) {
@@ -622,7 +622,7 @@ int parse_demography_block(struct demography_config *cfg)
         npops = cfg->num_demes;
         assert(cfg->num_demes > 0);
         int deme_sum = 0;
-        for (int i = 0; i < cfg->num_demes; ++i) {
+        for (int i = 0; i < (int) cfg->num_demes; ++i) {
             int n = cfg->deme_sample_size[i];
             if (n < 0) {
                 fprintf(stderr,
@@ -696,7 +696,7 @@ int parse_demography_block(struct demography_config *cfg)
              * checked against deme_sample_size after parsing, for the CLI
              * and YAML alike. A sample from a population at or after the
              * time it merges away is rejected, as for migration changes. */
-            for (int i = 0; i < dmo->num_ancient_samples; ++i) {
+            for (int i = 0; i < (int) dmo->num_ancient_samples; ++i) {
                 struct ancient_sample *as = &dmo->ancient_samples[i];
                 if (check_pop_index("ancient_samples", "population",
                         i, as->population, cfg->num_demes) != EXIT_SUCCESS ||
@@ -729,7 +729,7 @@ int parse_demography_block(struct demography_config *cfg)
              * population_splits entry with it as `derived`) is rejected: the
              * population no longer exists then, and the split already stops
              * its migration. */
-            for (int i = 0; i < dmo->num_migration_rate_changes; ++i) {
+            for (int i = 0; i < (int) dmo->num_migration_rate_changes; ++i) {
                 struct migration_rate_change *mrc = &dmo->migration_rate_changes[i];
                 if (check_pop_index("migration_rate_changes", "source",
                         i, mrc->source, cfg->num_demes) != EXIT_SUCCESS ||
@@ -767,7 +767,7 @@ int parse_demography_block(struct demography_config *cfg)
                 if (mrc->rate > 0) migFlag = 1;
             }
             /* YAML times use the command-line units; see userTimeToInternal. */
-            for (int i = 0; i < dmo->num_population_size_changes; ++i) {
+            for (int i = 0; i < (int) dmo->num_population_size_changes; ++i) {
                 struct population_size_change *psc = &dmo->population_size_changes[i];
                 if (check_pop_index("population_size_changes", "population",
                         i, psc->population, cfg->num_demes) != EXIT_SUCCESS ||
@@ -816,7 +816,7 @@ int parse_demography_block(struct demography_config *cfg)
                     eventNumber++;
                 }
             }
-            for (int i = 0; i < dmo->num_population_splits; ++i) {
+            for (int i = 0; i < (int) dmo->num_population_splits; ++i) {
                 struct population_split *split = &dmo->population_splits[i];
                 if (check_pop_index("population_splits", "derived",
                         i, split->derived, cfg->num_demes) != EXIT_SUCCESS) {
@@ -847,7 +847,7 @@ int parse_demography_block(struct demography_config *cfg)
                 end_population_migration(split->derived, split->time,
                     cfg->num_demes);
             }
-            for (int i = 0; i < dmo->num_admixtures; ++i) {
+            for (int i = 0; i < (int) dmo->num_admixtures; ++i) {
                 struct admixture *ad = &dmo->admixtures[i];
                 if (check_pop_index("admixtures", "population",
                         i, ad->population, cfg->num_demes) != EXIT_SUCCESS ||
@@ -910,7 +910,7 @@ int parse_demography_block(struct demography_config *cfg)
                     "match number of demes\n");
                 return EXIT_FAILURE;
             }
-            for (int i = 0; i < cfg->num_migration_matrix_rows; ++i) {
+            for (int i = 0; i < (int) cfg->num_migration_matrix_rows; ++i) {
                 struct migration_matrix_row *row = &cfg->migration_matrix[i];
                 if (row->num_cols != cfg->num_demes) {
                     fprintf(stderr, "Number of elements in migration matrix row "
@@ -920,7 +920,7 @@ int parse_demography_block(struct demography_config *cfg)
                 /* Self-migration is not meaningful in a coalescent; cmdline
                  * `-M` forces the diagonal to zero. Reject rather than
                  * silently massage the user's input. */
-                for (int j = 0; j < row->num_cols; ++j) {
+                for (int j = 0; j < (int) row->num_cols; ++j) {
                     if (j == i) {
                         if (row->rates[j] != 0.0) {
                             fprintf(stderr,
@@ -1239,10 +1239,13 @@ int parse_output_block(struct output_config *cfg)
                     "output mode tree_sequence\n");
                 return EXIT_FAILURE;
             }
-            // FIXME: safer way to do this?
-            strncpy(tskitOutputFilename, cfg->tree_sequence_filename, 
-                sizeof(tskitOutputFilename) - 1);
-            tskitOutputFilename[sizeof(tskitOutputFilename) - 1] = '\0';
+            if (strlen(cfg->tree_sequence_filename) >= sizeof(tskitOutputFilename)) {
+                fprintf(stderr, "Error parsing config: tree_sequence_filename "
+                    "is too long (at most %zu characters)\n",
+                    sizeof(tskitOutputFilename) - 1);
+                return EXIT_FAILURE;
+            }
+            strcpy(tskitOutputFilename, cfg->tree_sequence_filename);
         }
     }
     return EXIT_SUCCESS;

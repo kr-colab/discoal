@@ -20,14 +20,6 @@
 #define MAXTIME 100000.0     /* Sentinel value representing "infinite" time */
 #define MAXPOPS 121          /* Maximum number of populations */
 
-/* No longer needed after dynamic memory optimizations:
-   - MAXNODES: nodes array is now dynamic
-   - SMALLCHUNKS: was never used  
-   - MAXBREAKS: breakpoints are not stored
-   - MAXLEAFS: was never used
-   - MAXEVENTS: events array is now dynamic
-*/
-
 #define MAX(a, b)  (((a) > (b)) ? (a) : (b))
 #define MIN(a, b)  (((a) > (b)) ? (b) : (a))
 

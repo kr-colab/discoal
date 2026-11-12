@@ -389,7 +389,7 @@ rootedNode *newRootedNode(double cTime, int popn) {
 ////////  Migration Stuff ///////////
 
 //migrateAtTime -- this only switches between two populations
-void migrateAtTime(double cTime,int srcPopn, int destPopn){
+void migrateAtTime(int srcPopn, int destPopn){
 	// Check if source population has any nodes
 	if (popLists[srcPopn].count == 0) {
 		// No nodes to migrate, this can happen in complex demographic scenarios
@@ -415,7 +415,7 @@ void migrateAtTime(double cTime,int srcPopn, int destPopn){
 }
 
 //recurrentMutAtTime -- this adds a non-sweeping node to the sweep or vice-versa
-void recurrentMutAtTime(double cTime,int srcPopn, int sp){
+void recurrentMutAtTime(int srcPopn, int sp){
         rootedNode *temp;
 
         temp = pickNodePopnSweep(srcPopn,sp);
@@ -477,7 +477,7 @@ static void recordEdgesForChild(tsk_id_t parent_tsk_id, rootedNode *child, tsk_i
  * @param lchild_tsk_id The tskit ID of the left child
  * @param rchild_tsk_id The tskit ID of the right child
  */
-static void recordCoalescentEdges(rootedNode *parent, rootedNode *lChild, rootedNode *rChild,
+static void recordCoalescentEdges(rootedNode *lChild, rootedNode *rChild,
                                   tsk_id_t parent_tsk_id, tsk_id_t lchild_tsk_id, tsk_id_t rchild_tsk_id) {
     if (parent_tsk_id == TSK_NULL) {
         return;
@@ -500,7 +500,7 @@ static void recordCoalescentEdges(rootedNode *parent, rootedNode *lChild, rooted
  * @param lparent_tsk_id The tskit ID of the left parent
  * @param rparent_tsk_id The tskit ID of the right parent
  */
-static void recordRecombinationEdges(rootedNode *child, rootedNode *lParent, rootedNode *rParent,
+static void recordRecombinationEdges(rootedNode *lParent, rootedNode *rParent,
                                      tsk_id_t child_tsk_id, tsk_id_t lparent_tsk_id, tsk_id_t rparent_tsk_id) {
     if (minimalTreeSeq) {
         // In minimal mode, don't create tskit nodes for recombination parents
@@ -652,7 +652,7 @@ void coalesceAtTimePopn(double cTime, int popn){
 	updateAncestryStatsFromTree(temp);
 
 	// Record edges using the new convenience function
-	recordCoalescentEdges(temp, lChild, rChild, parent_tsk_id, lchild_tsk_id, rchild_tsk_id);
+	recordCoalescentEdges(lChild, rChild, parent_tsk_id, lchild_tsk_id, rchild_tsk_id);
 
 	/* The children's edges are recorded and the parent has its own copy of
 	 * their segments, so nothing reads the children again. */
@@ -705,7 +705,7 @@ void updateActiveMaterial(rootedNode *aNode){
 	// Use segment-based approach to update active material
 	// This removes regions where the node has ancestry from all samples
 	updateActiveMaterialFromAncestry(&activeMaterialSegments, aNode->ancestryRoot, 
-	                                sampleSize, nSites);
+	                                sampleSize);
 	
 	// Update global active site count
 	activeSites = getActiveSiteCount(&activeMaterialSegments);
@@ -801,14 +801,14 @@ int recombineAtTimePopn(double cTime, int popn){
 		tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
 		tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
 		
-		recordRecombinationEdges(aNode, lParent, rParent, child_tsk_id, lparent_tsk_id, rparent_tsk_id);
+		recordRecombinationEdges(lParent, rParent, child_tsk_id, lparent_tsk_id, rparent_tsk_id);
 		/* The parents hold the child's segments (or, in the full ARG, copies
 		 * of them) and its edges are recorded: the child is not needed. */
 		lParent->leftChild = rParent->leftChild = NULL;
 		freeLineage(aNode);
 		return xOver;
 	}
-	return 666;
+	return -1;  /* no lineage has a span */
 }
 
 /* A gene conversion tract length: geometric on 1, 2, 3, ... with mean
@@ -938,7 +938,7 @@ static void convertTract(double cTime, int popn, rootedNode *aNode, int start, i
 	tsk_id_t child_tsk_id = get_tskit_node_id(aNode);
 	tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
 	tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
-	recordRecombinationEdges(aNode, lParent, rParent, child_tsk_id, lparent_tsk_id, rparent_tsk_id);
+	recordRecombinationEdges(lParent, rParent, child_tsk_id, lparent_tsk_id, rparent_tsk_id);
 	/* As in recombineAtTimePopn(): the child is not needed. */
 	lParent->leftChild = rParent->leftChild = NULL;
 	freeLineage(aNode);
@@ -1000,7 +1000,7 @@ void geneConversionAtTimePopn(double cTime, int popn){
  * cRate and mRate are accepted in the signature for symmetry with the
  * caller's rate vector and possible future use; they are not consumed
  * directly by this routine. */
-static double drawNHPPWaitingTime(double *cRate, double *rRate, double *gcRate,
+static double drawNHPPWaitingTime(double *cRate,
                                   double *mRate, double totRRate, double totGCRate,
                                   double t0, int *winnerKind, int *winnerArg) {
     double T_min = 1e300;  /* effectively +infinity */
@@ -1126,7 +1126,7 @@ static void requireLineagesCanMeet(double t){
 
 /*neutralPhaseGeneralPopNumber--coalescent, recombination, gc events until
 specified time. returns endTime. can handle multiple popns*/
-double neutralPhaseGeneralPopNumber(double startTime, double endTime, double *sizeRatio){
+double neutralPhaseGeneralPopNumber(double startTime, double endTime){
 	double cTime, cRate[npops], rRate[npops], gcRate[npops], mRate[npops],totRate, waitTime, r, r2;
 	double totCRate, totRRate, totGCRate,totMRate, eSum;
 	int  i,j;
@@ -1216,7 +1216,7 @@ double neutralPhaseGeneralPopNumber(double startTime, double endTime, double *si
 								eSum += migAt(i, ++j, currentTime) * popnSizes[i] * MIG_LINEAGE_WEIGHT;
 
 							}
-							migrateAtTime(cTime,i,j);
+							migrateAtTime(i,j);
 							if (finalInterval) requireLineagesCanMeet(cTime);
 						}
 
@@ -1254,7 +1254,7 @@ double neutralPhaseGeneralPopNumber(double startTime, double endTime, double *si
 			 * winnerArg, so we dispatch directly without a second
 			 * within-class lottery for migration / coalescence. */
 			int winnerKind = -1, winnerArg = -1;
-			waitTime = drawNHPPWaitingTime(cRate, rRate, gcRate, mRate,
+			waitTime = drawNHPPWaitingTime(cRate, mRate,
 			                               totRRate, totGCRate, cTime,
 			                               &winnerKind, &winnerArg);
 			cTime += waitTime;
@@ -1284,7 +1284,7 @@ double neutralPhaseGeneralPopNumber(double startTime, double endTime, double *si
 				/* migration: src/dst already chosen by the per-pair NHPP draw */
 				int src = winnerArg / MAXPOPS;
 				int dst = winnerArg % MAXPOPS;
-				migrateAtTime(cTime, src, dst);
+				migrateAtTime(src, dst);
 				if (finalInterval) requireLineagesCanMeet(cTime);
 			}
 			else if (winnerKind == 3) {
@@ -1312,15 +1312,6 @@ double neutralPhaseGeneralPopNumber(double startTime, double endTime, double *si
 	tskit_flush_edges_periodic();
 	
 	return(cTime);
-}
-
-void ensureTrajectoryCapacity(long int requiredSize) {
-	// This function is now deprecated - we use file-based trajectories
-	// Keeping it for compatibility but it just checks size limits
-	if (requiredSize >= 500000000) {  // Match legacy limit
-		fprintf(stderr, "trajectory too bigly. step= %ld. killing myself gently\n", requiredSize);
-		exit(1);
-	}
 }
 
 /* Unmap and close the mapped sweep trajectory, if any. Its file is
@@ -1516,8 +1507,8 @@ static double trajectoryAcceptanceBound(double currentTime){
  * be too small for a trajectory whose origin is recent, if population 0
  * was larger further in the past, and would accept such trajectories too
  * often. */
-void sampleSweepTrajectory(int currentEventNumber, double *sizeRatio,
-	char sweepMode, double initialFreq, double *finalFreq, double alpha,
+void sampleSweepTrajectory(int currentEventNumber,
+	char sweepMode, double initialFreq, double alpha,
 	double f0, double currentTime){
 	/* -S: the trajectory from the file, built once. It is not a mapped
 	 * file, so trajectoryFd stays -1 and nothing unmaps it. */
@@ -1543,8 +1534,7 @@ void sampleSweepTrajectory(int currentEventNumber, double *sizeRatio,
 				MAX_TRAJECTORY_PROPOSALS, bound);
 			exit(1);
 		}
-		originSize = proposeTrajectory(currentEventNumber, currentTrajectory,
-			sizeRatio, sweepMode, initialFreq, finalFreq, alpha, f0,
+		originSize = proposeTrajectory(currentEventNumber, sweepMode, initialFreq, alpha, f0,
 			currentTime);
 		assert(originSize <= bound);
 	} while (ranf() > originSize / bound);
@@ -1679,8 +1669,8 @@ complications like changing population size, or soft sweeps, etc.
 Returns the size of population 0 (relative to N) at the trajectory's end,
 the allele's origin. sampleSweepTrajectory() accepts or rejects the
 trajectory. */
-double proposeTrajectory(int currentEventNumber, float *currentTrajectory, double *sizeRatio, char sweepMode, \
-double initialFreq, double *finalFreq, double alpha, double f0, double currentTime)
+double proposeTrajectory(int currentEventNumber, char sweepMode, \
+double initialFreq, double alpha, double f0, double currentTime)
 {
 	double tInc, tIncOrig, minF,ttau, N;
 	double N_0 = (double) EFFECTIVE_POPN_SIZE;
@@ -1817,7 +1807,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			
 			// Check trajectory size to prevent runaway
 			if (j >= TRAJSTEPSTART) {
-				fprintf(stderr, "trajectory too bigly. step= %ld. killing myself gently\n", j);
+				fprintf(stderr, "Error: the sweep trajectory is too long (%ld steps); check the sweep parameters\n", j);
 				fclose(trajFile);
 				exit(1);
 			}
@@ -1876,8 +1866,7 @@ static int dormantLineagesIn(int popn){
 
 /*sweepPhaseEventsConditionalTrajectory-- does sweep phase with trajectory created externally */
 double sweepPhaseEventsConditionalTrajectory(double startTime, double endTime, double sweepSite,\
-double initialFreq, double *finalFreq, int *stillSweeping, double alpha,\
-double *sizeRatio, char sweepMode,double f0, double uA)
+double initialFreq, double *finalFreq, int *stillSweeping,double f0, double uA)
 {
 
 	double totRate;
@@ -2020,13 +2009,13 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 			else if (r < (sum += pGCb) / sweepPopTotRate)
 				geneConversionAtTimePopnSweep(eventTime, 0, 0, sweepSite, 1.0 - x);
 			else if (r < (sum += pLeftRecb) / sweepPopTotRate)
-				recombineToLeftPopnSweep(0, 0, x);
+				recombineToLeftPopnSweep(0, 0);
 			else if (r < (sum += pLeftRecB) / sweepPopTotRate)
-				recombineToLeftPopnSweep(0, 1, x);
+				recombineToLeftPopnSweep(0, 1);
 			else
 				/* recurrent adaptive mutation: a lineage leaves the
 				 * beneficial class */
-				recurrentMutAtTime(eventTime, 0, 1);
+				recurrentMutAtTime(0, 1);
 		}
 		else{	
 			if(npops>1){
@@ -2083,7 +2072,7 @@ double *sizeRatio, char sweepMode,double f0, double uA)
 
 /*recurrentSweepPhaseGeneralPopNumber--coalescent, recombination, gc events, and sweeps! until
 specified time. returns endTime. can handle multiple popns*/
-double recurrentSweepPhaseGeneralPopNumber(double startTime, double endTime, double *finalFreq, double alpha, char sweepMode, double *sizeRatio){
+double recurrentSweepPhaseGeneralPopNumber(double startTime, double endTime, double *finalFreq, double alpha, char sweepMode){
 	double cTime, cRate[npops], rRate[npops], gcRate[npops], mRate[npops],totRate, waitTime, r, r2;
 	double totCRate, totRRate, totGCRate,totMRate, eSum,curSweepSite, initFreq;
 	int  i,j;
@@ -2167,7 +2156,7 @@ double recurrentSweepPhaseGeneralPopNumber(double startTime, double endTime, dou
 							eSum += migAt(i, ++j, cTime) * popnSizes[i] * MIG_LINEAGE_WEIGHT;
 							
 						} 
-						migrateAtTime(cTime,i,j);
+						migrateAtTime(i,j);
 						if (finalInterval) requireLineagesCanMeet(cTime);
 					}
 				
@@ -2192,11 +2181,10 @@ double recurrentSweepPhaseGeneralPopNumber(double startTime, double endTime, dou
 								curSweepSite = ranf();
 							}
 							initFreq = sweepStartFreq(cTime);
-							sampleSweepTrajectory(currentEventNumber, sizeRatio, sweepMode,
-								initFreq, finalFreq, alpha, f0, cTime);
+							sampleSweepTrajectory(currentEventNumber, sweepMode,
+								initFreq, alpha, f0, cTime);
 							cTime= sweepPhaseEventsConditionalTrajectory(cTime, endTime, curSweepSite,\
-								initFreq, finalFreq, &activeSweepFlag, alpha,\
-								sizeRatio, sweepMode,0, 0);
+								initFreq, finalFreq, &activeSweepFlag,0, 0);
 							
 						}
 					
@@ -2288,16 +2276,16 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 			tsk_id_t lparent_tsk_id = get_tskit_node_id(lParent);
 			tsk_id_t rparent_tsk_id = get_tskit_node_id(rParent);
 			
-			recordRecombinationEdges(aNode, lParent, rParent, child_tsk_id, lparent_tsk_id, rparent_tsk_id);
+			recordRecombinationEdges(lParent, rParent, child_tsk_id, lparent_tsk_id, rparent_tsk_id);
 			/* As in recombineAtTimePopn(): the child is not needed. */
 			lParent->leftChild = rParent->leftChild = NULL;
 			freeLineage(aNode);
 			return xOver;
 		}
-		return 666; //debuging
+		return -1;  /* no lineage of this class has a span */
 }
 
-int recombineToLeftPopnSweep(int popn, int sp, double popnFreq){
+int recombineToLeftPopnSweep(int popn, int sp){
 	rootedNode *aNode;
 
 	aNode = pickNodePopnSweep(popn, sp);
@@ -2375,7 +2363,7 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	tsk_id_t rchild_tsk_id = get_tskit_node_id(rChild);
 
 	// Record edges using the new convenience function
-	recordCoalescentEdges(temp, lChild, rChild, parent_tsk_id, lchild_tsk_id, rchild_tsk_id);
+	recordCoalescentEdges(lChild, rChild, parent_tsk_id, lchild_tsk_id, rchild_tsk_id);
 	
 	/* The children's edges are recorded and the parent has its own copy of
 	 * their segments, so nothing reads the children again. */
@@ -2385,24 +2373,6 @@ void coalesceAtTimePopnSweep(double cTime, int popn, int sp){
 	
 	//update active anc. material
 	updateActiveMaterial(temp);
-}
-
-/* Hash table entry for mutation duplicate detection */
-typedef struct MutHashEntry {
-	double mutation;
-	struct MutHashEntry *next;
-} MutHashEntry;
-
-#define MUTATION_HASH_SIZE 40009  /* Prime number larger than MAXMUTS to ensure good performance */
-
-/* Hash function for mutations - uses bit representation of double */
-static inline unsigned int hashMutation(double mut) {
-	union { double d; uint64_t i; } u;
-	u.d = mut;
-	/* Mix the bits to get better distribution */
-	u.i ^= (u.i >> 32);
-	u.i *= 0x9e3779b97f4a7c15ULL;  /* Golden ratio constant */
-	return (unsigned int)(u.i % MUTATION_HASH_SIZE);
 }
 
 //////////////////////////////////////////////////////////
@@ -2916,7 +2886,7 @@ static int printGenotypeRows(tsk_variant_t *variant, tsk_size_t num_samples,
 	return 0;
 }
 
-void makeGametesMS(int argc, const char *argv[]) {
+void makeGametesMS(void) {
 	if (tsk_tables == NULL) {
 		fprintf(stderr, "Error: No tskit tables available for output generation\n");
 		return;

@@ -368,5 +368,4 @@ Exit Codes
 ----------
 
 * 0: Success
-* 1: General error
-* 666: Parameter error or invalid configuration
+* 1: Error (a message on stderr says what is wrong)

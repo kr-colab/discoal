@@ -51,9 +51,9 @@ parameters:
 	 -ea time daughterPopnID founderPopnID1 founderPopnID2 admixProp (admixture-- back in time daughterPopnID into two founders)
 	 -em time popnID1 popnID2 migRate (changes migration rate from popnID1 to popnID2 starting at time)
 	 -eM time migRate (sets all off-diagonal migration rates to migRate starting at time)
-	 -ws tau (sweep happend tau generations ago- stochastic sweep)
-	 -wd tau (sweep happend tau generations ago- deterministic sweep)
-	 -wn tau (sweep happend tau generations ago- neutral sweep)
+	 -ws tau (sweep ended tau ago, in units of 4N0 generations; stochastic sweep)
+	 -wd tau (sweep ended tau ago, in units of 4N0 generations; deterministic sweep)
+	 -wn tau (sweep ended tau ago, in units of 4N0 generations; neutral sweep)
 	 -ls tau leftRho (stochastic sweep some genetic distance to the left of the simulated window--at 4Nr = 2 x leftRho)
 		 similarly, ld and ln simulate deterministic and neutral sweeps to the left of the window, respectively
 	 -f first frequency at which selection acts on allele (F0; sweep models only)

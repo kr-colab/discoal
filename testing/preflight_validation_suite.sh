@@ -210,6 +210,11 @@ run_fail_case "ed_population_out_of_range" \
     "population 4 must be between 0 and 1" \
     4 1 100 -t 1 -p 2 2 2 -ed 1 0 4
 
+# A -ts filename longer than the buffer stops with a message.
+run_fail_case "ts_filename_too_long" \
+    "the -ts filename is too long" \
+    4 1 100 -t 1 -ts "$(printf 'a%.0s' $(seq 1 1100)).trees"
+
 # The most negative int is a population index like any other, not a mark
 # for "all populations".
 run_fail_case "A_population_int_min" \
@@ -384,7 +389,7 @@ run_pass_case "en_other_population_recurrent_sweeps" \
 
 # A soft sweep (-f) under many size changes of population 0: the model of
 # issue #30, cut to its size changes before time 1.0. Its trajectory below
-# f0 could fail to end, and the run stopped with "trajectory too bigly".
+# f0 could fail to end, and the run stopped at the trajectory-length limit.
 # It must run. With 8 replicates, the bug shows for most seeds.
 run_pass_case "soft_sweep_many_size_changes" \
     10 8 1000 -t 1 -r 1 -ws 0 -a 800 -f 0.1 -x 0.5 \

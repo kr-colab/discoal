@@ -499,7 +499,7 @@ int tskit_place_mutations_edge_based(double theta) {
     // First pass: estimate mutation count and allocate dynamically
     // Estimate based on total branch length * theta * sequence length
     double total_branch_length = 0.0;
-    for (tsk_id_t edge_id = 0; edge_id < tsk_tables->edges.num_rows; edge_id++) {
+    for (tsk_id_t edge_id = 0; edge_id < (tsk_id_t) tsk_tables->edges.num_rows; edge_id++) {
         tsk_id_t parent_id = tsk_tables->edges.parent[edge_id];
         tsk_id_t child_id = tsk_tables->edges.child[edge_id];
         double parent_time = tsk_tables->nodes.time[parent_id];
@@ -525,7 +525,7 @@ int tskit_place_mutations_edge_based(double theta) {
     int mutations_capacity = estimated_mutations;
     
     // Iterate through all edges and place mutations independently
-    for (tsk_id_t edge_id = 0; edge_id < tsk_tables->edges.num_rows; edge_id++) {
+    for (tsk_id_t edge_id = 0; edge_id < (tsk_id_t) tsk_tables->edges.num_rows; edge_id++) {
         // Get edge information
         double left = tsk_tables->edges.left[edge_id];
         double right = tsk_tables->edges.right[edge_id];

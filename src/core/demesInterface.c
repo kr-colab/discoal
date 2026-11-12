@@ -171,7 +171,7 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
     // The reference N for all scaling is the present-day size of the first
     // deme that exists at time 0.
     double referenceN = N;  // default if no deme exists at time 0
-    for (int i = 0; i < graph->n_demes; i++) {
+    for (int i = 0; i < (int) graph->n_demes; i++) {
         struct demes_deme *deme = &graph->demes[i];
         if (demeIsPresent(deme)) {
             referenceN = deme->epochs[deme->n_epochs - 1].end_size;
@@ -258,7 +258,7 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
     // demes, some migration, ancestry or pulse must connect them. This is a
     // coarse check; msprime reports the remaining cases at run time.
     int presentDayPops = 0;
-    for (int i = 0; i < graph->n_demes; i++) {
+    for (int i = 0; i < (int) graph->n_demes; i++) {
         if (demeIsPresent(&graph->demes[i])) presentDayPops++;
     }
     
@@ -266,7 +266,7 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
         VERBOSE_LOG("\nValidating population connectivity (%d present-day populations)...\n", presentDayPops);
         // Check if there's any migration
         int hasMigration = 0;
-        for (int i = 0; i < graph->n_migrations; i++) {
+        for (int i = 0; i < (int) graph->n_migrations; i++) {
             if (graph->migrations[i].rate > 0) {
                 hasMigration = 1;
                 break;
@@ -279,7 +279,7 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
         int hasCommonAncestor = 0;
         
         // Check specifically if present-day populations have ancestors
-        for (int i = 0; i < graph->n_demes; i++) {
+        for (int i = 0; i < (int) graph->n_demes; i++) {
             struct demes_deme *deme = &graph->demes[i];
             if (demeIsPresent(deme) && deme->n_ancestors > 0) {
                 hasCommonAncestor = 1;
@@ -316,7 +316,7 @@ int loadDemesFile(const char *filename, event **events, int *eventNumber, int *e
     // set (not 666) or migration is on. Splits, admixtures and pulses all
     // connect demes, so any of them sets tDiv.
     if (graph->n_pulses > 0) tDiv = 1.0;
-    for (int i = 0; i < graph->n_demes; i++) {
+    for (int i = 0; i < (int) graph->n_demes; i++) {
         if (graph->demes[i].n_ancestors > 0) {
             tDiv = 1.0;
             break;
@@ -363,7 +363,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
     VERBOSE_LOG("Generation time: %g\n", gt);
 
     // 1. Epoch sizes and growth, then single-ancestor splits.
-    for (int i = 0; i < graph->n_demes; i++) {
+    for (int i = 0; i < (int) graph->n_demes; i++) {
         struct demes_deme *deme = &graph->demes[i];
 
         VERBOSE_LOG("\nPopulation %d: '%s'\n", i, deme->name);
@@ -377,7 +377,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
             VERBOSE_LOG("\n");
         }
 
-        for (int j = 0; j < deme->n_epochs; j++) {
+        for (int j = 0; j < (int) deme->n_epochs; j++) {
             struct demes_epoch *epoch = &deme->epochs[j];
 
             if (epoch->selfing_rate > 0.0 || epoch->cloning_rate > 0.0) {
@@ -554,7 +554,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
 
     // 4. Demes with several ancestors. demes-c checks that the proportions
     // sum to 1, so the chain ends with a merge into the last ancestor.
-    for (int i = 0; i < graph->n_demes; i++) {
+    for (int i = 0; i < (int) graph->n_demes; i++) {
         struct demes_deme *deme = &graph->demes[i];
         if (deme->n_ancestors < 2) continue;
         appendSplitChain(events, eventNumber, eventsCapacity, graph,
@@ -565,7 +565,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
     // Present-day sizes. A deme that does not exist at time 0 gets size 0;
     // its size is set by the 'n' event where its last epoch ends.
     VERBOSE_LOG("\nPresent-day population sizes:\n");
-    for (int i = 0; i < graph->n_demes; i++) {
+    for (int i = 0; i < (int) graph->n_demes; i++) {
         struct demes_deme *deme = &graph->demes[i];
         struct demes_epoch *last = &deme->epochs[deme->n_epochs - 1];
         if (!demeIsPresent(deme)) {

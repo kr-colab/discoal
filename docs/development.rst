@@ -3,21 +3,6 @@ Development
 
 This section covers the development environment setup and testing procedures for contributing to discoal.
 
-Recent Improvements
--------------------
-
-Memory Optimizations
-^^^^^^^^^^^^^^^^^^^^
-
-The codebase has undergone significant memory optimizations:
-
-* **Ancestry tracking**: Replaced fixed-size ``ancSites`` arrays with dynamic ancestry segment trees
-* **Sample size limit increased**: Maximum sample size increased from 254 to 65,535
-* **Memory usage reduced**: 15-99% memory savings across different simulation scenarios
-* **Dynamic allocation**: All major data structures now use dynamic memory allocation
-
-These changes eliminate the need for the ``-DBIG`` compilation flag, which is now obsolete.
-
 Development Environment
 -----------------------
 
@@ -49,8 +34,11 @@ Setting Up the Environment
 The environment includes:
 
 * Python 3.12
-* msprime (for comparison testing)
-* Sphinx and sphinx-rtd-theme (for documentation)
+* msprime, tskit, numpy, scipy, demes and stdpopsim (for ``make check``)
+* matplotlib (for the scripts in ``examples/``)
+* Sphinx, sphinx-rtd-theme and myst-parser (for the documentation)
+
+discoal itself needs only a C compiler and make.
 
 Building discoal
 ----------------
@@ -60,7 +48,9 @@ With the development environment activated:
 .. code-block:: bash
 
    make clean
-   make discoal
+   make
+
+This builds ``build/discoal`` and links it as ``./discoal``.
 
 Testing
 -------
@@ -90,7 +80,7 @@ To run a specific test suite:
 
 **Test Coverage**
 
-The unit tests have 219 tests in 11 suites:
+The unit tests have 217 tests in 11 suites:
 
 ==============================  =====  ============================================================
 suite                           tests  what it tests
@@ -104,7 +94,7 @@ suite                           tests  what it tests
 ``test_fenwick.c``              4      the Fenwick tree of recombination weights
 ``test_shapes.c``               64     size and migration shapes: constant, exponential, linear
 ``test_alleleTraj.c``           5      sweep trajectories
-``test_trajectory.c``           6      trajectory files: capacity, cleanup
+``test_trajectory.c``           4      trajectory files: mapping, cleanup
 ``test_config_interface.c``     102    the YAML parser and its checks
 ==============================  =====  ============================================================
 
@@ -168,10 +158,7 @@ The tests use the official Unity test framework (https://github.com/ThrowTheSwit
 * Clear failure messages with file and line information
 * Test fixtures with setUp/tearDown support
 
-The framework files are located in ``test/unit/``:
-* ``unity.h`` - Main header file
-* ``unity.c`` - Implementation
-* ``unity_internals.h`` - Internal definitions
+The framework files are in ``extern/Unity/src/``.
 
 **Quick Testing Reference**
 
