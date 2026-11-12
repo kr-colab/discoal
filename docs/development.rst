@@ -113,7 +113,7 @@ The unit test suite includes 49 tests across 7 test files:
 4. **Node Fields** (``test_mutations.c`` - 3 tests):
    
    * Basic node creation and field validation
-   * Node state tracking (parentsRecorded, isFullyRecorded, etc.)
+   * Node state tracking (nodesIndex, etc.)
    * Ancestry-related fields testing
 
 5. **Ancestry Segment Trees** (``test_ancestry_segment.c`` - 13 tests):

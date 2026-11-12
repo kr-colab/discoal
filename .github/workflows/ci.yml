@@ -289,6 +289,16 @@ jobs:
         valgrind --leak-check=full --errors-for-leak-kinds=definite --error-exitcode=1 \
           ./build/discoal 10 1 100 -t 10 -r 10 > /dev/null
 
+    # Full ARG recording (-F) during a sweep: every node, also a sample node
+    # that recombines in the sweep, must be freed. The seeds (-d 1 2) give
+    # such a recombination.
+    - name: Check for memory leaks in full ARG mode during a sweep
+      run: |
+        echo "=== Checking memory leaks with -ts -F and a sweep ==="
+        valgrind --leak-check=full --errors-for-leak-kinds=definite --error-exitcode=1 \
+          ./build/discoal 10 1 100 -t 10 -r 10 -ws 0 -a 500 -x 0.5 \
+          -d 1 2 -ts "$RUNNER_TEMP/leak.trees" -F > /dev/null
+
     - name: Check memory errors in the segment pool
       run: |
         echo "=== Checking the segment pool through several expansions ==="
