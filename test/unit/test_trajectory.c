@@ -49,20 +49,6 @@ int createTestTrajectoryFd(int numSteps) {
     return fd;
 }
 
-// Test ensureTrajectoryCapacity (deprecated function)
-void test_ensureTrajectoryCapacity_within_limit(void) {
-    // Should not crash for reasonable sizes
-    ensureTrajectoryCapacity(1000);
-    ensureTrajectoryCapacity(1000000);
-    ensureTrajectoryCapacity(499999999);  // Just under limit
-}
-
-void test_ensureTrajectoryCapacity_exceeds_limit(void) {
-    // This test would exit the program, so we can't test it directly
-    // Just verify the limit is what we expect
-    TEST_ASSERT_EQUAL(500000000, TRAJSTEPSTART);
-}
-
 // Test mmapAcceptedTrajectory
 void test_mmapAcceptedTrajectory_basic(void) {
     int numSteps = 1000;
@@ -126,8 +112,6 @@ void test_mmapAcceptedTrajectory_no_steps(void) {
 int main(void) {
     UNITY_BEGIN();
     
-    RUN_TEST(test_ensureTrajectoryCapacity_within_limit);
-    RUN_TEST(test_ensureTrajectoryCapacity_exceeds_limit);
     RUN_TEST(test_mmapAcceptedTrajectory_basic);
     RUN_TEST(test_mmapAcceptedTrajectory_replaces_previous);
     RUN_TEST(test_mapped_trajectory_file_is_anonymous);

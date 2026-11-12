@@ -483,7 +483,7 @@ int main(int argc, const char * argv[]){
 					int ret = snprintf(replicate_filename, sizeof(replicate_filename), 
 						"%.*s_rep%d%s", prefix_len, tskitOutputFilename, replicate_num, dot);
 					if (ret >= sizeof(replicate_filename)) {
-						fprintf(stderr, "Error: Output filename too long\\n");
+						fprintf(stderr, "Error: Output filename too long\n");
 						exit(1);
 					}
 				} else {
@@ -491,7 +491,7 @@ int main(int argc, const char * argv[]){
 					int ret = snprintf(replicate_filename, sizeof(replicate_filename), 
 						"%s_rep%d", tskitOutputFilename, replicate_num);
 					if (ret >= sizeof(replicate_filename)) {
-						fprintf(stderr, "Error: Output filename too long\\n");
+						fprintf(stderr, "Error: Output filename too long\n");
 						exit(1);
 					}
 				}
@@ -905,6 +905,11 @@ void getParameters(int argc,const char **argv){
 					}
 					exit(1);
 				}
+				if (strlen(argv[args]) >= sizeof(tskitOutputFilename)) {
+					fprintf(stderr, "Error: the -ts filename is too long (at most %zu characters)\n",
+						sizeof(tskitOutputFilename) - 1);
+					exit(1);
+				}
 				strcpy(tskitOutputFilename, argv[args]);
 			}
 			else {  // -t flag for theta
@@ -978,7 +983,7 @@ void getParameters(int argc,const char **argv){
 			case 'p' :
 			npops = parseIntArg(argc, argv, &args, "-p");
 			if(npops > MAXPOPS){
-				fprintf(stderr,"Error: too many populations defined. Current maximum number = %d. Change MAXPOPS define in discoal.h and recompile... if you dare\n",MAXPOPS);
+				fprintf(stderr,"Error: too many populations defined. Current maximum number = %d. Change MAXPOPS in discoal.h and recompile\n",MAXPOPS);
 				exit(1);
 			}
 			for(i=0;i<npops;i++){
@@ -1422,12 +1427,12 @@ void getParameters(int argc,const char **argv){
 	}
 	if(sweepEvents > 0){
 		if(recurSweepMode == 1){
-			printf("Error with event specification: a single sweep event has been found but recurrentSweep mode has been specified\n");
-			exit(666);
+			fprintf(stderr, "Error: a single sweep (-ws, -wd, -wn, -ls, -ld, -ln, -S) cannot be combined with recurrent sweeps (-R, -L)\n");
+			exit(1);
 		}
 		if(nChangeCheck > 1 && sweepMode=='d'){
-			printf("Error with event specification: you chose 1 or more population size changes with a deterministic sweep. Please us -ws flag instead\n");
-			exit(666);
+			fprintf(stderr, "Error: a deterministic sweep (-wd) cannot be combined with more than one population size change (-en); use a stochastic sweep (-ws)\n");
+			exit(1);
 		}
 	}
 	const int softSweep = softSweepMode || priorF0;
@@ -1618,9 +1623,9 @@ void usage(){
 	fprintf(stderr,"\t -em time popnID1 popnID2 migRate (changes migration rate from popnID1 to popnID2 starting at time)\n");
 	fprintf(stderr,"\t -eM time migRate (sets all off-diagonal migration rates to migRate starting at time)\n");
 	
-	fprintf(stderr,"\t -ws tau (sweep happend tau generations ago- stochastic sweep)\n");  
-	fprintf(stderr,"\t -wd tau (sweep happend tau generations ago- deterministic sweep)\n"); 
-	fprintf(stderr,"\t -wn tau (sweep happend tau generations ago- neutral sweep)\n");
+	fprintf(stderr,"\t -ws tau (sweep ended tau ago, in units of 4N0 generations; stochastic sweep)\n");  
+	fprintf(stderr,"\t -wd tau (sweep ended tau ago, in units of 4N0 generations; deterministic sweep)\n"); 
+	fprintf(stderr,"\t -wn tau (sweep ended tau ago, in units of 4N0 generations; neutral sweep)\n");
 	fprintf(stderr,"\t -ls tau leftRho (stochastic sweep some genetic distance to the left of the simulated window--at 4Nr = 2 x leftRho)\n");
 	fprintf(stderr,"\t\t similarly, ld and ln simulate deterministic and neutral sweeps to the left of the window, respectively\n");
 	fprintf(stderr,"\t -f first frequency at which selection acts on allele (F0; sweep models only)\n");

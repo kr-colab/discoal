@@ -4,8 +4,15 @@ channels:
 dependencies:
   - python=3.12
   - msprime
+  - tskit
+  - numpy
+  - scipy
+  - demes
+  - stdpopsim
+  - pyyaml
+  - matplotlib
   - pip
   - pip:
       - sphinx>=8
       - sphinx-rtd-theme
-prefix: /home/adkern/miniforge3/envs/discoal_dev
+      - myst-parser

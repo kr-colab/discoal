@@ -1239,10 +1239,13 @@ int parse_output_block(struct output_config *cfg)
                     "output mode tree_sequence\n");
                 return EXIT_FAILURE;
             }
-            // FIXME: safer way to do this?
-            strncpy(tskitOutputFilename, cfg->tree_sequence_filename, 
-                sizeof(tskitOutputFilename) - 1);
-            tskitOutputFilename[sizeof(tskitOutputFilename) - 1] = '\0';
+            if (strlen(cfg->tree_sequence_filename) >= sizeof(tskitOutputFilename)) {
+                fprintf(stderr, "Error parsing config: tree_sequence_filename "
+                    "is too long (at most %zu characters)\n",
+                    sizeof(tskitOutputFilename) - 1);
+                return EXIT_FAILURE;
+            }
+            strcpy(tskitOutputFilename, cfg->tree_sequence_filename);
         }
     }
     return EXIT_SUCCESS;

@@ -30,9 +30,10 @@ Features
 * Multiple population models with migration and admixture
 * Various selection models including hard and soft sweeps
 * Partial sweeps and recurrent hitchhiking
-* Efficient memory usage with dynamic allocation
-* Support for up to 65,535 samples (increased from previous limit of 254)
-* Output compatible with ``ms`` format
+* Tree sequence output (tskit), or output in ``ms`` format
+* YAML configuration files and demes demographic models
+* Checked against msprime and SLiM
+* Up to 65,535 samples
 
 Quick Start
 -----------
@@ -42,7 +43,7 @@ Quick Start
    # Download and compile
    git clone https://github.com/kr-colab/discoal.git
    cd discoal
-   make discoal
+   make
 
    # Basic simulation: 10 samples, 5 replicates, 10000 sites, theta=10
    ./discoal 10 5 10000 -t 10

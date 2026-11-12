@@ -808,7 +808,7 @@ int recombineAtTimePopn(double cTime, int popn){
 		freeLineage(aNode);
 		return xOver;
 	}
-	return 666;
+	return -1;  /* no lineage has a span */
 }
 
 /* A gene conversion tract length: geometric on 1, 2, 3, ... with mean
@@ -1314,15 +1314,6 @@ double neutralPhaseGeneralPopNumber(double startTime, double endTime, double *si
 	return(cTime);
 }
 
-void ensureTrajectoryCapacity(long int requiredSize) {
-	// This function is now deprecated - we use file-based trajectories
-	// Keeping it for compatibility but it just checks size limits
-	if (requiredSize >= 500000000) {  // Match legacy limit
-		fprintf(stderr, "trajectory too bigly. step= %ld. killing myself gently\n", requiredSize);
-		exit(1);
-	}
-}
-
 /* Unmap and close the mapped sweep trajectory, if any. Its file is
  * anonymous (tmpfile), so closing it, or the end of the process however it
  * ends, removes it. */
@@ -1817,7 +1808,7 @@ double initialFreq, double *finalFreq, double alpha, double f0, double currentTi
 			
 			// Check trajectory size to prevent runaway
 			if (j >= TRAJSTEPSTART) {
-				fprintf(stderr, "trajectory too bigly. step= %ld. killing myself gently\n", j);
+				fprintf(stderr, "Error: the sweep trajectory is too long (%ld steps); check the sweep parameters\n", j);
 				fclose(trajFile);
 				exit(1);
 			}
@@ -2294,7 +2285,7 @@ int recombineAtTimePopnSweep(double cTime, int popn, int sp, double sweepSite, d
 			freeLineage(aNode);
 			return xOver;
 		}
-		return 666; //debuging
+		return -1;  /* no lineage of this class has a span */
 }
 
 int recombineToLeftPopnSweep(int popn, int sp, double popnFreq){
