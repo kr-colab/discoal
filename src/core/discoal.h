@@ -62,8 +62,6 @@ typedef struct rootedNode
 	tsk_id_t tskit_node_id;
 	
 	// Node state tracking for safe memory management
-	unsigned char parentsRecorded;  // Bit flags: left parent (bit 0), right parent (bit 1)
-	unsigned char isFullyRecorded;  // 1 when all genealogical info is in tskit
 	
 	// Population list tracking for O(1) node selection
 	int popListIndex;        // Index in population's node array (-1 if not in list)
@@ -216,7 +214,6 @@ float *currentTrajectory;
 long int currentTrajectoryStep, totalTrajectorySteps;
 
 // Node memory management statistics
-int freedNodeCount;
 
 // Memory-mapped trajectory support
 int trajectoryFd;              // Anonymous file of the mapped trajectory; -1 if none

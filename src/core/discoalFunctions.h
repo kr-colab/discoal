@@ -19,12 +19,10 @@ void cleanupSampleNodeIds();
 void initializeMuts(rootedNode *node, int capacity);
 void ensureMutsCapacity(rootedNode *node, int requiredSize);
 void cleanupMuts(rootedNode *node);
-void cleanupRemovedNodes();
 rootedNode *newRootedNode(double cTime, int popn);
 void releaseFreeLineages(void);
 
 // Node memory management
-void markParentRecorded(rootedNode *child, rootedNode *parent);
 void markLeafNodeRecorded(rootedNode *node);
 void cleanupRemainingNodes();
 

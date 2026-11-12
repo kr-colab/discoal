@@ -155,9 +155,6 @@ int main(int argc, const char * argv[]){
 			// fprintf(stderr, "Node cleanup completed\n");
 			// fprintf(stderr, "Node cleanup done\n");
 			
-			// Clean up removed nodes list
-			cleanupRemovedNodes();
-			
 			// Fast O(1) reset of segment pool between replicates
 			resetSegmentPool();
 			
@@ -530,11 +527,6 @@ int main(int argc, const char * argv[]){
 		i++;
 		// fprintf(stderr, "End of rep %d, i=%d, sampleNumber=%d\n", i, i, sampleNumber);
 		
-		// Debug: Print memory statistics (commented out for production)
-		// if (tskitOutputMode || minimalTreeSeq) {
-		// 	fprintf(stderr, "Replicate %d: Total nodes created: %d, Nodes freed during sim: %d, Net nodes: %d\n", 
-		// 	        i, totNodeNumber, freedNodeCount, totNodeNumber - freedNodeCount);
-		// }
 		
 		// Cleanup is now done at the beginning of each replicate to prevent overwrites
 		// No cleanup needed here between replicates
@@ -629,10 +621,6 @@ int main(int argc, const char * argv[]){
 	cleanupSampleNodeIds();
 	
 	// Debug: print freed node count
-	// if (freedNodeCount > 0) {
-	//	fprintf(stderr, "Debug: Freed %d nodes during simulation\n", freedNodeCount);
-	// }
-	
 	// Clean up segment pool
 	destroySegmentPool();
 	

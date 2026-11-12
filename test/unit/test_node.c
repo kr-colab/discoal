@@ -25,8 +25,6 @@ void setUp(void) {
     testNode->sweepPopn = 0;
     testNode->ancestryRoot = NULL;
     testNode->tskit_node_id = TSK_NULL;
-    testNode->parentsRecorded = 0;
-    testNode->isFullyRecorded = 0;
     testNode->nodesIndex = -1;
     testNode->popListIndex = -1;
 }
@@ -53,8 +51,6 @@ void test_node_initialization(void) {
     TEST_ASSERT_EQUAL(0, testNode->sweepPopn);
     TEST_ASSERT_NULL(testNode->ancestryRoot);
     TEST_ASSERT_EQUAL(TSK_NULL, testNode->tskit_node_id);
-    TEST_ASSERT_EQUAL(0, testNode->parentsRecorded);
-    TEST_ASSERT_EQUAL(0, testNode->isFullyRecorded);
     TEST_ASSERT_EQUAL(-1, testNode->nodesIndex);
     TEST_ASSERT_EQUAL(-1, testNode->popListIndex);
 }
@@ -88,8 +84,6 @@ void test_newRootedNode_creation(void) {
     TEST_ASSERT_EQUAL(-1, node->sweepPopn);
     TEST_ASSERT_NULL(node->ancestryRoot);
     TEST_ASSERT_EQUAL(TSK_NULL, node->tskit_node_id);
-    TEST_ASSERT_EQUAL(0, node->parentsRecorded);
-    TEST_ASSERT_EQUAL(0, node->isFullyRecorded);
     TEST_ASSERT_EQUAL(-1, node->nodesIndex);  /* not in nodes[] yet */
     TEST_ASSERT_EQUAL(0, node->nancSites);    /* no material yet */
     TEST_ASSERT_EQUAL(0, node->rLim);
