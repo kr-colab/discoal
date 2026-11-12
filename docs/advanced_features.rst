@@ -194,6 +194,7 @@ Build with ancestry verification:
 .. code-block:: bash
 
    make discoal_debug
-   ./discoal_debug 10 1 1000 -t 10 -r 10
+   ./build/discoal_debug 10 1 1000 -t 10 -r 10
 
-This enables additional checks for debugging genealogy construction.
+This builds the same program with debug symbols and no optimization, for
+gdb and valgrind.

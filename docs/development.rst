@@ -90,58 +90,23 @@ To run a specific test suite:
 
 **Test Coverage**
 
-The unit test suite includes 49 tests across 7 test files:
+The unit tests have 219 tests in 11 suites:
 
-1. **Node Operations** (``test_node.c`` - 3 tests):
-   
-   * Node initialization and property setting
-   * Creation of new rooted nodes
-   * Basic node structure validation
-
-2. **Event Handling** (``test_event.c`` - 2 tests):
-   
-   * Event structure initialization
-   * Event property manipulation
-
-3. **Node Operations** (``test_node_operations.c`` - 4 tests):
-   
-   * Creating and destroying nodes
-   * Adding and removing nodes from active set
-   * Node selection by population
-   * Population size tracking
-
-4. **Node Fields** (``test_mutations.c`` - 3 tests):
-   
-   * Basic node creation and field validation
-   * Node state tracking (nodesIndex, etc.)
-   * Ancestry-related fields testing
-
-5. **Ancestry Segment Trees** (``test_ancestry_segment.c`` - 13 tests):
-   
-   * Segment creation and validation
-   * Reference counting (retain/release)
-   * Shallow vs deep copying
-   * Tree merging and splitting operations
-   * Ancestry count queries
-   * NULL safety checks
-
-6. **Active Material Segments** (``test_active_segment.c`` - 12 tests):
-   
-   * Active material initialization
-   * Site activity queries
-   * Fixed region removal
-   * Segment coalescing
-   * Verification functions
-
-7. **Trajectory Handling** (``test_trajectory.c`` - 12 tests):
-   
-   * Trajectory capacity management
-   * File cleanup for rejected trajectories
-   * Memory-mapped trajectory files
-   * Large file handling
-   * File persistence and cleanup
-   * Concurrent trajectory management
-
+==============================  =====  ============================================================
+suite                           tests  what it tests
+==============================  =====  ============================================================
+``test_node.c``                 3      node creation and fields
+``test_event.c``                3      demographic event records
+``test_node_operations.c``      4      adding and removing nodes, choice by population, sizes
+``test_mutations.c``            3      node fields
+``test_ancestry_segment.c``     13     segment lists: copying, reference counts, merges, splits
+``test_active_segment.c``       12     sites without an MRCA: removal of fixed regions, queries
+``test_fenwick.c``              4      the Fenwick tree of recombination weights
+``test_shapes.c``               64     size and migration shapes: constant, exponential, linear
+``test_alleleTraj.c``           5      sweep trajectories
+``test_trajectory.c``           6      trajectory files: capacity, cleanup
+``test_config_interface.c``     102    the YAML parser and its checks
+==============================  =====  ============================================================
 
 **Building Individual Tests**
 
@@ -165,7 +130,7 @@ When adding new functionality:
 
 **Test Infrastructure**
 
-* Unity test framework is automatically downloaded to ``extern/Unity/`` on first build
+* The Unity test framework is in ``extern/Unity/``
 * ``test_globals.c`` provides minimal global variables (seed1, seed2, currentSize) needed for tests
 * Tests compile with actual discoal source code (no mocks) for integration testing
 

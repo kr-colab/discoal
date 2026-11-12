@@ -4,9 +4,6 @@
 // A. Kern 10/3/14
 //
 
-
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -32,8 +29,6 @@
 #include "demesInterface.h"
 #include "configInterface.h"
 
-
-
 int locusNumber;
 int leftRhoFlag=0;
 int recurrentLeftOfLocus=0;
@@ -42,7 +37,6 @@ int demesModelLoaded=0;
 double *currentSize;
 long seed1, seed2;
 double nextTime, currentFreq;
-//float *currentTrajectory;
 
 void getParameters(int argc,const char **argv);
 void usage();
@@ -84,15 +78,12 @@ void ensureEventsCapacity() {
 }
 
 int main(int argc, const char * argv[]){
-	int i,j,k, totalSimCount;
-	float tempSite;
-	int lastBreak;
+	int i,j, totalSimCount;
 	
 	getParameters(argc,argv);
 	/* Snapshot for per-replicate restore in initialize(); see currentSizeConst. */
 	for (i = 0; i < MAXPOPS; i++) currentSizeConst[i] = currentSize[i];
 	double N = EFFECTIVE_POPN_SIZE; // effective population size
-	// fprintf(stderr, "DEBUG: About to call setall() with seeds: %ld, %ld\n", seed1, seed2);
 	setall(seed1, seed2 );
 	
 	// Store command line for tskit provenance after parsing (now we know if -ts was used)
@@ -116,33 +107,14 @@ int main(int argc, const char * argv[]){
 	size_t initial_pool_size = calculateInitialPoolSize(sampleSize, rho, nSites);
 	initSegmentPool(initial_pool_size);
 
-	// fprintf(stderr, "Starting simulation with %d replicates\n", sampleNumber);
 	while(i < sampleNumber){
-		// fprintf(stderr, "Replicate %d/%d\n", i+1, sampleNumber);
-		// fprintf(stderr, "Loop start: i=%d, sampleNumber=%d, continuing=%d\n", i, sampleNumber, i < sampleNumber);
-		// fprintf(stderr, "REP %d\n", i+1);
-		// fprintf(stderr, "DEBUG: Starting replicate %d of %d\n", i+1, sampleNumber);
 		// Clean up from previous replicate if not the first one
 		if (i > 0) {
-			// fprintf(stderr, "DEBUG: Cleaning up after replicate %d, nodesCapacity=%d\n", i, nodesCapacity);
-			// fprintf(stderr, "Starting cleanup for rep %d\n", i+1);
-			// fprintf(stderr, "Starting cleanup for rep %d, totNodeNumber=%d\n", i+1, totNodeNumber);
-			// fprintf(stderr, "Debug: Cleaning up %d total nodes from previous replicate\n", totNodeNumber);
-			// fprintf(stderr, "Starting node cleanup, totNodeNumber=%d\n", totNodeNumber);
-			// Clean all nodes in the array, not just up to totNodeNumber
-			// This ensures we don't leave any nodes from previous replicates
-			int non_null_count = 0;
+			// Free every node left in the array by the previous replicate
 			for (int cleanup_i = 0; cleanup_i < nodesCapacity; cleanup_i++) {
-				if (nodes[cleanup_i] != NULL) non_null_count++;
-				// if (cleanup_i % 500 == 0) {
-				// 	fprintf(stderr, "Cleaning node %d/%d\n", cleanup_i, cleanup_limit);
-				// }
 				if (nodes[cleanup_i] != NULL) {
 					// Free ancestry segments if they exist
 					if (nodes[cleanup_i]->ancestryRoot) {
-						// if (cleanup_i >= 1000 && cleanup_i < 1010) {
-						// 	fprintf(stderr, "  Freeing ancestry tree for node %d\n", cleanup_i);
-						// }
 						freeSegmentTree(nodes[cleanup_i]->ancestryRoot);
 						nodes[cleanup_i]->ancestryRoot = NULL;
 					}
@@ -151,45 +123,29 @@ int main(int argc, const char * argv[]){
 					nodes[cleanup_i] = NULL;
 				}
 			}
-			// fprintf(stderr, "DEBUG: Found %d non-null nodes to clean\n", non_null_count);
-			// fprintf(stderr, "Node cleanup completed\n");
-			// fprintf(stderr, "Node cleanup done\n");
 			
 			// Fast O(1) reset of segment pool between replicates
 			resetSegmentPool();
 			
 			cleanupPopLists();
-			// fprintf(stderr, "PopLists cleanup done\n");
 			cleanupSampleNodeIds();  // Clean up sample node IDs between replicates
-			// fprintf(stderr, "SampleNodeIds cleanup done\n");
-			// fprintf(stderr, "Cleanup done for rep %d\n", i+1);
 		}
 		
-		// fprintf(stderr, "About to initialize trajectory variables\n");
 		// Initialize all trajectory-related variables
 		initializeTrajectoryVariables(N);
 		
 		// Always initialize tskit for each replicate (must be before initialize())
-		// Debug output commented out for production
-		// if (tskitOutputMode && i == 0) {
-		//	fprintf(stderr, "Initializing tskit with sequence length %d (replicate %d)\n", nSites, i+1);
-		// }
-		// fprintf(stderr, "DEBUG: About to call tskit_initialize\n");
 		int ret = tskit_initialize((double)nSites);
 		if (ret != 0) {
 			fprintf(stderr, "Error initializing tskit: %s\n", tsk_strerror(ret));
 			exit(1);
 		}
-		// fprintf(stderr, "DEBUG: tskit_initialize returned %d\n", ret);
 		
-		// fprintf(stderr, "Calling initialize() for rep %d\n", i+1);
 		initialize();
 
 		j=0;
 		activeSweepFlag = 0;
 		currentTime = 0;  // Reset current time for new replicate
-		// fprintf(stderr, "Before event loop: i=%d, eventNumber=%d, alleleNumber=%d\n", i, eventNumber, alleleNumber);
-		// fprintf(stderr, "DEBUG: Before event loop, eventNumber=%d, alleleNumber=%d\n", eventNumber, alleleNumber);
 		for(j=0;j<eventNumber && alleleNumber > 1;j++){
 			currentEventNumber=j; //need this annoying global for trajectory generation
 			if(j == eventNumber - 1){
@@ -199,8 +155,6 @@ int main(int argc, const char * argv[]){
 			else{
 				nextTime = events[j+1].time;
 			}
-			// printf("type: %c popID: %d size: %f currentTime: %f nextTime: %f alleleNumber: %d\n",events[j].type,events[j].popID,events[j].popnSize,
-			//	currentTime,nextTime,alleleNumber);	
 			switch(events[j].type){
 				case 'n':
 				currentTime = events[j].time;
@@ -209,7 +163,6 @@ int main(int argc, const char * argv[]){
 				popShape[events[j].popID].anchor_value = events[j].popnSize;
 				popShape[events[j].popID].rate_param = 0.0;
 				popShape[events[j].popID].anchor_time = events[j].time;
-				//for(i=0;i<npops;i++)
 				if(activeSweepFlag == 0){
 					if(recurSweepMode ==0){
 						currentTime = neutralPhaseGeneralPopNumber(currentTime, nextTime, currentSize);
@@ -232,8 +185,6 @@ int main(int argc, const char * argv[]){
                                                		currentTime = recurrentSweepPhaseGeneralPopNumber(currentTime, nextTime, &currentFreq, alpha, sweepMode, currentSize);
 					}
 				}
-			//	printf("pn0:%d pn1:%d alleleNumber: %d sp1: %d sp2: %d \n", popnSizes[0],popnSizes[1], alleleNumber,sweepPopnSizes[1],
-			//							sweepPopnSizes[0]);
 				break;
 				case 'g':
 				currentTime = events[j].time;
@@ -329,23 +280,18 @@ int main(int argc, const char * argv[]){
 				assert(activeSweepFlag == 0);
 				currentTime = events[j].time;
 				currentFreq = sweepStartFreq(currentTime);
-			//	printf("event%d currentTime: %f nextTime: %f popnSize: %f\n",j,currentTime,nextTime,currentSize);
 
 				sampleSweepTrajectory(currentEventNumber, currentSize, sweepMode,
 					currentFreq, &currentFreq, alpha, f0, currentTime);
 				
 				currentTime = sweepPhaseEventsConditionalTrajectory(currentTime, nextTime, sweepSite, \
 					 currentFreq, &currentFreq, &activeSweepFlag, alpha, currentSize, sweepMode, f0, uA);
-				//printf("currentFreqAfter: %f alleleNumber:%d currentTime:%f\n",currentFreq,alleleNumber,currentTime);
-				//printf("pn0:%d pn1:%d alleleNumber: %d sp1: %d sp2: %d \n", popnSizes[0],popnSizes[1], alleleNumber,sweepPopnSizes[1],
-				//			sweepPopnSizes[0]);
 				if (currentTime < nextTime)
                                         currentTime = neutralPhaseGeneralPopNumber(currentTime, nextTime, currentSize);
 						
 				break;
 				case 'p': //merging populations
 				currentTime = events[j].time;
-				//printf("here at P flag time=%f\n",currentTime);
 				mergePopns(events[j].popID, events[j].popID2);
 
 				if(activeSweepFlag == 0){
@@ -399,9 +345,7 @@ int main(int argc, const char * argv[]){
 				break;
 				case 'A':
 				currentTime = events[j].time;
-				//printAllActiveNodes();
 				addAncientSample(events[j].lineageNumber, events[j].popID, events[j].time, activeSweepFlag, currentFreq);
-				//printAllActiveNodes();
 				if(activeSweepFlag == 0){
 					if(recurSweepMode ==0){
 						currentTime = neutralPhaseGeneralPopNumber(currentTime, nextTime, currentSize);
@@ -454,7 +398,6 @@ int main(int argc, const char * argv[]){
 				fprintf(stderr, "Error: failed to write buffered tree sequence edges\n");
 				exit(1);
 			}
-			// fprintf(stderr, "Debug: Sorting tskit tables\n");
 			// Sort tables (required before simplification)
 			int ret = tsk_table_collection_sort(tsk_tables, NULL, 0);
 			if (ret != 0) {
@@ -473,7 +416,6 @@ int main(int argc, const char * argv[]){
 			}
 			
 			// Simplify to remove non-ancestral material
-			// fprintf(stderr, "Debug: Starting simplification with %d samples\n", sample_node_count);
 			tsk_id_t *node_map = malloc(tsk_tables->nodes.num_rows * sizeof(tsk_id_t));
 			if (node_map == NULL) {
 				fprintf(stderr, "Error: Failed to allocate memory for node map\n");
@@ -490,7 +432,6 @@ int main(int argc, const char * argv[]){
 				free(node_map);
 				exit(1);
 			}
-			// fprintf(stderr, "Debug: Simplification completed successfully\n");
 			
 			// Update the sample node IDs to reflect the new node numbers after simplification
 			for (int i = 0; i < sample_node_count; i++) {
@@ -502,12 +443,8 @@ int main(int argc, const char * argv[]){
 			free(samples);
 			free(node_map);
 		}
-		
-		// fprintf(stderr, "After event loop: i=%d, alleleNumber=%d\n", i, alleleNumber);
-		// fprintf(stderr, "DEBUG: After event loop, alleleNumber=%d\n", alleleNumber);
-		
+
 		//assign root
-	//	root = nodes[0];
 		// Place mutations using tskit edge-based algorithm
 		extern double theta;
 		if (tskit_place_mutations_edge_based(theta) < 0) {
@@ -516,18 +453,12 @@ int main(int argc, const char * argv[]){
 		}
 
 		// Hudson style output
-		//errorCheckMutations();
 		// Only generate MS output if not using tskit-only output mode
 		if (!tskitOutputMode) {
-			// fprintf(stderr, "About to call makeGametesMS for rep %d\n", i+1);
 			makeGametesMS(argc,argv);
 		}
-		//printf("rep: %d\n",i);
-		// fprintf(stderr, "DEBUG: Incrementing i from %d to %d\n", i, i+1);
 		i++;
-		// fprintf(stderr, "End of rep %d, i=%d, sampleNumber=%d\n", i, i, sampleNumber);
-		
-		
+
 		// Cleanup is now done at the beginning of each replicate to prevent overwrites
 		// No cleanup needed here between replicates
 		
@@ -581,9 +512,6 @@ int main(int argc, const char * argv[]){
 		// Clean up tskit for this replicate
 		tskit_cleanup();
 		
-		// fprintf(stderr, "After tskit_cleanup: i=%d\n", i);
-		// fprintf(stderr, "Debug: Completed replicate %d (i=%d, totalSimCount=%d, sampleNumber=%d)\n", 
-		//         totalSimCount + 1, i, totalSimCount, sampleNumber);
                 totalSimCount += 1;
 	}
 	
@@ -593,12 +521,9 @@ int main(int argc, const char * argv[]){
 		free(events);
 	
 	// Final cleanup after all replicates
-	// fprintf(stderr, "Debug: Final cleanup of nodes\n");
-	// int nodes_freed = 0;
 	// Clean all nodes in the array
 	for (int cleanup_i = 0; cleanup_i < nodesCapacity; cleanup_i++) {
 		if (nodes[cleanup_i] != NULL) {
-			// nodes_freed++;
 			// Free ancestry segments if they exist
 			if (nodes[cleanup_i]->ancestryRoot) {
 				freeSegmentTree(nodes[cleanup_i]->ancestryRoot);
@@ -609,7 +534,6 @@ int main(int argc, const char * argv[]){
 			nodes[cleanup_i] = NULL;
 		}
 	}
-	// fprintf(stderr, "Debug: Freed %d nodes in final cleanup\n", nodes_freed);
 	releaseFreeLineages();
 	cleanupPopLists();
 	
@@ -620,7 +544,6 @@ int main(int argc, const char * argv[]){
 	}
 	cleanupSampleNodeIds();
 	
-	// Debug: print freed node count
 	// Clean up segment pool
 	destroySegmentPool();
 	
@@ -773,7 +696,6 @@ static double parseDoubleArg(int argc, const char **argv, int *args, const char 
 	return val;
 }
 
-
 void getParameters(int argc,const char **argv){
 	int args;
 	int i,j;
@@ -789,16 +711,13 @@ void getParameters(int argc,const char **argv){
 	gcMean = 0;
 	theta = 0.0;
 	alpha = 0.0;
-	lambda = 0.0;
 	tau = 0;
-	ancestralSizeRatio = 1.0;
 	f0=0.0;
         uA=0.0;
 
 	/* setall() takes seeds in [1, 2147483562] and [1, 2147483398]. */
 	seed1 = (long) (devrand() % 2147483398) + 1;
 	seed2 = (long) (devrand() % 2147483398) + 1;
-	// fprintf(stderr, "DEBUG: Initial random seeds set: %ld, %ld\n", seed1, seed2);
 
 	EFFECTIVE_POPN_SIZE = 1000000;
 	sweepSite = 0.5;
@@ -807,9 +726,6 @@ void getParameters(int argc,const char **argv){
 	priorTheta=priorRho=priorAlpha=priorTau=priorX=priorF0=priorUA=priorC=0;
 	numPriorSizeChanges = 0;
 
-	eventFlag = 1;
-	outputStyle = 'h';
-	mask = 0;
 	migFlag = 0;
 	deltaTMod = 40;
 	recurSweepMode = 0;
@@ -914,14 +830,10 @@ void getParameters(int argc,const char **argv){
 		popnSizes[1]=0;
 		sampleSizes[0]=sampleSize;
 		sampleSizes[1]=0;
-		effectiveSampleSize = sampleSize;
 	} else {
 		// sampleSize/sampleSizes[]/popnSizes[] already set via apply_yaml_config;
 		// skip positional parsing and start the flag loop at argv[1].
 		args = 1;
-		if (sampleSize > 0) {
-			effectiveSampleSize = sampleSize;
-		}
 	}
 
 	while(args < argc){
@@ -1298,10 +1210,8 @@ void getParameters(int argc,const char **argv){
 			}
                         break;
 			case 'd' :
-			// fprintf(stderr, "DEBUG: Processing -d flag, overriding seeds\n");
 			seed1 = parseIntArg(argc, argv, &args, "-d");
 			seed2 = parseIntArg(argc, argv, &args, "-d");
-			// fprintf(stderr, "DEBUG: Seeds set by -d flag: %ld, %ld\n", seed1, seed2);
 			break;
 			case 'N' :
 			EFFECTIVE_POPN_SIZE = parseIntArg(argc, argv, &args, "-N");
@@ -1355,8 +1265,6 @@ void getParameters(int argc,const char **argv){
 		}
 		args++;
 	}
-	// fprintf(stderr, "DEBUG: Final seeds at end of getParameters: %ld, %ld\n", seed1, seed2);
-	// fprintf(stderr, "DEBUG: Final theta at end of getParameters: %f\n", theta);
 	expandAllPopulationEvents();
 	checkDemographicEvents();
 	sortEventArray(events,eventNumber);
@@ -1683,8 +1591,6 @@ void getParameters(int argc,const char **argv){
 	}
 	
 }
-		
-
 
 void usage(){
 	fprintf(stderr, "▗▄▄▄ ▗▄▄▄▖ ▗▄▄▖ ▗▄▄▖ ▗▄▖  ▗▄▖ ▗▖   \n");

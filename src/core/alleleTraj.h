@@ -8,10 +8,6 @@ double detSweepFreq(double t, double s);
  * detSweepFreq(tau, alpha) bit-exactly. */
 double detSweepFreqGeneral(double alpha, double A);
 
-double genicSelectionStochastic(double dt, double currentFreq, double alpha);
-double genicSelectionStochasticForwards(double dt, double currentFreq, double alpha);
-double coth(double x);
-double variablePopnSizeTraj(double dt, double currentFreq, double alpha, double h, double f);
 
 /* Forward declaration for ranf() */
 double ranf(void);

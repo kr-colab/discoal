@@ -258,53 +258,6 @@ PoolStats getPoolStatistics(void) {
     return g_pool.stats;
 }
 
-void printPoolStatistics(FILE *fp) {
-    if (!g_pool.initialized) {
-        fprintf(fp, "Segment pool not initialized\n");
-        return;
-    }
-    
-    PoolStats stats = getPoolStatistics();
-    
-    fprintf(fp, "\n=== Segment Pool Statistics ===\n");
-    fprintf(fp, "Total allocations:    %zu\n", stats.total_allocations);
-    fprintf(fp, "Total frees:          %zu\n", stats.total_frees);
-    fprintf(fp, "Currently in use:     %zu\n", stats.current_in_use);
-    fprintf(fp, "High water mark:      %zu\n", stats.high_water_mark);
-    fprintf(fp, "Pool capacity:        %zu\n", stats.pool_capacity);
-    fprintf(fp, "Pool expansions:      %zu\n", stats.expansions);
-    fprintf(fp, "Resets:               %zu\n", stats.resets);
-    fprintf(fp, "Memory usage:         %.2f MB\n", getPoolMemoryUsage() / (1024.0 * 1024.0));
-    fprintf(fp, "Efficiency:           %.1f%%\n", 
-            stats.pool_capacity > 0 ? 
-            (100.0 * stats.high_water_mark / stats.pool_capacity) : 0.0);
-}
-
-size_t getPoolMemoryUsage(void) {
-    if (!g_pool.initialized) return 0;
-    
-    size_t total = 0;
-    
-    // Segment storage
-    total += g_pool.total_segments * sizeof(AncestrySegment);
-    
-    // Management structures
-    total += g_pool.blocks_capacity * sizeof(AncestrySegment*);
-    total += g_pool.blocks_capacity * sizeof(size_t);
-    total += g_pool.free_capacity * sizeof(AncestrySegment*);
-    total += sizeof(SegmentPool);
-    
-    return total;
-}
-
-void trimSegmentPool(size_t target_size) {
-    if (!g_pool.initialized) return;
-    
-    // This is a placeholder for future implementation
-    // Would free unused blocks to reduce memory usage
-    // For now, we don't shrink the pool
-}
-
 #ifdef DEBUG_SEGMENT_POOL
 void validateSegmentPool(void) {
     if (!g_pool.initialized) return;

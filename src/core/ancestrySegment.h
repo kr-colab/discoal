@@ -12,7 +12,6 @@ typedef struct AncestrySegment {
     uint16_t count;  // number of lineages
     uint16_t refCount;  // Reference count for sharing (max 65535)
     uint8_t isLeaf;  // 1 if this is a leaf segment, 0 otherwise
-    uint8_t isRecorded;  // 1 if this segment has been recorded as edge in tskit, 0 otherwise
 } AncestrySegment;
 
 /* The span of a lineage's material that has not found its MRCA: the
@@ -73,11 +72,7 @@ typedef struct {
 gcSplitResult splitSegmentTreeForGeneConversion(AncestrySegment *root, int startPos, int endPos);
 
 // Debug operations
-void printSegmentTree(AncestrySegment *root, int depth);
-int verifySegmentTree(AncestrySegment *root, int nSites);
 
 // Recording status operations
-int areAllSegmentsRecorded(AncestrySegment *root);
-void markSegmentRecorded(AncestrySegment *seg);
 
 #endif

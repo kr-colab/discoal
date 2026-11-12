@@ -67,10 +67,12 @@ discoal_profile: libyaml demes-c libcyaml $(DISCOAL_DEPS)
 	@mkdir -p build
 	$(CC) $(CFLAGS) -g -fno-omit-frame-pointer -DUSE_XOSHIRO256PP -o build/discoal_profile $(DISCOAL_SOURCES) $(EXTERN_LIB) -lm -fcommon
 
-# Build debug version with ancestry verification
-discoal_debug: libyaml demes-c libcyaml $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_CORE)/discoal.h $(SRC_CORE)/discoalFunctions.h $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/ancestrySegment.h $(SRC_CORE)/activeSegment.c $(SRC_CORE)/activeSegment.h $(SRC_CORE)/shapes.h $(SRC_CORE)/shapes.c $(TSKIT_SOURCES)
+# The same program with debug symbols and no optimization, for gdb and
+# valgrind. It uses the same sources and random number generator as
+# discoal, so a seed gives the same run.
+discoal_debug: libyaml demes-c libcyaml $(DISCOAL_DEPS)
 	@mkdir -p build
-	$(CC) -O2 $(INCLUDE) -DDEBUG_ANCESTRY -o build/discoal_debug $(SRC_CORE)/discoal_multipop.c $(SRC_CORE)/discoalFunctions.c $(SRC_RNG)/ranlibComplete.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/activeSegment.c $(SRC_CORE)/shapes.c $(SRC_TSKIT)/tskitInterface.c $(SRC_CORE)/demesInterface.c $(SRC_CORE)/configInterface.c $(POOL_SOURCES) $(TSKIT_SOURCES) $(EXTERN_LIB) -lm -fcommon
+	$(CC) -O0 -g $(INCLUDE) -DUSE_XOSHIRO256PP -o build/discoal_debug $(DISCOAL_SOURCES) $(EXTERN_LIB) -lm -fcommon
 
 # make check: the checks that CI runs for every pull request, in one
 # command (see testing/README.md). Needs Python with msprime, tskit, numpy,
