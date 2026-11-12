@@ -317,7 +317,7 @@ void initialize(){
 	activeSites = nSites;
 	if (npops>1){
 		if(tDiv==666 && migFlag == 0){
-			fprintf(stderr,"tDiv or migration not set in population split model\n");
+			fprintf(stderr,"Error: with more than one population, the model needs migration (-M, -m, -em) or a join (-ed), so that all lineages can meet\n");
 			exit(1);
 		}
 	}

@@ -191,7 +191,7 @@ run_fail_case "en_negative_time" \
     4 1 100 -t 1 -en -1 0 0.5
 
 run_fail_case "eG_nan_rate" \
-    "the value (nan) must be a finite number" \
+    "Invalid numeric argument for -eG: 'nan'" \
     4 1 100 -t 1 -p 2 2 2 -M 1 -eG 0 nan
 
 run_fail_case "em_same_population" \
@@ -260,6 +260,50 @@ run_fail_case "unknown_u_option" \
 # Only the exact name -Y loads a file: -Yzzz is not a YAML run (it gets
 # the usage text, as any call with too few arguments), and after a full
 # command line it is an unknown option.
+# Values that are not finite, population indices of -m outside the model,
+# and sizes below the smallest model stop with a message. (-R inf ran
+# without end; -m 10 1000 1 wrote outside the migration matrix; 0
+# replicates gave no output and no message.)
+run_fail_case "R_infinite" \
+    "Invalid numeric argument for -R: 'inf'" \
+    4 1 1000 -R inf -a 100
+
+run_fail_case "t_overflow" \
+    "Invalid numeric argument for -t: '1e400'" \
+    4 1 100 -t 1e400
+
+run_fail_case "m_population_out_of_range" \
+    "-m 10 1000: the two populations must be different and between 0 and 1" \
+    4 1 100 -t 1 -p 2 2 2 -m 10 1000 1
+
+run_fail_case "m_same_population" \
+    "-m 1 1: the two populations must be different" \
+    4 1 100 -t 1 -p 2 2 2 -M 1 -m 1 1 2
+
+run_fail_case "zero_replicates" \
+    "the number of replicates (0) must be >= 1" \
+    10 0 100 -t 5
+
+run_fail_case "zero_sites" \
+    "the number of sites (0) must be >= 1" \
+    10 1 0 -t 5
+
+run_fail_case "one_sample" \
+    "the sample size (1) must be >= 2" \
+    1 1 100 -t 5
+
+run_fail_case "p_zero_populations" \
+    "-p needs at least 1 population" \
+    4 1 100 -t 1 -p 0
+
+run_fail_case "c_out_of_range" \
+    "-c (1.5) must be above 0 and below 1" \
+    10 1 100 -t 5 -ws 0 -a 100 -c 1.5
+
+run_fail_case "F_before_ts" \
+    "-F needs -ts before it" \
+    10 1 100 -t 5 -F
+
 run_fail_case "Y_name_with_suffix" \
     "usage: discoal" \
     -Yzzz "$REPO_ROOT/config_examples/basic_example.yaml"
@@ -739,11 +783,11 @@ run_fail_case "p_one_population_wrong_size" \
     20 1 1000 -t 5 -r 5 -p 1 10
 
 run_fail_case "ws_nan_with_Pu" \
-    "a sweep time (-ws, -wd, -wn, -ls, -ld, -ln) (nan) must be >= 0" \
+    "Invalid numeric argument for -ws: 'nan'" \
     20 2 1000 -t 5 -r 5 -ws nan -a 500 -Pu 0.05 0.1
 
 run_fail_case "x_nan" \
-    "-x (nan) must be in [0, 1]" \
+    "Invalid numeric argument for -x: 'nan'" \
     20 2 1000 -t 5 -r 5 -ws 0.01 -a 500 -x nan
 
 # A fixed value that a prior replaces is not used, so it is not checked.

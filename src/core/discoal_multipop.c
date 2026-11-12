@@ -689,12 +689,14 @@ static int parseIntArg(int argc, const char **argv, int *args, const char *optio
 	return (int)val;
 }
 
-/* A numeric value of an option; the whole argument must be a number. */
+/* A numeric value of an option; the whole argument must be a finite
+ * number (strtod() also reads "nan", "inf" and, as infinity, numbers too
+ * large for a double). */
 static double parseDoubleArg(int argc, const char **argv, int *args, const char *option) {
 	const char *arg = getNextArg(argc, argv, args, option);
 	char *endptr;
 	double val = strtod(arg, &endptr);
-	if (endptr == arg || *endptr != '\0') {
+	if (endptr == arg || *endptr != '\0' || !isfinite(val)) {
 		fprintf(stderr, "Error: Invalid numeric argument for %s: '%s'\n", option, arg);
 		exit(1);
 	}
@@ -919,8 +921,7 @@ void getParameters(int argc,const char **argv){
 		switch(argv[args][1]){
 			case 'F' :
 			if (!tskitOutputMode) {
-				fprintf(stderr, "Error: -F flag requires -ts to be specified first\n");
-				fprintf(stderr, "Usage: %s [options] -ts <filename.trees> -F\n", argv[0]);
+				fprintf(stderr, "Error: -F needs -ts before it, as in '-ts file.trees -F'\n");
 				exit(1);
 			}
 			minimalTreeSeq = 0;  // Disable minimal mode, use full recording
@@ -990,7 +991,7 @@ void getParameters(int argc,const char **argv){
 			break;
 			case 'M' :
 			if(npops==1){
-				fprintf(stderr,"Error: attempting to set migration but only one population! Be sure that 'm' flags are specified after 'p' flag\n");
+				fprintf(stderr,"Error: %s needs more than one population; give -p before %s\n", opt, opt);
 				exit(1);
 			}
 			migR = parseDoubleArg(argc, argv, &args, opt);
@@ -1009,17 +1010,26 @@ void getParameters(int argc,const char **argv){
 			case 'm' :
 			// -m flag for migration
 				if(npops==1){
-					fprintf(stderr,"Error: attempting to set migration but only one population! Be sure that 'm' flags are specified after 'p' flag\n");
+					fprintf(stderr,"Error: %s needs more than one population; give -p before %s\n", opt, opt);
 					exit(1);
 				}
 				i = parseIntArg(argc, argv, &args, opt);
 				j = parseIntArg(argc, argv, &args, opt);
 				migR = parseDoubleArg(argc, argv, &args, opt);
+				if (i < 0 || i >= npops || j < 0 || j >= npops || i == j) {
+					fprintf(stderr, "Error: -m %d %d: the two populations must be different and between 0 and %d (give -p before -m)\n",
+						i, j, npops - 1);
+					exit(1);
+				}
 				migMatConst[i][j]=migR;
 				migFlag = 1;
 			break;
 			case 'p' :
 			npops = parseIntArg(argc, argv, &args, opt);
+			if(npops < 1){
+				fprintf(stderr,"Error: -p needs at least 1 population (got %d)\n", npops);
+				exit(1);
+			}
 			if(npops > MAXPOPS){
 				fprintf(stderr,"Error: too many populations defined. Current maximum number = %d. Change MAXPOPS in discoal.h and recompile\n",MAXPOPS);
 				exit(1);
@@ -1276,7 +1286,7 @@ void getParameters(int argc,const char **argv){
 			partialSweepFinalFreq = parseDoubleArg(argc, argv, &args, opt);
             if (partialSweepFinalFreq <= 0.0 || partialSweepFinalFreq >= 1.0)
             {
-                fprintf(stderr,"partialSweepFinalFreq must be > 0 and < 1.0\n");
+                fprintf(stderr,"Error: -c (%g) must be above 0 and below 1\n", partialSweepFinalFreq);
                 exit(1);
             }
 			break;
@@ -1372,6 +1382,9 @@ void getParameters(int argc,const char **argv){
 				(double)gcMean, ">= 1 when the gene conversion rate is above 0, and >= 0"},
 			/* Ancestry counts are uint16_t. */
 			{sampleSize > 65535, "the sample size", (double)sampleSize, "<= 65535"},
+			{sampleSize < 2, "the sample size", (double)sampleSize, ">= 2"},
+			{sampleNumber < 1, "the number of replicates", (double)sampleNumber, ">= 1"},
+			{nSites < 1, "the number of sites", (double)nSites, ">= 1"},
 			{nSites > MAXSITES, "the number of sites", (double)nSites,
 				"<= " STRINGIFY(MAXSITES) " (MAXSITES, set at compile time)"},
 			{!priorAlpha && !(alpha >= 0.0), "-a", alpha, ">= 0"},
