@@ -79,9 +79,19 @@ void ensureEventsCapacity() {
 	}
 }
 
+/* At exit, flush stdout: a write error (a full disk, for example) must
+ * not end as success with cut-off output. */
+static void checkStdout(void){
+	if (fflush(stdout) != 0 || ferror(stdout)) {
+		fprintf(stderr, "Error: cannot write the output: %s\n", strerror(errno));
+		_exit(1);
+	}
+}
+
 int main(int argc, const char * argv[]){
 	int i,j;
 	
+	atexit(checkStdout);
 	getParameters(argc,argv);
 	/* Snapshot for per-replicate restore in initialize(); see currentSizeConst. */
 	for (i = 0; i < MAXPOPS; i++) currentSizeConst[i] = currentSize[i];
@@ -501,23 +511,7 @@ int main(int argc, const char * argv[]){
 			if (i == 0) {
 				fprintf(stderr, "Writing tree sequence to %s\n", replicate_filename);
 			}
-			/* Write to a temporary file in the same directory and rename
-			 * it, so that an interrupted run leaves no partial file under
-			 * the final name. */
-			char temp_filename[sizeof(replicate_filename) + 32];
-			snprintf(temp_filename, sizeof(temp_filename), "%s.tmp%ld",
-				replicate_filename, (long) getpid());
-			if (tskit_finalize(temp_filename) != 0) {
-				remove(temp_filename);
-				fprintf(stderr, "Error: cannot write the tree sequence %s\n", replicate_filename);
-				exit(1);
-			}
-			if (rename(temp_filename, replicate_filename) != 0) {
-				fprintf(stderr, "Error: cannot write the tree sequence %s: %s\n",
-					replicate_filename, strerror(errno));
-				remove(temp_filename);
-				exit(1);
-			}
+			if (tskit_finalize(replicate_filename) != 0) exit(1);
 		} else {
 			// No file output - just need to sort tables for internal consistency
 			// (tskit_finalize with NULL filename would fail)
@@ -560,12 +554,6 @@ int main(int argc, const char * argv[]){
 	// Clean up segment pool
 	destroySegmentPool();
 
-	/* A write error (a full disk, for example) must not end as success
-	 * with cut-off output. */
-	if (fflush(stdout) != 0 || ferror(stdout)) {
-		fprintf(stderr, "Error: cannot write the output: %s\n", strerror(errno));
-		return 1;
-	}
 	return(0);
 }
 
@@ -716,7 +704,8 @@ static double parseDoubleArg(int argc, const char **argv, int *args, const char 
 /* Every option name. An argument that is not one of them is an error:
  * the parser below looks only at the first letters, so without this check
  * -e, -P or -uX would be taken for another option or ignored. -s, -D and
- * -T are here so that the parser gives their own messages. */
+ * -T are here so that the parser gives their own messages. A new option
+ * goes here, in the parser of getParameters(), and in printUsage(). */
 static int isOption(const char *arg) {
 	static const char *const names[] = {
 		"-t", "-r", "-g", "-gr", "-p", "-Y", "-en", "-eg", "-eG", "-el",
@@ -800,9 +789,9 @@ void getParameters(int argc,const char **argv){
 	/* --help (also -help, and -h as the only argument) and --version (-V)
 	 * write to stdout and end with status 0, before anything else is read.
 	 * In a run, -h hides the selected SNP. */
+	const int onlyH = (argc == 2 && strcmp(argv[1], "-h") == 0);
 	for (i = 1; i < argc; i++) {
-		if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-help") == 0 ||
-		    (argc == 2 && strcmp(argv[i], "-h") == 0)) {
+		if (onlyH || strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-help") == 0) {
 			printUsage(stdout);
 			exit(0);
 		}
@@ -815,7 +804,7 @@ void getParameters(int argc,const char **argv){
 	// Locate -Y first so we can validate "-Y xor positional args" before
 	// doing any work. The positional form "sampleSize numReplicates nSites"
 	// and -Y are mutually exclusive: loading YAML and then running the
-	// positional parser would feed "-Y" or another flag into atoi() (when -Y
+	// positional parser would read "-Y" or another flag as a number (when -Y
 	// comes before the positional slots) or overwrite the per-pop state YAML
 	// just installed (when positional slots come first).
 	// -v must be known before the YAML file (and any demes file it names)
@@ -826,10 +815,12 @@ void getParameters(int argc,const char **argv){
 
 	int yaml_arg_idx = -1;
 	for (i = 1; i < argc; i++) {
-		if (argv[i][0] == '-' && argv[i][1] == 'Y') {
-			yaml_arg_idx = i;
-			break;
+		if (strcmp(argv[i], "-Y") != 0) continue;
+		if (yaml_arg_idx != -1) {
+			fprintf(stderr, "Error: -Y can be given only once\n");
+			exit(1);
 		}
+		yaml_arg_idx = i;
 	}
 	if (yaml_arg_idx != -1 && argc >= 2 && argv[1][0] != '-') {
 		fprintf(stderr,
@@ -871,11 +862,13 @@ void getParameters(int argc,const char **argv){
 	}
 
 	if (!yaml_config_loaded) {
+		/* The three positional arguments are argv[1 .. 3]; the options
+		 * start at argv[4]. */
 		args = 0;
 		sampleSize = parseIntArg(argc, argv, &args, "sampleSize");
 		sampleNumber = parseIntArg(argc, argv, &args, "numReplicates");
 		nSites = parseIntArg(argc, argv, &args, "nSites");
-		args = 4;
+		args++;
 
 		popnSizes[0]=sampleSize;
 		popnSizes[1]=0;
@@ -889,7 +882,7 @@ void getParameters(int argc,const char **argv){
 
 	while(args < argc){
 		// Skip YAML config arguments if already processed
-		if (argv[args][0] == '-' && argv[args][1] == 'Y') {
+		if (strcmp(argv[args], "-Y") == 0) {
 			args += 2;  // Skip -Y and its filename argument
 			continue;
 		}
@@ -934,7 +927,7 @@ void getParameters(int argc,const char **argv){
 			fprintf(stderr, "Note: Full tree sequence mode enabled (recording all edges including recombination)\n");
 			break;
 			case 'S' :
-			if (setSweepTrajectoryFile(getNextArg(argc, argv, &args, "-S")) != 0)
+			if (setSweepTrajectoryFile(getNextArg(argc, argv, &args, opt)) != 0)
 				exit(1);
 			break;
 			case 's' :
@@ -946,48 +939,43 @@ void getParameters(int argc,const char **argv){
 			case 't' :
 			if (argv[args][2] == 's') {  // -ts flag for tree sequence
 				tskitOutputMode = 1;
-				args++;
-				if (args >= argc || argv[args] == NULL || argv[args][0] == '-' || strlen(argv[args]) == 0) {
-					fprintf(stderr, "Error: -ts flag requires a filename argument\n");
-					fprintf(stderr, "Usage: %s [options] -ts <filename.trees>\n", argv[0]);
-					fprintf(stderr, "Example: %s 10 1 1000 -t 5 -ts output.trees\n", argv[0]);
-					if (args < argc && argv[args] != NULL && argv[args][0] == '-') {
-						fprintf(stderr, "Note: '%s' looks like another flag, not a filename\n", argv[args]);
-					}
+				const char *filename = getNextArg(argc, argv, &args, opt);
+				if (filename[0] == '\0' || filename[0] == '-') {
+					fprintf(stderr, "Error: -ts needs a filename, not '%s'; try 'discoal --help'\n", filename);
 					exit(1);
 				}
-				if (strlen(argv[args]) >= sizeof(tskitOutputFilename)) {
+				if (strlen(filename) >= sizeof(tskitOutputFilename)) {
 					fprintf(stderr, "Error: the -ts filename is too long (at most %zu characters)\n",
 						sizeof(tskitOutputFilename) - 1);
 					exit(1);
 				}
-				strcpy(tskitOutputFilename, argv[args]);
+				strcpy(tskitOutputFilename, filename);
 			}
 			else {  // -t flag for theta
-				theta = parseDoubleArg(argc, argv, &args, "-t");
+				theta = parseDoubleArg(argc, argv, &args, opt);
 			}
 			break;
 			case 'i' :
-			deltaTMod = parseDoubleArg(argc, argv, &args, "-i");
+			deltaTMod = parseDoubleArg(argc, argv, &args, opt);
 			break;
 			case 'r' :
-			rho = parseDoubleArg(argc, argv, &args, "-r");
+			rho = parseDoubleArg(argc, argv, &args, opt);
 			break;
 			case 'g' :
                         if (argv[args][2] == 'r')
                         {
-			  gammaCoRatio = parseDoubleArg(argc, argv, &args, "-gr");
-			  gcMean = parseIntArg(argc, argv, &args, "-gr");
+			  gammaCoRatio = parseDoubleArg(argc, argv, &args, opt);
+			  gcMean = parseIntArg(argc, argv, &args, opt);
                           gammaCoRatioMode = 1;
                         }
                         else
                         {
-			  my_gamma = parseDoubleArg(argc, argv, &args, "-g");
-			  gcMean = parseIntArg(argc, argv, &args, "-g");
+			  my_gamma = parseDoubleArg(argc, argv, &args, opt);
+			  gcMean = parseIntArg(argc, argv, &args, opt);
                         }
 			break;
 			case 'a' :
-			alpha = parseDoubleArg(argc, argv, &args, "-a");
+			alpha = parseDoubleArg(argc, argv, &args, opt);
 			break;
 			case 'D' :
 			fprintf(stderr,
@@ -996,9 +984,8 @@ void getParameters(int argc,const char **argv){
 				"demography.demes_filename instead. See "
 				"config_examples/demes_example.yaml.\n");
 			exit(1);
-			break;
 			case 'x' :
-			sweepSite = parseDoubleArg(argc, argv, &args, "-x");
+			sweepSite = parseDoubleArg(argc, argv, &args, opt);
 			sweepPositionGiven = 1;
 			break;
 			case 'M' :
@@ -1006,7 +993,7 @@ void getParameters(int argc,const char **argv){
 				fprintf(stderr,"Error: attempting to set migration but only one population! Be sure that 'm' flags are specified after 'p' flag\n");
 				exit(1);
 			}
-			migR = parseDoubleArg(argc, argv, &args, "-M");
+			migR = parseDoubleArg(argc, argv, &args, opt);
 			for(i=0;i<npops;i++){
 				for(j=0;j<npops;j++){
 					if(i!=j){
@@ -1025,20 +1012,20 @@ void getParameters(int argc,const char **argv){
 					fprintf(stderr,"Error: attempting to set migration but only one population! Be sure that 'm' flags are specified after 'p' flag\n");
 					exit(1);
 				}
-				i = parseIntArg(argc, argv, &args, "-m");
-				j = parseIntArg(argc, argv, &args, "-m");
-				migR = parseDoubleArg(argc, argv, &args, "-m");
+				i = parseIntArg(argc, argv, &args, opt);
+				j = parseIntArg(argc, argv, &args, opt);
+				migR = parseDoubleArg(argc, argv, &args, opt);
 				migMatConst[i][j]=migR;
 				migFlag = 1;
 			break;
 			case 'p' :
-			npops = parseIntArg(argc, argv, &args, "-p");
+			npops = parseIntArg(argc, argv, &args, opt);
 			if(npops > MAXPOPS){
 				fprintf(stderr,"Error: too many populations defined. Current maximum number = %d. Change MAXPOPS in discoal.h and recompile\n",MAXPOPS);
 				exit(1);
 			}
 			for(i=0;i<npops;i++){
-				sampleSizes[i] = parseIntArg(argc, argv, &args, "-p");
+				sampleSizes[i] = parseIntArg(argc, argv, &args, opt);
 				// Don't overwrite currentSize if it was already set (e.g., by demes)
 				// Only set to 1.0 if it's still 0 (uninitialized)
 				if (currentSize[i] == 0.0) {
@@ -1211,7 +1198,7 @@ void getParameters(int argc,const char **argv){
 				  pCUp=parseDoubleArg(argc, argv, &args, opt);
 				break;
                                 case 'r':
-                                  if (strlen(argv[args]) == 4 && argv[args][3] == 'e'){
+                                  if (strcmp(opt, "-Pre") == 0){
                                         priorRho = 2;
                                         pRhoMean=parseDoubleArg(argc, argv, &args, opt);
                                         pRhoUp=parseDoubleArg(argc, argv, &args, opt);
@@ -1228,7 +1215,7 @@ void getParameters(int argc,const char **argv){
 				  pAlphaUp=parseDoubleArg(argc, argv, &args, opt);
 				break;
 				case 'u':
-                                	if (strlen(argv[args]) == 4 && argv[args][3] == 'A'){
+                                	if (strcmp(opt, "-PuA") == 0){
 					  priorUA = 1;
 					  pUALow=parseDoubleArg(argc, argv, &args, opt);
 					  pUAUp=parseDoubleArg(argc, argv, &args, opt);
@@ -1253,23 +1240,23 @@ void getParameters(int argc,const char **argv){
 				/* -Pe1 / -Pe2 lowTime highTime lowSize highSize: a size
 				 * change of population 0 with uniform priors on time and
 				 * size. Both work the same way; the digit only names them. */
-				if (argv[args][3] == '1' || argv[args][3] == '2') {
-					double tLow = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
-					double tHigh = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
-					double sLow = parseDoubleArg(argc, argv, &args, opt);
-					double sHigh = parseDoubleArg(argc, argv, &args, opt);
-					if (addPriorSizeChange(opt, tLow, tHigh, sLow, sHigh, 0) != 0)
-						exit(1);
+				{
+				double tLow = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
+				double tHigh = userTimeToInternal(parseDoubleArg(argc, argv, &args, opt));
+				double sLow = parseDoubleArg(argc, argv, &args, opt);
+				double sHigh = parseDoubleArg(argc, argv, &args, opt);
+				if (addPriorSizeChange(opt, tLow, tHigh, sLow, sHigh, 0) != 0)
+					exit(1);
 				}
 				break;
 			}
                         break;
 			case 'd' :
-			seed1 = parseIntArg(argc, argv, &args, "-d");
-			seed2 = parseIntArg(argc, argv, &args, "-d");
+			seed1 = parseIntArg(argc, argv, &args, opt);
+			seed2 = parseIntArg(argc, argv, &args, opt);
 			break;
 			case 'N' :
-			EFFECTIVE_POPN_SIZE = parseIntArg(argc, argv, &args, "-N");
+			EFFECTIVE_POPN_SIZE = parseIntArg(argc, argv, &args, opt);
 			break;
 			case 'R' :
 			recurSweepMode = 1;
@@ -1311,12 +1298,10 @@ void getParameters(int argc,const char **argv){
 			fprintf(stderr, "Error: -T tree output mode has been removed.\n");
 			fprintf(stderr, "Use -ts <filename.trees> for tree sequence output instead.\n");
 			exit(1);
-			break;
 			default:
-			fprintf(stderr, "Error: Unknown option '-%c'\n", argv[args][1]);
-			fprintf(stderr, "Try '%s' without arguments for usage information.\n", argv[0]);
+			/* isOption() passed a name that no case handles. */
+			fprintf(stderr, "Error: internal error: option %s is not handled\n", opt);
 			exit(1);
-			break;
 		}
 		args++;
 	}

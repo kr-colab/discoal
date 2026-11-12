@@ -257,6 +257,21 @@ run_fail_case "unknown_u_option" \
     "Unknown option '-uX'" \
     10 1 100 -t 5 -uX 3
 
+# Only the exact name -Y loads a file: -Yzzz is not a YAML run (it gets
+# the usage text, as any call with too few arguments), and after a full
+# command line it is an unknown option.
+run_fail_case "Y_name_with_suffix" \
+    "usage: discoal" \
+    -Yzzz "$REPO_ROOT/config_examples/basic_example.yaml"
+
+run_fail_case "Y_name_with_suffix_after_arguments" \
+    "Unknown option '-Yzzz'" \
+    10 1 100 -t 5 -Yzzz "$REPO_ROOT/config_examples/basic_example.yaml"
+
+run_fail_case "Y_twice" \
+    "-Y can be given only once" \
+    -Y "$REPO_ROOT/config_examples/basic_example.yaml" -Y "$REPO_ROOT/config_examples/basic_example.yaml"
+
 run_fail_case "ts_directory_missing" \
     "cannot write the tree sequence" \
     10 1 100 -t 5 -ts /nonexistent-directory/x.trees
@@ -266,7 +281,7 @@ run_fail_case "ts_directory_missing" \
 check_status_stdout() {
     local name=$1 want_rc=$2 want_out=$3; shift 3
     local out rc
-    out=$("$@" 2>/dev/null); rc=$?
+    out=$(timeout "$CASE_TIMEOUT" "$@" 2>/dev/null); rc=$?
     if [ "$rc" -eq "$want_rc" ] && { [ -z "$want_out" ] || printf '%s' "$out" | grep -qF -- "$want_out"; }; then
         echo -e "${GREEN}PASS${NC} $name"; PASS=$((PASS + 1))
     else
