@@ -320,6 +320,91 @@ run_fail_case "ts_directory_missing" \
     "cannot write the tree sequence" \
     10 1 100 -t 5 -ts /nonexistent-directory/x.trees
 
+# Long option names. Each command below runs with the short names and with
+# the long names, which the help text gives ("  -t, --theta ..."), and the
+# two outputs must be identical. So the help text, the table of long names
+# and the parser agree. Together the commands use every option.
+declare -A LONG_NAME
+while read -r short long; do
+    LONG_NAME[$short]=$long
+done < <("$DISCOAL" --help | sed -n 's/^  \(-[A-Za-z0-9]*\), \(--[a-z-]*\).*/\1 \2/p')
+LONG_NAME[-ej]=--join
+USED_LONG=""
+check_long_names() {
+    local name=$1 tok; shift
+    local long=()
+    for tok in "$@"; do
+        if [ -n "${LONG_NAME[$tok]+set}" ]; then
+            long+=("${LONG_NAME[$tok]}"); USED_LONG="$USED_LONG ${LONG_NAME[$tok]}"
+        else
+            long+=("$tok")
+        fi
+    done
+    local outa outb
+    # stdout without its first line, the command line; an error gives none.
+    outa=$(timeout "$CASE_TIMEOUT" "$DISCOAL" "$@" 2>/dev/null | tail -n +2)
+    outb=$(timeout "$CASE_TIMEOUT" "$DISCOAL" "${long[@]}" 2>/dev/null | tail -n +2)
+    if [ -n "$outa" ] && [ "$outa" = "$outb" ]; then
+        echo -e "${GREEN}PASS${NC} $name"; PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} $name (short and long names differ, or no output)"
+        FAIL=$((FAIL + 1)); FAIL_NAMES+=("$name")
+    fi
+}
+check_long_names "long_names_neutral" \
+    20 2 10000 -t 10 -r 10 -g 5 50 -p 2 10 10 -M 1 -m 0 1 2 -en 0.1 0 0.5 \
+    -eg 0.2 1 2 -en 0.5 1 1 -em 0.6 1 0 0.5 -A 2 0 0.05 -ed 1.0 1 0 -d 1 2
+check_long_names "long_names_all_populations" \
+    20 2 10000 -t 10 -r 10 -gr 0.5 50 -p 2 10 10 -M 1 -eG 0 2 -eL 0.3 -0.5 \
+    -eM 0.5 0.2 -el 0.6 0 0 -ej 1.0 1 0 -v -d 1 2
+check_long_names "long_names_admixture" \
+    20 2 10000 -t 10 -p 3 10 5 5 -ea 0.1 0 1 2 0.3 -ed 1.0 2 1 -d 1 2
+check_long_names "long_names_sweep" \
+    20 2 10000 -t 10 -r 10 -ws 0.01 -a 500 -x 0.5 -f 0.05 -c 0.8 -h \
+    -N 10000 -i 40 -d 1 2
+check_long_names "long_names_recurrent_mutation" \
+    20 2 10000 -t 10 -r 10 -wd 0.01 -a 500 -x 0.5 -uA 0.0001 -d 1 2
+check_long_names "long_names_neutral_fixation" \
+    20 2 10000 -t 10 -r 10 -wn 0.01 -x 0.5 -d 1 2
+check_long_names "long_names_linked_sweep" \
+    20 2 10000 -t 10 -r 10 -ls 0.01 20 -a 500 -d 1 2
+check_long_names "long_names_linked_deterministic" \
+    20 2 10000 -t 10 -r 10 -ld 0.01 20 -a 500 -d 1 2
+check_long_names "long_names_linked_neutral" \
+    20 2 10000 -t 10 -r 10 -ln 0.01 20 -d 1 2
+check_long_names "long_names_recurrent" \
+    20 2 10000 -t 10 -r 10 -R 2 -a 500 -d 1 2
+check_long_names "long_names_recurrent_linked" \
+    20 2 10000 -t 10 -r 10 -L 2 -a 500 -d 1 2
+check_long_names "long_names_trajectory_file" \
+    20 2 10000 -t 10 -r 10 -N 10000 -S "$REPO_ROOT/config_examples/trajectory_example.traj" -x 0.3 -d 1 2
+check_long_names "long_names_priors" \
+    20 3 10000 -Pt 5 15 -Pr 5 15 -ws 0.01 -Pa 100 500 -Pu 0 0.05 -Px 0.2 0.8 \
+    -Pf 0.01 0.05 -Pc 0.6 0.9 -PuA 0 0.0001 -Pe1 0.1 0.2 0.5 1 -Pe2 0.3 0.4 0.5 1 -d 1 2
+check_long_names "long_names_prior_rho_exponential" \
+    20 3 10000 -t 10 -Pre 10 100 -d 1 2
+check_long_names "long_names_config" \
+    -Y "$REPO_ROOT/config_examples/basic_example.yaml" -d 1 2
+LONG_TS_DIR=$(mktemp -d)
+check_long_names "long_names_tree_sequence" \
+    10 1 1000 -t 5 -r 5 -ts "$LONG_TS_DIR/a.trees" -F -d 1 2
+rm -r "$LONG_TS_DIR"
+# Every long name of the help text was used above.
+missing=""
+for long in "${LONG_NAME[@]}"; do
+    case " $USED_LONG " in *" $long "*) ;; *) missing="$missing $long" ;; esac
+done
+if [ "${#LONG_NAME[@]}" -ge 50 ] && [ -z "$missing" ]; then
+    echo -e "${GREEN}PASS${NC} long_names_all_used"; PASS=$((PASS + 1))
+else
+    echo -e "${RED}FAIL${NC} long_names_all_used (${#LONG_NAME[@]} names; not used:$missing)"
+    FAIL=$((FAIL + 1)); FAIL_NAMES+=("long_names_all_used")
+fi
+
+run_fail_case "unknown_long_option" \
+    "Unknown option '--thetas'" \
+    10 1 100 --thetas 5
+
 # --help and --version write to stdout and end with status 0; a write error
 # on stdout ends with status 1.
 check_status_stdout() {
