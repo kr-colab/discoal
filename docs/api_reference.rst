@@ -372,6 +372,11 @@ Exit Codes
   value that is missing or not a number, an option that does not exist,
   and output that cannot be written.
 
+Each option also has a long name, for example ``--theta`` for ``-t`` and
+``--size-change`` for ``-en``; ``discoal --help`` lists them. A long name
+is an exact synonym: it takes the same values in the same order. The long
+names follow the keys of the YAML configuration.
+
 ``discoal --help`` prints the usage text and ``discoal --version`` the
 version, both to stdout with exit code 0. In a run, ``-h`` hides the
 selected SNP.

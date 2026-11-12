@@ -707,7 +707,8 @@ static double parseDoubleArg(int argc, const char **argv, int *args, const char 
  * the parser below looks only at the first letters, so without this check
  * -e, -P or -uX would be taken for another option or ignored. -s, -D and
  * -T are here so that the parser gives their own messages. A new option
- * goes here, in the parser of getParameters(), and in printUsage(). */
+ * goes here, in longOptions[], in the parser of getParameters(), and in
+ * printUsage(). */
 static int isOption(const char *arg) {
 	static const char *const names[] = {
 		"-t", "-r", "-g", "-gr", "-p", "-Y", "-en", "-eg", "-eG", "-el",
@@ -720,6 +721,84 @@ static int isOption(const char *arg) {
 	for (size_t k = 0; k < sizeof(names) / sizeof(names[0]); k++)
 		if (strcmp(arg, names[k]) == 0) return 1;
 	return 0;
+}
+
+/* The long name of each option and the option it stands for. A long name
+ * is an exact synonym: the same values in the same order. The names
+ * follow the YAML keys. printUsage() lists them too. */
+static const struct { const char *longName, *option; } longOptions[] = {
+		{"--theta", "-t"},
+		{"--rho", "-r"},
+		{"--gene-conversion", "-g"},
+		{"--gene-conversion-ratio", "-gr"},
+		{"--populations", "-p"},
+		{"--migration", "-M"},
+		{"--migration-rate", "-m"},
+		{"--ancient-sample", "-A"},
+		{"--size-change", "-en"},
+		{"--exponential-growth", "-eg"},
+		{"--exponential-growth-all", "-eG"},
+		{"--linear-growth", "-el"},
+		{"--linear-growth-all", "-eL"},
+		{"--join", "-ed"},
+		{"--admixture", "-ea"},
+		{"--migration-change", "-em"},
+		{"--migration-change-all", "-eM"},
+		{"--sweep", "-ws"},
+		{"--sweep-deterministic", "-wd"},
+		{"--sweep-neutral", "-wn"},
+		{"--linked-sweep", "-ls"},
+		{"--linked-sweep-deterministic", "-ld"},
+		{"--linked-sweep-neutral", "-ln"},
+		{"--trajectory-file", "-S"},
+		{"--recurrent-sweeps", "-R"},
+		{"--recurrent-linked-sweeps", "-L"},
+		{"--alpha", "-a"},
+		{"--sweep-position", "-x"},
+		{"--initial-frequency", "-f"},
+		{"--beneficial-mutation-rate", "-uA"},
+		{"--final-frequency", "-c"},
+		{"--hide-selected-snp", "-h"},
+		{"--sweep-population-size", "-N"},
+		{"--sweep-time-step", "-i"},
+		{"--prior-theta", "-Pt"},
+		{"--prior-rho", "-Pr"},
+		{"--prior-rho-exponential", "-Pre"},
+		{"--prior-alpha", "-Pa"},
+		{"--prior-sweep-time", "-Pu"},
+		{"--prior-beneficial-mutation-rate", "-PuA"},
+		{"--prior-sweep-position", "-Px"},
+		{"--prior-initial-frequency", "-Pf"},
+		{"--prior-final-frequency", "-Pc"},
+		{"--prior-size-change", "-Pe1"},
+		{"--config", "-Y"},
+		{"--tree-sequence", "-ts"},
+		{"--full-arg", "-F"},
+		{"--seed", "-d"},
+		{"--verbose", "-v"},
+};
+
+/* The arguments with each long option name replaced by its option, so
+ * that the parser sees one name for each option. An argument that starts
+ * with "--" and is not a long name is left as it is; the parser reports
+ * it as an unknown option. */
+static const char **withShortNames(int argc, const char **argv) {
+	static const char **copy = NULL;
+	free(copy);
+	copy = malloc(sizeof(const char *) * (argc + 1));
+	if (copy == NULL) {
+		fprintf(stderr, "Error: out of memory\n");
+		exit(1);
+	}
+	for (int i = 0; i < argc; i++) {
+		copy[i] = argv[i];
+		if (argv[i][0] != '-' || argv[i][1] != '-') continue;
+		for (size_t k = 0; k < sizeof(longOptions) / sizeof(longOptions[0]); k++)
+			if (strcmp(argv[i], longOptions[k].longName) == 0)
+				copy[i] = longOptions[k].option;
+	}
+	copy[argc] = NULL;
+	return copy;
 }
 
 void getParameters(int argc,const char **argv){
@@ -792,6 +871,7 @@ void getParameters(int argc,const char **argv){
 	 * write to stdout and end with status 0, before anything else is read.
 	 * In a run, -h hides the selected SNP. */
 	const int onlyH = (argc == 2 && strcmp(argv[1], "-h") == 0);
+	argv = withShortNames(argc, argv);
 	for (i = 1; i < argc; i++) {
 		if (onlyH || strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-help") == 0) {
 			printUsage(stdout);
@@ -1671,91 +1751,131 @@ static void printUsage(FILE *out){
 		"  discoal 10 3 10000 -t 10 -r 10 -ts out.trees\n"
 		"      tree sequences (tskit)\n"
 		"\n"
+		"Each option has a short name, as in ms, and a long name; they do the same.\n"
+		"\n"
 		"Times are in units of 4N0 generations, sizes in units of N0, and theta,\n"
 		"rho and migration rates are 4N0 times the rate (as in ms). Populations are\n"
 		"numbered from 0.\n"
 		"\n"
 		"mutation and recombination:\n"
-		"  -t theta                4N0 u for the whole locus\n"
-		"  -r rho                  4N0 r for the whole locus (default 0)\n"
-		"  -g gamma tractLength    gene conversion: 4N0 g for the whole locus, and the\n"
+		"  -t, --theta theta       4N0 u for the whole locus\n"
+		"  -r, --rho rho           4N0 r for the whole locus (default 0)\n"
+		"  -g, --gene-conversion gamma tractLength\n"
+		"                          gene conversion: 4N0 g for the whole locus, and the\n"
 		"                          mean tract length in sites\n"
-		"  -gr ratio tractLength   gene conversion at ratio x rho\n"
+		"  -gr, --gene-conversion-ratio ratio tractLength\n"
+		"                          gene conversion at ratio x rho\n"
 		"\n"
 		"populations and samples:\n"
-		"  -p npops n1 n2 ...      number of populations and the sample size of each\n"
-		"  -M migRate              migration between all populations at migRate\n"
+		"  -p, --populations npops n1 n2 ...\n"
+		"                          number of populations and the sample size of each\n"
+		"  -M, --migration migRate\n"
+		"                          migration between all populations at migRate\n"
 		"                          (give -p first)\n"
-		"  -m pop1 pop2 migRate    migration from pop1 to pop2 (give -p first)\n"
-		"  -A n pop time           n of the samples of pop are ancient, taken at time\n"
+		"  -m, --migration-rate pop1 pop2 migRate\n"
+		"                          migration from pop1 to pop2 (give -p first)\n"
+		"  -A, --ancient-sample n pop time\n"
+		"                          n of the samples of pop are ancient, taken at time\n"
 		"\n"
 		"demographic events:\n"
-		"  -en time pop size       size of pop changes to size\n"
-		"  -eg time pop alpha      exponential growth of pop at rate alpha per 4N0\n"
+		"  -en, --size-change time pop size\n"
+		"                          size of pop changes to size\n"
+		"  -eg, --exponential-growth time pop alpha\n"
+		"                          exponential growth of pop at rate alpha per 4N0\n"
 		"                          generations (positive: smaller in the past)\n"
-		"  -eG time alpha          -eg for all populations\n"
-		"  -el time pop gamma      linear growth of pop; gamma is the change in size\n"
+		"  -eG, --exponential-growth-all time alpha\n"
+		"                          -eg for all populations\n"
+		"  -el, --linear-growth time pop gamma\n"
+		"                          linear growth of pop; gamma is the change in size\n"
 		"                          per 4N0 generations (positive: smaller in the past)\n"
-		"  -eL time gamma          -el for all populations\n"
-		"  -ed time pop1 pop2      pop1 joins pop2, backward in time (-ej is the same)\n"
-		"  -ea time pop src1 src2 prop\n"
+		"  -eL, --linear-growth-all time gamma\n"
+		"                          -el for all populations\n"
+		"  -ed, --join time pop1 pop2\n"
+		"                          pop1 joins pop2, backward in time (-ej is the same)\n"
+		"  -ea, --admixture time pop src1 src2 prop\n"
 		"                          admixture: backward in time a lineage of pop goes\n"
 		"                          to src1 with probability prop, else to src2\n"
-		"  -em time pop1 pop2 migRate\n"
+		"  -em, --migration-change time pop1 pop2 migRate\n"
 		"                          migration from pop1 to pop2 changes to migRate\n"
-		"  -eM time migRate        all migration rates change to migRate\n"
+		"  -eM, --migration-change-all time migRate\n"
+		"                          all migration rates change to migRate\n"
 		"\n"
 		"sweeps:\n"
-		"  -ws tau                 stochastic sweep that ended tau ago\n"
-		"  -wd tau                 deterministic sweep that ended tau ago\n"
-		"  -wn tau                 neutral fixation that ended tau ago\n"
-		"  -ls tau leftRho         stochastic sweep to the left of the locus, at a\n"
+		"  -ws, --sweep tau        stochastic sweep that ended tau ago\n"
+		"  -wd, --sweep-deterministic tau\n"
+		"                          deterministic sweep that ended tau ago\n"
+		"  -wn, --sweep-neutral tau\n"
+		"                          neutral fixation that ended tau ago\n"
+		"  -ls, --linked-sweep tau leftRho\n"
+		"                          stochastic sweep to the left of the locus, at a\n"
 		"                          distance of 4N0 r = 2 x leftRho\n"
-		"  -ld tau leftRho         as -ls, deterministic\n"
-		"  -ln tau leftRho         as -ls, neutral fixation\n"
-		"  -S file                 sweep whose trajectory is in file: lines of time\n"
+		"  -ld, --linked-sweep-deterministic tau leftRho\n"
+		"                          as -ls, deterministic\n"
+		"  -ln, --linked-sweep-neutral tau leftRho\n"
+		"                          as -ls, neutral fixation\n"
+		"  -S, --trajectory-file file\n"
+		"                          sweep whose trajectory is in file: lines of time\n"
 		"                          (increasing) and allele frequency, ending at 0\n"
-		"  -R rate                 recurrent sweeps in the locus; rate per 2N\n"
+		"  -R, --recurrent-sweeps rate\n"
+		"                          recurrent sweeps in the locus; rate per 2N\n"
 		"                          individuals per generation\n"
-		"  -L rate                 recurrent sweeps to the left of the locus, at a\n"
+		"  -L, --recurrent-linked-sweeps rate\n"
+		"                          recurrent sweeps to the left of the locus, at a\n"
 		"                          distance drawn uniformly from (0, 4Ns)\n"
-		"  -a alpha                strength of selection, 2Ns\n"
-		"  -x position             position of the selected site in the locus, 0 to 1\n"
-		"  -f f0                   soft sweep: selection starts at frequency f0\n"
-		"  -uA rate                soft sweep: rate of recurrent beneficial mutation\n"
-		"  -c frequency            partial sweep: final frequency of the allele\n"
-		"  -h                      hide the selected SNP of a partial sweep\n"
-		"  -N size                 effective population size during a sweep\n"
+		"  -a, --alpha alpha       strength of selection, 2Ns\n"
+		"  -x, --sweep-position position\n"
+		"                          position of the selected site in the locus, 0 to 1\n"
+		"  -f, --initial-frequency f0\n"
+		"                          soft sweep: selection starts at frequency f0\n"
+		"  -uA, --beneficial-mutation-rate rate\n"
+		"                          soft sweep: rate of recurrent beneficial mutation\n"
+		"  -c, --final-frequency frequency\n"
+		"                          partial sweep: final frequency of the allele\n"
+		"  -h, --hide-selected-snp\n"
+		"                          hide the selected SNP of a partial sweep\n"
+		"  -N, --sweep-population-size size\n"
+		"                          effective population size during a sweep\n"
 		"                          (default 1000000)\n"
-		"  -i dt                   time step of sweep trajectories, 1/(dt N)\n"
+		"  -i, --sweep-time-step dt\n"
+		"                          time step of sweep trajectories, 1/(dt N)\n"
 		"                          (default 40)\n"
 		"\n"
 		"priors (a value is drawn for each replicate):\n"
-		"  -Pt low high            theta, uniform\n"
-		"  -Pr low high            rho, uniform\n"
-		"  -Pre mean upperBound    rho, exponential, cut at upperBound\n"
-		"  -Pa low high            alpha, uniform\n"
-		"  -Pu low high            tau, uniform (give a sweep option too; its tau is\n"
+		"  -Pt, --prior-theta low high\n"
+		"                          theta, uniform\n"
+		"  -Pr, --prior-rho low high\n"
+		"                          rho, uniform\n"
+		"  -Pre, --prior-rho-exponential mean upperBound\n"
+		"                          rho, exponential, cut at upperBound\n"
+		"  -Pa, --prior-alpha low high\n"
+		"                          alpha, uniform\n"
+		"  -Pu, --prior-sweep-time low high\n"
+		"                          tau, uniform (give a sweep option too; its tau is\n"
 		"                          not used)\n"
-		"  -PuA low high           uA, uniform\n"
-		"  -Px low high            position of the selected site, uniform\n"
-		"  -Pf low high            f0, uniform\n"
-		"  -Pc low high            final frequency of a partial sweep, uniform\n"
-		"  -Pe1 lowTime highTime lowSize highSize\n"
+		"  -PuA, --prior-beneficial-mutation-rate low high\n"
+		"                          uA, uniform\n"
+		"  -Px, --prior-sweep-position low high\n"
+		"                          position of the selected site, uniform\n"
+		"  -Pf, --prior-initial-frequency low high\n"
+		"                          f0, uniform\n"
+		"  -Pc, --prior-final-frequency low high\n"
+		"                          final frequency of a partial sweep, uniform\n"
+		"  -Pe1, --prior-size-change lowTime highTime lowSize highSize\n"
 		"                          a size change of population 0: time and size,\n"
 		"                          uniform\n"
-		"  -Pe2 lowTime highTime lowSize highSize\n"
+		"  -Pe2, --prior-size-change lowTime highTime lowSize highSize\n"
 		"                          a second such size change\n"
 		"\n"
 		"input and output:\n"
-		"  -Y file                 read the model from a YAML file; a demes model\n"
+		"  -Y, --config file       read the model from a YAML file; a demes model\n"
 		"                          goes in demography.demes_filename\n"
-		"  -ts file                write tree sequences (tskit) to file; with several\n"
+		"  -ts, --tree-sequence file\n"
+		"                          write tree sequences (tskit) to file; with several\n"
 		"                          replicates, to file_rep1, file_rep2, ...\n"
-		"  -F                      with -ts (and after it): the full ARG, with the\n"
+		"  -F, --full-arg          with -ts (and after it): the full ARG, with the\n"
 		"                          nodes and edges of recombination\n"
-		"  -d seed1 seed2          seeds of the random number generator\n"
-		"  -v                      print progress and demes details to stderr\n"
+		"  -d, --seed seed1 seed2  seeds of the random number generator\n"
+		"  -v, --verbose           print progress and demes details to stderr\n"
 		"  --help                  print this text\n"
 		"  --version               print the version\n"
 		"\n"
