@@ -922,10 +922,8 @@ void getParameters(int argc,const char **argv){
 
 		struct discoal_config *config = NULL;
 		int ret = load_yaml_config(configFile, &config);
-		if (ret != EXIT_SUCCESS) {
-			fprintf(stderr, "Error: Failed to load YAML configuration file '%s'\n", configFile);
-			exit(1);
-		}
+		/* load_yaml_config() has printed the reason, with the file's name. */
+		if (ret != EXIT_SUCCESS) exit(1);
 
 		ret = apply_yaml_config(config);
 		if (ret != EXIT_SUCCESS) {

@@ -8,7 +8,7 @@
  * type is added without updating one of these switches, abort loudly rather
  * than silently returning a sentinel that would propagate as wrong rates. */
 static void unknownShape(const char *fn, int type) {
-    fprintf(stderr, "discoal: internal error: unhandled shape type %d in %s\n",
+    fprintf(stderr, "Error: internal error: unhandled shape type %d in %s\n",
             type, fn);
     exit(1);
 }
