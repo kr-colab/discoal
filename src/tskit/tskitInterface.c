@@ -533,7 +533,7 @@ int tskit_place_mutations_edge_based(double theta) {
     // Allocate mutations array dynamically
     temp_mutation_t *mutations = malloc(sizeof(temp_mutation_t) * estimated_mutations);
     if (mutations == NULL) {
-        fprintf(stderr, "Error: Failed to allocate memory for mutations array\\n");
+        fprintf(stderr, "Error: Failed to allocate memory for mutations array\n");
         return -1;
     }
     
@@ -575,14 +575,14 @@ int tskit_place_mutations_edge_based(double theta) {
                     if (new_capacity > MAXMUTS) new_capacity = MAXMUTS;
                     
                     if (mutation_count >= MAXMUTS) {
-                        fprintf(stderr, "Error: Too many mutations (limit: %d)\\n", MAXMUTS);
+                        fprintf(stderr, "Error: Too many mutations (limit: %d)\n", MAXMUTS);
                         free(mutations);
                         return -1;
                     }
                     
                     temp_mutation_t *new_mutations = realloc(mutations, sizeof(temp_mutation_t) * new_capacity);
                     if (new_mutations == NULL) {
-                        fprintf(stderr, "Error: Failed to expand mutations array\\n");
+                        fprintf(stderr, "Error: Failed to expand mutations array\n");
                         free(mutations);
                         return -1;
                     }
@@ -611,7 +611,7 @@ int tskit_place_mutations_edge_based(double theta) {
             // Create a new site for each mutation
             tsk_id_t site_id = tskit_add_site(mutations[i].position, "0");  // ancestral state is "0"
             if (site_id < 0) {
-                fprintf(stderr, "Error: Failed to add site at position %f\\n", mutations[i].position);
+                fprintf(stderr, "Error: Failed to add site at position %f\n", mutations[i].position);
                 free(mutations);
                 return -1;
             }
@@ -619,7 +619,7 @@ int tskit_place_mutations_edge_based(double theta) {
             // Add the mutation at this site on the appropriate node
             int ret = tskit_add_mutation(site_id, mutations[i].node_id, "1");  // derived state is "1"
             if (ret < 0) {
-                fprintf(stderr, "Error: Failed to add mutation at site %lld on node %lld\\n", 
+                fprintf(stderr, "Error: Failed to add mutation at site %lld on node %lld\n", 
                         (long long)site_id, (long long)mutations[i].node_id);
                 free(mutations);
                 return -1;

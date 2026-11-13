@@ -357,7 +357,7 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
         return -1;
     }
 
-    VERBOSE_LOG("\n=== DEMES TO DISCOAL CONVERSION DEBUG ===\n");
+    VERBOSE_LOG("\n=== Conversion of the demes model ===\n");
     VERBOSE_LOG("Reference N (first present-day deme): %g\n", N);
     VERBOSE_LOG("Number of populations: %d\n", *npops);
     VERBOSE_LOG("Generation time: %g\n", gt);
@@ -580,6 +580,6 @@ int convertDemesToEvents(struct demes_graph *graph, event **events, int *eventNu
     }
 
     VERBOSE_LOG("\nTotal events created: %d\n", *eventNumber - 1);
-    VERBOSE_LOG("=== END DEMES CONVERSION DEBUG ===\n\n");
+    VERBOSE_LOG("=== End of the conversion ===\n\n");
     return 0;
 }

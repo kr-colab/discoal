@@ -508,9 +508,7 @@ int main(int argc, const char * argv[]){
 				}
 			}
 			
-			if (i == 0) {
-				fprintf(stderr, "Writing tree sequence to %s\n", replicate_filename);
-			}
+			VERBOSE_LOG("Writing tree sequence to %s\n", replicate_filename);
 			if (tskit_finalize(replicate_filename) != 0) exit(1);
 		} else {
 			// No file output - just need to sort tables for internal consistency
@@ -924,10 +922,8 @@ void getParameters(int argc,const char **argv){
 
 		struct discoal_config *config = NULL;
 		int ret = load_yaml_config(configFile, &config);
-		if (ret != EXIT_SUCCESS) {
-			fprintf(stderr, "Error: Failed to load YAML configuration file '%s'\n", configFile);
-			exit(1);
-		}
+		/* load_yaml_config() has printed the reason, with the file's name. */
+		if (ret != EXIT_SUCCESS) exit(1);
 
 		ret = apply_yaml_config(config);
 		if (ret != EXIT_SUCCESS) {
@@ -1005,7 +1001,6 @@ void getParameters(int argc,const char **argv){
 				exit(1);
 			}
 			minimalTreeSeq = 0;  // Disable minimal mode, use full recording
-			fprintf(stderr, "Note: Full tree sequence mode enabled (recording all edges including recombination)\n");
 			break;
 			case 'S' :
 			if (setSweepTrajectoryFile(getNextArg(argc, argv, &args, opt)) != 0)
