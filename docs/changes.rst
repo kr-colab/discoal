@@ -217,6 +217,56 @@ more than one of ``-ws``, ``-wd``, ``-wn``, ``-ls``, ``-ld``, ``-ln`` and
 ``-S``.
 Recurrent sweeps (``-R``, ``-L``) are not affected.
 
+Lineages in a sweep
+^^^^^^^^^^^^^^^^^^^
+
+Three errors in the sweep phase changed diversity near a sweep (issue
+#164; found and fixed by Nate Pope in #165 and #166). discoal 2.0 corrects
+all three, and its hard sweep now agrees with an exact two-locus solver
+within 0.3% (markers at 0.1 and 0.2 units of s, alpha = 100), with the
+selected site at the end or in the middle of the locus. The output of all sweeps (``-ws``, ``-wd``, ``-wn``, ``-R``, soft and
+partial sweeps) changes.
+
+- **Background changes.** During a sweep, a lineage is on the beneficial or
+  the wild-type background. A crossover between the selected site and the
+  lineage's material moves the material to a parent whose background is a
+  draw from the population. When the selected site lay outside the material
+  that a lineage carries (for example after the material near the site had
+  found its common ancestor), discoal 0.1.x did not draw these crossovers,
+  nor the gene conversion tracts that cover the site and none of the
+  material, or all of the material and not the site. Lineages stayed on the
+  beneficial background too long.
+- **An event at the end of each sweep.** The sweep waits for its next event
+  in small steps of time. When the trajectory reached its last step, the
+  wait stopped, and discoal then carried out an event even if none had been
+  drawn: often a coalescence. This error is largest when the locus has
+  little recombination (on a locus of two sites, diversity next to the
+  selected site was 10% too low).
+- **The origin of the allele.** A new mutation is one copy, so at the end of
+  its trajectory the lineages that carry it have one ancestor. discoal let
+  those that were still apart continue into the neutral phase, which gave
+  too much diversity: about 1% for the markers above.
+
+The first two errors lowered diversity and the third raised it. Together,
+diversity near a sweep was 3 to 8% too low for the markers above. msprime's
+sweep model has the first and third errors, so for strong sweeps discoal
+and msprime now differ by more than before. Forward simulations in SLiM
+(``testing/slim_sweep_check.py``, alpha = 100) give more total branch
+length than discoal: about 2% more at N = 1000 (s = 0.1 per generation), and
+1% or less at N = 5000 (s = 0.02). This is the difference between
+Wright-Fisher generations and the diffusion, which becomes smaller with s.
+
+A fourth error was in the trajectory of a sweep from standing variation
+(``-f``). The allele becomes beneficial when its frequency first reaches f0,
+forward in time, and stays beneficial after that, also if its frequency
+falls below f0 again. Back in time, the beneficial phase therefore ends at
+the last passage of the frequency through f0. discoal ended it at the first,
+and so left out the times that the frequency fell below f0 and came back.
+Diversity near a soft sweep was up to 1.5% too low (f0 = 0.05, alpha = 100)
+against a forward simulation of the model
+(``testing/soft_sweep_check.py``). Deterministic trajectories (``-wd``)
+never come back above f0 and do not change.
+
 Other fixes that change the output
 ----------------------------------
 

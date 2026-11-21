@@ -164,6 +164,17 @@ jobs:
     - name: Check hard sweeps against msprime
       run: python testing/sweep_msprime_check.py --workers 4
 
+    # Diversity at the flank of a hard sweep against an exact solver of the
+    # two-locus dynamics (issue #164).
+    - name: Check the flank of a hard sweep against an exact solver
+      run: python testing/sweep_flank_check.py --workers 4
+
+    # A sweep from standing variation is beneficial from the first passage
+    # of its frequency through f0, forward in time, so back in time until
+    # the last passage; checked against a forward diffusion.
+    - name: Check soft sweeps against a forward diffusion
+      run: python testing/soft_sweep_check.py --workers 4
+
     # Gene conversion with tracts longer than the locus must match
     # crossover at twice its rate, in the neutral phase and in a sweep.
     - name: Check gene conversion against crossover

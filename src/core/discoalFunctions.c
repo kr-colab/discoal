@@ -1693,6 +1693,57 @@ complications like changing population size, or soft sweeps, etc.
 Returns the size of population 0 (relative to N) at the trajectory's end,
 the allele's origin. sampleSweepTrajectory() accepts or rejects the
 trajectory. */
+/* One step back in time of a stochastic sweep's frequency: selected
+ * ('s') or neutral ('N'), conditioned on fixation. */
+static double sweepStepBack(char sweepMode, double tInc, double x, double alphaEff){
+	if (sweepMode == 's')
+		return 1.0 - genicSelectionStochasticForwardsOptimized(tInc, 1.0 - x, alphaEff);
+	return neutralStochasticOptimized(tInc, x);
+}
+
+/* A sweep from standing variation became beneficial when its frequency
+ * first reached f0, forward in time, and stayed beneficial after that,
+ * also below f0. Back in time, the beneficial phase therefore ends at the
+ * last passage through f0, not the first: the path of a sweep from one
+ * copy after its first passage through f0 is the path of the sweep from
+ * f0. When the path back in time first falls to f0 or below (at x, time
+ * t), it is run ahead with the same steps until it comes back above f0 or
+ * reaches one copy. If it comes back, the steps belong to the beneficial
+ * phase: they go into buf and the number of steps is returned, with the
+ * last frequency in *xOut. If it reaches one copy first, the beneficial
+ * phase ends here: 0 is returned, and the steps are not used. The steps
+ * read population 0's size with the shapes in force at t; a size change in
+ * the next interval would start late, by at most the length of the
+ * excursion. */
+static long sweepExcursionBelowF0(char sweepMode, double x, double t, double tIncOrig,
+	double alpha, double minF, float **buf, long *cap, double *xOut){
+	const double N_0 = (double) EFFECTIVE_POPN_SIZE;
+	long m = 0;
+	for (;;) {
+		t += tIncOrig;
+		const double sr = sizeAt(0, t);
+		const double n = floor(N_0 * sr);
+		if (n < 1.0) return 0;
+		x = sweepStepBack(sweepMode, 1.0 / (deltaTMod * n), x, alpha * sr);
+		if (m >= *cap) {
+			long newCap = *cap ? *cap * 2 : 4096;
+			float *grown = realloc(*buf, (size_t) newCap * sizeof(float));
+			if (grown == NULL) {
+				fprintf(stderr, "Error: Failed to allocate memory for a sweep trajectory\n");
+				exit(1);
+			}
+			*buf = grown;
+			*cap = newCap;
+		}
+		(*buf)[m++] = (float) x;
+		if (x > minF) {
+			*xOut = x;
+			return m;
+		}
+		if (x <= 1.0 / (2.0 * n) || m >= TRAJSTEPSTART) return 0;
+	}
+}
+
 double proposeTrajectory(int currentEventNumber, char sweepMode, \
 double initialFreq, double alpha, double f0, double currentTime)
 {
@@ -1702,6 +1753,10 @@ double initialFreq, double alpha, double f0, double currentTime)
 	int i, insweepphase;
 	long int j;
 	double x;
+	/* Steps of an excursion below f0 (sweepExcursionBelowF0()). */
+	float *excursionBuf = NULL;
+	long excursionCap = 0;
+	double xAfterExcursion = 0.0;
 
 	/* Integrated alpha_eff for the closed-form general detSweepFreq under
 	 * non-constant shapes. Reset to 0 at function entry; updated in the
@@ -1799,6 +1854,7 @@ double initialFreq, double alpha, double f0, double currentTime)
 			double sr_now = sizeAt(0, currentTime + ttau);
 			N = floor(N_0 * sr_now);
 			tInc = 1.0 / (deltaTMod * N);
+			long excursion = 0;
 			if(x > minF && insweepphase){
 				//get next sweep allele freq
 				switch(sweepMode){
@@ -1820,6 +1876,14 @@ double initialFreq, double alpha, double f0, double currentTime)
 					case 'N':
 					x = neutralStochasticOptimized(tInc, x);
 					break;
+				}
+				/* A deterministic trajectory only falls, so it cannot come
+				 * back above f0. */
+				if (fromStandingVariation && sweepMode != 'd' && x <= minF) {
+					double xBack;
+					excursion = sweepExcursionBelowF0(sweepMode, x, currentTime + ttau,
+						tIncOrig, alpha, minF, &excursionBuf, &excursionCap, &xBack);
+					if (excursion > 0) xAfterExcursion = xBack;
 				}
 			}
 			else{
@@ -1844,6 +1908,25 @@ double initialFreq, double alpha, double f0, double currentTime)
 				bufferPos = 0;
 			}
 			j++;
+			/* The steps of an excursion below f0 that came back above it
+			 * follow, still in the beneficial phase. */
+			for (long k = 0; k < excursion; k++) {
+				if (j >= TRAJSTEPSTART) {
+					fprintf(stderr, "Error: the sweep trajectory is too long (%ld steps); check the sweep parameters\n", j);
+					fclose(trajFile);
+					exit(1);
+				}
+				writeBuffer[bufferPos++] = excursionBuf[k];
+				if (bufferPos >= 1024) {
+					fwrite(writeBuffer, sizeof(float), bufferPos, trajFile);
+					bufferPos = 0;
+				}
+				j++;
+			}
+			if (excursion > 0) {
+				ttau += excursion * tIncOrig;
+				x = xAfterExcursion;
+			}
 		}
 		/* The trajectory has ended: later events are not part of it, and a
 		 * later size change must not set its acceptance probability. */
@@ -1872,6 +1955,7 @@ double initialFreq, double alpha, double f0, double currentTime)
 
 	/* Restore popShape state — caller expects it unchanged. */
 	memcpy(popShape, saved_popShape, sizeof(saved_popShape));
+	free(excursionBuf);
 
 	return currentSizeRatio;
 
