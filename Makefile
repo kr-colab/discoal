@@ -154,6 +154,14 @@ test_active_segment: $(TEST_DIR)/test_active_segment.c $(SRC_CORE)/activeSegment
 	@mkdir -p build
 	$(CC) $(TEST_CFLAGS) -o build/test_active_segment $(TEST_DIR)/test_active_segment.c $(SRC_CORE)/activeSegment.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/segmentPool.c $(UNITY_SOURCES) -I$(UNITY_DIR) -fcommon
 
+# test_sweep_end.c includes discoalFunctions.c itself (it sets static state), so that file is not linked here.
+test_sweep_end: $(TEST_DIR)/test_sweep_end.c $(SRC_CORE)/discoal.h $(TEST_DIR)/test_globals.c $(SRC_CORE)/discoalFunctions.c
+	@mkdir -p build
+	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o build/test_sweep_end $(TEST_DIR)/test_sweep_end.c $(UNITY_SOURCES) \
+		$(TEST_DIR)/test_globals.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/segmentPool.c $(SRC_CORE)/fenwick.c \
+		$(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/activeSegment.c $(SRC_CORE)/shapes.c $(SRC_TSKIT)/tskitInterface.c \
+		$(TSKIT_SOURCES) -I$(UNITY_DIR) -lm -fcommon
+
 test_trajectory: $(TEST_DIR)/test_trajectory.c $(SRC_CORE)/discoal.h $(TEST_DIR)/test_globals.c $(SRC_CORE)/shapes.h $(SRC_CORE)/shapes.c
 	@mkdir -p build
 	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o build/test_trajectory $(TEST_DIR)/test_trajectory.c $(UNITY_SOURCES) \
@@ -173,7 +181,7 @@ test_config_interface: demes-c $(TEST_DIR)/test_config_interface.c $(SRC_CORE)/c
 
 
 # Run individual unit tests
-run_tests: test_node test_event test_shapes test_alleleTraj test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_config_interface test_fenwick
+run_tests: test_node test_event test_shapes test_alleleTraj test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_sweep_end test_config_interface test_fenwick
 	@echo "=== Running Unit Tests ==="
 	./build/test_node
 	./build/test_event
@@ -184,6 +192,7 @@ run_tests: test_node test_event test_shapes test_alleleTraj test_node_operations
 	./build/test_ancestry_segment
 	./build/test_active_segment
 	./build/test_trajectory
+	./build/test_sweep_end
 	./build/test_config_interface
 	./build/test_fenwick
 	@echo "=== All Unit Tests Passed ==="
