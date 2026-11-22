@@ -17,6 +17,13 @@
 #include "shapes.h"
 
 static int64_t sweepClassWeight(int popn, int sp);
+static double crossoverSwitchWeight(const rootedNode *node, double sweepSite);
+static double sweepClassSwitchWeight(int popn, int sp, double sweepSite,
+	double (*weight)(const rootedNode *, double));
+static void switchLineageAtTimePopnSweep(int popn, int sp, double sweepSite,
+	double (*weight)(const rootedNode *, double));
+typedef struct { double crossover[2]; } SwitchTotals;
+static SwitchTotals sweepSwitchTotals(int popn, double sweepSite);
 
 /* The lineages of each population, for O(1) uniform picks, with their
  * recombination weights. Only this file reads the weights, and only
@@ -1886,6 +1893,8 @@ double initialFreq, double *finalFreq, int *stillSweeping,double f0, double uA)
 	double pCoalB, pCoalb, pRecB, pRecb, r, sum,eventRand,eventProb, pLeftRecB, pLeftRecb;
 	double pRecurMut, pGCB, pGCb;
 	double sweepPopTotRate,cRate[npops], rRate[npops], gcRate[npops];
+	double pSwB = 0.0, pSwb = 0.0;   /* background redraws, see nodeSwitchMass() */
+	const int usesSite = (sweepSite >= 0.0);   /* a sweep outside the locus has no site */
 	double totCRate, totRRate, totGCRate, eSum, r2;
 	double N = (double) EFFECTIVE_POPN_SIZE;
 	double minF;
@@ -1934,6 +1943,11 @@ double initialFreq, double *finalFreq, int *stillSweeping,double f0, double uA)
 		 * events, not while waiting for one. */
 		const double weightB = (double) sweepClassWeight(0, 1);
 		const double weightb = (double) sweepClassWeight(0, 0);
+		SwitchTotals switches = {{0.0, 0.0}};
+		if (usesSite && rho > 0.0)
+			switches = sweepSwitchTotals(0, sweepSite);
+		const double switchB = switches.crossover[1];
+		const double switchb = switches.crossover[0];
 		//wait for something
 		while(eventProb > eventRand && x > xEnd && (cTime+ttau) < endTime ){
 			ttau += tIncOrig;
@@ -1963,11 +1977,18 @@ double initialFreq, double *finalFreq, int *stillSweeping,double f0, double uA)
 			pGCB = my_gamma * 0.5 * gcWeight((int64_t) weightB, sweepPopnSizes[1]) / nSites * tIncOrig;
 			pGCb = my_gamma * 0.5 * gcWeight((int64_t) weightb, sweepPopnSizes[0]) / nSites * tIncOrig;
 			pRecurMut = (uA * sweepPopnSizes[1]*0.5 *tIncOrig)/x;///sizeRatio[0];
+			/* A redraw leaves a lineage in its class, and changes nothing, with
+			 * probability equal to the frequency of that class. Only the
+			 * redraws that move the lineage are drawn: the rate is multiplied
+			 * by the chance of leaving the class (1 - x from the beneficial
+			 * class, x from the other), and the lineage always moves. */
+			pSwB = rho * 0.5 * switchB / nSites * tIncOrig * (1.0 - x);
+			pSwb = rho * 0.5 * switchb / nSites * tIncOrig * x;
 			if (sweepSite < 0.0){
 				pLeftRecB = leftRho * sweepPopnSizes[1]*0.5 * tIncOrig * (1-x);
 				pLeftRecb = leftRho * sweepPopnSizes[0]*0.5 * tIncOrig * x;
                         }
-			sweepPopTotRate = pCoalB + pCoalb + pRecB + pRecb + pGCB + pGCb + pRecurMut + pLeftRecB + pLeftRecb;
+			sweepPopTotRate = pCoalB + pCoalb + pRecB + pRecb + pGCB + pGCb + pRecurMut + pLeftRecB + pLeftRecb + pSwB + pSwb;
 			//now two events in population 1
 			totRate = 0.0;
 			totCRate = 0.0;
@@ -2026,6 +2047,10 @@ double initialFreq, double *finalFreq, int *stillSweeping,double f0, double uA)
 				geneConversionAtTimePopnSweep(eventTime, 0, 1, sweepSite, x);
 			else if (r < (sum += pGCb) / sweepPopTotRate)
 				geneConversionAtTimePopnSweep(eventTime, 0, 0, sweepSite, 1.0 - x);
+			else if (r < (sum += pSwb) / sweepPopTotRate)
+				switchLineageAtTimePopnSweep(0, 0, sweepSite, crossoverSwitchWeight);
+			else if (r < (sum += pSwB) / sweepPopTotRate)
+				switchLineageAtTimePopnSweep(0, 1, sweepSite, crossoverSwitchWeight);
 			else if (r < (sum += pLeftRecb) / sweepPopTotRate)
 				recombineToLeftPopnSweep(0, 0);
 			else if (r < (sum += pLeftRecB) / sweepPopTotRate)
@@ -2213,6 +2238,115 @@ double recurrentSweepPhaseGeneralPopNumber(double startTime, double endTime, dou
 		}
 	}
 	return(cTime);
+}
+
+/* The first breakpoint x (the position between sites x - 1 and x) that has
+ * the selected site to its left, by the test that recombineAtTimePopnSweep()
+ * and convertTract() use: sweepSite < (float) x / nSites. It is nSites + 1
+ * if there is none. */
+static int firstBreakpointRightOfSite(double sweepSite){
+	/* Asked for every lineage at every event, with the same site, so the
+	 * last answer is kept. */
+	static double lastSite = -1.0;
+	static int lastSites = -1, lastAnswer = 0;
+	if (sweepSite == lastSite && nSites == lastSites) return lastAnswer;
+	int x = (int) floor(sweepSite * (double) nSites);
+	if (x < 0) x = 0;
+	if (x > nSites + 1) x = nSites + 1;
+	while (x > 0 && sweepSite < (float) (x - 1) / nSites) x--;
+	while (x <= nSites && !(sweepSite < (float) x / nSites)) x++;
+	lastSite = sweepSite;
+	lastSites = nSites;
+	lastAnswer = x;
+	return x;
+}
+
+/* Crossovers between the selected site and a lineage's ancestral material.
+ *
+ * A lineage's recombination weight (lineageWeight()) counts only the
+ * breakpoints inside the span of its own material. In a neutral coalescent
+ * a crossover outside that span changes nothing, so leaving it out is
+ * harmless. During a sweep it is not harmless. A crossover between the
+ * selected site and the material still sends all the material to the
+ * parent that did not carry the selected site, and that parent's
+ * background, beneficial or ancestral, is drawn afresh from the population.
+ * Without these events a lineage that has only material on one side of
+ * the site keeps its background too long, and hitchhikes too much.
+ *
+ * nodeSwitchMass() is the number of breakpoints from the selected site to
+ * the nearer end of the lineage's span. A span that contains the site has
+ * none: crossovers inside it are drawn as ordinary recombination. A span of
+ * a single site has no breakpoints of its own, but crossovers between it
+ * and the selected site count like any other. */
+static int64_t nodeSwitchMass(const rootedNode *node, double sweepSite){
+	if (node->nancSites <= 0) return 0;
+	const int64_t first = firstBreakpointRightOfSite(sweepSite);
+	int64_t mass = 0;
+	if (node->lLim + 1 >= first)                    /* span wholly right of the site */
+		mass = node->lLim - first + 1;
+	else if (node->rLim < first) {                  /* span wholly left of the site */
+		const int64_t top = (first - 1 < nSites - 1) ? first - 1 : nSites - 1;
+		mass = top - node->rLim;
+	}
+	return (mass > 0) ? mass : 0;
+}
+
+static double crossoverSwitchWeight(const rootedNode *node, double sweepSite){
+	return (double) nodeSwitchMass(node, sweepSite);
+}
+
+/* The total of crossoverSwitchWeight() over the lineages of population
+ * popn, for each class (index 0 ancestral, 1 beneficial), in one pass. */
+static SwitchTotals sweepSwitchTotals(int popn, double sweepSite){
+	SwitchTotals t = {{0.0, 0.0}};
+	PopulationNodeList *list = &popLists[popn];
+	for (int k = 0; k < list->count; k++) {
+		const rootedNode *node = list->nodes[k];
+		const int64_t d = nodeSwitchMass(node, sweepSite);
+		if (d > 0) t.crossover[node->sweepPopn] += (double) d;
+	}
+	return t;
+}
+
+/* The total of weight() over the lineages of population popn in sweep
+ * class sp. */
+static double sweepClassSwitchWeight(int popn, int sp, double sweepSite,
+		double (*weight)(const rootedNode *, double)){
+	double total = 0.0;
+	PopulationNodeList *list = &popLists[popn];
+	for (int k = 0; k < list->count; k++)
+		if (list->nodes[k]->sweepPopn == sp) total += weight(list->nodes[k], sweepSite);
+	return total;
+}
+
+/* A lineage leaves its sweep class for the other one. */
+static void moveToOtherClass(rootedNode *node){
+	sweepPopnSizes[node->sweepPopn]--;
+	node->sweepPopn = (node->sweepPopn == 0) ? 1 : 0;
+	sweepPopnSizes[node->sweepPopn]++;
+}
+
+/* A redraw of the background of a lineage of class sp that moves it to the
+ * other class: a crossover or a gene conversion tract between the selected
+ * site and the lineage's material. The lineage is drawn in proportion to
+ * its weight, and keeps all its material. */
+static void switchLineageAtTimePopnSweep(int popn, int sp, double sweepSite,
+		double (*weight)(const rootedNode *, double)){
+	PopulationNodeList *list = &popLists[popn];
+	const double total = sweepClassSwitchWeight(popn, sp, sweepSite, weight);
+	if (total <= 0.0) return;
+	double at = ranf() * total;
+	rootedNode *chosen = NULL;
+	for (int k = 0; k < list->count; k++) {
+		rootedNode *node = list->nodes[k];
+		if (node->sweepPopn != sp) continue;
+		const double w = weight(node, sweepSite);
+		if (w <= 0.0) continue;
+		chosen = node;          /* the last one is kept if rounding runs past the end */
+		if (at < w) break;
+		at -= w;
+	}
+	if (chosen != NULL) moveToOtherClass(chosen);
 }
 
 /*recombineAtTimePopnSweep-- preforms recombination on
