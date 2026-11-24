@@ -169,6 +169,11 @@ jobs:
     - name: Check gene conversion against crossover
       run: python testing/gc_crossover_check.py --workers 4
 
+    # Diversity at a marker after a sweep must not depend on the sample
+    # size (2 or 20), with crossovers and with gene conversion.
+    - name: Check diversity at a marker in a sweep against sample size
+      run: python testing/sweep_marker_consistency_check.py --workers 4
+
     # Gene conversion against the two-locus theory, at both ends and in the
     # middle of the locus, and against msprime.
     - name: Check gene conversion against theory and msprime

@@ -31,6 +31,7 @@ run, and each one exits with 0 if every comparison passes.
 | `recurrent_sweep_check.py` | recurrent sweeps (`-R`, `-L`) follow the demographic model between sweeps | every PR |
 | `sweep_msprime_check.py` | hard sweeps against msprime's `SweepGenicSelection` | every PR |
 | `gc_crossover_check.py` | gene conversion with tracts longer than the locus equals crossover at twice its rate, in the neutral phase and in a sweep | every PR |
+| `sweep_marker_consistency_check.py` | diversity at a marker after a hard sweep does not depend on the sample size (2 or 20), with crossovers and with gene conversion | every PR |
 | `gene_conversion_check.py` | gene conversion against the two-locus theory (at the left end, in the middle and at the right end of the locus) and against msprime | every PR |
 | `linkage_msprime_check.py` | linkage of two sites (same MRCA, TMRCA correlation) against msprime | every PR |
 | `fuzz_msprime_check.py` | random command-line demographic models against msprime | every PR (150 models) |
