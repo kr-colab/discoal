@@ -99,7 +99,16 @@ check: discoal run_tests
 
 test: check
 
-.PHONY: check test
+# The checks that need SLiM (5.x on the PATH, with msprime and tskit): by
+# hand, not in CI. They are skipped if slim is not found.
+check-slim: discoal
+	@if command -v slim >/dev/null 2>&1; then \
+		python3 testing/sweep_marker_slim_check.py --workers $(CHECK_WORKERS); \
+	else \
+		echo "slim not found on the PATH: skipping the SLiM checks"; \
+	fi
+
+.PHONY: check test check-slim
 
 # Unit test-related targets
 TEST_DIR = test/unit

@@ -37,6 +37,7 @@ run, and each one exits with 0 if every comparison passes.
 | `fuzz_msprime_check.py` | random command-line demographic models against msprime | every PR (150 models) |
 | `stdpopsim_parity.py` | stdpopsim and demes models against msprime | every PR (a core set and a random sample); weekly (all models, without and with recombination) |
 | `slim_sweep_check.py` | hard, soft and partial sweeps and ancient samples against forward simulations in SLiM | by hand (needs SLiM, pyslim, stdpopsim) |
+| `sweep_marker_slim_check.py` | diversity at a marker after a hard sweep, with crossovers and with gene conversion, against forward simulations in SLiM 5 (`make check-slim`, skipped if `slim` is not found) | by hand (needs SLiM; about 50 minutes on 20 workers for the SLiM part, which `--slim-cache DIR` keeps, and 3 minutes for discoal) |
 | `yaml_parser_fuzz.py` | the YAML parser on many random variants of valid files: no crash, no silent acceptance of bad input | by hand |
 
 Helpers: `cmp_trees.py` compares two tree-sequence files (provenance
