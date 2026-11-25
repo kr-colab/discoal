@@ -17,6 +17,15 @@
 #include "shapes.h"
 
 static int64_t sweepClassWeight(int popn, int sp);
+static double crossoverSwitchWeight(const rootedNode *node, double sweepSite);
+static double nodeGcSwitchWeight(const rootedNode *node, double sweepSite);
+static double sweepClassSwitchWeight(int popn, int sp, double sweepSite,
+	double (*weight)(const rootedNode *, double));
+static void switchLineageAtTimePopnSweep(int popn, int sp, double sweepSite,
+	double (*weight)(const rootedNode *, double));
+static void moveToOtherClass(rootedNode *node);
+typedef struct { double crossover[2]; double conversion[2]; } SwitchTotals;
+static SwitchTotals sweepSwitchTotals(int popn, double sweepSite, int crossovers, int conversions);
 
 /* The lineages of each population, for O(1) uniform picks, with their
  * recombination weights. Only this file reads the weights, and only
@@ -900,6 +909,21 @@ static void convertTract(double cTime, int popn, rootedNode *aNode, int start, i
 	if (convertedSpan.nancSites == 0 || restSpan.nancSites == 0) {
 		freeSegmentTree(split.converted);
 		freeSegmentTree(split.unconverted);
+		/* The material is not cut, but in a sweep the tract can still
+		 * separate it from the sweep site: it covers the site and none of the
+		 * material (it fell in a gap), or all of the material and not the
+		 * site. The background of the lineage is then drawn afresh. If it
+		 * covers both, or neither, nothing changes. (The tracts drawn here
+		 * never cover all of a lineage's material, so in practice only the
+		 * first case arises; the rule is the same for any tract.) */
+		if (sp >= 0 && sweepSite >= 0.0) {
+			const int siteInTract = sweepSite >= (float) start / nSites
+				&& sweepSite < (float) end / nSites;
+			if ((convertedSpan.nancSites == 0 && siteInTract)
+			    || (restSpan.nancSites == 0 && convertedSpan.nancSites > 0 && !siteInTract)) {
+				if (ranf() >= popnFreq) moveToOtherClass(aNode);
+			}
+		}
 		return;
 	}
 
@@ -1886,6 +1910,9 @@ double initialFreq, double *finalFreq, int *stillSweeping,double f0, double uA)
 	double pCoalB, pCoalb, pRecB, pRecb, r, sum,eventRand,eventProb, pLeftRecB, pLeftRecb;
 	double pRecurMut, pGCB, pGCb;
 	double sweepPopTotRate,cRate[npops], rRate[npops], gcRate[npops];
+	double pSwB = 0.0, pSwb = 0.0;   /* background redraws, see nodeSwitchMass() */
+	double pGSwB = 0.0, pGSwb = 0.0; /* the same by gene conversion, see nodeGcSwitchWeight() */
+	const int usesSite = (sweepSite >= 0.0);   /* a sweep outside the locus has no site */
 	double totCRate, totRRate, totGCRate, eSum, r2;
 	double N = (double) EFFECTIVE_POPN_SIZE;
 	double minF;
@@ -1934,6 +1961,13 @@ double initialFreq, double *finalFreq, int *stillSweeping,double f0, double uA)
 		 * events, not while waiting for one. */
 		const double weightB = (double) sweepClassWeight(0, 1);
 		const double weightb = (double) sweepClassWeight(0, 0);
+		SwitchTotals switches = {{0.0, 0.0}, {0.0, 0.0}};
+		if (usesSite && (rho > 0.0 || my_gamma > 0.0))
+			switches = sweepSwitchTotals(0, sweepSite, rho > 0.0, my_gamma > 0.0);
+		const double switchB = switches.crossover[1];
+		const double switchb = switches.crossover[0];
+		const double gcSwitchB = switches.conversion[1];
+		const double gcSwitchb = switches.conversion[0];
 		//wait for something
 		while(eventProb > eventRand && x > xEnd && (cTime+ttau) < endTime ){
 			ttau += tIncOrig;
@@ -1963,11 +1997,20 @@ double initialFreq, double *finalFreq, int *stillSweeping,double f0, double uA)
 			pGCB = my_gamma * 0.5 * gcWeight((int64_t) weightB, sweepPopnSizes[1]) / nSites * tIncOrig;
 			pGCb = my_gamma * 0.5 * gcWeight((int64_t) weightb, sweepPopnSizes[0]) / nSites * tIncOrig;
 			pRecurMut = (uA * sweepPopnSizes[1]*0.5 *tIncOrig)/x;///sizeRatio[0];
+			/* A redraw leaves a lineage in its class, and changes nothing, with
+			 * probability equal to the frequency of that class. Only the
+			 * redraws that move the lineage are drawn: the rate is multiplied
+			 * by the chance of leaving the class (1 - x from the beneficial
+			 * class, x from the other), and the lineage always moves. */
+			pSwB = rho * 0.5 * switchB / nSites * tIncOrig * (1.0 - x);
+			pSwb = rho * 0.5 * switchb / nSites * tIncOrig * x;
+			pGSwB = my_gamma * 0.5 * gcSwitchB / nSites * tIncOrig * (1.0 - x);
+			pGSwb = my_gamma * 0.5 * gcSwitchb / nSites * tIncOrig * x;
 			if (sweepSite < 0.0){
 				pLeftRecB = leftRho * sweepPopnSizes[1]*0.5 * tIncOrig * (1-x);
 				pLeftRecb = leftRho * sweepPopnSizes[0]*0.5 * tIncOrig * x;
                         }
-			sweepPopTotRate = pCoalB + pCoalb + pRecB + pRecb + pGCB + pGCb + pRecurMut + pLeftRecB + pLeftRecb;
+			sweepPopTotRate = pCoalB + pCoalb + pRecB + pRecb + pGCB + pGCb + pRecurMut + pLeftRecB + pLeftRecb + pSwB + pSwb + pGSwB + pGSwb;
 			//now two events in population 1
 			totRate = 0.0;
 			totCRate = 0.0;
@@ -2026,6 +2069,14 @@ double initialFreq, double *finalFreq, int *stillSweeping,double f0, double uA)
 				geneConversionAtTimePopnSweep(eventTime, 0, 1, sweepSite, x);
 			else if (r < (sum += pGCb) / sweepPopTotRate)
 				geneConversionAtTimePopnSweep(eventTime, 0, 0, sweepSite, 1.0 - x);
+			else if (r < (sum += pSwb) / sweepPopTotRate)
+				switchLineageAtTimePopnSweep(0, 0, sweepSite, crossoverSwitchWeight);
+			else if (r < (sum += pSwB) / sweepPopTotRate)
+				switchLineageAtTimePopnSweep(0, 1, sweepSite, crossoverSwitchWeight);
+			else if (r < (sum += pGSwb) / sweepPopTotRate)
+				switchLineageAtTimePopnSweep(0, 0, sweepSite, nodeGcSwitchWeight);
+			else if (r < (sum += pGSwB) / sweepPopTotRate)
+				switchLineageAtTimePopnSweep(0, 1, sweepSite, nodeGcSwitchWeight);
 			else if (r < (sum += pLeftRecb) / sweepPopTotRate)
 				recombineToLeftPopnSweep(0, 0);
 			else if (r < (sum += pLeftRecB) / sweepPopTotRate)
@@ -2213,6 +2264,167 @@ double recurrentSweepPhaseGeneralPopNumber(double startTime, double endTime, dou
 		}
 	}
 	return(cTime);
+}
+
+/* The first breakpoint x (the position between sites x - 1 and x) that has
+ * the selected site to its left, by the test that recombineAtTimePopnSweep()
+ * and convertTract() use: sweepSite < (float) x / nSites. It is nSites + 1
+ * if there is none. */
+static int firstBreakpointRightOfSite(double sweepSite){
+	/* Asked for every lineage at every event, with the same site, so the
+	 * last answer is kept. */
+	static double lastSite = -1.0;
+	static int lastSites = -1, lastAnswer = 0;
+	if (sweepSite == lastSite && nSites == lastSites) return lastAnswer;
+	int x = (int) floor(sweepSite * (double) nSites);
+	if (x < 0) x = 0;
+	if (x > nSites + 1) x = nSites + 1;
+	while (x > 0 && sweepSite < (float) (x - 1) / nSites) x--;
+	while (x <= nSites && !(sweepSite < (float) x / nSites)) x++;
+	lastSite = sweepSite;
+	lastSites = nSites;
+	lastAnswer = x;
+	return x;
+}
+
+/* Crossovers between the selected site and a lineage's ancestral material.
+ *
+ * A lineage's recombination weight (lineageWeight()) counts only the
+ * breakpoints inside the span of its own material. In a neutral coalescent
+ * a crossover outside that span changes nothing, so leaving it out is
+ * harmless. During a sweep it is not harmless. A crossover between the
+ * selected site and the material still sends all the material to the
+ * parent that did not carry the selected site, and that parent's
+ * background, beneficial or ancestral, is drawn afresh from the population.
+ * Without these events a lineage that has only material on one side of
+ * the site keeps its background too long, and hitchhikes too much.
+ *
+ * nodeSwitchMass() is the number of breakpoints from the selected site to
+ * the nearer end of the lineage's span. A span that contains the site has
+ * none: crossovers inside it are drawn as ordinary recombination. A span of
+ * a single site has no breakpoints of its own, but crossovers between it
+ * and the selected site count like any other. */
+static int64_t nodeSwitchMass(const rootedNode *node, double sweepSite){
+	if (node->nancSites <= 0) return 0;
+	const int64_t first = firstBreakpointRightOfSite(sweepSite);
+	int64_t mass = 0;
+	if (node->lLim + 1 >= first)                    /* span wholly right of the site */
+		mass = node->lLim - first + 1;
+	else if (node->rLim < first) {                  /* span wholly left of the site */
+		const int64_t top = (first - 1 < nSites - 1) ? first - 1 : nSites - 1;
+		mass = top - node->rLim;
+	}
+	return (mass > 0) ? mass : 0;
+}
+
+static double crossoverSwitchWeight(const rootedNode *node, double sweepSite){
+	return (double) nodeSwitchMass(node, sweepSite);
+}
+
+/* The total of weight() over the lineages of population popn in sweep
+ * class sp. */
+static double sweepClassSwitchWeight(int popn, int sp, double sweepSite,
+		double (*weight)(const rootedNode *, double)){
+	double total = 0.0;
+	PopulationNodeList *list = &popLists[popn];
+	for (int k = 0; k < list->count; k++)
+		if (list->nodes[k]->sweepPopn == sp) total += weight(list->nodes[k], sweepSite);
+	return total;
+}
+
+/* A lineage leaves its sweep class for the other one. */
+static void moveToOtherClass(rootedNode *node){
+	sweepPopnSizes[node->sweepPopn]--;
+	node->sweepPopn = (node->sweepPopn == 0) ? 1 : 0;
+	sweepPopnSizes[node->sweepPopn]++;
+}
+
+/* A redraw of the background of a lineage of class sp that moves it to the
+ * other class: a crossover or a gene conversion tract between the selected
+ * site and the lineage's material. The lineage is drawn in proportion to
+ * its weight, and keeps all its material. */
+static void switchLineageAtTimePopnSweep(int popn, int sp, double sweepSite,
+		double (*weight)(const rootedNode *, double)){
+	PopulationNodeList *list = &popLists[popn];
+	const double total = sweepClassSwitchWeight(popn, sp, sweepSite, weight);
+	if (total <= 0.0) return;
+	double at = ranf() * total;
+	rootedNode *chosen = NULL;
+	for (int k = 0; k < list->count; k++) {
+		rootedNode *node = list->nodes[k];
+		if (node->sweepPopn != sp) continue;
+		const double w = weight(node, sweepSite);
+		if (w <= 0.0) continue;
+		chosen = node;          /* the last one is kept if rounding runs past the end */
+		if (at < w) break;
+		at -= w;
+	}
+	if (chosen != NULL) moveToOtherClass(chosen);
+}
+
+/* Gene conversion tracts that separate the selected site from a lineage's
+ * material without cutting the material.
+ *
+ * A tract copies a stretch of another chromosome onto the lineage's
+ * chromosome. If the tract covers the selected site and none of the
+ * material, or all of the material and not the site, then the site and the
+ * material come from different parents, and the parent of the material is
+ * a random chromosome of the population: the lineage's background is drawn
+ * afresh, as after a crossover between them. If the tract covers both, the
+ * donor must carry the lineage's present background, and nothing changes.
+ * The tracts drawn in geneConversionAtTimePopnSweep() either start inside
+ * the lineage's span or run into it from the left, so these two kinds are
+ * never among them.
+ *
+ * Tract lengths are geometric with mean gcMean, so a tract is at least
+ * m sites long with probability pc^(m - 1), pc = 1 - 1/gcMean. Take a
+ * lineage whose span has w breakpoints and lies at distance d from the
+ * selected site (d = nodeSwitchMass()), and tracts that start at each site
+ * at the same rate. Tracts that cover the site and end before the material
+ * arrive at gcMean (1 - pc^d) times that rate. Tracts that start between
+ * the site and the material and run past all of it arrive at
+ * gcMean pc^w (1 - pc^d) times that rate. The weight of the lineage is the
+ * sum. For very long tracts it tends to 2d, the rate of crossovers at twice
+ * the conversion rate, which is what such tracts amount to (see
+ * testing/gc_crossover_check.py). */
+static double gcSwitchWeightAt(const rootedNode *node, int64_t d){
+	if (d <= 0) return 0.0;
+	const double w = (double) (node->rLim - node->lLim);
+	if (gcMean <= 1)                       /* every tract is one site */
+		return (w == 0.0) ? 2.0 : 1.0;
+	static int lastMean = 0;               /* log(pc) is the same for every lineage */
+	static double lpc = 0.0;
+	if (gcMean != lastMean) {
+		lpc = log1p(-1.0 / (double) gcMean);
+		lastMean = gcMean;
+	}
+	/* Below -40 the exponentials are 1 or 0 to the last bit of a double
+	 * (exp(-40) is smaller than half the spacing of numbers near 1), and
+	 * most lineages are that far from the site when tracts are short. */
+	const double atSite = (double) d * lpc, along = w * lpc;
+	const double reach = (atSite < -40.0) ? 1.0 : -expm1(atSite);
+	const double both = (along < -40.0) ? 1.0 : 1.0 + exp(along);
+	return (double) gcMean * reach * both;
+}
+
+static double nodeGcSwitchWeight(const rootedNode *node, double sweepSite){
+	return gcSwitchWeightAt(node, nodeSwitchMass(node, sweepSite));
+}
+
+/* The totals of crossoverSwitchWeight() and nodeGcSwitchWeight() over the
+ * lineages of population popn, for each class (index 0 ancestral, 1
+ * beneficial), in one pass. Only the kinds asked for are added. */
+static SwitchTotals sweepSwitchTotals(int popn, double sweepSite, int crossovers, int conversions){
+	SwitchTotals t = {{0.0, 0.0}, {0.0, 0.0}};
+	PopulationNodeList *list = &popLists[popn];
+	for (int k = 0; k < list->count; k++) {
+		const rootedNode *node = list->nodes[k];
+		const int64_t d = nodeSwitchMass(node, sweepSite);
+		if (d <= 0) continue;
+		if (crossovers) t.crossover[node->sweepPopn] += (double) d;
+		if (conversions) t.conversion[node->sweepPopn] += gcSwitchWeightAt(node, d);
+	}
+	return t;
 }
 
 /*recombineAtTimePopnSweep-- preforms recombination on

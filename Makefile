@@ -92,13 +92,23 @@ check: discoal run_tests
 	python3 testing/recurrent_sweep_check.py
 	python3 testing/sweep_msprime_check.py --workers $(CHECK_WORKERS)
 	python3 testing/gc_crossover_check.py --workers $(CHECK_WORKERS)
+	python3 testing/sweep_marker_consistency_check.py --workers $(CHECK_WORKERS)
 	python3 testing/gene_conversion_check.py --workers $(CHECK_WORKERS)
 	python3 testing/linkage_msprime_check.py --workers $(CHECK_WORKERS)
 	python3 testing/fuzz_msprime_check.py --models 150 --reps 500 --workers $(CHECK_WORKERS)
 
 test: check
 
-.PHONY: check test
+# The checks that need SLiM (5.x on the PATH, with msprime and tskit): by
+# hand, not in CI. They are skipped if slim is not found.
+check-slim: discoal
+	@if command -v slim >/dev/null 2>&1; then \
+		python3 testing/sweep_marker_slim_check.py --workers $(CHECK_WORKERS); \
+	else \
+		echo "slim not found on the PATH: skipping the SLiM checks"; \
+	fi
+
+.PHONY: check test check-slim
 
 # Unit test-related targets
 TEST_DIR = test/unit
@@ -162,6 +172,14 @@ test_sweep_end: $(TEST_DIR)/test_sweep_end.c $(SRC_CORE)/discoal.h $(TEST_DIR)/t
 		$(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/activeSegment.c $(SRC_CORE)/shapes.c $(SRC_TSKIT)/tskitInterface.c \
 		$(TSKIT_SOURCES) -I$(UNITY_DIR) -lm -fcommon
 
+# test_sweep_switch.c includes discoalFunctions.c itself (it reaches static functions), so that file is not linked here.
+test_sweep_switch: $(TEST_DIR)/test_sweep_switch.c $(SRC_CORE)/discoal.h $(TEST_DIR)/test_globals.c $(SRC_CORE)/discoalFunctions.c
+	@mkdir -p build
+	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -DUNITY_INCLUDE_DOUBLE -o build/test_sweep_switch $(TEST_DIR)/test_sweep_switch.c $(UNITY_SOURCES) \
+		$(TEST_DIR)/test_globals.c $(SRC_CORE)/ancestrySegment.c $(SRC_CORE)/segmentPool.c $(SRC_CORE)/fenwick.c \
+		$(SRC_RNG)/xoshiro256pp_compat.c $(SRC_CORE)/alleleTraj.c $(SRC_CORE)/activeSegment.c $(SRC_CORE)/shapes.c $(SRC_TSKIT)/tskitInterface.c \
+		$(TSKIT_SOURCES) -I$(UNITY_DIR) -lm -fcommon
+
 test_trajectory: $(TEST_DIR)/test_trajectory.c $(SRC_CORE)/discoal.h $(TEST_DIR)/test_globals.c $(SRC_CORE)/shapes.h $(SRC_CORE)/shapes.c
 	@mkdir -p build
 	$(CC) $(TEST_CFLAGS) -DUSE_XOSHIRO256PP -o build/test_trajectory $(TEST_DIR)/test_trajectory.c $(UNITY_SOURCES) \
@@ -181,7 +199,7 @@ test_config_interface: demes-c $(TEST_DIR)/test_config_interface.c $(SRC_CORE)/c
 
 
 # Run individual unit tests
-run_tests: test_node test_event test_shapes test_alleleTraj test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_sweep_end test_config_interface test_fenwick
+run_tests: test_node test_event test_shapes test_alleleTraj test_node_operations test_mutations test_ancestry_segment test_active_segment test_trajectory test_sweep_end test_sweep_switch test_config_interface test_fenwick
 	@echo "=== Running Unit Tests ==="
 	./build/test_node
 	./build/test_event
@@ -193,6 +211,7 @@ run_tests: test_node test_event test_shapes test_alleleTraj test_node_operations
 	./build/test_active_segment
 	./build/test_trajectory
 	./build/test_sweep_end
+	./build/test_sweep_switch
 	./build/test_config_interface
 	./build/test_fenwick
 	@echo "=== All Unit Tests Passed ==="
