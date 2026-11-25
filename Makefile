@@ -91,6 +91,8 @@ check: discoal run_tests
 	python3 testing/trajectory_file_check.py
 	python3 testing/recurrent_sweep_check.py
 	python3 testing/sweep_msprime_check.py --workers $(CHECK_WORKERS)
+	python3 testing/sweep_flank_check.py --workers $(CHECK_WORKERS)
+	python3 testing/soft_sweep_check.py --workers $(CHECK_WORKERS)
 	python3 testing/gc_crossover_check.py --workers $(CHECK_WORKERS)
 	python3 testing/sweep_marker_consistency_check.py --workers $(CHECK_WORKERS)
 	python3 testing/gene_conversion_check.py --workers $(CHECK_WORKERS)

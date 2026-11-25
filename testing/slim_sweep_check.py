@@ -26,17 +26,22 @@ their divergence from the present-day samples.
 msprime's SweepGenicSelection gives a diffusion reference for the hard
 sweep.
 
-What to expect: discoal agrees with msprime's hard sweep. SLiM is a
-Wright-Fisher population with discrete generations, and its values are a
-few percent above both diffusion models (about 3% at N = 1000, 4 to 5% at
-N = 5000); discoal's soft and partial sweeps should differ from SLiM by
-about as much as its hard sweep does. Before the soft-sweep fix, discoal's
-soft sweep with f0 = 0.05 was 23% above SLiM. Ancient samples taken during
-the sweep (100 generations before fixation) have about 6% more diversity
-in discoal than in SLiM: 100 generations before fixation the allele's mean
-frequency is 0.68 in SLiM and 0.63 on discoal's diffusion trajectory, the
-same diffusion/Wright-Fisher difference. Before the fix for ancient
-samples during a sweep (#100), their diversity was 69% below SLiM.
+What to expect (12000 replicates at N = 1000, 3000 at N = 5000): SLiM is
+a Wright-Fisher population with discrete generations, and discoal follows
+the diffusion. With alpha = 100, SLiM's total branch length is about 2%
+above discoal's at N = 1000 (s = 0.1 per generation) and 1% or less above at
+N = 5000 (s = 0.02), for hard and soft sweeps alike; the difference
+becomes smaller with s. discoal's sweeps match exact diffusion references:
+testing/sweep_flank_check.py and testing/soft_sweep_check.py. Until the
+sweep fixes of issue #164, the soft sweep was a further 1.5% below. msprime's
+hard sweep agrees with discoal at this alpha, but it has two of the errors
+fixed for issue #164, and differs for strong sweeps. Before the soft-sweep
+fix of #105, discoal's soft sweep with f0 = 0.05 was 23% above SLiM.
+Ancient samples taken during the sweep (100 generations before fixation)
+have about 8% more diversity in discoal than in SLiM: 100 generations
+before fixation the allele's mean frequency is 0.68 in SLiM and 0.63 on
+discoal's diffusion trajectory. Before the fix for ancient samples during
+a sweep (#100), their diversity was 69% below SLiM.
 
 Needs build/discoal, stdpopsim, SLiM (slim on the PATH), pyslim, msprime,
 tskit and numpy. stdpopsim 0.3 writes scripts for SLiM 4; for SLiM 5 the

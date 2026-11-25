@@ -30,6 +30,8 @@ run, and each one exits with 0 if every comparison passes.
 | `trajectory_file_check.py` | sweeps from a trajectory file (`-S`) | every PR |
 | `recurrent_sweep_check.py` | recurrent sweeps (`-R`, `-L`) follow the demographic model between sweeps | every PR |
 | `sweep_msprime_check.py` | hard sweeps against msprime's `SweepGenicSelection` | every PR |
+| `sweep_flank_check.py` | diversity near a sweep: a two-site deterministic sweep against an exact calculation, and the flank of a hard sweep (h at two markers, pi2 between them) against an exact solver of the two-locus dynamics (issue #164) | every PR |
+| `soft_sweep_check.py` | diversity near a soft sweep (-f) against a forward diffusion of the model; reference values from `soft_sweep_reference.py` (needs numba; not run in CI) | every PR |
 | `gc_crossover_check.py` | gene conversion with tracts longer than the locus equals crossover at twice its rate, in the neutral phase and in a sweep | every PR |
 | `sweep_marker_consistency_check.py` | diversity at a marker after a hard sweep does not depend on the sample size (2 or 20), with crossovers and with gene conversion | every PR |
 | `gene_conversion_check.py` | gene conversion against the two-locus theory (at the left end, in the middle and at the right end of the locus) and against msprime | every PR |
