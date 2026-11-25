@@ -1976,12 +1976,15 @@ static int dormantLineagesIn(int popn){
  * single copy, so the lineages still in the beneficial class when the
  * sweep ends all descend from that copy, and they coalesce into one. Each
  * coalescence is dated one step of floating point after the one before,
- * since a parent must be older than its children. */
-static void coalesceBeneficialAtOrigin(double cTime){
+ * since a parent must be older than its children. Returns the time of the
+ * last one (cTime if there is none), where the phase after the sweep
+ * starts: no later event may come before it. */
+static double coalesceBeneficialAtOrigin(double cTime){
 	while (nodePopnSweepSize(0, 1) > 1) {
 		cTime = nextafter(cTime, INFINITY);
 		coalesceAtTimePopnSweep(cTime, 0, 1);
 	}
+	return cTime;
 }
 
 /*sweepPhaseEventsConditionalTrajectory-- does sweep phase with trajectory created externally */
@@ -2129,7 +2132,7 @@ double initialFreq, double *finalFreq, int *stillSweeping,double f0, double uA)
 		/* The wait ended because the trajectory did (x <= xEnd, the allele
 		 * is down to one copy) and no event was due: there is no event to
 		 * carry out. The sweep is over; see coalesceBeneficialAtOrigin(). */
-		if (!fromStandingVariation && x <= xEnd && eventProb > eventRand)
+		if (eventProb > eventRand)
 			break;
 
 		//Decide which event took place
@@ -2211,17 +2214,18 @@ double initialFreq, double *finalFreq, int *stillSweeping,double f0, double uA)
 		}
 
 	}
-	if((cTime+ttau) >= endTime){
+	double sweepEnd = cTime + ttau;
+	if(sweepEnd >= endTime){
 		*stillSweeping = 1; 
 	}
 	else{
 		*stillSweeping = 0; 
-		if (!fromStandingVariation) coalesceBeneficialAtOrigin(cTime+ttau);
+		if (!fromStandingVariation) sweepEnd = coalesceBeneficialAtOrigin(sweepEnd);
 	}
 	if(sweepPopnSizes[1]==0 && ancientToCome == 0) *stillSweeping = 0;
 
 	*finalFreq = x;
-	return(cTime+(ttau));
+	return sweepEnd;
 }
 
 /*recurrentSweepPhaseGeneralPopNumber--coalescent, recombination, gc events, and sweeps! until
